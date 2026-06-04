@@ -1,0 +1,17 @@
+# PostgreSQL / Docker
+*.log
+.env
+.env.local
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# PlantUML export (генерируйте локально при необходимости)
+plantuml/out/

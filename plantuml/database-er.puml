@@ -1,0 +1,243 @@
+@startuml database-er
+' Откройте в https://www.plantuml.com/plantuml или в IDE с PlantUML
+' Схема единой БД taskhub (PostgreSQL) — без тестовых данных
+
+skinparam linetype ortho
+skinparam classBackgroundColor #FEFEFE
+skinparam classBorderColor #333333
+skinparam arrowColor #555555
+
+title Единая БД задач (PostgreSQL)\nJira · TFS · Trello · Прочие
+
+package "Справочники" #E8F4FC {
+  class source_system <<table>> {
+    +id : smallserial PK
+    code : varchar UK
+    name : varchar
+    base_url : text
+    is_active : boolean
+  }
+
+  class canonical_status <<table>> {
+    +id : serial PK
+    code : varchar UK
+    name : varchar
+    category : varchar
+    sort_order : int
+    is_terminal : boolean
+  }
+
+  class source_status_mapping <<table>> {
+    +id : serial PK
+    source_system_id : FK
+    source_status_name : varchar
+    canonical_status_id : FK
+    project_external_key : varchar
+  }
+
+  class field_mapping <<table>> {
+    +id : serial PK
+    source_system_id : FK
+    source_entity : varchar
+    source_field_path : varchar
+    canonical_field : varchar
+    transform_rule : text
+  }
+
+  class team <<table>> {
+    +id : bigserial PK
+    code : varchar UK
+    name : varchar
+  }
+
+  class person <<table>> {
+    +id : bigserial PK
+    email : varchar UK
+    display_name : varchar
+  }
+
+  class person_external <<table>> {
+    +id : bigserial PK
+    person_id : FK
+    source_system_id : FK
+    external_user_id : varchar
+  }
+}
+
+package "Проекты и релизы" #E8FCF0 {
+  class project <<table>> {
+    +id : bigserial PK
+    source_system_id : FK
+    external_key : varchar
+    name : varchar
+    team_id : FK
+  }
+
+  class release <<table>> {
+    +id : bigserial PK
+    project_id : FK
+    name : varchar
+    planned_release_date : date
+    actual_release_date : date
+    status : varchar
+  }
+}
+
+package "Задачи" #FFF8E8 {
+  class task <<table>> {
+    +id : bigserial PK
+    uuid : uuid UK
+    source_system_id : FK
+    external_id : varchar
+    project_id : FK
+    parent_task_id : FK
+    --
+    title : varchar
+    description : text
+    task_type : varchar
+    priority : varchar
+    canonical_status_id : FK
+    source_status : varchar
+    assignee_id : FK
+    reporter_id : FK
+    created_at : timestamptz
+    start_date : date
+    due_date : date
+    release_date : date
+    resolved_at : timestamptz
+    closed_at : timestamptz
+    story_points : numeric
+    release_id : FK
+    sprint_name : varchar
+    iteration_path : varchar
+    labels : text[]
+    extra_json : jsonb
+  }
+
+  class task_release <<table>> {
+    task_id : FK PK
+    release_id : FK PK
+  }
+
+  class task_comment <<table>> {
+    +id : bigserial PK
+    task_id : FK
+    source_system_id : FK
+    body : text
+    created_at : timestamptz
+  }
+
+  class task_assignee_history <<table>> {
+    +id : bigserial PK
+    task_id : FK
+    assignee_id : FK
+    assigned_at : timestamptz
+    unassigned_at : timestamptz
+  }
+}
+
+package "Статусы и время" #FCE8F4 {
+  class task_status_history <<table>> {
+    +id : bigserial PK
+    task_id : FK
+    from_canonical_status_id : FK
+    to_canonical_status_id : FK
+    changed_at : timestamptz
+    changed_by_id : FK
+  }
+
+  class task_status_duration <<table>> {
+    +id : bigserial PK
+    task_id : FK
+    canonical_status_id : FK
+    entered_at : timestamptz
+    left_at : timestamptz
+    duration_seconds : bigint
+    is_current : boolean
+  }
+
+  class task_status_duration_agg <<table>> {
+    task_id : FK PK
+    canonical_status_id : FK PK
+    total_seconds : bigint
+  }
+}
+
+package "Синхронизация и метрики" #F0E8FC {
+  class sync_run <<table>> {
+    +id : bigserial PK
+    source_system_id : FK
+    started_at : timestamptz
+    status : varchar
+    records_upserted : int
+  }
+
+  class sync_run_log <<table>> {
+    +id : bigserial PK
+    sync_run_id : FK
+    level : varchar
+    message : text
+  }
+
+  class team_workload_snapshot <<table>> {
+    +id : bigserial PK
+    team_id : FK
+    snapshot_date : date
+    backlog_count : int
+    active_count : int
+    tasks_shipped_to_release : int
+    release_id : FK
+  }
+}
+
+package "Представления (FineBI)" #EEEEEE {
+  class v_task_backlog_duration <<view>>
+  class v_task_status_time <<view>>
+  class v_team_open_tasks <<view>>
+  class v_tasks_by_release <<view>>
+}
+
+source_system "1" -- "0..*" project
+source_system "1" -- "0..*" task
+source_system "1" -- "0..*" field_mapping
+source_system "1" -- "0..*" source_status_mapping
+source_system "1" -- "0..*" sync_run
+
+team "1" -- "0..*" project
+team "1" -- "0..*" team_workload_snapshot
+
+project "1" -- "0..*" task
+project "1" -- "0..*" release
+
+canonical_status "1" -- "0..*" task
+canonical_status "1" -- "0..*" task_status_duration
+canonical_status "1" -- "0..*" source_status_mapping
+
+person "1" -- "0..*" person_external
+person "1" -- "0..*" task : assignee
+person "1" -- "0..*" task_comment
+
+task "0..1" -- "0..*" task : parent
+task "1" -- "0..*" task_comment
+task "1" -- "0..*" task_status_history
+task "1" -- "0..*" task_status_duration
+task "1" -- "0..*" task_assignee_history
+task "0..*" -- "0..*" release : task_release
+
+task_status_duration ..> v_task_backlog_duration : feeds
+task_status_duration ..> v_task_status_time : feeds
+task ..> v_tasks_by_release : feeds
+team ..> v_team_open_tasks : feeds
+
+note right of source_system
+  **Коды источников:**
+  jira · tfs · trello · other
+  (добавляются без смены схемы)
+end note
+
+note bottom of task_status_duration
+  **Время в бэклоге:**
+  canonical_status.category = 'backlog'
+end note
+
+@enduml

@@ -1,0 +1,77 @@
+@startuml use-case
+left to right direction
+skinparam packageStyle rectangle
+
+title Use Case — единая система задач
+
+actor "Аналитик" as analyst
+actor "Администратор" as admin
+actor "ETL-сервис" as etl
+actor "FineBI" as bi
+
+rectangle "Система taskhub" {
+
+  package "Отчётность" {
+    usecase "Отчёты: сделано /\nв работе / план" as UC1
+    usecase "Время в статусах" as UC2
+    usecase "Время в бэклоге" as UC3
+    usecase "Загрузка команды" as UC4
+    usecase "Отгрузка в релиз" as UC5
+  }
+
+  package "Администрирование" {
+    usecase "Маппинг полей\n(Jira/TFS/Trello/Other)" as UC6
+    usecase "Маппинг статусов" as UC7
+  }
+
+  package "Интеграция" {
+    usecase "Загрузка из Jira" as UC8
+    usecase "Загрузка из TFS" as UC9
+    usecase "Загрузка из Trello" as UC10
+    usecase "Загрузка из прочей\nсистемы" as UC11
+    usecase "Синхронизация\nкомментариев" as UC12
+    usecase "История смены\nстатусов" as UC13
+    usecase "Расчёт длительности\nв статусах" as UC14
+    usecase "Снимки загрузки\nкоманды" as UC15
+    usecase "Аудит синхронизаций" as UC16
+  }
+}
+
+analyst --> UC1
+analyst --> UC2
+analyst --> UC3
+analyst --> UC4
+analyst --> UC5
+
+bi --> UC1
+bi --> UC2
+bi --> UC3
+bi --> UC4
+bi --> UC5
+
+admin --> UC6
+admin --> UC7
+
+etl --> UC8
+etl --> UC9
+etl --> UC10
+etl --> UC11
+etl --> UC12
+etl --> UC13
+etl --> UC14
+etl --> UC15
+etl --> UC16
+
+UC8 ..> UC13 : <<include>>
+UC9 ..> UC13 : <<include>>
+UC10 ..> UC13 : <<include>>
+UC11 ..> UC13 : <<include>>
+
+UC8 ..> UC12 : <<include>>
+UC9 ..> UC12 : <<include>>
+UC10 ..> UC12 : <<include>>
+
+UC13 ..> UC14 : <<include>>
+UC14 ..> UC15 : <<extend>>
+
+@enduml

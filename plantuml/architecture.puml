@@ -1,0 +1,85 @@
+@startuml architecture
+title Архитектура: единый учёт задач\n(этап 1 — только БД и схема)
+
+skinparam componentStyle rectangle
+skinparam defaultTextAlignment center
+
+actor "Аналитик" as analyst
+actor "Администратор" as admin
+cloud "FineBI" as finebi
+
+package "Внешние системы" #LightBlue {
+  [Jira API] as jira
+  [Azure DevOps\nTFS API] as tfs
+  [Trello API] as trello
+  [Прочая система\nAPI] as other
+}
+
+package "Слой интеграции\n(будущий ETL)" #LightYellow {
+  [Коннектор Jira] as cj
+  [Коннектор TFS] as ct
+  [Коннектор Trello] as ctr
+  [Коннектор Other] as co
+  [Маппер полей\nfield_mapping] as mapper
+  [Маппер статусов\nsource_status_mapping] as statusmap
+  [Расчёт интервалов\nв статусах] as duration
+  [Снимки загрузки\nкоманды] as snapshot
+}
+
+database "PostgreSQL\ntaskhub" as pg {
+  frame "Справочники" {
+    [source_system]
+    [canonical_status]
+    [field_mapping]
+    [team / person]
+  }
+  frame "Данные" {
+    [task]
+    [task_comment]
+    [task_status_history]
+    [task_status_duration]
+    [release]
+  }
+  frame "Отчёты" {
+    [v_task_backlog_duration]
+    [v_task_status_time]
+    [v_team_open_tasks]
+    [v_tasks_by_release]
+  }
+}
+
+jira --> cj
+tfs --> ct
+trello --> ctr
+other --> co
+
+cj --> mapper
+ct --> mapper
+ctr --> mapper
+co --> mapper
+
+mapper --> statusmap
+statusmap --> pg
+mapper --> pg
+
+pg --> duration
+duration --> pg
+pg --> snapshot
+
+analyst --> finebi
+finebi --> pg
+admin --> pg : маппинг\nсправочники
+
+note right of pg
+  Единые поля в **task**:
+  external_id, title, start_date,
+  release_date, canonical_status, ...
+  Сырые поля — source_status, extra_json
+end note
+
+note bottom of trello
+  Trello: Board → project,
+  Card → task, List → source_status
+end note
+
+@enduml
