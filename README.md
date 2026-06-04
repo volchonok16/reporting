@@ -16,6 +16,7 @@
 | Задача | Файл |
 |--------|------|
 | Обзор всех таблиц | [docs/database-overview.md](docs/database-overview.md) |
+| **Глоссарий: таблицы и поля** | [docs/glossary.md](docs/glossary.md) |
 | PlantUML (отрисовка) | [plantuml/database-er.puml](plantuml/database-er.puml), [architecture.puml](plantuml/architecture.puml) |
 | Создать БД | [db/schema.sql](db/schema.sql), [scripts/apply-schema.ps1](scripts/apply-schema.ps1) |
 | Docker PostgreSQL | `docker compose up -d` |
@@ -34,9 +35,10 @@ reporting/
 ├── db/schema.sql                 # DDL PostgreSQL
 ├── plantuml/                     # .puml — ER, архитектура, use case
 ├── docs/
-│   ├── database-overview.md      # Описание БД
+│   ├── glossary.md               # Глоссарий: таблицы и поля
+│   ├── database-overview.md      # Краткий обзор БД
 │   ├── plan.md                   # Этапы проекта
-│   ├── data-dictionary.md          # Словарь полей
+│   ├── data-dictionary.md        # Краткая выжимка полей task
 │   ├── use-case-diagram.md
 │   └── uml-diagram.md
 ├── scripts/apply-schema.ps1

@@ -2,6 +2,8 @@
 
 Документ для просмотра **структуры без тестовых данных**. DDL: `db/schema.sql`. Диаграммы PlantUML: `plantuml/`.
 
+**Глоссарий (описание каждой таблицы и поля):** [glossary.md](glossary.md)
+
 ## Источники (source_system)
 
 | code | name |
