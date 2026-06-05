@@ -58,6 +58,7 @@ reporting/
 ├── scripts/apply-schema.ps1
 ├── docker-compose.yml
 ├── .env.example
+├── .cursor/rules/                # Правила Cursor (глоссарий + push)
 ├── docs/docker.md
 └── README.md
 ```
@@ -82,6 +83,10 @@ reporting/
 | Загрузка команды | `team_workload_snapshot`, `v_team_open_tasks` |
 | Релизы | `release`, `v_tasks_by_release` |
 | FineBI | views `v_*` |
+
+## Правила для Cursor (AI)
+
+В `.cursor/rules/glossary-and-git.mdc`: при изменениях БД агент дополняет **глоссарий** и связанные docs, затем делает **commit + push** в GitHub.
 
 ## Клонирование и разработка
 
