@@ -5,7 +5,18 @@
 ## Запуск
 
 ```bash
+# Docker Compose V2 (плагин)
 docker compose up -d
+
+# Если ошибка "unknown shorthand flag: 'd'" — используйте старую команду:
+docker-compose up -d
+```
+
+Проверка, что установлено:
+
+```bash
+docker compose version    # V2
+docker-compose --version  # V1
 ```
 
 При **первом** запуске автоматически:
@@ -29,16 +40,20 @@ docker compose logs postgres
 
 Полный доступ: чтение, запись, изменение структуры (CREATE/ALTER/DROP в `public`), sequences, functions.
 
-Пароли в `.env`:
+Пароли в `.env` (файл в той же папке, что `docker-compose.yml`):
 
 ```bash
-copy .env.example .env
+cp .env.example .env
+nano .env
 ```
 
 ```env
-TASKHUB_ALEX_PASSWORD=alex
-TASKHUB_IVAN_PASSWORD=ivan
+POSTGRES_PASSWORD=ваш_пароль
+TASKHUB_ALEX_PASSWORD=пароль_alex
+TASKHUB_IVAN_PASSWORD=пароль_ivan
 ```
+
+Docker Compose подхватывает `.env` автоматически для подстановки `${...}`.
 
 > Init-скрипты выполняются только при **пустом** томе. Пересоздание: `docker compose down -v && docker compose up -d`
 
