@@ -18,6 +18,7 @@
 | **Диаграммы (схема в браузере)** | [**docs/diagrams.md**](docs/diagrams.md) — Mermaid на GitHub без PlantUML |
 | Обзор всех таблиц | [docs/database-overview.md](docs/database-overview.md) |
 | **Глоссарий: таблицы и поля** | [docs/glossary.md](docs/glossary.md) |
+| **Команды (Digital, Berkhut, …)** | [docs/teams.md](docs/teams.md) |
 | PlantUML SVG | [docs/diagrams/svg/](docs/diagrams/svg/) (авто при push) |
 | Создать БД | [db/schema.sql](db/schema.sql), [scripts/apply-schema.ps1](scripts/apply-schema.ps1) |
 | Docker PostgreSQL | `docker compose up -d` → [docs/docker.md](docs/docker.md) |
@@ -47,6 +48,7 @@ reporting/
 │   ├── diagrams.md               # Все диаграммы (Mermaid в браузере)
 │   ├── diagrams/svg/             # PlantUML → SVG (GitHub Actions)
 │   ├── glossary.md               # Глоссарий: таблицы и поля
+│   ├── teams.md                  # Команды: team_id, маппинг, FineBI
 │   ├── database-overview.md      # Краткий обзор БД
 │   ├── plan.md                   # Этапы проекта
 │   ├── data-dictionary.md        # Краткая выжимка полей task

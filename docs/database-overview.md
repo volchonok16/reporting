@@ -1,8 +1,8 @@
 # Обзор базы данных reporting
 
-Документ для просмотра **структуры без тестовых данных**. DDL: `db/schema.sql`. Диаграммы PlantUML: `plantuml/`.
+Документ для просмотра **структуры без тестовых данных**. DDL: `db/schema.sql`. Диаграммы: [diagrams.md](diagrams.md).
 
-**Глоссарий (описание каждой таблицы и поля):** [glossary.md](glossary.md)
+**Глоссарий:** [glossary.md](glossary.md) · **Команды:** [teams.md](teams.md)
 
 ## Источники (source_system)
 
@@ -13,19 +13,37 @@
 | trello | Trello |
 | other | Прочая система |
 
-Новый источник добавляется строкой в `source_system`, схему менять не нужно.
+## Команды (team)
 
-## Таблицы (21) + представления (4)
+Единый справочник для фильтрации в отчётах. Задачи из Jira и TFS могут относиться к **одной** канонической команде.
+
+| code | name |
+|------|------|
+| `digital` | Digital |
+| `berkhut` | Berkhut |
+
+| Где хранится | Поле | Назначение |
+|--------------|------|------------|
+| Справочник | `team` | Канонические команды |
+| Задача | `task.team_id` | **Основной фильтр** в FineBI |
+| Задача | `task.source_team` | Сырое значение из API |
+| Проект | `project.team_id` | Команда по умолчанию для доски |
+| Правила ETL | `source_team_mapping` | Доска / тег / area → команда |
+
+Подробно: [teams.md](teams.md).
+
+## Таблицы (22) + представления (4)
 
 ### Справочники и маппинг
 
 | Таблица | Назначение |
 |---------|------------|
 | `source_system` | Jira, TFS, Trello, other |
-| `canonical_status` | Единые статусы (backlog, in_progress, done, …) |
+| `canonical_status` | Единые статусы |
 | `source_status_mapping` | Статус источника → канонический статус |
-| `field_mapping` | Поле источника → поле `task` (заполните позже) |
-| `team` | Команда |
+| `source_team_mapping` | Признак источника → команда (`team_id`) |
+| `field_mapping` | Поле источника → поле `task` |
+| `team` | Канонические команды (Digital, Berkhut, …) |
 | `person` | Человек |
 | `person_external` | ID пользователя в Jira/TFS/Trello |
 
@@ -33,16 +51,15 @@
 
 | Таблица | Назначение | Trello |
 |---------|------------|--------|
-| `project` | Проект в источнике | Board |
-| `release` | Версия / релиз / milestone | — (по маппингу) |
+| `project` | Проект (+ `team_id` по умолчанию) | Board |
+| `release` | Версия / релиз | — |
 
 ### Задача
 
 | Таблица | Назначение | Trello |
 |---------|------------|--------|
-| `task` | Единая карточка/задача (+ `team_id`) | Card |
-| `source_team_mapping` | Правила: доска/тег → команда | — |
-| `task_release` | Задача в нескольких релизах | — |
+| `task` | Задача (+ `team_id`, `source_team`) | Card |
+| `task_release` | Несколько релизов на задачу | — |
 | `task_comment` | Комментарии | Comment |
 | `task_assignee_history` | Смена исполнителя | Member |
 
@@ -51,59 +68,57 @@
 | Таблица | Назначение |
 |---------|------------|
 | `task_status_history` | Событие смены статуса |
-| `task_status_duration` | Интервал в статусе (секунды) |
-| `task_status_duration_agg` | Сумма по статусу на задачу |
+| `task_status_duration` | Интервал в статусе |
+| `task_status_duration_agg` | Сумма по статусу |
 
-**Бэклог:** интервалы, где `canonical_status.category = 'backlog'`.
-
-### Синхронизация и загрузка команды
+### Синхронизация и загрузка
 
 | Таблица | Назначение |
 |---------|------------|
 | `sync_run` | Запуск выгрузки |
-| `sync_run_log` | Лог запуска |
-| `team_workload_snapshot` | Снимок: бэклог, active, отгрузка в релиз |
+| `sync_run_log` | Лог |
+| `team_workload_snapshot` | Снимок загрузки **по команде** |
 
 ### Представления (FineBI)
 
-| View | Назначение |
-|------|------------|
-| `v_task_backlog_duration` | Сколько в бэклоге |
-| `v_task_status_time` | Сколько в каждом статусе |
-| `v_team_open_tasks` | Открытые задачи по команде |
-| `v_tasks_by_release` | Задачи по релизу |
+| View | Назначение | Команда |
+|------|------------|---------|
+| `v_task_backlog_duration` | Время в бэклоге | `team_code`, `team_name` |
+| `v_task_status_time` | Время в статусе | `team_code`, `team_name` |
+| `v_team_open_tasks` | Открытые задачи | `team_id`, `team_code`, `team_name` |
+| `v_tasks_by_release` | Задачи по релизу | `team_code`, `team_name` |
 
-## Ключевые поля `task` (единая модель)
+## Ключевые поля `task`
 
-| Поле | Тип | Смысл |
-|------|-----|--------|
-| `source_system_id` + `external_id` | | Уникальность в мире источников |
-| `title`, `description` | | Текст задачи |
-| `canonical_status_id` | | Наш статус |
-| `source_status` | | Как в Jira/TFS/Trello (List name) |
-| `start_date`, `due_date`, `release_date` | date | Даты |
-| `created_at`, `resolved_at`, `closed_at` | timestamptz | Жизненный цикл |
-| `story_points`, `*_hours` | numeric | Оценки |
-| `assignee_id`, `reporter_id` | FK | Люди |
-| `release_id`, `sprint_name`, `iteration_path` | | Релиз / итерация |
-| `extra_json` | jsonb | Немапленные поля до настройки ETL |
+| Поле | Смысл |
+|------|--------|
+| `source_system_id` + `external_id` | Уникальность в источниках |
+| `team_id` | Каноническая команда (фильтр отчётов) |
+| `source_team` | Команда из API до маппинга |
+| `title`, `description` | Текст |
+| `canonical_status_id`, `source_status` | Статус |
+| `start_date`, `due_date`, `release_date` | Даты |
+| `story_points`, `*_hours` | Оценки |
+| `assignee_id`, `reporter_id` | Люди |
+| `extra_json` | Немапленные поля |
 
-## Связи (кратко)
+## Связи
 
 ```
+team ← task.team_id
+team ← project.team_id
+team ← source_team_mapping.team_id
+source_system → source_team_mapping
 source_system → project → task
-source_system → task (напрямую)
-task → task_comment, task_status_*, task_assignee_history
-task ↔ release (task_release)
-team → project
-canonical_status → task, task_status_duration
-field_mapping, source_status_mapping → source_system
+task → task_comment, task_status_*, team (через team_id)
 ```
 
-## Создать БД на машине
+## Развёртывание
 
-1. Установите PostgreSQL 14+ или запустите Docker Desktop → `docker compose up -d`
-2. Выполните: `psql -U reporting -d reporting -f db/schema.sql`
-3. Или скрипт: `.\scripts\apply-schema.ps1`
+```bash
+docker-compose up -d          # новая БД — схема с командами сразу
+# или миграция:
+# psql ... -f db/migrations/002_add_team_to_task.sql
+```
 
-После создания пустые таблицы — только справочники `source_system` и `canonical_status` с начальными строками (без задач).
+См. [docker.md](docker.md).

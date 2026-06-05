@@ -83,13 +83,16 @@ psql "postgresql://alex:alex@localhost:5432/reporting" -c "\dt"
 
 ## Обновление схемы (миграции)
 
-Если БД уже была создана ранее:
+Если БД уже была создана до добавления **команд** (`team_id`, `source_team_mapping`):
 
 ```bash
-docker-compose exec postgres psql -U alex -d reporting -f /docker-entrypoint-initdb.d/../../db/migrations/002_add_team_to_task.sql
+git pull
+docker-compose exec -T postgres psql -U alex -d reporting < db/migrations/002_add_team_to_task.sql
 ```
 
-Или смонтируйте файл и выполните с хоста после `git pull`.
+Добавляет: `task.team_id`, `task.source_team`, таблицу `source_team_mapping`, команды `digital`/`berkhut`, обновляет views.
+
+Документация: [teams.md](teams.md).
 
 ## Остановка
 

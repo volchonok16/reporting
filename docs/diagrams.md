@@ -99,12 +99,21 @@ erDiagram
 
     release ||--o{ task : primary_release
 
+    team ||--o{ task : assigned
+    team ||--o{ source_team_mapping : rules
+
     task {
         bigint id PK
+        bigint team_id FK
         varchar external_id
         varchar title
         date start_date
         date release_date
+    }
+
+    team {
+        varchar code
+        varchar name
     }
 
     task_status_duration {

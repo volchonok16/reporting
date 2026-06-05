@@ -10,6 +10,7 @@
 |------|------------|--------|
 | 0 | Схема БД, use case, UML, план | **Текущий** |
 | 1 | Маппинг полей Jira → каноническая модель | Ожидает примеров данных |
+| 1b | Маппинг команд (`source_team_mapping`): доска, тег, area | Ожидает правил из скрипта |
 | 2 | Маппинг полей TFS → каноническая модель | Ожидает примеров данных |
 | 3 | ETL/синхронизация (API, расписание, `sync_run`) | После маппинга |
 | 4 | Расчёт `task_status_duration` из changelog | После ETL |
@@ -31,15 +32,16 @@
 | `story_points`, `*_hours` | Оценки |
 | `release_id`, `sprint_name`, `iteration_path` | Релиз и итерация |
 | `assignee_id`, `reporter_id` | Люди |
+| `team_id`, `source_team` | Каноническая команда и сырое значение (Digital, Berkhut, …) |
 | `extra_json` | Временное хранение немапленных полей |
 
-Маппинг настраивается в `field_mapping` и `source_status_mapping`.
+Маппинг настраивается в `field_mapping`, `source_status_mapping` и `source_team_mapping`. Подробно о командах: [teams.md](teams.md).
 
 ## Метрики времени и загрузки
 
 1. **Время в бэклоге** — сумма интервалов `task_status_duration`, где `canonical_status.category = 'backlog'` (view `v_task_backlog_duration`).
 2. **Время в любом статусе** — строки `task_status_duration` / view `v_task_status_time`.
-3. **Загрузка команды** — view `v_team_open_tasks` + таблица `team_workload_snapshot` (бэклог, active, отгрузка в релиз за дату).
+3. **Загрузка команды** — фильтр по `task.team_id` / `team.code`; view `v_team_open_tasks` + `team_workload_snapshot`.
 4. **Отгрузка в релиз** — `task.release_id`, `task_release`, view `v_tasks_by_release`.
 
 ## Роли (для use case)

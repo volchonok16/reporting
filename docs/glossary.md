@@ -2,7 +2,7 @@
 
 Описание **всех таблиц**, **полей** и **представлений** единой PostgreSQL-базы. Имена полей одинаковы для задач из Jira, TFS, Trello и прочих систем; сырые значения источника хранятся отдельно там, где это указано.
 
-**Связанные документы:** [database-overview.md](database-overview.md) · [data-dictionary.md](data-dictionary.md) · DDL: [../db/schema.sql](../db/schema.sql)
+**Связанные документы:** [teams.md](teams.md) · [database-overview.md](database-overview.md) · [data-dictionary.md](data-dictionary.md) · DDL: [../db/schema.sql](../db/schema.sql)
 
 ---
 
@@ -10,13 +10,31 @@
 
 | Термин | Значение |
 |--------|----------|
-| **Каноническое поле** | Поле в нашей БД с фиксированным именем (`start_date`, `title` и т.д.) |
+| **Каноническое поле** | Поле в нашей БД с фиксированным именем (`start_date`, `title`, `team_id` и т.д.) |
 | **Поле источника** | Имя поля в Jira/TFS/Trello; задаётся в `field_mapping.source_field_path` |
 | **Канонический статус** | Единый статус из справочника `canonical_status` |
+| **Каноническая команда** | Единая команда из справочника `team` (`digital`, `berkhut`) |
 | **Сырой статус** | Статус как в источнике (`task.source_status`, список Trello, State в TFS) |
+| **Сырая команда** | Значение до нормализации (`task.source_team`: доска, тег, area) |
 | **Категория статуса** | Группа для отчётов: `backlog`, `active`, `waiting`, `done`, `cancelled` |
 | **Внешний ID** | Идентификатор задачи/комментария в исходной системе |
 | **ETL** | Процесс выгрузки и записи данных (будущий; аудит в `sync_run`) |
+
+---
+
+## Команды — краткий обзор
+
+Подробно: **[teams.md](teams.md)**.
+
+| Сущность | Назначение |
+|----------|------------|
+| `team` | Справочник команд (`digital`, `berkhut`, …) |
+| `task.team_id` | **Главное поле** для фильтрации в отчётах |
+| `task.source_team` | Сырое значение из API |
+| `project.team_id` | Команда по умолчанию для доски/проекта |
+| `source_team_mapping` | Правила: доска / тег / area → `team_id` |
+
+Одна команда Digital может объединять задачи из Jira и TFS. Определение команды в ETL — по правилам `source_team_mapping` (доска, тег и т.д.; логика в скрипте).
 
 ---
 
@@ -156,11 +174,13 @@
 | `source_system_id` | smallint | Откуда загружен проект |
 | `external_key` | varchar(64) | Ключ в источнике: Jira project key, id доски Trello, имя проекта TFS |
 | `name` | varchar(255) | Название проекта |
-| `team_id` | bigint | Команда-владелец (для отчётов по загрузке) |
+| `team_id` | bigint | Команда по умолчанию для проекта; fallback, если у задачи не задан `task.team_id` |
 | `is_active` | boolean | Участвует в синхронизации |
 | `created_at` | timestamptz | Дата первой загрузки |
 
 **Соответствие:** Jira — Project; TFS — Team Project; Trello — Board.
+
+Если все задачи доски относятся к одной команде — достаточно `project.team_id`. Если команда различается по задачам — ETL заполняет `task.team_id` по `source_team_mapping`.
 
 ---
 
@@ -425,6 +445,8 @@
 | `title` | Заголовок |
 | `project_name` | Название проекта |
 | `source_system` | Код системы (`jira`, `tfs`, …) |
+| `team_code` | Код канонической команды (`digital`, `berkhut`) |
+| `team_name` | Название команды |
 | `backlog_seconds` | Суммарное время в бэклоге, секунды |
 | `backlog_days` | То же в днях |
 
@@ -435,6 +457,8 @@
 | `task_id` | ID задачи |
 | `external_id` | Ключ в источнике |
 | `title` | Заголовок |
+| `team_code` | Код команды |
+| `team_name` | Название команды |
 | `status_code` | Код канонического статуса |
 | `status_name` | Имя статуса |
 | `category` | Категория статуса |
@@ -465,7 +489,8 @@
 | `planned_release_date` | Плановая дата |
 | `actual_release_date` | Фактическая дата |
 | `project_name` | Проект |
-| `team_name` | Команда |
+| `team_code` | Код команды |
+| `team_name` | Название команды |
 | `task_count` | Всего задач в релизе |
 | `story_points_sum` | Сумма оценок |
 | `done_task_count` | Задач в терминальном статусе |
@@ -489,5 +514,7 @@
 | `assignee_id` | task | Исполнитель (через `person_external`) |
 | `reporter_id` | task | Автор |
 | `source_status` | task | Сырой статус (до маппинга в canonical) |
+| `team_id` | task | Каноническая команда (FK → `team`) |
+| `source_team` | task | Сырая команда из источника |
 
-Полный перечень колонок `task` — в разделе [task](#task--задача-единая-модель) выше.
+Полный перечень колонок `task` — в разделе [task](#task--задача-единая-модель) выше. Команды — [teams.md](teams.md).
