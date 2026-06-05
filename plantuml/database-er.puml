@@ -1,6 +1,6 @@
 @startuml database-er
 ' Откройте в https://www.plantuml.com/plantuml или в IDE с PlantUML
-' Схема единой БД taskhub (PostgreSQL) — без тестовых данных
+' Схема единой БД reporting (PostgreSQL) — без тестовых данных
 
 skinparam linetype ortho
 skinparam classBackgroundColor #FEFEFE

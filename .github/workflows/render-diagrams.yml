@@ -1,0 +1,38 @@
+name: Render diagrams
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'plantuml/**'
+      - '.github/workflows/render-diagrams.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  plantuml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Render PlantUML to SVG
+        run: |
+          mkdir -p docs/diagrams/svg
+          docker run --rm \
+            -v "${{ github.workspace }}:/work" \
+            -w /work \
+            plantuml/plantuml \
+            -tsvg \
+            -o /work/docs/diagrams/svg \
+            /work/plantuml/database-er.puml \
+            /work/plantuml/architecture.puml \
+            /work/plantuml/use-case.puml
+
+      - name: Commit SVG
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'chore: render PlantUML diagrams to SVG'
+          file_pattern: docs/diagrams/svg/*.svg
+          skip_dirty_check: true

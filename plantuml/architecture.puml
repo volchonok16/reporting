@@ -26,7 +26,7 @@ package "Слой интеграции\n(будущий ETL)" #LightYellow {
   [Снимки загрузки\nкоманды] as snapshot
 }
 
-database "PostgreSQL\ntaskhub" as pg {
+database "PostgreSQL\nreporting" as pg {
   frame "Справочники" {
     [source_system]
     [canonical_status]

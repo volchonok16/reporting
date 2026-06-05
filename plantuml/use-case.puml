@@ -9,7 +9,7 @@ actor "Администратор" as admin
 actor "ETL-сервис" as etl
 actor "FineBI" as bi
 
-rectangle "Система taskhub" {
+rectangle "Система reporting" {
 
   package "Отчётность" {
     usecase "Отчёты: сделано /\nв работе / план" as UC1

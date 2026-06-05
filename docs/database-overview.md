@@ -1,4 +1,4 @@
-# Обзор базы данных taskhub
+# Обзор базы данных reporting
 
 Документ для просмотра **структуры без тестовых данных**. DDL: `db/schema.sql`. Диаграммы PlantUML: `plantuml/`.
 
@@ -102,7 +102,7 @@ field_mapping, source_status_mapping → source_system
 ## Создать БД на машине
 
 1. Установите PostgreSQL 14+ или запустите Docker Desktop → `docker compose up -d`
-2. Выполните: `psql -U taskhub -d taskhub -f db/schema.sql`
+2. Выполните: `psql -U reporting -d reporting -f db/schema.sql`
 3. Или скрипт: `.\scripts\apply-schema.ps1`
 
 После создания пустые таблицы — только справочники `source_system` и `canonical_status` с начальными строками (без задач).

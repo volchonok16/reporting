@@ -1,4 +1,7 @@
-# PlantUML — как отрисовать
+# PlantUML — исходники диаграмм
+
+> **Смотреть в браузере без PlantUML:** [docs/diagrams.md](../docs/diagrams.md) (Mermaid на GitHub)  
+> **Детальные SVG:** [docs/diagrams/svg/](../docs/diagrams/svg/) — обновляются при push в `main`
 
 ## Файлы
 

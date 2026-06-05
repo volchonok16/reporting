@@ -15,18 +15,27 @@
 
 | Задача | Файл |
 |--------|------|
+| **Диаграммы (схема в браузере)** | [**docs/diagrams.md**](docs/diagrams.md) — Mermaid на GitHub без PlantUML |
 | Обзор всех таблиц | [docs/database-overview.md](docs/database-overview.md) |
 | **Глоссарий: таблицы и поля** | [docs/glossary.md](docs/glossary.md) |
-| PlantUML (отрисовка) | [plantuml/database-er.puml](plantuml/database-er.puml), [architecture.puml](plantuml/architecture.puml) |
+| PlantUML SVG | [docs/diagrams/svg/](docs/diagrams/svg/) (авто при push) |
 | Создать БД | [db/schema.sql](db/schema.sql), [scripts/apply-schema.ps1](scripts/apply-schema.ps1) |
-| Docker PostgreSQL | `docker compose up -d` |
+| Docker PostgreSQL | `docker compose up -d` → [docs/docker.md](docs/docker.md) |
 
 ```bash
 git clone https://github.com/volchonok16/reporting.git
 cd reporting
 docker compose up -d
-# или: psql -U taskhub -d taskhub -f db/schema.sql
 ```
+
+Подключение снаружи (порт `5432`):
+
+| Пользователь | Права | Строка подключения |
+|--------------|-------|-------------------|
+| `alex` | Полный доступ | `postgresql://alex:alex@localhost:5432/reporting` |
+| `ivan` | Полный доступ | `postgresql://ivan:ivan@localhost:5432/reporting` |
+
+Пароли: `.env.example` → `.env`
 
 ## Структура репозитория
 
@@ -35,14 +44,19 @@ reporting/
 ├── db/schema.sql                 # DDL PostgreSQL
 ├── plantuml/                     # .puml — ER, архитектура, use case
 ├── docs/
+│   ├── diagrams.md               # Все диаграммы (Mermaid в браузере)
+│   ├── diagrams/svg/             # PlantUML → SVG (GitHub Actions)
 │   ├── glossary.md               # Глоссарий: таблицы и поля
 │   ├── database-overview.md      # Краткий обзор БД
 │   ├── plan.md                   # Этапы проекта
 │   ├── data-dictionary.md        # Краткая выжимка полей task
 │   ├── use-case-diagram.md
 │   └── uml-diagram.md
+├── db/init-users.sh            # ETL + BI пользователи (Docker init)
 ├── scripts/apply-schema.ps1
 ├── docker-compose.yml
+├── .env.example
+├── docs/docker.md
 └── README.md
 ```
 
@@ -74,7 +88,7 @@ git clone https://github.com/volchonok16/reporting.git
 cd reporting
 ```
 
-После клонирования примените схему (см. [plantuml/README.md](plantuml/README.md) для диаграмм).
+Диаграммы: [docs/diagrams.md](docs/diagrams.md) · БД: `docker compose up -d`
 
 ## Лицензия
 

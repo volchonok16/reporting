@@ -8,8 +8,8 @@ $SchemaFile = Join-Path $Root "db\schema.sql"
 
 $pgHost = if ($env:PGHOST) { $env:PGHOST } else { "localhost" }
 $pgPort = if ($env:PGPORT) { $env:PGPORT } else { "5432" }
-$pgUser = if ($env:PGUSER) { $env:PGUSER } else { "taskhub" }
-$pgDb   = if ($env:PGDATABASE) { $env:PGDATABASE } else { "taskhub" }
+$pgUser = if ($env:PGUSER) { $env:PGUSER } else { "reporting" }
+$pgDb   = if ($env:PGDATABASE) { $env:PGDATABASE } else { "reporting" }
 
 $psql = Get-Command psql -ErrorAction SilentlyContinue
 if (-not $psql) {

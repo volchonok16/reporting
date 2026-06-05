@@ -219,6 +219,7 @@ sequenceDiagram
 
 | Артефакт | Файл |
 |----------|------|
+| **Все диаграммы в браузере** | [diagrams.md](diagrams.md) |
 | DDL PostgreSQL | `db/schema.sql` |
-| Словарь полей | `docs/data-dictionary.md` |
-| План | `docs/plan.md` |
+| Глоссарий | [glossary.md](glossary.md) |
+| План | [plan.md](plan.md) |
