@@ -34,6 +34,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE ${DB_OWNER} IN SCHEMA public
   GRANT ALL PRIVILEGES ON SEQUENCES TO alex, ivan;
 ALTER DEFAULT PRIVILEGES FOR ROLE ${DB_OWNER} IN SCHEMA public
   GRANT ALL PRIVILEGES ON FUNCTIONS TO alex, ivan;
+
+-- Для миграций DDL: SET ROLE reporting; (таблицы принадлежат reporting)
+GRANT ${DB_OWNER} TO alex, ivan;
 EOSQL
 
 echo "Users created: alex, ivan (full access on ${DB_NAME})"

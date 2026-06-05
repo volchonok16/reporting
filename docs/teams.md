@@ -176,8 +176,10 @@ WHERE ss.code = 'tfs' AND t.code = 'berkhut';
 
 ```bash
 git pull
-docker-compose exec -T postgres psql -U alex -d reporting < db/migrations/002_add_team_to_task.sql
+docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/002_add_team_to_task.sql
 ```
+
+Миграции DDL — только пользователь **`reporting`** (владелец таблиц). `alex`/`ivan` — для работы с данными и DBeaver.
 
 Проверка:
 

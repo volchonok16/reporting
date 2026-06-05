@@ -1,6 +1,7 @@
 -- Миграция для уже развёрнутой БД
--- docker-compose exec postgres psql -U alex -d reporting -f /path/002_add_team_to_task.sql
--- или с хоста: psql ... -f db/migrations/002_add_team_to_task.sql
+-- ВАЖНО: DDL только от владельца таблиц (reporting), не от alex/ivan
+--
+-- docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/002_add_team_to_task.sql
 
 CREATE TABLE IF NOT EXISTS source_team_mapping (
     id                      SERIAL PRIMARY KEY,

@@ -87,8 +87,13 @@ psql "postgresql://alex:alex@localhost:5432/reporting" -c "\dt"
 
 ```bash
 git pull
-docker-compose exec -T postgres psql -U alex -d reporting < db/migrations/002_add_team_to_task.sql
+docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/002_add_team_to_task.sql
 ```
+
+> **Не используйте `alex` для миграций** — таблицы принадлежат `reporting`. Иначе: `must be owner of table task`.  
+> Для данных и DBeaver — `alex` / `ivan` как раньше.
+
+Или: `chmod +x scripts/migrate.sh && ./scripts/migrate.sh`
 
 Добавляет: `task.team_id`, `task.source_team`, таблицу `source_team_mapping`, команды `digital`/`berkhut`, обновляет views.
 
