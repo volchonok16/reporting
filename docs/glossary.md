@@ -83,17 +83,38 @@
 
 ---
 
-## team — команда
+## team — команда (каноническая)
 
-Организационная единица для отчётов по загрузке и бэклогу.
+Единый справочник команд для фильтрации в отчётах. Одна команда **Digital** может включать задачи и из Jira, и из TFS. Предзаполнены: `digital`, `berkhut`.
 
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `id` | bigserial | Первичный ключ |
-| `code` | varchar(64) | Уникальный код команды (для фильтров и API) |
-| `name` | varchar(255) | Название команды |
-| `is_active` | boolean | Активна ли команда в отчётах |
+| `code` | varchar(64) | Уникальный код: `digital`, `berkhut` |
+| `name` | varchar(255) | Отображаемое имя |
+| `is_active` | boolean | Учитывается в отчётах |
 | `created_at` | timestamptz | Дата создания записи |
+
+---
+
+## source_team_mapping — определение команды из источника
+
+Правила для ETL: по какому признаку в Jira/TFS/Trello назначить `team_id`. Заполняется позже (доска, тег, area path и т.д.).
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | serial | Первичный ключ |
+| `source_system_id` | smallint | Источник |
+| `team_id` | bigint | Целевая команда |
+| `match_type` | varchar(32) | Тип признака: `board_name`, `tag`, `label`, `iteration_path`, `area_path`, `project_key`, `component` |
+| `match_value` | varchar(500) | Значение или шаблон |
+| `is_regex` | boolean | `match_value` — регулярное выражение |
+| `project_external_key` | varchar(64) | Ограничение правила проектом; `NULL` — глобально |
+| `priority` | int | Приоритет при нескольких совпадениях (больше = важнее) |
+| `is_active` | boolean | Правило активно |
+| `notes` | text | Комментарий |
+
+**Пример (позже в ETL):** Jira + `board_name` = `Digital Board` → `digital`; TFS + `area_path` содержит `Berkhut` → `berkhut`.
 
 ---
 
@@ -175,6 +196,7 @@
 | `external_id` | varchar(255) | ID или ключ задачи в источнике |
 | `external_url` | text | Прямая ссылка на задачу в веб-интерфейсе источника |
 | `project_id` | bigint | Проект / доска |
+| `team_id` | bigint | Каноническая команда (`digital`, `berkhut`) — основное поле для фильтрации |
 | `parent_task_id` | bigint | Родительская задача (epic → story, подзадачи) |
 
 ### Содержание
@@ -192,6 +214,7 @@
 |------|-----|----------|
 | `canonical_status_id` | int | Текущий канонический статус (для отчётов и фильтров) |
 | `source_status` | varchar(255) | Статус в терминах источника (колонка, список, State) |
+| `source_team` | varchar(255) | Команда как пришла из источника (до маппинга в `team_id`) |
 
 ### Участники
 

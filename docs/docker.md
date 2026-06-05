@@ -81,6 +81,16 @@ postgresql://ivan:ivan@localhost:5432/reporting
 psql "postgresql://alex:alex@localhost:5432/reporting" -c "\dt"
 ```
 
+## Обновление схемы (миграции)
+
+Если БД уже была создана ранее:
+
+```bash
+docker-compose exec postgres psql -U alex -d reporting -f /docker-entrypoint-initdb.d/../../db/migrations/002_add_team_to_task.sql
+```
+
+Или смонтируйте файл и выполните с хоста после `git pull`.
+
 ## Остановка
 
 ```bash

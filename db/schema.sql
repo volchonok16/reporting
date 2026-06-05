@@ -49,11 +49,38 @@ CREATE UNIQUE INDEX uq_source_status_mapping
 
 CREATE TABLE team (
     id              BIGSERIAL PRIMARY KEY,
-    code            VARCHAR(64)  NOT NULL UNIQUE,
+    code            VARCHAR(64)  NOT NULL UNIQUE,   -- digital, berkhut, ...
     name            VARCHAR(255) NOT NULL,
     is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
+
+COMMENT ON TABLE team IS 'Канонические команды для фильтрации; одна команда может иметь задачи из Jira, TFS, Trello';
+COMMENT ON COLUMN team.code IS 'Единый код: digital, berkhut — независимо от источника';
+
+-- Правила: как определить команду из источника (доска, тег, area path — задаёт ETL)
+CREATE TABLE source_team_mapping (
+    id                      SERIAL PRIMARY KEY,
+    source_system_id        SMALLINT     NOT NULL REFERENCES source_system(id),
+    team_id                 BIGINT       NOT NULL REFERENCES team(id),
+    match_type              VARCHAR(32)  NOT NULL,  -- board_name, tag, label, iteration_path, area_path, project_key, component
+    match_value             VARCHAR(500) NOT NULL,
+    is_regex                BOOLEAN      NOT NULL DEFAULT FALSE,
+    project_external_key    VARCHAR(64),
+    priority                INT          NOT NULL DEFAULT 0,
+    is_active               BOOLEAN      NOT NULL DEFAULT TRUE,
+    notes                   TEXT
+);
+
+CREATE UNIQUE INDEX uq_source_team_mapping
+    ON source_team_mapping (
+        source_system_id,
+        match_type,
+        match_value,
+        COALESCE(project_external_key, '')
+    );
+
+COMMENT ON TABLE source_team_mapping IS 'Маппинг признака источника → команда; приоритет priority (больше = важнее)';
 
 CREATE TABLE person (
     id              BIGSERIAL PRIMARY KEY,
@@ -125,6 +152,7 @@ CREATE TABLE task (
     external_id             VARCHAR(255) NOT NULL,  -- ключ/ID карточки в источнике
     external_url            TEXT,
     project_id              BIGINT       NOT NULL REFERENCES project(id),
+    team_id                 BIGINT       REFERENCES team(id),
 
     parent_task_id          BIGINT       REFERENCES task(id),
 
@@ -135,7 +163,8 @@ CREATE TABLE task (
     priority                VARCHAR(32),           -- critical, high, medium, low
 
     canonical_status_id     INT          REFERENCES canonical_status(id),
-    source_status           VARCHAR(255),          -- сырой статус из Jira/TFS
+    source_status           VARCHAR(255),          -- сырой статус из Jira/TFS/Trello
+    source_team             VARCHAR(255),          -- сырое значение команды из источника (до нормализации)
 
     assignee_id             BIGINT       REFERENCES person(id),
     reporter_id             BIGINT       REFERENCES person(id),
@@ -170,6 +199,7 @@ CREATE TABLE task (
 );
 
 CREATE INDEX idx_task_project ON task(project_id);
+CREATE INDEX idx_task_team ON task(team_id);
 CREATE INDEX idx_task_status ON task(canonical_status_id);
 CREATE INDEX idx_task_assignee ON task(assignee_id);
 CREATE INDEX idx_task_release ON task(release_id);
@@ -178,6 +208,8 @@ CREATE INDEX idx_task_dates ON task(created_at, closed_at);
 CREATE INDEX idx_task_parent ON task(parent_task_id);
 
 COMMENT ON TABLE task IS 'Единая задача; external_id + source_system_id уникальны';
+COMMENT ON COLUMN task.team_id IS 'Каноническая команда (Digital, Berkhut); для фильтрации в отчётах';
+COMMENT ON COLUMN task.source_team IS 'Команда как в источнике; team_id заполняет ETL по source_team_mapping';
 COMMENT ON COLUMN task.extra_json IS 'Сырые поля до маппинга; для отладки ETL';
 
 -- Связь задачи с несколькими релизами (если в источнике несколько fix versions)
@@ -323,21 +355,26 @@ SELECT
     t.title,
     p.name AS project_name,
     ss.code AS source_system,
+    tm.code AS team_code,
+    tm.name AS team_name,
     SUM(tsd.duration_seconds) AS backlog_seconds,
     SUM(tsd.duration_seconds) / 86400.0 AS backlog_days
 FROM task t
 JOIN project p ON p.id = t.project_id
 JOIN source_system ss ON ss.id = t.source_system_id
+LEFT JOIN team tm ON tm.id = COALESCE(t.team_id, p.team_id)
 JOIN task_status_duration tsd ON tsd.task_id = t.id
 JOIN canonical_status cs ON cs.id = tsd.canonical_status_id
 WHERE cs.category = 'backlog'
-GROUP BY t.id, t.external_id, t.title, p.name, ss.code;
+GROUP BY t.id, t.external_id, t.title, p.name, ss.code, tm.code, tm.name;
 
 CREATE OR REPLACE VIEW v_task_status_time AS
 SELECT
     t.id AS task_id,
     t.external_id,
     t.title,
+    tm.code AS team_code,
+    tm.name AS team_name,
     cs.code AS status_code,
     cs.name AS status_name,
     cs.category,
@@ -347,6 +384,8 @@ SELECT
     tsd.duration_seconds / 86400.0 AS duration_days,
     tsd.is_current
 FROM task t
+JOIN project pr ON pr.id = t.project_id
+LEFT JOIN team tm ON tm.id = COALESCE(t.team_id, pr.team_id)
 JOIN task_status_duration tsd ON tsd.task_id = t.id
 JOIN canonical_status cs ON cs.id = tsd.canonical_status_id;
 
@@ -359,9 +398,9 @@ SELECT
     cs.code AS status_code,
     COUNT(*) AS task_count,
     SUM(t.story_points) AS story_points_sum
-FROM team tm
-JOIN project pr ON pr.team_id = tm.id
-JOIN task t ON t.project_id = pr.id
+FROM task t
+JOIN project pr ON pr.id = t.project_id
+JOIN team tm ON tm.id = COALESCE(t.team_id, pr.team_id)
 JOIN canonical_status cs ON cs.id = t.canonical_status_id
 WHERE cs.is_terminal = FALSE
 GROUP BY tm.id, tm.code, tm.name, cs.category, cs.code;
@@ -373,17 +412,18 @@ SELECT
     r.planned_release_date,
     r.actual_release_date,
     pr.name AS project_name,
+    tm.code AS team_code,
     tm.name AS team_name,
     COUNT(DISTINCT t.id) AS task_count,
     SUM(t.story_points) AS story_points_sum,
     COUNT(DISTINCT t.id) FILTER (WHERE cs.is_terminal = TRUE) AS done_task_count
 FROM release r
 JOIN project pr ON pr.id = r.project_id
-LEFT JOIN team tm ON tm.id = pr.team_id
 LEFT JOIN task_release tr ON tr.release_id = r.id
 LEFT JOIN task t ON t.id = tr.task_id OR t.release_id = r.id
+LEFT JOIN team tm ON tm.id = COALESCE(t.team_id, pr.team_id)
 LEFT JOIN canonical_status cs ON cs.id = t.canonical_status_id
-GROUP BY r.id, r.name, r.planned_release_date, r.actual_release_date, pr.name, tm.name;
+GROUP BY r.id, r.name, r.planned_release_date, r.actual_release_date, pr.name, tm.code, tm.name;
 
 -- -----------------------------------------------------------------------------
 -- Начальные данные
@@ -404,6 +444,11 @@ INSERT INTO canonical_status (code, name, category, sort_order, is_terminal) VAL
     ('blocked',       'Заблокировано',    'waiting',   50, FALSE),
     ('done',          'Готово',           'done',      90, TRUE),
     ('cancelled',     'Отменено',         'cancelled', 100, TRUE)
+ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO team (code, name) VALUES
+    ('digital', 'Digital'),
+    ('berkhut', 'Berkhut')
 ON CONFLICT (code) DO NOTHING;
 
 -- -----------------------------------------------------------------------------

@@ -12,6 +12,8 @@
 | task_type | varchar | Тип задачи |
 | priority | varchar | Приоритет |
 | source_status | varchar | Статус как в источнике |
+| team_id | bigint | Каноническая команда (digital, berkhut) |
+| source_team | varchar | Команда из источника до маппинга |
 | canonical_status_id | int | Единый статус (через mapping) |
 | start_date | date | Начало работ |
 | due_date | date | Срок |
