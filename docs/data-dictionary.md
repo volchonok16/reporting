@@ -7,8 +7,8 @@
 
 | Колонка | Тип | Описание |
 |---------|-----|----------|
-| code | varchar | Уникальный код: `digital`, `berkhut` |
-| name | varchar | Отображаемое имя: Digital, Berkhut |
+| code | varchar | Уникальный slug (создаёт ETL) |
+| name | varchar | Отображаемое имя |
 | is_active | boolean | Участвует в отчётах |
 
 ## source_team_mapping — правила команды

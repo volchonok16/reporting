@@ -49,14 +49,14 @@ CREATE UNIQUE INDEX uq_source_status_mapping
 
 CREATE TABLE team (
     id              BIGSERIAL PRIMARY KEY,
-    code            VARCHAR(64)  NOT NULL UNIQUE,   -- digital, berkhut, ...
+    code            VARCHAR(64)  NOT NULL UNIQUE,   -- slug команды, задаёт ETL
     name            VARCHAR(255) NOT NULL,
     is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE team IS 'Канонические команды для фильтрации; одна команда может иметь задачи из Jira, TFS, Trello';
-COMMENT ON COLUMN team.code IS 'Единый код: digital, berkhut — независимо от источника';
+COMMENT ON COLUMN team.code IS 'Единый код команды; записи добавляет ETL, без захардкоженного seed';
 
 -- Правила: как определить команду из источника (доска, тег, area path — задаёт ETL)
 CREATE TABLE source_team_mapping (
@@ -208,7 +208,7 @@ CREATE INDEX idx_task_dates ON task(created_at, closed_at);
 CREATE INDEX idx_task_parent ON task(parent_task_id);
 
 COMMENT ON TABLE task IS 'Единая задача; external_id + source_system_id уникальны';
-COMMENT ON COLUMN task.team_id IS 'Каноническая команда (Digital, Berkhut); для фильтрации в отчётах';
+COMMENT ON COLUMN task.team_id IS 'Каноническая команда; для фильтрации в отчётах; FK → team';
 COMMENT ON COLUMN task.source_team IS 'Команда как в источнике; team_id заполняет ETL по source_team_mapping';
 COMMENT ON COLUMN task.extra_json IS 'Сырые поля до маппинга; для отладки ETL';
 
@@ -446,10 +446,7 @@ INSERT INTO canonical_status (code, name, category, sort_order, is_terminal) VAL
     ('cancelled',     'Отменено',         'cancelled', 100, TRUE)
 ON CONFLICT (code) DO NOTHING;
 
-INSERT INTO team (code, name) VALUES
-    ('digital', 'Digital'),
-    ('berkhut', 'Berkhut')
-ON CONFLICT (code) DO NOTHING;
+-- team: без seed — команды создаёт ETL/скрипт по доскам, тегам, area path
 
 -- -----------------------------------------------------------------------------
 -- Триггер: пересчёт duration_seconds при закрытии интервала

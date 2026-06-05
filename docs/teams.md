@@ -1,202 +1,103 @@
 # Команды (team): модель и маппинг
 
-Как в единой БД `reporting` хранятся команды **Digital**, **Berkhut** и другие, откуда они берутся в Jira/TFS/Trello и как по ним фильтровать в отчётах и FineBI.
+Как в единой БД `reporting` хранятся команды, откуда они берутся в Jira/TFS/Trello и как по ним фильтровать в отчётах и FineBI.
 
-**См. также:** [glossary.md](glossary.md) · [database-overview.md](database-overview.md) · DDL: [../db/schema.sql](../db/schema.sql)
+**Связанные документы:** [glossary.md](glossary.md) · [database-overview.md](database-overview.md)
+
+> **Важно:** в БД **нет захардкоженных команд**. Таблица `team` изначально **пустая**. Команды создаёт **ETL-скрипт** по доскам, тегам, area path и правилам `source_team_mapping`. Названия вроде Digital или Berkhut — лишь примеры из обсуждения, не seed-данные.
 
 ---
 
 ## Зачем нужно поле команды
 
-Из разных систем загружаются задачи **нескольких команд**. Одна и та же каноническая команда может приходить из разных источников:
+Из разных систем загружаются задачи **множества команд**. Одна каноническая команда может объединять задачи из Jira и TFS (например, одна продуктовая команда в двух трекерах).
 
-| Источник | Пример |
-|----------|--------|
-| Jira | задачи команды Digital |
-| TFS | задачи команды Digital |
-| TFS | задачи команды Berkhut |
-| Jira + TFS | обе системы отдают Digital — в отчёте одна команда `digital` |
-
-В отчётах нужен **единый фильтр** по команде, независимо от того, откуда пришла задача.
+В отчётах нужен **единый фильтр** по `team.code`, независимо от источника.
 
 ---
 
 ## Три уровня хранения
 
-```
-┌─────────────────┐     ┌──────────────────────┐     ┌─────────────────┐
-│  team           │     │  task                │     │  source_team    │
-│  (справочник)   │◄────│  team_id             │     │  (сырое знач.)  │
-│  digital        │     │  source_team         │     │  из API         │
-│  berkhut        │     └──────────────────────┘     └─────────────────┘
-└─────────────────┘              ▲
-         ▲                         │
-         │              ┌──────────┴───────────┐
-         │              │ source_team_mapping  │
-         └──────────────│ правила ETL          │
-                        │ доска / тег / area   │
-                        └──────────────────────┘
-```
-
 | Уровень | Таблица / поле | Роль |
 |---------|----------------|------|
-| **Канон** | `team` | Справочник: `code` = `digital`, `berkhut` |
+| **Канон** | `team` | Справочник; строки **добавляет ETL** |
 | **Задача** | `task.team_id` | Главное поле для фильтрации в BI |
-| **Сырьё** | `task.source_team` | Что пришло из API до нормализации |
-| **Правила** | `source_team_mapping` | Как ETL определяет `team_id` |
-| **Проект** | `project.team_id` | Команда по умолчанию для доски/проекта (fallback) |
+| **Сырьё** | `task.source_team` | Значение из API до нормализации |
+| **Правила** | `source_team_mapping` | Как скрипт сопоставляет признак → `team_id` |
+| **Проект** | `project.team_id` | Команда по умолчанию для доски (fallback) |
 
 ---
 
 ## Справочник `team`
 
-Предзаполненные команды (можно добавлять новые):
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `code` | varchar(64) | Уникальный slug (`digital`, `berkhut`, …) — **задаёт скрипт** |
+| `name` | varchar(255) | Отображаемое имя |
+| `is_active` | boolean | Участвует в отчётах |
 
-| code | name | Описание |
-|------|------|----------|
-| `digital` | Digital | Команда Digital |
-| `berkhut` | Berkhut | Команда Berkhut |
-
-Добавление новой команды:
+**Создание команды — в ETL**, например:
 
 ```sql
-INSERT INTO team (code, name) VALUES ('nova', 'Nova Team');
+INSERT INTO team (code, name)
+VALUES ('digital', 'Digital')
+ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name;
 ```
 
-`code` — стабильный ключ для фильтров в FineBI. `name` — отображаемое имя.
+Скрипт может создавать команду при первом появлении признака в источнике.
 
 ---
 
 ## Поля на задаче `task`
 
-| Поле | Тип | Обязательность | Описание |
-|------|-----|----------------|----------|
-| `team_id` | bigint FK → `team` | Заполняет ETL | **Каноническая команда** — используйте в отчётах |
-| `source_team` | varchar(255) | Опционально | Строка из источника: имя доски, тег, area, component |
+| Поле | Кто заполняет | Описание |
+|------|---------------|----------|
+| `team_id` | ETL | FK → `team`; **фильтр в FineBI** |
+| `source_team` | ETL | Сырая строка из API (доска, тег, area) |
 
 **Логика ETL (будущий скрипт):**
 
 1. Прочитать признаки задачи (доска, тег, area path, project key).
-2. Найти правило в `source_team_mapping` (с учётом `priority`).
-3. Записать `team_id` и при необходимости `source_team`.
-4. Если правило не сработало — взять `project.team_id` как fallback.
+2. Найти или создать запись в `team`.
+3. Применить `source_team_mapping` (если правила уже в БД).
+4. Записать `task.team_id` и при необходимости `source_team`.
+5. Fallback: `project.team_id`.
 
-**Приоритет команды на задаче:**
-
-```
-task.team_id  →  если NULL, то project.team_id
-```
-
-Так же работают views (`COALESCE(t.team_id, pr.team_id)`).
+**Приоритет:** `task.team_id` → иначе `project.team_id` (так же в views).
 
 ---
 
-## Таблица `source_team_mapping`
+## `source_team_mapping`
 
-Правила сопоставления признака источника с канонической командой. Заполняется администратором или через миграции **до/вместе с** ETL.
+Правила сопоставления признака источника с командой. Заполняется **скриптом или админом**, не при `docker compose up`.
 
 | Поле | Описание |
 |------|----------|
-| `source_system_id` | Jira / TFS / Trello / other |
-| `team_id` | Целевая команда в `team` |
-| `match_type` | Тип признака (см. ниже) |
+| `match_type` | `board_name`, `tag`, `label`, `area_path`, `iteration_path`, `project_key`, `component` |
 | `match_value` | Значение для сравнения |
-| `is_regex` | Искать по регулярному выражению |
-| `project_external_key` | Ограничить правило одним проектом |
-| `priority` | При нескольких совпадениях побеждает большее значение |
-| `is_active` | Включено ли правило |
-| `notes` | Пояснение для людей |
+| `is_regex` | Regex-поиск |
+| `priority` | При нескольких совпадениях — большее значение важнее |
 
-### Типы `match_type`
-
-| match_type | Где встречается | Что сравнивается |
-|------------|-----------------|------------------|
-| `board_name` | Jira, Trello | Название доски / board |
-| `project_key` | Jira | Ключ проекта (`PROJ`) |
-| `tag` | Jira, TFS | Тег / Tag |
-| `label` | Jira | Label |
-| `component` | Jira | Component |
-| `area_path` | TFS | `System.AreaPath` |
-| `iteration_path` | TFS | `System.IterationPath` |
-
-Конкретные правила и значения задаются позже в скрипте загрузки или вручную в БД.
-
-### Пример структуры правил (шаблон, без ваших данных)
-
-```sql
--- Jira: доска с именем, содержащим Digital → digital
-INSERT INTO source_team_mapping
-  (source_system_id, team_id, match_type, match_value, is_regex, priority, notes)
-SELECT ss.id, t.id, 'board_name', 'Digital', FALSE, 10, 'Jira board Digital'
-FROM source_system ss, team t
-WHERE ss.code = 'jira' AND t.code = 'digital';
-
--- TFS: area path содержит Berkhut
-INSERT INTO source_team_mapping
-  (source_system_id, team_id, match_type, match_value, is_regex, priority, notes)
-SELECT ss.id, t.id, 'area_path', 'Berkhut', FALSE, 10, 'TFS area Berkhut'
-FROM source_system ss, team t
-WHERE ss.code = 'tfs' AND t.code = 'berkhut';
-```
-
----
-
-## `project.team_id`
-
-Команда **по умолчанию** для всех задач проекта/доски, если на уровне задачи `team_id` не определён.
-
-| Ситуация | Что использовать |
-|----------|------------------|
-| Вся доска Jira = одна команда | `project.team_id` при создании проекта |
-| Команда разная по задачам | `task.team_id` + `source_team_mapping` |
-| Смешанный режим | ETL пишет `task.team_id`; fallback — `project.team_id` |
+Конкретные правила определяете вы в скрипте загрузки.
 
 ---
 
 ## Отчётность и FineBI
 
-Во views уже есть поля команды:
+Views содержат `team_code`, `team_name`: `v_team_open_tasks`, `v_task_status_time`, `v_task_backlog_duration`, `v_tasks_by_release`.
 
-| View | Поля команды |
-|------|----------------|
-| `v_team_open_tasks` | `team_id`, `team_code`, `team_name` |
-| `v_task_status_time` | `team_code`, `team_name` |
-| `v_task_backlog_duration` | `team_code`, `team_name` |
-| `v_tasks_by_release` | `team_code`, `team_name` |
-
-**Фильтр в FineBI:** `team_code IN ('digital', 'berkhut')` или `team_name = 'Digital'`.
-
-**Загрузка команды:** `team_workload_snapshot.team_id` — снимки по команде (бэклог, active, отгрузка в релиз).
+Фильтр: `team_code = '...'` после того, как ETL наполнит `team`.
 
 ---
 
-## Миграция на сервере
-
-Если БД создана до появления полей команды:
+## Миграции
 
 ```bash
-git pull
+# Структура (от reporting):
 docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/002_add_team_to_task.sql
+
+# Убрать примеры digital/berkhut, если попали из старой версии:
+docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/003_remove_seed_teams.sql
 ```
 
-Миграции DDL — только пользователь **`reporting`** (владелец таблиц). `alex`/`ivan` — для работы с данными и DBeaver.
-
-Проверка:
-
-```sql
-SELECT code, name FROM team;
-SELECT column_name FROM information_schema.columns
-WHERE table_name = 'task' AND column_name IN ('team_id', 'source_team');
-```
-
----
-
-## Связь с другими маппингами
-
-| Маппинг | Аналогия |
-|---------|----------|
-| `source_status_mapping` | статус источника → `canonical_status` |
-| `field_mapping` | поле API → колонка `task` |
-| **`source_team_mapping`** | **признак источника → `team`** |
-
-Все три настраиваются до или вместе с ETL; логика определения команды **в скрипте загрузки**, правила — в БД.
+**DDL** — пользователь `reporting`. **DBeaver / данные** — `alex` / `ivan`.

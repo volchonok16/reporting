@@ -29,11 +29,6 @@ ALTER TABLE task ADD COLUMN IF NOT EXISTS source_team VARCHAR(255);
 
 CREATE INDEX IF NOT EXISTS idx_task_team ON task(team_id);
 
-INSERT INTO team (code, name) VALUES
-    ('digital', 'Digital'),
-    ('berkhut', 'Berkhut')
-ON CONFLICT (code) DO NOTHING;
-
 COMMENT ON COLUMN task.team_id IS 'Каноническая команда; фильтрация в FineBI';
 COMMENT ON COLUMN task.source_team IS 'Сырое значение команды из источника';
 

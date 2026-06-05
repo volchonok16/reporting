@@ -32,7 +32,7 @@
 | `story_points`, `*_hours` | Оценки |
 | `release_id`, `sprint_name`, `iteration_path` | Релиз и итерация |
 | `assignee_id`, `reporter_id` | Люди |
-| `team_id`, `source_team` | Каноническая команда и сырое значение (Digital, Berkhut, …) |
+| `team_id`, `source_team` | Каноническая команда и сырое значение (команды создаёт ETL) |
 | `extra_json` | Временное хранение немапленных полей |
 
 Маппинг настраивается в `field_mapping`, `source_status_mapping` и `source_team_mapping`. Подробно о командах: [teams.md](teams.md).

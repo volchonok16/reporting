@@ -95,7 +95,13 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 
 Или: `chmod +x scripts/migrate.sh && ./scripts/migrate.sh`
 
-Добавляет: `task.team_id`, `task.source_team`, таблицу `source_team_mapping`, команды `digital`/`berkhut`, обновляет views.
+Добавляет: `task.team_id`, `task.source_team`, таблицу `source_team_mapping`, обновляет views (без seed-команд).
+
+Удалить примеры `digital`/`berkhut` из старой версии:
+
+```bash
+docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/003_remove_seed_teams.sql
+```
 
 Документация: [teams.md](teams.md).
 
