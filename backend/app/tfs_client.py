@@ -17,6 +17,9 @@ from app.tfs_auth import TfsAuth
 
 logger = logging.getLogger(__name__)
 
+# Лимит Azure DevOps / TFS на workItemsBatch
+WIT_BATCH_MAX_IDS = 200
+
 MS_DATE_RE = re.compile(r"^/Date\((?P<milliseconds>-?\d+)(?:[+-]\d+)?\)/$")
 TFS_CALENDAR_TZ = ZoneInfo("Europe/Moscow")
 
@@ -289,6 +292,59 @@ class TfsClient:
                 continue
         return result
 
+    async def _fetch_work_items_chunk(
+        self,
+        ids: list[int],
+        *,
+        fields: list[str] | None,
+        with_relations: bool,
+    ) -> list[dict[str, Any]]:
+        if not ids:
+            return []
+
+        body: dict[str, Any] = {"ids": ids, "errorPolicy": "omit"}
+        if with_relations:
+            body["$expand"] = "Relations"
+        if fields:
+            body["fields"] = fields
+
+        response = await self._post_with_api_versions(
+            f"/{self.project}/_apis/wit/workItemsBatch",
+            json=body,
+        )
+
+        if response.status_code in {500, 502, 503} and len(ids) > 1:
+            mid = len(ids) // 2
+            logger.warning(
+                "tfs_batch_split status=%s size=%s -> %s + %s",
+                response.status_code,
+                len(ids),
+                mid,
+                len(ids) - mid,
+            )
+            left = await self._fetch_work_items_chunk(
+                ids[:mid], fields=fields, with_relations=with_relations
+            )
+            await asyncio.sleep(settings.tfs_request_delay_seconds)
+            right = await self._fetch_work_items_chunk(
+                ids[mid:], fields=fields, with_relations=with_relations
+            )
+            return left + right
+
+        if response.status_code >= 400:
+            if len(ids) == 1:
+                logger.warning(
+                    "tfs_batch_skip id=%s status=%s body=%s",
+                    ids[0],
+                    response.status_code,
+                    response.text[:200],
+                )
+                return []
+            response.raise_for_status()
+
+        batch = response.json()
+        return as_work_item_list(batch.get("value") if isinstance(batch, dict) else None)
+
     async def get_work_items_batch(
         self,
         ids: list[int],
@@ -301,26 +357,22 @@ class TfsClient:
             return []
 
         result: list[dict[str, Any]] = []
-        fields = self._batch_field_list()
-        chunk_size = batch_size or settings.tfs_batch_size
+        fields = None if settings.tfs_fetch_all_fields else self._batch_field_list()
+        requested = batch_size or settings.tfs_batch_size
+        chunk_size = max(1, min(requested, WIT_BATCH_MAX_IDS))
         with_relations = (
             settings.tfs_fetch_relations if expand_relations is None else expand_relations
         )
 
         for offset in range(0, len(ids), chunk_size):
             chunk = ids[offset : offset + chunk_size]
-            body: dict[str, Any] = {"ids": chunk, "errorPolicy": 2}
-            if with_relations:
-                body["$expand"] = "Relations"
-            if not settings.tfs_fetch_all_fields:
-                body["fields"] = fields
-            response = await self._post_with_api_versions(
-                f"/{self.project}/_apis/wit/workItemsBatch",
-                json=body,
+            result.extend(
+                await self._fetch_work_items_chunk(
+                    chunk,
+                    fields=fields,
+                    with_relations=with_relations,
+                )
             )
-            response.raise_for_status()
-            batch = response.json()
-            result.extend(as_work_item_list(batch.get("value") if isinstance(batch, dict) else None))
             if on_progress is not None:
                 on_progress(min(offset + len(chunk), len(ids)), len(ids))
             if offset + chunk_size < len(ids):
@@ -350,7 +402,7 @@ class TfsClient:
         by_id = {item["id"]: item for item in items if isinstance(item, dict)}
         for offset in range(0, len(missing_ids), settings.tfs_batch_size):
             chunk = missing_ids[offset : offset + settings.tfs_batch_size]
-            body: dict[str, Any] = {"ids": chunk, "fields": scheduling_fields, "errorPolicy": 2}
+            body: dict[str, Any] = {"ids": chunk, "fields": scheduling_fields, "errorPolicy": "omit"}
             response = await self._post_with_api_versions(
                 f"/{self.project}/_apis/wit/workItemsBatch",
                 json=body,

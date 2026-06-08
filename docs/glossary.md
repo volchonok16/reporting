@@ -586,7 +586,7 @@
 | `TFS_FETCH_ALL_FIELDS` | `false` | Не запрашивать все поля |
 | `TFS_FETCH_RELATIONS` | `false` | Не использовать `$expand` Relations на ЗНИ |
 | `TFS_BATCH_SIZE` | `200` | Размер batch workItems |
-| `TFS_LINKED_BATCH_SIZE` | `500` | Batch для связанных ошибок |
+| `TFS_LINKED_BATCH_SIZE` | `200` | Порция ошибок (лимит TFS workItemsBatch = 200) |
 | `TFS_EXCLUDE_CLOSED_OLDER_THAN_DAYS` | `365` | Пропуск Closed ЗНИ старше N дней |
 | `TFS_CLOSED_STATE_VALUES` | `Closed` | Статусы для фильтра |
 

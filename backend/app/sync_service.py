@@ -255,13 +255,12 @@ async def sync_board(
         if sync_run:
             touch_sync_progress(db, sync_run, f"{board.display_name}: загрузка {len(error_ids)} ошибок…")
 
-        linked_chunk = settings.tfs_linked_batch_size
-        for offset in range(0, len(error_ids), linked_chunk):
-            chunk_ids = error_ids[offset : offset + linked_chunk]
+        commit_chunk = min(settings.tfs_linked_batch_size, settings.tfs_batch_size)
+        for offset in range(0, len(error_ids), commit_chunk):
+            chunk_ids = error_ids[offset : offset + commit_chunk]
             error_payloads = await client.get_work_items_batch(
                 chunk_ids,
                 expand_relations=False,
-                batch_size=linked_chunk,
             )
             fetched += len(error_payloads)
 

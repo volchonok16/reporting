@@ -15,7 +15,11 @@ class Settings(BaseSettings):
     tfs_timeout_seconds: float = Field(default=45, alias="TFS_TIMEOUT_SECONDS")
     tfs_api_version: str = Field(default="6.1", alias="TFS_API_VERSION")
     tfs_batch_size: int = Field(default=200, alias="TFS_BATCH_SIZE")
-    tfs_linked_batch_size: int = Field(default=500, alias="TFS_LINKED_BATCH_SIZE")
+    tfs_linked_batch_size: int = Field(
+        default=200,
+        alias="TFS_LINKED_BATCH_SIZE",
+        description="Порция ошибок за один проход (не больше 200 — лимит TFS workItemsBatch).",
+    )
     tfs_request_delay_seconds: float = Field(default=0.15, alias="TFS_REQUEST_DELAY_SECONDS")
     tfs_fetch_all_fields: bool = Field(default=False, alias="TFS_FETCH_ALL_FIELDS")
     tfs_fetch_relations: bool = Field(
