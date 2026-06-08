@@ -33,8 +33,16 @@ docker-compose -f docker-compose.yml -f docker-compose.prod.yml logs -f backend
 **Быстрый фикс — пересобрать frontend:**
 
 ```bash
-docker rm -f reporting-frontend
-bash scripts/compose-up.sh prod --build frontend
+# удалить ВСЕ контейнеры frontend (в т.ч. ba5e359e8f7c_reporting-frontend)
+docker ps -aq --filter "name=reporting-frontend" | xargs -r docker rm -f
+bash scripts/rebuild-frontend.sh
+```
+
+Или одной командой без git pull:
+
+```bash
+docker ps -aq --filter "name=reporting-frontend" | xargs -r docker rm -f
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --no-deps frontend
 ```
 
 **Или обновить Compose (рекомендуется):**
