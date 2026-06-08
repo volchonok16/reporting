@@ -1,5 +1,9 @@
 from unittest.mock import patch
 
+import io
+import re
+import zipfile
+
 from pptx import Presentation
 from pptx.util import Pt
 
@@ -173,3 +177,38 @@ def test_generate_b2b_product_status_presentation(mock_load) -> None:
                     if run.font.size:
                         sizes.add(int(run.font.size))
     assert sizes == {int(TABLE_FONT_SIZE)}
+
+
+def _slide_xml_font_sizes(content: bytes, slide_index: int) -> set[str]:
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        xml = archive.read(f"ppt/slides/slide{slide_index + 1}.xml").decode("utf-8")
+    return set(re.findall(r'sz="(\d+)"', xml))
+
+
+@patch("app.product_status_presentation.load_b2b_product_status")
+def test_generate_presentation_has_uniform_table_font_in_xml(mock_load) -> None:
+    long_text = "Длинный текст " * 30
+    mock_load.return_value = ProductStatusB2BOut(
+        title="Статус продукта B2B",
+        sheets=[
+            ProductStatusSheetOut(
+                gid="0",
+                name="Продуктовый офис: CORE",
+                columns=["Дата запуска", "Проект", "Описание проекта", "Зачем и для чего делаем"],
+                rows=[
+                    {
+                        "Дата запуска": "Июнь",
+                        "Проект": "Research",
+                        "Описание проекта": "BHT B2B 2026 - в работе",
+                        "Зачем и для чего делаем": long_text,
+                    }
+                ],
+                totalShown=1,
+            )
+        ],
+    )
+
+    content, _ = generate_b2b_product_status_presentation()
+    table_sizes = _slide_xml_font_sizes(content, 1)
+    assert "800" not in table_sizes
+    assert table_sizes <= {"1000", "3200"}

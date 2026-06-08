@@ -14,6 +14,8 @@ from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.enum.text import MSO_AUTO_SIZE, PP_ALIGN, MSO_VERTICAL_ANCHOR
+from pptx.oxml import parse_xml
+from pptx.oxml.ns import qn
 from pptx.util import Pt
 
 from app.config import settings
@@ -30,8 +32,11 @@ _CNVPR_TAGS = (
 
 TITLE_FONT_NAME = "T2 Halvar Breit ExtraBold"
 TITLE_FONT_SIZE = Pt(32)
+TITLE_FONT_SZ_XML = "3200"
 TABLE_FONT_NAME = "T2 Rooftop"
 TABLE_FONT_SIZE = Pt(10)
+TABLE_FONT_SZ_XML = "1000"
+A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 LINE_HEIGHT_EMU = 145000
 MIN_ROW_HEIGHT_EMU = 396000
 ROW_PADDING_EMU = 50000
@@ -374,9 +379,98 @@ def _apply_text_frame_style(
             _set_run_font(run, name=font_name, size=font_size, bold=bold)
 
 
+def _clean_line_text(line: str) -> str:
+    cleaned = line.strip()
+    while cleaned.startswith(("•", "●", "▪", "◦", "‣")):
+        cleaned = cleaned[1:].lstrip()
+    return cleaned
+
+
 def _sanitize_cell_text(text: str) -> str:
     cleaned = (text or "").replace("\x0b", "\n").replace("\r\n", "\n").replace("\r", "\n")
-    return cleaned.strip()
+    lines = [_clean_line_text(line) for line in cleaned.split("\n")]
+    return "\n".join(lines).strip()
+
+
+def _set_xml_solid_black(rpr_element) -> None:
+    for child in list(rpr_element):
+        if child.tag == qn("a:solidFill"):
+            rpr_element.remove(child)
+    rpr_element.insert(
+        0,
+        parse_xml(f'<a:solidFill xmlns:a="{A_NS}"><a:srgbClr val="000000"/></a:solidFill>'),
+    )
+
+
+def _set_xml_latin_typeface(rpr_element, font_name: str) -> None:
+    latin = rpr_element.find(qn("a:latin"))
+    if latin is None:
+        latin = parse_xml(f'<a:latin xmlns:a="{A_NS}" typeface="{font_name}"/>')
+        rpr_element.append(latin)
+    else:
+        latin.set("typeface", font_name)
+
+
+def _normalize_tx_body_element(
+    tx_body,
+    *,
+    font_name: str,
+    font_sz: str,
+) -> None:
+    if tx_body is None:
+        return
+
+    body_pr = tx_body.find(qn("a:bodyPr"))
+    if body_pr is not None:
+        body_pr.set("wrap", "square")
+        for autofit_tag in ("normAutofit", "spAutoFit"):
+            autofit = body_pr.find(qn(f"a:{autofit_tag}"))
+            if autofit is not None:
+                body_pr.remove(autofit)
+
+    for paragraph_props in tx_body.findall(".//" + qn("a:pPr")):
+        for bullet_tag in ("buChar", "buAutoNum", "buBlip", "buFont"):
+            for bullet_node in paragraph_props.findall(qn(f"a:{bullet_tag}")):
+                paragraph_props.remove(bullet_node)
+        if paragraph_props.find(qn("a:buNone")) is None:
+            paragraph_props.insert(0, parse_xml(f'<a:buNone xmlns:a="{A_NS}"/>'))
+        paragraph_props.set("lvl", "0")
+
+    for prop_tag in ("a:rPr", "a:endParaRPr", "a:defRPr"):
+        for props in tx_body.findall(".//" + qn(prop_tag)):
+            props.set("sz", font_sz)
+            props.set("dirty", "0")
+            _set_xml_latin_typeface(props, font_name)
+            _set_xml_solid_black(props)
+
+
+def _normalize_cell_xml(cell, *, font_name: str, font_sz: str) -> None:
+    _normalize_tx_body_element(cell._tc.txBody, font_name=font_name, font_sz=font_sz)
+
+
+def _normalize_text_frame_xml(frame, *, font_name: str, font_sz: str) -> None:
+    _normalize_tx_body_element(frame._txBody, font_name=font_name, font_sz=font_sz)
+
+
+def _resize_table_rows(table, data_rows: int, *, target_height: int | None = None) -> None:
+    row_count = len(table.rows)
+    if data_rows <= 0 or row_count == 0:
+        return
+
+    total_height = target_height if target_height is not None else sum(int(row.height) for row in table.rows)
+    if data_rows >= row_count:
+        per_row = max(MIN_ROW_HEIGHT_EMU, total_height // row_count)
+        for row in table.rows:
+            row.height = per_row
+        return
+
+    spare_rows = row_count - data_rows
+    empty_total = MIN_ROW_HEIGHT_EMU * spare_rows
+    data_total = max(MIN_ROW_HEIGHT_EMU * data_rows, total_height - empty_total)
+    per_data = data_total // data_rows
+
+    for index, row in enumerate(table.rows):
+        row.height = per_data if index < data_rows else MIN_ROW_HEIGHT_EMU
 
 
 def _replace_cell_text(cell, text: str) -> None:
@@ -407,6 +501,8 @@ def _replace_cell_text(cell, text: str) -> None:
         run.text = line
         _set_run_font(run, name=TABLE_FONT_NAME, size=TABLE_FONT_SIZE, bold=False)
 
+    _normalize_cell_xml(cell, font_name=TABLE_FONT_NAME, font_sz=TABLE_FONT_SZ_XML)
+
 
 def _replace_title(title_shape, sheet_name: str) -> None:
     frame = title_shape.text_frame
@@ -421,6 +517,11 @@ def _replace_title(title_shape, sheet_name: str) -> None:
     run = paragraph.add_run()
     run.text = sheet_name
     _set_run_font(run, name=TITLE_FONT_NAME, size=TITLE_FONT_SIZE, bold=True)
+    _normalize_text_frame_xml(
+        frame,
+        font_name=TITLE_FONT_NAME,
+        font_sz=TITLE_FONT_SZ_XML,
+    )
 
 
 def _normalize_table_fonts(table) -> None:
@@ -447,6 +548,7 @@ def _normalize_table_fonts(table) -> None:
                         size=TABLE_FONT_SIZE,
                         bold=False,
                     )
+            _normalize_cell_xml(cell, font_name=TABLE_FONT_NAME, font_sz=TABLE_FONT_SZ_XML)
 
 
 def _find_column(columns: list[str], pattern: str) -> str:
@@ -486,9 +588,11 @@ def _fill_content_slide(
     if title_shape is not None:
         _replace_title(title_shape, sheet_name)
 
-    table = _find_table_shape(slide)
+    table_shape, table = _find_table(slide)
     if table is None:
         return
+
+    target_table_height = int(table_shape.height) if table_shape is not None else None
 
     col_count = len(table.columns)
     data_rows = len(rows)
@@ -501,10 +605,9 @@ def _fill_content_slide(
         for col_index in range(col_count):
             value = values[col_index] if col_index < len(values) else ""
             _replace_cell_text(table_row.cells[col_index], value)
-        if row_index >= data_rows:
-            table_row.height = MIN_ROW_HEIGHT_EMU
 
     _normalize_table_fonts(table)
+    _resize_table_rows(table, data_rows, target_height=target_table_height)
 
 
 def _build_slide_specs(
