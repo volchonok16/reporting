@@ -493,12 +493,19 @@ async def run_sync(
 
         total_fetched = 0
         total_upserted = 0
+        board_errors: list[str] = []
         close_db_session(db)
 
-        for board in boards:
+        for index, board in enumerate(boards, start=1):
             db = SessionLocal()
             try:
                 sync_row = db.get(SyncRun, sync_run.id)
+                if sync_row and len(boards) > 1:
+                    touch_sync_progress(
+                        db,
+                        sync_row,
+                        f"{index}/{len(boards)}: {board.display_name}…",
+                    )
                 fetched, upserted = await sync_board(
                     db,
                     board=board,
@@ -510,6 +517,9 @@ async def run_sync(
                 )
                 total_fetched += fetched
                 total_upserted += upserted
+            except Exception as exc:
+                logger.exception("sync_board_failed board=%s", board.code)
+                board_errors.append(f"{board.display_name}: {exc}")
             finally:
                 close_db_session(db)
 
@@ -517,12 +527,22 @@ async def run_sync(
         try:
             sync_run = db.get(SyncRun, sync_run.id)
             if sync_run:
-                sync_run.status = "success"
                 sync_run.finished_at = datetime.now(UTC)
                 sync_run.records_fetched = total_fetched
                 sync_run.records_upserted = total_upserted
                 params = dict(sync_run.parameters_json or {})
-                params["progress"] = f"Готово: {total_upserted} записей"
+                if board_errors and total_upserted == 0:
+                    sync_run.status = "failed"
+                    sync_run.error_message = "; ".join(board_errors)
+                    params["progress"] = sync_run.error_message
+                else:
+                    sync_run.status = "success"
+                    if board_errors:
+                        params["progress"] = (
+                            f"Готово: {total_upserted} записей; ошибки: {'; '.join(board_errors)}"
+                        )
+                    else:
+                        params["progress"] = f"Готово: {total_upserted} записей"
                 sync_run.parameters_json = params
                 db.add(sync_run)
                 db.commit()

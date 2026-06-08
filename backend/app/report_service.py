@@ -321,12 +321,35 @@ def load_change_requests(
     )
 
 
-def export_csv(db: Session, *, board_code: str | None = None) -> str:
+def _boards_for_export(board_code: str | None) -> list[BoardConfig]:
     if is_all_boards(board_code) or not board_code:
-        dashboard = load_change_requests(db, board_code=ALL_BOARDS_CODE)
-        boards_to_export = [None]
-    else:
-        boards_to_export = [board_by_code(board_code)]
+        return list(BOARDS)
+    board = board_by_code(board_code)
+    return [board] if board else []
+
+
+def _write_export_rows(writer: csv.writer, items: list[ChangeRequestOut]) -> None:
+    for item in items:
+        errors_text = "; ".join(f"{e.id}: {e.title}" for e in item.errors)
+        writer.writerow(
+            [
+                item.number,
+                item.title,
+                item.status or "",
+                item.boardColumn or "",
+                item.startDate.isoformat() if item.startDate else "",
+                item.releaseDate.isoformat() if item.releaseDate else "",
+                item.plannedLabel or (item.plannedDate.isoformat() if item.plannedDate else ""),
+                item.planQuarter or "",
+                item.plannedRelease or "",
+                item.boardName or "",
+                errors_text,
+            ]
+        )
+
+
+def export_csv(db: Session, *, board_code: str | None = None) -> str:
+    boards_to_export = _boards_for_export(board_code)
 
     output = io.StringIO()
     writer = csv.writer(output, delimiter=";")
@@ -346,44 +369,7 @@ def export_csv(db: Session, *, board_code: str | None = None) -> str:
         ]
     )
 
-    if is_all_boards(board_code) or not board_code:
-        for item in dashboard.items:
-            errors_text = "; ".join(f"{e.id}: {e.title}" for e in item.errors)
-            writer.writerow(
-                [
-                    item.number,
-                    item.title,
-                    item.status or "",
-                    item.boardColumn or "",
-                    item.startDate.isoformat() if item.startDate else "",
-                    item.releaseDate.isoformat() if item.releaseDate else "",
-                    item.plannedLabel or (item.plannedDate.isoformat() if item.plannedDate else ""),
-                    item.planQuarter or "",
-                    item.plannedRelease or "",
-                    item.boardName or "",
-                    errors_text,
-                ]
-            )
-    else:
-        for board in boards_to_export:
-            if board is None:
-                continue
-            single = load_change_requests(db, board_code=board.code)
-            for item in single.items:
-                errors_text = "; ".join(f"{e.id}: {e.title}" for e in item.errors)
-                writer.writerow(
-                    [
-                        item.number,
-                        item.title,
-                        item.status or "",
-                        item.boardColumn or "",
-                        item.startDate.isoformat() if item.startDate else "",
-                        item.releaseDate.isoformat() if item.releaseDate else "",
-                        item.plannedLabel or (item.plannedDate.isoformat() if item.plannedDate else ""),
-                        item.planQuarter or "",
-                        item.plannedRelease or "",
-                        item.boardName or "",
-                        errors_text,
-                    ]
-                )
+    for board in boards_to_export:
+        single = load_change_requests(db, board_code=board.code)
+        _write_export_rows(writer, single.items)
     return output.getvalue()

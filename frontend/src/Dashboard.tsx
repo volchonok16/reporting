@@ -127,6 +127,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [syncProgress, setSyncProgress] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -171,62 +172,126 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     void loadDashboard()
   }, [loadDashboard])
 
+  const waitForSync = useCallback(async (targetBoard: string) => {
+    const params = `?board=${encodeURIComponent(targetBoard)}`
+    const response = await apiFetch(`/api/sync${params}`, { method: 'POST' })
+    if (!response.ok) {
+      const text = await response.text()
+      throw new Error(text || 'Ошибка синхронизации')
+    }
+    const sync = (await response.json()) as { id: number }
+    for (;;) {
+      const status = await getJson<{
+        status: string
+        errorMessage?: string | null
+        progressMessage?: string | null
+      }>(`/api/sync/${sync.id}`)
+      if (status.progressMessage) {
+        setSyncProgress(status.progressMessage)
+      }
+      if (status.status === 'running') {
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+        continue
+      }
+      if (status.status === 'failed') {
+        throw new Error(status.errorMessage || 'Синхронизация не удалась')
+      }
+      return
+    }
+  }, [])
+
+  const boardsForSync = useCallback((): Board[] => {
+    if (boardCode === ALL_BOARDS) {
+      return boards.filter((board) => board.code !== ALL_BOARDS)
+    }
+    const selected = boards.find((board) => board.code === boardCode)
+    return selected ? [selected] : []
+  }, [boardCode, boards])
+
+  const syncBoardList = useCallback(
+    async (targetBoards: Board[]) => {
+      if (targetBoards.length === 0) {
+        throw new Error('Нет досок для синхронизации')
+      }
+      const failures: string[] = []
+      for (let index = 0; index < targetBoards.length; index += 1) {
+        const board = targetBoards[index]
+        const label = boardButtonLabel(board.code, board.displayName)
+        const prefix = targetBoards.length > 1 ? `${index + 1}/${targetBoards.length}: ` : ''
+        setSyncProgress(`${prefix}Синхронизация ${label}…`)
+        try {
+          await waitForSync(board.code)
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Ошибка синхронизации'
+          failures.push(`${label}: ${message}`)
+        }
+      }
+      if (failures.length === targetBoards.length) {
+        throw new Error(failures.join('; '))
+      }
+      if (failures.length > 0) {
+        setSyncProgress(`Готово с ошибками: ${failures.join('; ')}`)
+        return
+      }
+      if (targetBoards.length > 1) {
+        setSyncProgress(`Готово: ${targetBoards.length} досок`)
+      }
+    },
+    [waitForSync],
+  )
+
+  const downloadCsv = useCallback(async (targetBoard: string, filename: string) => {
+    const params = `?board=${encodeURIComponent(targetBoard)}`
+    const response = await apiFetch(`/api/export${params}`)
+    if (!response.ok) {
+      throw new Error('Не удалось выгрузить отчёт')
+    }
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(url)
+  }, [])
+
   const handleSync = async () => {
     setSyncing(true)
     setSyncProgress('Старт…')
     setError(null)
     try {
-      const params = boardCode ? `?board=${encodeURIComponent(boardCode)}` : ''
-      const response = await apiFetch(`/api/sync${params}`, { method: 'POST' })
-      if (!response.ok) {
-        const text = await response.text()
-        throw new Error(text || 'Ошибка синхронизации')
-      }
-      const sync = (await response.json()) as { id: number }
-      const poll = async () => {
-        const status = await getJson<{
-          status: string
-          errorMessage?: string | null
-          progressMessage?: string | null
-        }>(`/api/sync/${sync.id}`)
-        if (status.progressMessage) {
-          setSyncProgress(status.progressMessage)
-        }
-        if (status.status === 'running') {
-          setTimeout(poll, 1500)
-          return
-        }
-        if (status.status === 'failed') {
-          throw new Error(status.errorMessage || 'Синхронизация не удалась')
-        }
+      const targetBoards = boardsForSync()
+      await syncBoardList(targetBoards)
+      if (targetBoards.length === 1) {
         setSyncProgress(null)
-        await loadDashboard()
-        setSyncing(false)
       }
-      void poll()
+      await loadDashboard()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка синхронизации')
       setSyncProgress(null)
+    } finally {
       setSyncing(false)
     }
   }
 
   const handleExport = async () => {
+    setExporting(true)
+    setError(null)
     try {
-      const params = boardCode ? `?board=${encodeURIComponent(boardCode)}` : ''
-      const response = await apiFetch(`/api/export${params}`)
-      if (!response.ok) {
-        throw new Error('Не удалось выгрузить отчёт')
+      if (boardCode === ALL_BOARDS) {
+        await syncBoardList(boardsForSync())
+        setSyncProgress('Формирование CSV…')
+        await downloadCsv(ALL_BOARDS, 'zni-report-all.csv')
+        setSyncProgress(null)
+        await loadDashboard()
+        return
       }
-      const blob = await response.blob()
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = 'zni-report.csv'
-      link.click()
-      URL.revokeObjectURL(url)
+      await downloadCsv(boardCode, 'zni-report.csv')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка выгрузки')
+      setSyncProgress(null)
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -319,11 +384,11 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         </div>
 
         <div className="toolbar-right">
-          <button type="button" className="btn-secondary" onClick={handleSync} disabled={syncing}>
+          <button type="button" className="btn-secondary" onClick={handleSync} disabled={syncing || exporting}>
             {syncing ? 'Синхронизация…' : 'Обновить из TFS'}
           </button>
-          <button type="button" className="btn-primary" onClick={handleExport}>
-            Выгрузить
+          <button type="button" className="btn-primary" onClick={handleExport} disabled={syncing || exporting}>
+            {exporting ? 'Выгрузка…' : 'Выгрузить'}
           </button>
           <button type="button" className="btn-ghost" onClick={handleLogout}>
             Выйти
