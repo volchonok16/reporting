@@ -64,10 +64,7 @@ CERTBOT_DOMAINS="$(read_env CERTBOT_DOMAINS pallink.fun,www.pallink.fun,api.pall
 
 chmod +x db/init-users.sh 2>/dev/null || true
 
-echo "==> Docker Compose (prod)…"
-"${COMPOSE[@]}" up -d --build
-
-echo "==> Nginx…"
+echo "==> Nginx (сначала — чтобы :80/:443 отвечали)…"
 if ! command -v nginx >/dev/null 2>&1; then
   apt-get update -qq
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nginx
@@ -164,17 +161,20 @@ issue_certificate() {
 
 install_nginx_config
 
+if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
+  ufw allow OpenSSH 2>/dev/null || true
+  ufw allow 'Nginx Full' 2>/dev/null || ufw allow 80/tcp 443/tcp 2>/dev/null || true
+fi
+
+echo "==> Docker Compose (prod)…"
+"${COMPOSE[@]}" up -d --build
+
 if [[ ! -f "$CERT_DIR/fullchain.pem" ]]; then
   issue_certificate || true
 fi
 
 ensure_certbot 2>/dev/null || true
 setup_certbot_auto_renewal
-
-if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
-  ufw allow OpenSSH 2>/dev/null || true
-  ufw allow 'Nginx Full' 2>/dev/null || ufw allow 80/tcp 443/tcp 2>/dev/null || true
-fi
 
 echo ""
 echo "==> Статус контейнеров"

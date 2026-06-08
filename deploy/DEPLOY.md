@@ -39,6 +39,31 @@ sudo apt-get install -y docker-compose
 docker-compose --version
 ```
 
+## Ошибка ERR_CONNECTION_REFUSED
+
+Браузер не может подключиться — на сервере не слушает порт 80/443. Проверьте по шагам:
+
+```bash
+# 1. DNS указывает на этот сервер?
+dig +short pallink.fun
+curl -4 ifconfig.me   # IP сервера — должны совпадать
+
+# 2. nginx запущен?
+sudo systemctl status nginx
+sudo ss -tlnp | grep -E ':80|:443'
+
+# 3. docker-compose в .env
+grep COMPOSE_CMD .env   # должно быть: COMPOSE_CMD=docker-compose
+
+# 4. контейнеры подняты?
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml ps
+
+# 5. полный перезапуск
+sudo bash scripts/production.sh
+```
+
+Если nginx работает, а сайт 502 — контейнеры не поднялись: `docker-compose ... logs backend`.
+
 ## Один скрипт
 
 ```bash
