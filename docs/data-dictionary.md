@@ -58,8 +58,9 @@
 | board_column | System.BoardColumn | Колонка Kanban (статус на доске) |
 | tags | System.Tags | Теги TFS (массив строк) |
 | iteration_path | System.IterationPath | Итерация TFS |
-| planned_date | из листа итерации | Планируемая дата (`YYYY.MM.DD` в имени, напр. `2026.08.11.0-R`) |
-| plan_quarter | из planned_date | Ключ квартала (`2026-Q3`) |
+| planned_date | из листа итерации | Планируемая дата (`2026.08.11.0-R` → `2026-08-11`) |
+| planned_status | `tbd` / `date` | `tbd` — дата в плане неизвестна |
+| plan_quarter | из planned_date или `TBD` | Ключ квартала (`2026-Q3` или `TBD`) |
 | pilot_transitions | TFS updates | Переходы в «Пилот»: `[{at, status}]` |
 
 ## auth_session — сессия веб-приложения

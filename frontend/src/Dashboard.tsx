@@ -12,6 +12,7 @@ type Board = {
 type LinkedError = {
   id: string
   title: string
+  url?: string | null
 }
 
 type QuarterOption = {
@@ -22,11 +23,13 @@ type QuarterOption = {
 type ChangeRequest = {
   number: string
   title: string
+  url?: string | null
   status?: string | null
   boardColumn?: string | null
   startDate?: string | null
   releaseDate?: string | null
   plannedDate?: string | null
+  plannedLabel?: string | null
   planQuarter?: string | null
   boardName?: string | null
   errors: LinkedError[]
@@ -52,6 +55,11 @@ function formatDate(value?: string | null): string {
   const [year, month, day] = value.split('-')
   if (!year || !month || !day) return value
   return `${day}.${month}.${year}`
+}
+
+function formatPlannedDate(item: ChangeRequest): string {
+  if (item.plannedLabel) return item.plannedLabel
+  return formatDate(item.plannedDate)
 }
 
 type DashboardProps = {
@@ -255,6 +263,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                   {quarter.label}
                 </option>
               ))}
+              <option value="TBD">TBD</option>
               <option value="__none__">Без квартала</option>
             </select>
           </label>
@@ -318,7 +327,15 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                 className={`table-row${data.allBoards ? ' table-row-all' : ''}`}
                 key={`${item.boardName ?? ''}-${item.number}`}
               >
-                <div className="cell-number">{item.number}</div>
+                <div className="cell-number">
+                  {item.url ? (
+                    <a className="zni-link" href={item.url} target="_blank" rel="noreferrer">
+                      {item.number}
+                    </a>
+                  ) : (
+                    item.number
+                  )}
+                </div>
                 {data.allBoards && <div className="cell-board">{item.boardName}</div>}
                 <div className="cell-title">
                   <div>{item.title}</div>
@@ -326,7 +343,14 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                     <div className="cell-errors">
                       {item.errors.map((err) => (
                         <span key={err.id} className="error-tag">
-                          {err.id}: {err.title}
+                          {err.url ? (
+                            <a className="zni-link" href={err.url} target="_blank" rel="noreferrer">
+                              {err.id}
+                            </a>
+                          ) : (
+                            err.id
+                          )}
+                          : {err.title}
                         </span>
                       ))}
                     </div>
@@ -334,7 +358,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                 </div>
                 <div className="cell-date">{formatDate(item.startDate)}</div>
                 <div className="cell-date">{formatDate(item.releaseDate)}</div>
-                <div className="cell-date">{formatDate(item.plannedDate)}</div>
+                <div className="cell-date">{formatPlannedDate(item)}</div>
                 <div className="cell-quarter">{item.planQuarter || '—'}</div>
                 <div className="cell-status">
                   <span className="status-board">{item.boardColumn || item.status || '—'}</span>

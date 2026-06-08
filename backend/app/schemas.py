@@ -43,6 +43,7 @@ class LinkedErrorOut(BaseModel):
     id: str
     title: str
     status: str | None = None
+    url: str | None = None
 
 
 class QuarterOptionOut(BaseModel):
@@ -54,11 +55,13 @@ class ChangeRequestOut(BaseModel):
     id: str
     number: str
     title: str
+    url: str | None = None
     status: str | None = None
     boardColumn: str | None = None
     startDate: date | None = None
     releaseDate: date | None = None
     plannedDate: date | None = None
+    plannedLabel: str | None = None
     planQuarter: str | None = None
     createdAt: datetime | None = None
     boardCode: str | None = None

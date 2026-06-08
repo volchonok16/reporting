@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from app.boards import ALL_BOARDS_CODE, BOARDS, BoardConfig, board_by_code, is_all_boards
 from app.config import settings
 from app.iteration_plan import (
-    parse_planned_date_from_iteration,
+    PLAN_QUARTER_TBD,
+    parse_iteration_plan,
     quarter_key_from_date,
     quarter_label_from_key,
 )
@@ -44,33 +45,46 @@ def _board_column(task: Task) -> str | None:
     return str(value).strip() if value else None
 
 
-def _task_plan_meta(task: Task) -> tuple[date | None, str | None, str | None]:
+def _task_plan_meta(task: Task) -> tuple[date | None, str | None, str | None, str | None]:
     extra = _extra(task)
     planned_raw = extra.get("planned_date")
     quarter_key = extra.get("plan_quarter")
+    planned_status = extra.get("planned_status")
     planned: date | None = None
     if isinstance(planned_raw, str) and planned_raw:
         try:
             planned = date.fromisoformat(planned_raw)
         except ValueError:
             planned = None
-    if planned is None:
+
+    is_tbd = planned_status == "tbd" or quarter_key == PLAN_QUARTER_TBD
+    if not is_tbd and planned is None:
         iteration_path = extra.get("iteration_path")
         if isinstance(iteration_path, str):
-            planned = parse_planned_date_from_iteration(iteration_path)
+            plan = parse_iteration_plan(iteration_path)
+            is_tbd = plan.is_tbd
+            planned = plan.planned_date
+            if not quarter_key:
+                quarter_key = plan.quarter_key
+
+    if is_tbd:
+        return None, PLAN_QUARTER_TBD, "TBD", "TBD"
+
     if planned and not quarter_key:
         quarter_key = quarter_key_from_date(planned)
     quarter_key_str = str(quarter_key).strip() if quarter_key else None
     quarter_label = quarter_label_from_key(quarter_key_str) if quarter_key_str else None
-    return planned, quarter_key_str, quarter_label
+    return planned, quarter_key_str, quarter_label, None
 
 
 def _matches_quarter(task: Task, quarter: str | None) -> bool:
     if not quarter:
         return True
-    _, quarter_key, _ = _task_plan_meta(task)
+    _, quarter_key, _, _ = _task_plan_meta(task)
     if quarter == "__none__":
         return quarter_key is None
+    if quarter == PLAN_QUARTER_TBD:
+        return quarter_key == PLAN_QUARTER_TBD
     return quarter_key == quarter
 
 
@@ -104,7 +118,9 @@ def _sort_key(task: Task, sort: str):
     if sort == "release_date":
         return task.release_date or date.min
     if sort == "planned_date":
-        planned, _, _ = _task_plan_meta(task)
+        planned, quarter_key, _, _ = _task_plan_meta(task)
+        if quarter_key == PLAN_QUARTER_TBD:
+            return date(1900, 1, 1)
         return planned or date.min
     if sort == "start_date":
         return _effective_start(task) or date.min
@@ -128,7 +144,7 @@ def _board_name_by_code(code: str | None) -> str | None:
 def _collect_available_quarters(rows: list[Task]) -> list[QuarterOptionOut]:
     keys: set[str] = set()
     for row in rows:
-        _, quarter_key, _ = _task_plan_meta(row)
+        _, quarter_key, _, _ = _task_plan_meta(row)
         if quarter_key:
             keys.add(quarter_key)
     return [
@@ -231,23 +247,31 @@ def load_change_requests(
     for row in filtered:
         linked = errors_by_parent.get(row.id, [])
         board_code_value = _extra(row).get("board_code")
-        planned_date, _, quarter_label = _task_plan_meta(row)
+        planned_date, _, quarter_label, planned_label = _task_plan_meta(row)
         items.append(
             ChangeRequestOut(
                 id=str(row.id),
                 number=row.external_id,
                 title=row.title,
+                url=row.external_url,
                 status=row.source_status,
                 boardColumn=_board_column(row),
                 startDate=_effective_start(row),
                 releaseDate=row.release_date,
                 plannedDate=planned_date,
+                plannedLabel=planned_label,
                 planQuarter=quarter_label,
                 createdAt=row.created_at,
                 boardCode=str(board_code_value) if board_code_value else None,
                 boardName=row.source_team or _board_name_by_code(str(board_code_value) if board_code_value else None),
                 errors=[
-                    LinkedErrorOut(id=e.external_id, title=e.title, status=e.source_status) for e in linked
+                    LinkedErrorOut(
+                        id=e.external_id,
+                        title=e.title,
+                        status=e.source_status,
+                        url=e.external_url,
+                    )
+                    for e in linked
                 ],
             )
         )
@@ -298,7 +322,7 @@ def export_csv(db: Session, *, board_code: str | None = None) -> str:
                     item.boardColumn or "",
                     item.startDate.isoformat() if item.startDate else "",
                     item.releaseDate.isoformat() if item.releaseDate else "",
-                    item.plannedDate.isoformat() if item.plannedDate else "",
+                    item.plannedLabel or (item.plannedDate.isoformat() if item.plannedDate else ""),
                     item.planQuarter or "",
                     item.boardName or "",
                     errors_text,
@@ -319,7 +343,7 @@ def export_csv(db: Session, *, board_code: str | None = None) -> str:
                         item.boardColumn or "",
                         item.startDate.isoformat() if item.startDate else "",
                         item.releaseDate.isoformat() if item.releaseDate else "",
-                        item.plannedDate.isoformat() if item.plannedDate else "",
+                        item.plannedLabel or (item.plannedDate.isoformat() if item.plannedDate else ""),
                         item.planQuarter or "",
                         item.boardName or "",
                         errors_text,

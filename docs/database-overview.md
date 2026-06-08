@@ -44,7 +44,7 @@
 | Код | AreaPath | Теги WIQL | Отображаемое имя |
 |-----|----------|-----------|------------------|
 | `digital_streams_b2b` | `Tele2\Digital\Streams\B2b` | — | Digital Streams B2b |
-| `be_t2_team` | `BE-T2\Area\BE Analytics` | `b2b_product` | BE Analytics |
+| `be_t2_team` | `BE-T2\BE Analytics` | — | BE Analytics |
 
 Фильтр «Все доски» — объединение обеих досок.
 

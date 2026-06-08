@@ -11,7 +11,7 @@ from app.boards import BOARDS, BoardConfig, boards_for_sync
 from app.config import settings
 from app.db import SessionLocal, close_db_session
 from app.json_utils import as_work_item_list
-from app.iteration_plan import parse_planned_date_from_iteration, quarter_key_from_date
+from app.iteration_plan import parse_iteration_plan
 from app.linked_errors import is_error_work_item_type
 from app.models import Project, SourceSystem, SyncRun, Task, Team
 from app.tfs_client import TfsClient, date_from_field_list, parse_tfs_datetime
@@ -78,7 +78,7 @@ def prune_stale_board_tasks(
     synced_external_ids: set[str],
 ) -> int:
     """Удаляет из БД ЗНИ/ошибки доски, не попавшие в текущую выгрузку."""
-    board_names = {board.name, board.display_name, "BE-T2 Team"}
+    board_names = {board.name, board.display_name, "BE-T2 Team", "BE Analytics"}
     stale_rows = list(
         db.scalars(
             select(Task).where(
@@ -281,7 +281,7 @@ async def sync_board(
             closed = parse_tfs_datetime(fields.get("Microsoft.VSTS.Common.ClosedDate"))
 
             iteration_path = fields.get("System.IterationPath")
-            planned_date = parse_planned_date_from_iteration(
+            iteration_plan = parse_iteration_plan(
                 str(iteration_path) if iteration_path not in (None, "") else None
             )
             extra_json: dict[str, Any] = {
@@ -291,9 +291,13 @@ async def sync_board(
                 "tags": work_item_tags(fields),
                 "iteration_path": iteration_path,
             }
-            if planned_date:
-                extra_json["planned_date"] = planned_date.isoformat()
-                extra_json["plan_quarter"] = quarter_key_from_date(planned_date)
+            if iteration_plan.is_tbd:
+                extra_json["planned_status"] = "tbd"
+                extra_json["plan_quarter"] = iteration_plan.quarter_key
+            elif iteration_plan.planned_date:
+                extra_json["planned_status"] = "date"
+                extra_json["planned_date"] = iteration_plan.planned_date.isoformat()
+                extra_json["plan_quarter"] = iteration_plan.quarter_key
 
             if settings.tfs_fetch_pilot_history:
                 existing = db.scalar(

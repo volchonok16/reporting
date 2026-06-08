@@ -421,9 +421,9 @@
 | `System.IterationPath` | `extra_json.iteration_path` | Итерация (план релиза) |
 | `System.Tags` | `extra_json.tags` | Теги TFS (разделитель `;`) |
 
-**Планируемая дата** берётся из листа `System.IterationPath` (напр. `Tele2\Общие\Digital\2026\2026.08.11.0-R` → `2026-08-11`). **План квартала** — `Q3 2026` по этой дате; фильтр `quarter` в API дашборда.
+**Планируемая дата** — из листа `System.IterationPath`: `2026.08.11.0-R` → `2026-08-11`; если в пути есть **TBD** — в UI выводится `TBD`. **План квартала** — `Q3 2026` или `TBD`; фильтр `quarter` в API (`TBD`, `2026-Q3`, …).
 
-**Доски приложения:** Digital Streams B2b (`Tele2\Digital\Streams\B2b`); BE Analytics (`BE-T2\Area\BE Analytics`, тег `b2b_product`).
+**Доски приложения:** Digital Streams B2b (`Tele2\Digital\Streams\B2b`); BE Analytics (`BE-T2\BE Analytics`, команда TFS `BE Analytics`).
 
 После синхронизации доски записи `task` с тем же `board_code`, не попавшие в выгрузку, удаляются (очистка устаревших ЗНИ/ошибок).
 

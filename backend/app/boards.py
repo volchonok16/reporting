@@ -45,8 +45,7 @@ BOARDS: list[BoardConfig] = [
         project="BE-T2",
         project_id="03cc4df6-e5d2-43a6-9f9a-024573edff5a",
         team_id="cbc10e7f-8dfa-479f-9a31-0fa6258a1f9f",
-        area_path=r"BE-T2\Area\BE Analytics",
-        sync_tags=("b2b_product",),
+        area_path=r"BE-T2\BE Analytics",
     ),
 ]
 
