@@ -312,18 +312,19 @@ export default function Dashboard({ onLogout }: DashboardProps) {
           {loading ? ' · загрузка…' : ''}
         </p>
         <div className="table">
-          <div className={`table-head${data?.allBoards ? ' table-head-all' : ''}`}>
-            <div>Номер ЗНИ</div>
-            {data?.allBoards && <div>Доска</div>}
-            <div>ЗНИ</div>
-            <div>Дата начала</div>
-            <div>Целевая дата</div>
-            <div>План. дата</div>
-            <div>План квартала</div>
-            <div>План. релиз</div>
-            <div>Статус</div>
-          </div>
-          <div className="table-body">
+          <div className="table-scroll">
+            <div className={`table-head${data?.allBoards ? ' table-head-all' : ''}`}>
+              <div>Номер ЗНИ</div>
+              {data?.allBoards && <div>Доска</div>}
+              <div>ЗНИ</div>
+              <div>Дата начала</div>
+              <div>Целевая дата</div>
+              <div>План. дата</div>
+              <div>План квартала</div>
+              <div>План. релиз</div>
+              <div>Статус</div>
+            </div>
+            <div className="table-body">
             {data?.items.map((item) => (
               <div
                 className={`table-row${data.allBoards ? ' table-row-all' : ''}`}
@@ -374,6 +375,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             {!loading && data?.items.length === 0 && (
               <div className="table-empty">Нет данных. Нажмите «Обновить из TFS» для загрузки.</div>
             )}
+            </div>
           </div>
         </div>
       </section>
