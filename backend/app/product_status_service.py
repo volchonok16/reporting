@@ -16,6 +16,19 @@ logger = logging.getLogger(__name__)
 _SHEET_META_PATTERN = re.compile(
     r'"sheetId":(\d+),"title":"((?:\\.|[^"\\])*)"',
 )
+_TAB_CAPTION_PATTERN = re.compile(r'docs-sheet-tab-caption">([^<]+)</div>')
+_GID_PATTERN = re.compile(r"gid=(\d+)")
+
+_DEFAULT_SHEETS_BY_SPREADSHEET: dict[str, list[dict[str, str]]] = {
+    "1zTxzUqa1p6wFUjmk-8_2czfsJaSm3eTrNGazN0oFKqI": [
+        {"gid": "0", "name": "Продуктовый офис: CORE"},
+        {"gid": "102191664", "name": "Продуктовый офис: M2M / IoT"},
+        {"gid": "1512199647", "name": "Продуктовый офис: SMS"},
+        {"gid": "1699821818", "name": "Продуктовый офис: VOICE"},
+        {"gid": "1909385714", "name": "Продуктовый офис: Перспективные продукты"},
+        {"gid": "128901598", "name": "Продуктовый офис: Продуктовый маркетинг"},
+    ],
+}
 
 
 def _spreadsheet_id() -> str:
@@ -43,27 +56,77 @@ def _unescape_google_title(value: str) -> str:
     return value.replace("\\u0026", "&").replace('\\"', '"').replace("\\\\", "\\")
 
 
+def _unique_gids(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    unique: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        unique.append(value)
+    return unique
+
+
+def _pair_captions_with_gids(
+    captions: list[str],
+    gids: list[str],
+) -> list[dict[str, str]]:
+    if captions and gids and len(captions) == len(gids):
+        return [
+            {"gid": gid, "name": _unescape_google_title(name)}
+            for gid, name in zip(gids, captions, strict=True)
+        ]
+
+    if gids:
+        return [
+            {
+                "gid": gid,
+                "name": captions[index] if index < len(captions) else f"Лист {index + 1}",
+            }
+            for index, gid in enumerate(gids)
+        ]
+
+    return []
+
+
 def discover_sheet_tabs(spreadsheet_id: str, *, client: httpx.Client) -> list[dict[str, str]]:
+    captions: list[str] = []
+    gids: list[str] = []
+
     edit_url = (
         "https://docs.google.com/spreadsheets/d/"
         f"{spreadsheet_id}/edit?hl=ru"
     )
+    htmlview_url = (
+        "https://docs.google.com/spreadsheets/d/"
+        f"{spreadsheet_id}/htmlview"
+    )
+
     try:
         response = client.get(edit_url)
         response.raise_for_status()
+        captions = _TAB_CAPTION_PATTERN.findall(response.text)
+        for gid, title in _SHEET_META_PATTERN.findall(response.text):
+            gids.append(gid)
+            if title and not captions:
+                captions.append(_unescape_google_title(title))
     except httpx.HTTPError:
-        logger.warning("product_status_sheet_discovery_failed id=%s", spreadsheet_id)
-        return []
+        logger.warning("product_status_edit_fetch_failed id=%s", spreadsheet_id)
 
-    sheets: list[dict[str, str]] = []
-    seen: set[str] = set()
-    for gid, title in _SHEET_META_PATTERN.findall(response.text):
-        if gid in seen:
-            continue
-        seen.add(gid)
-        sheets.append({"gid": gid, "name": _unescape_google_title(title)})
+    if not gids:
+        try:
+            response = client.get(htmlview_url)
+            response.raise_for_status()
+            gids = _unique_gids(_GID_PATTERN.findall(response.text))
+        except httpx.HTTPError:
+            logger.warning("product_status_htmlview_fetch_failed id=%s", spreadsheet_id)
 
-    return sheets
+    paired = _pair_captions_with_gids(captions, gids)
+    if paired:
+        return paired
+
+    logger.warning("product_status_sheet_discovery_empty id=%s", spreadsheet_id)
+    return []
 
 
 def parse_sheets_config(raw: str) -> list[dict[str, str]]:
@@ -103,9 +166,14 @@ def resolve_sheet_tabs(*, client: httpx.Client) -> list[dict[str, str]]:
     if configured:
         return configured
 
-    discovered = discover_sheet_tabs(_spreadsheet_id(), client=client)
+    spreadsheet_id = _spreadsheet_id()
+    discovered = discover_sheet_tabs(spreadsheet_id, client=client)
     if discovered:
         return discovered
+
+    default_sheets = _DEFAULT_SHEETS_BY_SPREADSHEET.get(spreadsheet_id, [])
+    if default_sheets:
+        return default_sheets
 
     parsed = urlparse(settings.b2b_product_status_sheet_url.strip())
     query_gid = parse_qs(parsed.query).get("gid", ["0"])[0]
@@ -192,5 +260,6 @@ def load_b2b_product_status() -> ProductStatusB2BOut:
     return ProductStatusB2BOut(
         title="Статус продукта B2B",
         sourceUrl=settings.b2b_product_status_sheet_public_url or None,
+        presentationReferenceUrl=settings.b2b_product_status_presentation_reference_url or None,
         sheets=sheets,
     )

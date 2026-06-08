@@ -1,7 +1,9 @@
 from app.product_status_service import (
+    _pair_captions_with_gids,
     discover_sheet_tabs,
     parse_sheet_csv,
     parse_sheets_config,
+    resolve_sheet_tabs,
 )
 
 
@@ -40,24 +42,61 @@ def test_parse_sheets_config_compact() -> None:
     ]
 
 
-def test_discover_sheet_tabs_from_html() -> None:
-    html = (
-        '{"sheetId":0,"title":"Статус продукта"},'
-        '{"sheetId":123456789,"title":"Планы 2026"}'
+def test_pair_captions_with_gids() -> None:
+    paired = _pair_captions_with_gids(
+        ["Продуктовый офис: CORE", "Продуктовый офис: SMS"],
+        ["0", "1512199647"],
     )
+    assert paired == [
+        {"gid": "0", "name": "Продуктовый офис: CORE"},
+        {"gid": "1512199647", "name": "Продуктовый офис: SMS"},
+    ]
+
+
+def test_discover_sheet_tabs_from_html() -> None:
+    edit_html = (
+        '<div class="docs-sheet-tab-caption">Продуктовый офис: CORE</div>'
+        '<div class="docs-sheet-tab-caption">Продуктовый офис: SMS</div>'
+    )
+    htmlview_html = '<a href="#gid=0">one</a><a href="#gid=1512199647">two</a>'
 
     class FakeResponse:
-        text = html
+        def __init__(self, text: str) -> None:
+            self.text = text
 
         def raise_for_status(self) -> None:
             return None
 
     class FakeClient:
-        def get(self, _url: str) -> FakeResponse:
-            return FakeResponse()
+        def get(self, url: str) -> FakeResponse:
+            if url.endswith("/htmlview"):
+                return FakeResponse(htmlview_html)
+            return FakeResponse(edit_html)
 
     sheets = discover_sheet_tabs("spreadsheet-id", client=FakeClient())  # type: ignore[arg-type]
     assert sheets == [
-        {"gid": "0", "name": "Статус продукта"},
-        {"gid": "123456789", "name": "Планы 2026"},
+        {"gid": "0", "name": "Продуктовый офис: CORE"},
+        {"gid": "1512199647", "name": "Продуктовый офис: SMS"},
     ]
+
+
+def test_resolve_sheet_tabs_uses_known_defaults(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.product_status_service.settings.b2b_product_status_sheets",
+        "",
+    )
+    monkeypatch.setattr(
+        "app.product_status_service.settings.b2b_product_status_spreadsheet_id",
+        "1zTxzUqa1p6wFUjmk-8_2czfsJaSm3eTrNGazN0oFKqI",
+    )
+    monkeypatch.setattr(
+        "app.product_status_service.discover_sheet_tabs",
+        lambda *_args, **_kwargs: [],
+    )
+
+    class EmptyClient:
+        pass
+
+    sheets = resolve_sheet_tabs(client=EmptyClient())  # type: ignore[arg-type]
+    assert len(sheets) == 6
+    assert sheets[0]["name"] == "Продуктовый офис: CORE"

@@ -105,7 +105,15 @@ class Settings(BaseSettings):
     b2b_product_status_presentation_template: str = Field(
         default="",
         alias="B2B_PRODUCT_STATUS_PRESENTATION_TEMPLATE",
-        description="Путь к шаблону .pptx для выгрузки презентации (пусто — backend/assets).",
+        description="Путь к PPTX-шаблону презентации. Пусто — backend/assets/b2b_product_status_template.pptx.",
+    )
+    b2b_product_status_presentation_reference_url: str = Field(
+        default=(
+            "https://docs.google.com/presentation/d/"
+            "1EDejas495X7XC3-pOW9QID_ooECrqNRYJBfrUpApCx4/edit"
+        ),
+        alias="B2B_PRODUCT_STATUS_PRESENTATION_REFERENCE_URL",
+        description="Эталонная Google Slides-презентация (для ссылки в UI).",
     )
 
     @computed_field

@@ -98,6 +98,7 @@ class ProductStatusSheetOut(BaseModel):
 class ProductStatusB2BOut(BaseModel):
     title: str
     sourceUrl: str | None = None
+    presentationReferenceUrl: str | None = None
     sheets: list[ProductStatusSheetOut]
 
 
