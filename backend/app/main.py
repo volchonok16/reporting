@@ -12,8 +12,8 @@ from app.boards import ALL_BOARDS_CODE, BOARDS, boards_for_sync
 from app.config import settings
 from app.db import ensure_auth_session_table, get_db
 from app.models import SyncRun
-from app.product_status_presentation import generate_b2b_product_status_presentation
 from app.product_status_service import load_b2b_product_status
+from app.product_status_presentation import generate_b2b_product_status_presentation
 from app.report_service import export_csv, load_change_requests
 from app.schemas import (
     AuthDefaultsOut,

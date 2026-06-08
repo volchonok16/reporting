@@ -12,6 +12,7 @@ type ProductStatusSheet = {
 type ProductStatusData = {
   title: string
   sourceUrl?: string | null
+  presentationReferenceUrl?: string | null
   sheets: ProductStatusSheet[]
 }
 
@@ -56,7 +57,7 @@ export default function ProductStatusB2B() {
       const blob = await response.blob()
       const disposition = response.headers.get('Content-Disposition') ?? ''
       const match = disposition.match(/filename="([^"]+)"/)
-      const filename = match?.[1] ?? 'status-b2b.pptx'
+      const filename = match?.[1] ?? 'status-produkta-b2b.pptx'
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
@@ -94,6 +95,19 @@ export default function ProductStatusB2B() {
                 </a>
               </>
             ) : null}
+            {data?.presentationReferenceUrl ? (
+              <>
+                {' · '}
+                <a
+                  className="zni-link"
+                  href={data.presentationReferenceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Эталон в Google Slides
+                </a>
+              </>
+            ) : null}
           </p>
         </div>
         <div className="product-status-toolbar-actions">
@@ -101,9 +115,9 @@ export default function ProductStatusB2B() {
             type="button"
             className="btn-secondary"
             onClick={() => void handleExportPresentation()}
-            disabled={loading || exporting || !data?.sheets.length}
+            disabled={loading || exporting || (data?.sheets.length ?? 0) === 0}
           >
-            {exporting ? 'Формирование…' : 'Выгрузить презентацию'}
+            {exporting ? 'Формирование…' : 'Скачать презентацию'}
           </button>
           <button type="button" className="btn-secondary" onClick={() => void loadData()} disabled={loading}>
             {loading ? 'Загрузка…' : 'Обновить'}
