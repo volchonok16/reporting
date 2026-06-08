@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { apiFetch, getSessionId } from './api'
-import Dashboard from './Dashboard'
 import Login from './Login'
+import WorkbookApp from './WorkbookApp'
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null)
@@ -26,5 +26,5 @@ export default function App() {
     return <Login onSuccess={() => setAuthenticated(true)} />
   }
 
-  return <Dashboard onLogout={() => setAuthenticated(false)} />
+  return <WorkbookApp onLogout={() => setAuthenticated(false)} />
 }

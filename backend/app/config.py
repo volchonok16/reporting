@@ -76,6 +76,19 @@ class Settings(BaseSettings):
         alias="APP_AUTH_USERS",
         description="Пользователи приложения: login:password (по одному на строку).",
     )
+    b2b_product_status_sheet_url: str = Field(
+        default=(
+            "https://docs.google.com/spreadsheets/d/"
+            "1zTxzUqa1p6wFUjmk-8_2czfsJaSm3eTrNGazN0oFKqI/export?format=csv&gid=0"
+        ),
+        alias="B2B_PRODUCT_STATUS_SHEET_URL",
+        description="CSV-экспорт Google Sheets для вкладки «Статус продукта B2B».",
+    )
+    b2b_product_status_sheet_public_url: str = Field(
+        default="https://docs.google.com/spreadsheets/d/1zTxzUqa1p6wFUjmk-8_2czfsJaSm3eTrNGazN0oFKqI/edit",
+        alias="B2B_PRODUCT_STATUS_SHEET_PUBLIC_URL",
+        description="Ссылка на исходную таблицу (для кнопки «Открыть в Google Sheets»).",
+    )
 
     @computed_field
     @property

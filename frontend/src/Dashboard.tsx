@@ -234,22 +234,6 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     <div className="app">
       <header className="toolbar">
         <div className="toolbar-left">
-          <div className="board-filter">
-            <span className="board-filter-label">Система digital</span>
-            <div className="board-filter-buttons" role="group" aria-label="Доска">
-              {boards.map((board) => (
-                <button
-                  key={board.code}
-                  type="button"
-                  className={`board-filter-btn${boardCode === board.code ? ' board-filter-btn-active' : ''}`}
-                  onClick={() => setBoardCode(board.code)}
-                >
-                  {boardButtonLabel(board.code, board.displayName)}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <label className="search-wrap">
             <input
               type="search"
@@ -322,6 +306,24 @@ export default function Dashboard({ onLogout }: DashboardProps) {
 
       {syncProgress && <p className="banner-info">{syncProgress}</p>}
       {error && <p className="banner-error">{error}</p>}
+
+      <section className="board-filter-bar">
+        <div className="board-filter">
+          <span className="board-filter-label">Система digital</span>
+          <div className="board-filter-buttons" role="group" aria-label="Доска">
+            {boards.map((board) => (
+              <button
+                key={board.code}
+                type="button"
+                className={`board-filter-btn${boardCode === board.code ? ' board-filter-btn-active' : ''}`}
+                onClick={() => setBoardCode(board.code)}
+              >
+                {boardButtonLabel(board.code, board.displayName)}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
 
       <section className="metrics">
         <button

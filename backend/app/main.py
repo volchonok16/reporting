@@ -12,12 +12,14 @@ from app.boards import ALL_BOARDS_CODE, BOARDS, boards_for_sync
 from app.config import settings
 from app.db import ensure_auth_session_table, get_db
 from app.models import SyncRun
+from app.product_status_service import load_b2b_product_status
 from app.report_service import export_csv, load_change_requests
 from app.schemas import (
     AuthDefaultsOut,
     AuthLoginOut,
     BoardOut,
     DashboardOut,
+    ProductStatusB2BOut,
     SyncRunOut,
     TfsAuthIn,
     TfsAuthStatusOut,
@@ -150,6 +152,11 @@ def dashboard(
         quarter=quarter,
         metric=metric,
     )
+
+
+@app.get("/api/product-status/b2b", response_model=ProductStatusB2BOut)
+def product_status_b2b() -> ProductStatusB2BOut:
+    return load_b2b_product_status()
 
 
 @app.get("/api/export")
