@@ -30,7 +30,7 @@ docker-compose -f docker-compose.yml -f docker-compose.prod.yml logs -f backend
 
 Старый `docker-compose` 1.29 несовместим с новым Docker Engine: падает при **пересоздании** контейнеров (`ContainerConfig`) и в фоновом потоке логов (`KeyError: 'id'` в `watch_events`).
 
-Скрипт `scripts/compose-up.sh` обходит это для v1 (purge → `create` → `start` вместо `up`). Всё равно лучше перейти на Compose v2.
+Скрипт `scripts/compose-up.sh` обходит `ContainerConfig` для v1: сначала `docker rm` старых контейнеров, затем обычный `up -d`. Всё равно лучше перейти на Compose v2.
 
 **Быстрый фикс — пересобрать frontend:**
 

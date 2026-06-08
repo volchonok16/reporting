@@ -57,26 +57,7 @@ if uses_compose_v1; then
     done
   fi
 
-  if [[ "$BUILD" -eq 1 ]]; then
-    if [[ ${#SERVICES[@]} -gt 0 ]]; then
-      echo "==> ${COMPOSE[*]} build ${SERVICES[*]}"
-      "${COMPOSE[@]}" build "${SERVICES[@]}"
-    else
-      echo "==> ${COMPOSE[*]} build"
-      "${COMPOSE[@]}" build
-    fi
-  fi
-
-  CREATE_ARGS=(create)
-  [[ ${#SERVICES[@]} -gt 0 ]] && CREATE_ARGS+=(--no-deps "${SERVICES[@]}")
-  echo "==> ${COMPOSE[*]} ${CREATE_ARGS[*]}"
-  "${COMPOSE[@]}" "${CREATE_ARGS[@]}"
-
-  START_ARGS=(start)
-  [[ ${#SERVICES[@]} -gt 0 ]] && START_ARGS+=("${SERVICES[@]}")
-  echo "==> ${COMPOSE[*]} ${START_ARGS[*]}"
-  "${COMPOSE[@]}" "${START_ARGS[@]}"
-  exit 0
+  echo "==> docker-compose v1: после purge используем up -d (без create/start)"
 fi
 
 ARGS=(up -d)
