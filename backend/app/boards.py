@@ -18,6 +18,7 @@ class BoardConfig:
     exclude_sync_tags: tuple[str, ...] = ()
     exclude_sync_states: tuple[str, ...] = ()
     launching_soon_states: tuple[str, ...] = ()
+    launching_soon_triage_values: tuple[str, ...] = ()
     launched_states: tuple[str, ...] = ()
     base_url: str = settings.tfs_base_url
 
@@ -58,6 +59,9 @@ BOARDS: list[BoardConfig] = [
         sync_tags=("b2b_product",),
         error_sync_tags=("FE B2B", "microservice"),
         exclude_sync_states=("Rejected",),
+        launching_soon_states=("UAT Prod", "Implementation Prod"),
+        launching_soon_triage_values=("в Работе",),
+        launched_states=("Closed",),
     ),
 ]
 

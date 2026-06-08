@@ -590,8 +590,8 @@
 | Метрика | Условие подсчёта |
 |---------|------------------|
 | **Всего задач** | `task_type = change_request`, фильтр по доске (`extra_json.area_path` / `team_id`) |
-| **Скоро запуск** | Digital Streams B2b: статус workflow `UAT`; BE Analytics: `release_date` (`TargetDate`) в окне `LAUNCHING_SOON_DAYS` |
-| **Запущено** | Digital Streams B2b: статус `Pilot` / `Пилот`; BE Analytics: переход в пилот в выбранном периоде дат (`extra_json.pilot_transitions`) |
+| **Скоро запуск** | Digital Streams B2b: статус `UAT`; BE Analytics: `UAT Prod`, `Implementation Prod` или Triage `в Работе` (`extra_json.triage`) |
+| **Запущено** | Digital Streams B2b: статус `Pilot` / `Пилот`; BE Analytics: статус `Closed` |
 | **Ошибок** | `task_type = error`, `parent_task_id` → ЗНИ той же доски |
 
 ### Синхронизация TFS (оптимизация)

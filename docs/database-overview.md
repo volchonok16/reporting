@@ -53,8 +53,8 @@
 | Карточка | Источник | Примечание |
 |----------|----------|------------|
 | Всего задач | `task` где `task_type = change_request` | По выбранной доске |
-| Скоро запуск | Digital: статус `UAT`; BE Analytics: `release_date` в окне | `TargetDate` / `System.State` |
-| Запущено | Digital: статус `Pilot`; BE Analytics: `pilot_transitions` в периоде дат | workflow / история TFS |
+| Скоро запуск | Digital: `UAT`; BE Analytics: `UAT Prod`, `Implementation Prod` или Triage `в Работе` | `System.State` / `Triage` |
+| Запущено | Digital: `Pilot`; BE Analytics: `Closed` | workflow |
 | Ошибок | `task` где `task_type = error` | Связаны с ЗНИ через `parent_task_id` |
 
 ### REST API (основное)

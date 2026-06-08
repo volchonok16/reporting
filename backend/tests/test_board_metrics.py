@@ -49,20 +49,36 @@ def test_digital_pilot_is_launched() -> None:
     assert count_launched_rows([task], date_from=None, date_to=None) == 1
 
 
-def test_be_analytics_uses_release_date_for_launching_soon() -> None:
+def test_be_analytics_uat_prod_is_launching_soon() -> None:
     today = date(2026, 6, 8)
-    horizon = date(2026, 7, 8)
-    soon = _task(
+    task = _task(
         board_code="be_t2_team",
         source_team="BE Analytics",
-        source_status="Development",
-        release_date=date(2026, 6, 20),
+        source_status="UAT Prod",
     )
-    later = _task(
-        board_code="be_t2_team",
+    assert is_launching_soon(task, today=today, horizon=today)
+
+
+def test_be_analytics_triage_in_work_is_launching_soon() -> None:
+    today = date(2026, 6, 8)
+    task = Task(
+        source_system_id=1,
+        project_id=1,
+        external_id="2",
+        title="Test",
+        task_type="change_request",
         source_team="BE Analytics",
         source_status="Development",
-        release_date=date(2026, 12, 1),
+        extra_json={"board_code": "be_t2_team", "triage": "в Работе"},
     )
-    assert is_launching_soon(soon, today=today, horizon=horizon)
-    assert not is_launching_soon(later, today=today, horizon=horizon)
+    assert is_launching_soon(task, today=today, horizon=today)
+
+
+def test_be_analytics_closed_is_launched() -> None:
+    task = _task(
+        board_code="be_t2_team",
+        source_team="BE Analytics",
+        source_status="Closed",
+    )
+    assert is_launched(task, date_from=None, date_to=None)
+    assert count_launched_rows([task], date_from=None, date_to=None) == 1

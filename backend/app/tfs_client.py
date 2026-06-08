@@ -307,6 +307,7 @@ class TfsClient:
                 "Microsoft.VSTS.Scheduling.Plannedreleasedate",
                 "Microsoft.VSTS.Common.ClosedDate",
                 "Microsoft.VSTS.Common.Severity",
+                "Microsoft.VSTS.Common.Triage",
                 *settings.scheduling_batch_field_list,
             ]
         )

@@ -62,6 +62,7 @@
 | planned_status | `tbd` / `date` | `tbd` — дата в плане неизвестна |
 | plan_quarter | из planned_date или `TBD` | Ключ квартала (`2026-Q3` или `TBD`) |
 | planned_release | Logrocon.FoundinRelease / Logrocon.Release | Плановый релиз (`2026.06.02.0-R` или имя релиза) |
+| triage | Microsoft.VSTS.Common.Triage | Triage ЗНИ (для метрики «Скоро запуск» на BE Analytics) |
 | pilot_transitions | TFS updates | Переходы в «Пилот»: `[{at, status}]` |
 
 ## auth_session — сессия веб-приложения
@@ -114,8 +115,8 @@
 | Метрика | Таблица / поле |
 |---------|----------------|
 | Всего ЗНИ | `task` · `task_type = change_request` |
-| Скоро запуск | Digital: `source_status` = `UAT`; BE Analytics: `release_date` |
-| Запущено | Digital: `source_status` = `Pilot`; BE Analytics: `pilot_transitions` в периоде дат |
+| Скоро запуск | Digital: `UAT`; BE Analytics: `UAT Prod` / `Implementation Prod` / Triage `в Работе` |
+| Запущено | Digital: `Pilot`; BE Analytics: `Closed` |
 | Ошибок | `task` · `task_type = error` · `parent_task_id` |
 
 ## sync_run — аудит синхронизации

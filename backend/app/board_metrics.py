@@ -38,10 +38,30 @@ def matches_board_states(task: Task, states: tuple[str, ...]) -> bool:
     return bool(task_status_tokens(task) & allowed)
 
 
+def task_triage_value(task: Task) -> str | None:
+    extra = task.extra_json if isinstance(task.extra_json, dict) else {}
+    triage = extra.get("triage")
+    if triage in (None, ""):
+        return None
+    return str(triage).strip()
+
+
+def matches_board_triage(task: Task, triage_values: tuple[str, ...]) -> bool:
+    if not triage_values:
+        return False
+    triage = task_triage_value(task)
+    if not triage:
+        return False
+    allowed = {value.casefold() for value in triage_values}
+    return triage.casefold() in allowed
+
+
 def is_launching_soon(task: Task, *, today: date, horizon: date) -> bool:
     board = board_for_task(task)
-    if board and board.launching_soon_states:
-        return matches_board_states(task, board.launching_soon_states)
+    if board and (board.launching_soon_states or board.launching_soon_triage_values):
+        state_match = matches_board_states(task, board.launching_soon_states)
+        triage_match = matches_board_triage(task, board.launching_soon_triage_values)
+        return state_match or triage_match
     return bool(
         task.release_date
         and today <= task.release_date <= horizon

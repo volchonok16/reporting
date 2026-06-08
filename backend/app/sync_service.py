@@ -304,6 +304,7 @@ async def sync_board(
             iteration_plan = parse_iteration_plan(
                 str(iteration_path) if iteration_path not in (None, "") else None
             )
+            triage = fields.get("Microsoft.VSTS.Common.Triage")
             extra_json: dict[str, Any] = {
                 "area_path": fields.get("System.AreaPath"),
                 "board_column": fields.get("System.BoardColumn"),
@@ -311,6 +312,8 @@ async def sync_board(
                 "tags": work_item_tags(fields),
                 "iteration_path": iteration_path,
             }
+            if triage not in (None, ""):
+                extra_json["triage"] = str(triage).strip()
             if iteration_plan.is_tbd:
                 extra_json["planned_status"] = "tbd"
                 extra_json["plan_quarter"] = iteration_plan.quarter_key
