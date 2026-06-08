@@ -96,3 +96,7 @@ def count_launched_rows(
     date_to: date | None,
 ) -> int:
     return sum(1 for row in rows if is_launched(row, date_from=date_from, date_to=date_to))
+
+
+def has_linked_errors(task: Task, errors_by_parent: dict[int, list[Task]]) -> bool:
+    return bool(errors_by_parent.get(task.id))

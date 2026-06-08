@@ -63,8 +63,17 @@ function formatPlannedDate(item: ChangeRequest): string {
   return formatDate(item.plannedDate)
 }
 
+type MetricFilter = '' | 'launching_soon' | 'launched' | 'errors'
+
 type DashboardProps = {
   onLogout: () => void
+}
+
+const METRIC_LABELS: Record<MetricFilter, string> = {
+  '': 'Все задачи',
+  launching_soon: 'Скоро запуск',
+  launched: 'Запущено',
+  errors: 'С ошибками',
 }
 
 const SORT_OPTIONS = [
@@ -86,6 +95,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const [dateTo, setDateTo] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [quarterFilter, setQuarterFilter] = useState('')
+  const [metricFilter, setMetricFilter] = useState<MetricFilter>('')
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -101,6 +111,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   useEffect(() => {
     setStatusFilter('')
     setQuarterFilter('')
+    setMetricFilter('')
   }, [boardCode])
 
   const loadDashboard = useCallback(async () => {
@@ -113,6 +124,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     if (dateTo) params.set('date_to', dateTo)
     if (statusFilter) params.set('status', statusFilter)
     if (quarterFilter) params.set('quarter', quarterFilter)
+    if (metricFilter) params.set('metric', metricFilter)
     try {
       const payload = await getJson<DashboardData>(`/api/dashboard?${params}`)
       setData(payload)
@@ -121,7 +133,11 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     } finally {
       setLoading(false)
     }
-  }, [boardCode, search, sort, dateFrom, dateTo, statusFilter, quarterFilter])
+  }, [boardCode, search, sort, dateFrom, dateTo, statusFilter, quarterFilter, metricFilter])
+
+  const toggleMetricFilter = (value: MetricFilter) => {
+    setMetricFilter((current) => (current === value ? '' : value))
+  }
 
   useEffect(() => {
     void loadDashboard()
@@ -287,27 +303,44 @@ export default function Dashboard({ onLogout }: DashboardProps) {
       {error && <p className="banner-error">{error}</p>}
 
       <section className="metrics">
-        <article className="metric-card metric-total">
+        <button
+          type="button"
+          className={`metric-card metric-total${metricFilter === '' ? ' metric-card-active' : ''}`}
+          onClick={() => toggleMetricFilter('')}
+        >
           <span className="metric-label">Всего задач</span>
           <strong className="metric-value">{data?.metrics.totalTasks ?? '—'}</strong>
-        </article>
-        <article className="metric-card metric-soon">
+        </button>
+        <button
+          type="button"
+          className={`metric-card metric-soon${metricFilter === 'launching_soon' ? ' metric-card-active' : ''}`}
+          onClick={() => toggleMetricFilter('launching_soon')}
+        >
           <span className="metric-label">Скоро запуск</span>
           <strong className="metric-value">{data?.metrics.launchingSoon ?? '—'}</strong>
-        </article>
-        <article className="metric-card metric-launched">
+        </button>
+        <button
+          type="button"
+          className={`metric-card metric-launched${metricFilter === 'launched' ? ' metric-card-active' : ''}`}
+          onClick={() => toggleMetricFilter('launched')}
+        >
           <span className="metric-label">Запущено</span>
           <strong className="metric-value">{data?.metrics.launched ?? '—'}</strong>
-        </article>
-        <article className="metric-card metric-errors">
-          <span className="metric-label">Ошибок</span>
+        </button>
+        <button
+          type="button"
+          className={`metric-card metric-errors${metricFilter === 'errors' ? ' metric-card-active' : ''}`}
+          onClick={() => toggleMetricFilter('errors')}
+        >
+          <span className="metric-label">С ошибками</span>
           <strong className="metric-value">{data?.metrics.errorsCount ?? '—'}</strong>
-        </article>
+        </button>
       </section>
 
       <section className="table-section">
         <p className="table-meta">
           Показано строк {data?.totalShown ?? 0}
+          {metricFilter ? ` · фильтр: ${METRIC_LABELS[metricFilter]}` : ''}
           {boardLabel ? ` · ${boardLabel}` : ''}
           {loading ? ' · загрузка…' : ''}
         </p>

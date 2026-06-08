@@ -592,7 +592,9 @@
 | **Всего задач** | `task_type = change_request`, фильтр по доске (`extra_json.area_path` / `team_id`) |
 | **Скоро запуск** | Digital Streams B2b: статус `UAT`; BE Analytics: `UAT Prod`, `Implementation Prod` или Triage `в Работе` (`extra_json.triage`) |
 | **Запущено** | Digital Streams B2b: статус `Pilot` / `Пилот`; BE Analytics: статус `Closed` |
-| **Ошибок** | `task_type = error`, `parent_task_id` → ЗНИ той же доски |
+| **С ошибками** | ЗНИ с хотя бы одной привязанной ошибкой (`parent_task_id` у `task_type = error`) |
+
+Клик по карточке метрики фильтрует таблицу (`metric=launching_soon|launched|errors`); повторный клик снимает фильтр.
 
 ### Синхронизация TFS (оптимизация)
 

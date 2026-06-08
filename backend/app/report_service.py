@@ -1,11 +1,13 @@
 import csv
 import io
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.boards import ALL_BOARDS_CODE, BOARDS, BoardConfig, board_by_code, is_all_boards
+from app.board_metrics import has_linked_errors, is_launched, is_launching_soon
+from app.config import settings
 from app.iteration_plan import (
     PLAN_QUARTER_TBD,
     parse_iteration_plan,
@@ -168,10 +170,31 @@ def _collect_available_statuses(rows: list[Task]) -> list[str]:
     return sorted(values, key=str.casefold)
 
 
+def _matches_metric_filter(
+    row: Task,
+    metric: str | None,
+    *,
+    errors_by_parent: dict[int, list[Task]],
+    date_from: date | None,
+    date_to: date | None,
+) -> bool:
+    if not metric or metric == "all":
+        return True
+    today = date.today()
+    horizon = today + timedelta(days=settings.launching_soon_days)
+    if metric == "launching_soon":
+        return is_launching_soon(row, today=today, horizon=horizon)
+    if metric == "launched":
+        return is_launched(row, date_from=date_from, date_to=date_to)
+    if metric == "errors":
+        return has_linked_errors(row, errors_by_parent)
+    return True
+
+
 def _compute_metrics(
     rows: list[Task],
-    error_rows: list[Task],
     *,
+    errors_by_parent: dict[int, list[Task]],
     date_from: date | None,
     date_to: date | None,
 ) -> DashboardMetricsOut:
@@ -179,7 +202,7 @@ def _compute_metrics(
         totalTasks=len(rows),
         launchingSoon=count_launching_soon(rows),
         launched=count_launched_rows(rows, date_from=date_from, date_to=date_to),
-        errorsCount=len(error_rows),
+        errorsCount=sum(1 for row in rows if has_linked_errors(row, errors_by_parent)),
     )
 
 
@@ -193,6 +216,7 @@ def load_change_requests(
     date_to: date | None = None,
     status: str | None = None,
     quarter: str | None = None,
+    metric: str | None = None,
 ) -> DashboardOut:
     all_boards = is_all_boards(board_code)
     board = board_by_code(board_code)
@@ -222,6 +246,11 @@ def load_change_requests(
     rows = list(db.scalars(zni_query))
     error_rows = list(db.scalars(error_query))
 
+    errors_by_parent: dict[int, list[Task]] = {}
+    for error in error_rows:
+        if error.parent_task_id:
+            errors_by_parent.setdefault(error.parent_task_id, []).append(error)
+
     filtered = [
         row
         for row in rows
@@ -229,16 +258,18 @@ def load_change_requests(
         and _in_date_range(row, date_from, date_to)
         and _matches_status(row, status)
         and _matches_quarter(row, quarter)
+        and _matches_metric_filter(
+            row,
+            metric,
+            errors_by_parent=errors_by_parent,
+            date_from=date_from,
+            date_to=date_to,
+        )
     ]
 
     reverse = sort.endswith("_desc") or sort == "id_desc"
     sort_field = sort.replace("_desc", "").replace("_asc", "")
     filtered.sort(key=lambda t: _sort_key(t, sort_field), reverse=reverse)
-
-    errors_by_parent: dict[int, list[Task]] = {}
-    for error in error_rows:
-        if error.parent_task_id:
-            errors_by_parent.setdefault(error.parent_task_id, []).append(error)
 
     items: list[ChangeRequestOut] = []
     for row in filtered:
@@ -277,7 +308,12 @@ def load_change_requests(
     return DashboardOut(
         board=_board_out(board) if board and not all_boards else None,
         allBoards=all_boards,
-        metrics=_compute_metrics(rows, error_rows, date_from=date_from, date_to=date_to),
+        metrics=_compute_metrics(
+            rows,
+            errors_by_parent=errors_by_parent,
+            date_from=date_from,
+            date_to=date_to,
+        ),
         items=items,
         totalShown=len(items),
         availableStatuses=_collect_available_statuses(rows),

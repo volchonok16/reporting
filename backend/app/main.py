@@ -134,6 +134,10 @@ def dashboard(
     date_to: date | None = Query(default=None),
     status: str | None = Query(default=None),
     quarter: str | None = Query(default=None),
+    metric: str | None = Query(
+        default=None,
+        description="Фильтр таблицы: launching_soon, launched, errors",
+    ),
 ) -> DashboardOut:
     return load_change_requests(
         db,
@@ -144,6 +148,7 @@ def dashboard(
         date_to=date_to,
         status=status,
         quarter=quarter,
+        metric=metric,
     )
 
 
