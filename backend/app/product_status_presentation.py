@@ -13,7 +13,7 @@ from fastapi import HTTPException
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE_TYPE
-from pptx.enum.text import PP_ALIGN
+from pptx.enum.text import MSO_AUTO_SIZE, PP_ALIGN, MSO_VERTICAL_ANCHOR
 from pptx.util import Pt
 
 from app.config import settings
@@ -28,6 +28,18 @@ _CNVPR_TAGS = (
     "{http://schemas.openxmlformats.org/drawingml/2006/main}cNvPr",
 )
 
+TITLE_FONT_NAME = "T2 Halvar Breit ExtraBold"
+TITLE_FONT_SIZE = Pt(32)
+TABLE_FONT_NAME = "T2 Rooftop"
+TABLE_FONT_SIZE = Pt(10)
+LINE_HEIGHT_EMU = 145000
+MIN_ROW_HEIGHT_EMU = 396000
+ROW_PADDING_EMU = 50000
+CHAR_WIDTH_EMU = 76000
+HEIGHT_SAFETY_RATIO = 0.82
+MAX_ROWS_PER_SLIDE = 5
+LONG_CELL_CHARS = 180
+
 
 @dataclass(frozen=True)
 class ContentSlideTemplate:
@@ -35,6 +47,8 @@ class ContentSlideTemplate:
     title: str
     row_count: int
     column_count: int
+    table_height: int
+    col_chars_per_line: tuple[int, ...]
 
 
 class TemplateCatalog:
@@ -68,8 +82,8 @@ class TemplateCatalog:
         templates: list[ContentSlideTemplate] = []
         for index, slide in enumerate(prs.slides):
             title = _slide_title(slide)
-            table = _find_table_shape(slide)
-            if not title or table is None:
+            table_shape, table = _find_table(slide)
+            if not title or table is None or table_shape is None:
                 continue
             templates.append(
                 ContentSlideTemplate(
@@ -77,6 +91,8 @@ class TemplateCatalog:
                     title=title,
                     row_count=len(table.rows),
                     column_count=len(table.columns),
+                    table_height=int(table_shape.height),
+                    col_chars_per_line=_column_chars_per_line(table),
                 )
             )
 
@@ -86,7 +102,7 @@ class TemplateCatalog:
                 detail="В шаблоне не найдено контентных слайдов с заголовком и таблицей.",
             )
 
-        title_slide_index = 0 if _find_table_shape(prs.slides[0]) else templates[0].index
+        title_slide_index = 0 if _find_table(prs.slides[0])[1] is not None else templates[0].index
         return cls(title_slide_index=title_slide_index, templates=templates)
 
     def match(self, sheet_name: str) -> list[ContentSlideTemplate]:
@@ -100,39 +116,66 @@ class TemplateCatalog:
 
         return []
 
-    def blueprint_for(self, sheet_name: str, *, rows_needed: int) -> ContentSlideTemplate:
+    def template_pool(self, sheet_name: str) -> list[ContentSlideTemplate]:
         matched = self.match(sheet_name)
-        pool = matched if matched else [self._default]
-
-        fitting = [item for item in pool if item.row_count >= rows_needed]
-        if fitting:
-            return min(fitting, key=lambda item: (item.row_count, item.index))
-
-        return max(pool, key=lambda item: item.row_count)
+        return matched if matched else [self._default]
 
     def chunk_plan(
         self,
         sheet_name: str,
         rows: list[dict[str, str]],
+        columns: list[str],
     ) -> list[tuple[ContentSlideTemplate, list[dict[str, str]]]]:
+        pool = self.template_pool(sheet_name)
         if not rows:
-            template = self.blueprint_for(sheet_name, rows_needed=1)
-            return [(template, [])]
+            return [(pool[0], [])]
 
-        matched = self.match(sheet_name)
-        pool = matched if matched else [self._default]
-        default_capacity = max(item.row_count for item in pool)
+        primary = pool[0]
+        max_table_height = int(primary.table_height * HEIGHT_SAFETY_RATIO)
+        col_chars = primary.col_chars_per_line
+        avg_row_height = max(MIN_ROW_HEIGHT_EMU, primary.table_height // max(primary.row_count, 1))
 
         chunks: list[tuple[ContentSlideTemplate, list[dict[str, str]]]] = []
-        offset = 0
-        while offset < len(rows):
-            remaining = len(rows) - offset
-            take = min(remaining, default_capacity)
-            template = self.blueprint_for(sheet_name, rows_needed=take)
-            chunk = rows[offset : offset + take]
-            chunks.append((template, chunk))
-            offset += take
+        current_chunk: list[dict[str, str]] = []
+        current_height = 0
+
+        for row in rows:
+            values = _row_values(row, columns, len(col_chars))
+            row_height = _estimate_row_height(values, col_chars)
+            row_is_heavy = _row_is_heavy(values)
+
+            should_split = bool(current_chunk) and (
+                current_height + row_height > max_table_height
+                or len(current_chunk) >= MAX_ROWS_PER_SLIDE
+                or (row_is_heavy and len(current_chunk) >= max(1, MAX_ROWS_PER_SLIDE - 1))
+                or (
+                    row_height > avg_row_height * 1.15
+                    and current_height + row_height > avg_row_height * 2.5
+                )
+            )
+
+            if should_split:
+                chunks.append((self._pick_template_for_chunk(pool, len(current_chunk)), current_chunk))
+                current_chunk = []
+                current_height = 0
+
+            current_chunk.append(row)
+            current_height += row_height
+
+        if current_chunk:
+            chunks.append((self._pick_template_for_chunk(pool, len(current_chunk)), current_chunk))
+
         return chunks
+
+    def _pick_template_for_chunk(
+        self,
+        pool: list[ContentSlideTemplate],
+        row_count: int,
+    ) -> ContentSlideTemplate:
+        fitting = [item for item in pool if item.row_count >= row_count]
+        if fitting:
+            return min(fitting, key=lambda item: (item.row_count, item.index))
+        return max(pool, key=lambda item: item.row_count)
 
     def _pick_default_template(self) -> ContentSlideTemplate:
         if not self._templates:
@@ -213,42 +256,6 @@ def _duplicate_slide_safe(prs: Presentation, source_slide):
     return dest
 
 
-def _allocate_slides(
-    catalog: TemplateCatalog,
-    specs: list[tuple[ProductStatusSheetOut, ContentSlideTemplate, list[dict[str, str]]]],
-    *,
-    slide_count: int,
-) -> tuple[list[tuple[int, ProductStatusSheetOut, list[dict[str, str]]]], list[tuple[int, ProductStatusSheetOut, list[dict[str, str]]]]]:
-    """Возвращает (in-place, overflow) — overflow требует безопасного дублирования."""
-    title_idx = catalog.title_slide_index
-    used: set[int] = {title_idx}
-    in_place: list[tuple[int, ProductStatusSheetOut, list[dict[str, str]]]] = []
-    overflow: list[tuple[int, ProductStatusSheetOut, list[dict[str, str]]]] = []
-
-    all_indices = [index for index in range(slide_count) if index != title_idx]
-
-    for sheet, template, chunk in specs:
-        matched = [
-            item.index
-            for item in catalog.match(sheet.name)
-            if item.index not in used
-        ]
-        general = [index for index in all_indices if index not in used]
-
-        if matched:
-            slide_index = matched[0]
-        elif general:
-            slide_index = general[0]
-        else:
-            overflow.append((template.index, sheet, chunk))
-            continue
-
-        used.add(slide_index)
-        in_place.append((slide_index, sheet, chunk))
-
-    return in_place, overflow
-
-
 def _slide_title(slide) -> str | None:
     title_shape = _find_title_shape(slide)
     if title_shape is None:
@@ -271,7 +278,32 @@ def _find_title_shape(slide):
     return None
 
 
-def _find_table_shape(slide):
+def _column_chars_per_line(table) -> tuple[int, ...]:
+    return tuple(
+        max(8, int(table.columns[index].width / CHAR_WIDTH_EMU))
+        for index in range(len(table.columns))
+    )
+
+
+def _row_is_heavy(values: list[str]) -> bool:
+    return any(len(_sanitize_cell_text(value)) > LONG_CELL_CHARS for value in values[2:4])
+
+
+def _estimate_row_height(values: list[str], col_chars_per_line: tuple[int, ...]) -> int:
+    max_lines = 1
+    for index, text in enumerate(values):
+        cleaned = _sanitize_cell_text(text)
+        if not cleaned:
+            continue
+        chars_per_line = col_chars_per_line[index] if index < len(col_chars_per_line) else 40
+        explicit_lines = cleaned.count("\n") + 1
+        wrapped_lines = max(1, (len(cleaned) + chars_per_line - 1) // chars_per_line)
+        max_lines = max(max_lines, explicit_lines, wrapped_lines)
+
+    return max(MIN_ROW_HEIGHT_EMU, max_lines * LINE_HEIGHT_EMU + ROW_PADDING_EMU)
+
+
+def _find_table(slide):
     best = None
     best_area = 0
     for shape in slide.shapes:
@@ -281,93 +313,165 @@ def _find_table_shape(slide):
         if area > best_area:
             best = shape
             best_area = area
-    return best.table if best is not None else None
+    if best is None:
+        return None, None
+    return best, best.table
 
 
-def _first_run_font(run) -> tuple[str | None, int | None, bool | None]:
-    return (
-        run.font.name,
-        run.font.size,
-        run.font.bold,
-    )
+def _find_table_shape(slide):
+    _, table = _find_table(slide)
+    return table
 
 
-def _cell_font_defaults(cell) -> tuple[str | None, int | None, bool | None]:
-    for paragraph in cell.text_frame.paragraphs:
-        for run in paragraph.runs:
-            if run.text.strip():
-                return _first_run_font(run)
-    for paragraph in cell.text_frame.paragraphs:
-        if paragraph.runs:
-            return _first_run_font(paragraph.runs[0])
-    return None, None, None
-
-
-def _font_size_for_text(text: str, base_size: int | None) -> int | None:
-    length = len(text.strip())
-    if base_size is None:
-        return None
-    if length > 320:
-        return max(int(base_size * 0.75), 72000)
-    if length > 180:
-        return max(int(base_size * 0.85), 80000)
-    if length > 90:
-        return max(int(base_size * 0.92), 90000)
-    return base_size
-
-
-def _set_run_font(run, *, name: str | None, size: int | None, bold: bool | None) -> None:
-    if name:
-        run.font.name = name
-    if size:
-        run.font.size = size
-    if bold is not None:
-        run.font.bold = bold
+def _set_run_font(
+    run,
+    *,
+    name: str,
+    size: Pt,
+    bold: bool = False,
+) -> None:
+    run.font.name = name
+    run.font.size = size
+    run.font.bold = bold
     run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
 
-def _replace_cell_text(cell, text: str) -> None:
-    value = (text or "").strip()
-    font_name, font_size, font_bold = _cell_font_defaults(cell)
-    adjusted_size = _font_size_for_text(value, font_size)
+def _set_paragraph_font(
+    paragraph,
+    *,
+    name: str,
+    size: Pt,
+    bold: bool = False,
+) -> None:
+    paragraph.font.name = name
+    paragraph.font.size = size
+    paragraph.font.bold = bold
+    paragraph.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
+
+def _apply_text_frame_style(
+    frame,
+    *,
+    font_name: str,
+    font_size: Pt,
+    bold: bool,
+) -> None:
+    frame.word_wrap = True
+    frame.auto_size = MSO_AUTO_SIZE.NONE
+    frame.vertical_anchor = MSO_VERTICAL_ANCHOR.TOP
+    frame.margin_left = Pt(2)
+    frame.margin_right = Pt(2)
+    frame.margin_top = Pt(2)
+    frame.margin_bottom = Pt(2)
+
+    for paragraph in frame.paragraphs:
+        paragraph.alignment = PP_ALIGN.LEFT
+        paragraph.space_after = Pt(0)
+        paragraph.space_before = Pt(0)
+        paragraph.level = 0
+        _set_paragraph_font(paragraph, name=font_name, size=font_size, bold=bold)
+        for run in paragraph.runs:
+            _set_run_font(run, name=font_name, size=font_size, bold=bold)
+
+
+def _sanitize_cell_text(text: str) -> str:
+    cleaned = (text or "").replace("\x0b", "\n").replace("\r\n", "\n").replace("\r", "\n")
+    return cleaned.strip()
+
+
+def _replace_cell_text(cell, text: str) -> None:
+    value = _sanitize_cell_text(text)
     frame = cell.text_frame
     frame.clear()
-    paragraph = frame.paragraphs[0]
-    paragraph.alignment = PP_ALIGN.LEFT
-    run = paragraph.add_run()
-    run.text = value
-    _set_run_font(run, name=font_name, size=adjusted_size, bold=font_bold)
+    _apply_text_frame_style(
+        frame,
+        font_name=TABLE_FONT_NAME,
+        font_size=TABLE_FONT_SIZE,
+        bold=False,
+    )
+
+    lines = value.split("\n") if value else [""]
+    for line_index, line in enumerate(lines):
+        paragraph = frame.paragraphs[0] if line_index == 0 else frame.add_paragraph()
+        paragraph.alignment = PP_ALIGN.LEFT
+        paragraph.space_after = Pt(0)
+        paragraph.space_before = Pt(0)
+        paragraph.level = 0
+        _set_paragraph_font(
+            paragraph,
+            name=TABLE_FONT_NAME,
+            size=TABLE_FONT_SIZE,
+            bold=False,
+        )
+        run = paragraph.add_run()
+        run.text = line
+        _set_run_font(run, name=TABLE_FONT_NAME, size=TABLE_FONT_SIZE, bold=False)
 
 
 def _replace_title(title_shape, sheet_name: str) -> None:
-    font_name = None
-    font_size = None
-    font_bold = None
-    for paragraph in title_shape.text_frame.paragraphs:
-        for run in paragraph.runs:
-            if run.text.strip():
-                font_name, font_size, font_bold = _first_run_font(run)
-                break
-        if font_name:
-            break
-
-    title_shape.text_frame.clear()
-    paragraph = title_shape.text_frame.paragraphs[0]
+    frame = title_shape.text_frame
+    frame.clear()
+    _apply_text_frame_style(
+        frame,
+        font_name=TITLE_FONT_NAME,
+        font_size=TITLE_FONT_SIZE,
+        bold=True,
+    )
+    paragraph = frame.paragraphs[0]
     run = paragraph.add_run()
     run.text = sheet_name
-    _set_run_font(
-        run,
-        name=font_name or "T2 Halvar Breit ExtraBold",
-        size=font_size or Pt(32),
-        bold=font_bold,
-    )
+    _set_run_font(run, name=TITLE_FONT_NAME, size=TITLE_FONT_SIZE, bold=True)
+
+
+def _normalize_table_fonts(table) -> None:
+    """Принудительно выравнивает шрифт во всех ячейках (в т.ч. наследие шаблона)."""
+    for row in table.rows:
+        for cell in row.cells:
+            frame = cell.text_frame
+            frame.auto_size = MSO_AUTO_SIZE.NONE
+            frame.word_wrap = True
+            for paragraph in frame.paragraphs:
+                paragraph.level = 0
+                paragraph.space_after = Pt(0)
+                paragraph.space_before = Pt(0)
+                _set_paragraph_font(
+                    paragraph,
+                    name=TABLE_FONT_NAME,
+                    size=TABLE_FONT_SIZE,
+                    bold=False,
+                )
+                for run in paragraph.runs:
+                    _set_run_font(
+                        run,
+                        name=TABLE_FONT_NAME,
+                        size=TABLE_FONT_SIZE,
+                        bold=False,
+                    )
+
+
+def _find_column(columns: list[str], pattern: str) -> str:
+    regex = re.compile(pattern, re.IGNORECASE)
+    for column in columns:
+        if regex.search(column.strip()):
+            return column
+    return ""
+
+
+def _mapped_columns(columns: list[str]) -> list[str]:
+    return [
+        _find_column(columns, r"^Дата"),
+        _find_column(columns, r"^Проект"),
+        _find_column(columns, r"Описание"),
+        _find_column(columns, r"Зачем"),
+    ]
 
 
 def _row_values(row: dict[str, str], columns: list[str], col_count: int) -> list[str]:
-    values = [(row.get(column) or "").strip() for column in columns[:col_count]]
-    if len(values) < col_count:
-        values.extend([""] * (col_count - len(values)))
+    mapped = _mapped_columns(columns)
+    values: list[str] = []
+    for index in range(col_count):
+        column_name = mapped[index] if index < len(mapped) else ""
+        values.append((row.get(column_name, "") if column_name else "").strip())
     return values
 
 
@@ -387,8 +491,9 @@ def _fill_content_slide(
         return
 
     col_count = len(table.columns)
+    data_rows = len(rows)
     for row_index in range(len(table.rows)):
-        if row_index < len(rows):
+        if row_index < data_rows:
             values = _row_values(rows[row_index], columns, col_count)
         else:
             values = [""] * col_count
@@ -396,6 +501,10 @@ def _fill_content_slide(
         for col_index in range(col_count):
             value = values[col_index] if col_index < len(values) else ""
             _replace_cell_text(table_row.cells[col_index], value)
+        if row_index >= data_rows:
+            table_row.height = MIN_ROW_HEIGHT_EMU
+
+    _normalize_table_fonts(table)
 
 
 def _build_slide_specs(
@@ -404,7 +513,7 @@ def _build_slide_specs(
 ) -> list[tuple[ProductStatusSheetOut, ContentSlideTemplate, list[dict[str, str]]]]:
     specs: list[tuple[ProductStatusSheetOut, ContentSlideTemplate, list[dict[str, str]]]] = []
     for sheet in data.sheets:
-        for template, chunk in catalog.chunk_plan(sheet.name, sheet.rows):
+        for template, chunk in catalog.chunk_plan(sheet.name, sheet.rows, sheet.columns):
             specs.append((sheet, template, chunk))
     return specs
 
@@ -424,29 +533,12 @@ def generate_b2b_product_status_presentation() -> tuple[bytes, str]:
         )
 
     generated_at = datetime.now(MOSCOW_TZ)
-    title_idx = catalog.title_slide_index
-    in_place, overflow = _allocate_slides(
-        catalog,
-        specs,
-        slide_count=len(source_prs.slides),
-    )
 
-    used_indices = {title_idx, *(index for index, _, _ in in_place)}
+    while len(output_prs.slides) > 1:
+        _delete_slide(output_prs, len(output_prs.slides) - 1)
 
-    for slide_index, sheet, chunk in in_place:
-        _fill_content_slide(
-            output_prs.slides[slide_index],
-            sheet_name=sheet.name,
-            columns=sheet.columns,
-            rows=chunk,
-        )
-
-    for index in range(len(output_prs.slides) - 1, -1, -1):
-        if index not in used_indices:
-            _delete_slide(output_prs, index)
-
-    for template_index, sheet, chunk in overflow:
-        source_slide = source_prs.slides[template_index]
+    for sheet, template, chunk in specs:
+        source_slide = source_prs.slides[template.index]
         new_slide = _duplicate_slide_safe(output_prs, source_slide)
         _fill_content_slide(
             new_slide,
