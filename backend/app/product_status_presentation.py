@@ -52,7 +52,7 @@ LINE_HEIGHT_EMU = 145000
 MIN_ROW_HEIGHT_EMU = 396000
 ROW_PADDING_EMU = 50000
 CHAR_WIDTH_EMU = 76000
-HEIGHT_SAFETY_RATIO = 0.88
+HEIGHT_SAFETY_RATIO = 1.0
 LONG_CELL_CHARS = 180
 
 
@@ -171,10 +171,6 @@ class TemplateCatalog:
         max_pool_rows = self._max_rows_for_pool(pool)
         layout_template = max(primary, key=lambda item: item.table_height)
         col_chars = layout_template.col_chars_per_line
-        avg_row_height = max(
-            MIN_ROW_HEIGHT_EMU,
-            layout_template.table_height // max(layout_template.row_count, 1),
-        )
 
         chunks: list[tuple[ContentSlideTemplate, list[dict[str, str]]]] = []
         current_chunk: list[dict[str, str]] = []
@@ -183,16 +179,10 @@ class TemplateCatalog:
         for row in rows:
             values = _row_values(row, columns, 4)
             row_height = _estimate_row_height(values, col_chars)
-            row_is_heavy = _row_is_heavy(values)
 
             should_split = bool(current_chunk) and (
                 current_height + row_height > max_table_height
                 or len(current_chunk) >= max_pool_rows
-                or (row_is_heavy and len(current_chunk) >= max(1, max_pool_rows - 1))
-                or (
-                    row_height > avg_row_height * 1.15
-                    and current_height + row_height > avg_row_height * 2.5
-                )
             )
 
             if should_split:
@@ -568,6 +558,22 @@ def _trim_table_rows(table, data_rows: int) -> None:
         _delete_table_row(table, len(table.rows) - 1)
 
 
+def _scale_row_heights(min_heights: list[int], target_height: int) -> list[int]:
+    total = sum(min_heights)
+    if total <= 0 or total == target_height:
+        return min_heights
+
+    scaled = [int(height * target_height / total) for height in min_heights]
+    delta = target_height - sum(scaled)
+    if delta == 0:
+        return scaled
+
+    order = sorted(range(len(scaled)), key=lambda index: min_heights[index], reverse=True)
+    for offset in range(delta):
+        scaled[order[offset % len(order)]] += 1
+    return scaled
+
+
 def _layout_table_rows(
     table,
     *,
@@ -575,25 +581,32 @@ def _layout_table_rows(
     columns: list[str],
     target_height: int | None,
 ) -> None:
-    del target_height
     data_rows = len(rows)
     if data_rows <= 0:
         return
 
     col_count = len(table.columns)
     col_chars = _column_chars_per_line(table)
-    estimated_heights = [
-        _estimate_row_height(_row_values(row, columns, col_count), col_chars)
+    min_heights = [
+        max(
+            MIN_ROW_HEIGHT_EMU,
+            _estimate_row_height(_row_values(row, columns, col_count), col_chars),
+        )
         for row in rows
     ]
 
-    if not any(estimated_heights):
+    if not any(min_heights):
         for row in table.rows:
             row.height = MIN_ROW_HEIGHT_EMU
         return
 
+    row_heights = (
+        _scale_row_heights(min_heights, target_height)
+        if target_height is not None
+        else min_heights
+    )
     for index, row in enumerate(table.rows):
-        row.height = max(MIN_ROW_HEIGHT_EMU, estimated_heights[index])
+        row.height = row_heights[index]
 
 
 def _resize_table_shape(table_shape, table, *, max_height: int | None = None) -> None:
@@ -601,7 +614,8 @@ def _resize_table_shape(table_shape, table, *, max_height: int | None = None) ->
     if total_height <= 0:
         return
     if max_height is not None:
-        total_height = min(total_height, max_height)
+        table_shape.height = max_height
+        return
     table_shape.height = total_height
 
 

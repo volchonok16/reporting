@@ -373,7 +373,7 @@ def test_generate_presentation_table_height_follows_content(mock_load) -> None:
     table = table_shape.table
     row_sum = sum(int(row.height) for row in table.rows)
     assert table_shape.height == row_sum
-    assert table_shape.height < 3_000_000
+    assert table_shape.height >= 4_500_000
 
 
 @patch("app.product_status_presentation.load_b2b_product_status")
