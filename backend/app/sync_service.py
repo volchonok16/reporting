@@ -52,6 +52,14 @@ def has_required_tags(fields: dict[str, Any], required_tags: tuple[str, ...]) ->
     return any(required.casefold() in tags for required in required_tags)
 
 
+def has_excluded_tags(fields: dict[str, Any], excluded_tags: tuple[str, ...]) -> bool:
+    if not excluded_tags:
+        return False
+    tags = {tag.casefold() for tag in work_item_tags(fields)}
+    excluded = {tag.casefold() for tag in excluded_tags}
+    return bool(tags & excluded)
+
+
 def is_excluded_sync_state(fields: dict[str, Any], excluded_states: tuple[str, ...]) -> bool:
     if not excluded_states:
         return False
@@ -245,6 +253,7 @@ async def sync_board(
         zni_ids = await client.get_change_request_ids(
             area_path=board.area_path,
             tags=board.sync_tags or None,
+            exclude_tags=board.exclude_sync_tags or None,
             exclude_states=board.exclude_sync_states or None,
         )
         if not zni_ids:
@@ -265,6 +274,7 @@ async def sync_board(
             item
             for item in as_work_item_list(zni_payloads_raw)
             if has_required_tags(item.get("fields") or {}, board.sync_tags)
+            and not has_excluded_tags(item.get("fields") or {}, board.exclude_sync_tags)
             and not is_excluded_sync_state(item.get("fields") or {}, board.exclude_sync_states)
             and not should_skip_closed_zni(item.get("fields") or {})
         ]
@@ -364,6 +374,8 @@ async def sync_board(
             zni_tags=board.sync_tags or None,
             error_tags=board.error_sync_tags or None,
             exclude_zni_states=board.exclude_sync_states or None,
+            exclude_zni_tags=board.exclude_sync_tags or None,
+            exclude_error_tags=board.exclude_sync_tags or None,
         )
         zni_id_set = set(zni_db_ids.keys())
         error_child_map = {
@@ -399,6 +411,8 @@ async def sync_board(
                 if not is_error_work_item_type(str(fields.get("System.WorkItemType") or "")):
                     continue
                 if not has_required_tags(fields, board.error_sync_tags):
+                    continue
+                if has_excluded_tags(fields, board.exclude_sync_tags):
                     continue
                 parent_zni_id = error_child_map.get(item["id"])
                 parent_db_id = zni_db_ids.get(parent_zni_id) if parent_zni_id else None

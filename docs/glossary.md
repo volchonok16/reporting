@@ -425,7 +425,7 @@
 
 **Планируемая дата** — из листа `System.IterationPath`: `2026.08.11.0-R` → `2026-08-11`; если в пути есть **TBD** — в UI выводится `TBD`. **План квартала** — `Q3 2026` или `TBD`; фильтр `quarter` в API (`TBD`, `2026-Q3`, …). **Плановый релиз** — из `Logrocon.FoundinRelease` или `Logrocon.Release`, если поле проставлено или релиз привязан; колонка «План. релиз» в дашборде и CSV.
 
-**Доски приложения:** Digital Streams B2b (`Tele2\Digital\Streams\B2b`, ошибки с тегом `FE B2B` или `microservice`); BE Analytics (`BE-T2\BE Analytics`, ЗНИ с `b2b_product`, ошибки с `FE B2B` или `microservice`, статус `Rejected` не выгружается).
+**Доски приложения:** Digital Streams B2b (`Tele2\Digital\Streams\B2b`, ЗНИ/ошибки с тегом `EFO` не выгружаются, ошибки с `FE B2B` или `microservice`); BE Analytics (`BE-T2\BE Analytics`, ЗНИ с `b2b_product`, ошибки с `FE B2B` или `microservice`, статус `Rejected` не выгружается).
 
 После синхронизации доски записи `task` с тем же `board_code`, не попавшие в выгрузку, удаляются (очистка устаревших ЗНИ/ошибок).
 

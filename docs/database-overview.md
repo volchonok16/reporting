@@ -43,7 +43,7 @@
 
 | Код | AreaPath | Теги ЗНИ | Теги ошибок | Отображаемое имя |
 |-----|----------|----------|-------------|------------------|
-| `digital_streams_b2b` | `Tele2\Digital\Streams\B2b` | — | `FE B2B`, `microservice` | Digital Streams B2b |
+| `digital_streams_b2b` | `Tele2\Digital\Streams\B2b` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | Digital Streams B2b |
 | `be_t2_team` | `BE-T2\BE Analytics` | `b2b_product` | `FE B2B`, `microservice` | BE Analytics (без статуса `Rejected`) |
 
 Фильтр «Все доски» — объединение обеих досок.

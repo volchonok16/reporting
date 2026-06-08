@@ -15,6 +15,7 @@ class BoardConfig:
     area_path: str
     sync_tags: tuple[str, ...] = ()
     error_sync_tags: tuple[str, ...] = ()
+    exclude_sync_tags: tuple[str, ...] = ()
     exclude_sync_states: tuple[str, ...] = ()
     launching_soon_states: tuple[str, ...] = ()
     launched_states: tuple[str, ...] = ()
@@ -42,6 +43,7 @@ BOARDS: list[BoardConfig] = [
         team_id="95d94210-a12e-4b11-b13b-4bbbc698d30b",
         area_path=r"Tele2\Digital\Streams\B2b",
         error_sync_tags=("FE B2B", "microservice"),
+        exclude_sync_tags=("EFO",),
         launching_soon_states=("UAT",),
         launched_states=("Pilot", "Пилот"),
     ),
