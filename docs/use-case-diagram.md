@@ -7,27 +7,35 @@ flowchart LR
     subgraph Actors
         A1[Аналитик / Менеджер]
         A2[Администратор]
-        A3[ETL-сервис]
         A4[FineBI]
     end
 
-    subgraph System["Единая система задач (PostgreSQL)"]
-        UC1((Просмотр отчётов<br/>по задачам))
-        UC2((Анализ времени<br/>в статусах))
-        UC3((Анализ времени<br/>в бэклоге))
-        UC4((Загрузка команды<br/>и бэклога))
-        UC5((Отгрузка по релизам<br/>и датам))
-        UC6((Настройка маппинга<br/>полей и статусов))
-        UC7((Выгрузка задач<br/>из Jira))
-        UC8((Выгрузка задач<br/>из TFS))
-        UC9((Выгрузка из других<br/>систем))
-        UC10((Синхронизация<br/>комментариев))
-        UC11((Запись истории<br/>смены статусов))
-        UC12((Расчёт длительности<br/>в статусах))
-        UC13((Снимки загрузки<br/>команды))
-        UC14((Аудит синхронизаций))
+    subgraph Web["Веб-приложение (pallink.fun)"]
+        UC_AUTH((Вход по PAT TFS))
+        UC_DASH((Дашборд ЗНИ\nметрики, таблица))
+        UC_SYNC((Синхронизация\nиз TFS))
+        UC_EXPORT((Экспорт CSV\nЗНИ + ошибки))
+        UC_BOARD((Фильтр доски\nВсе / Digital / BE-T2))
     end
 
+    subgraph System["Единая система задач (PostgreSQL)"]
+        UC1((Просмотр отчётов\nпо задачам))
+        UC2((Анализ времени\nв статусах))
+        UC3((Анализ времени\nв бэклоге))
+        UC4((Загрузка команды\nи бэклога))
+        UC5((Отгрузка по релизам\nи датам))
+        UC6((Настройка маппинга\nполей и статусов))
+        UC9A((WIQL + Batch ЗНИ))
+        UC9B((Связи ЗНИ → Ошибка))
+        UC9C((Upsert task))
+        UC16((Аудит sync_run))
+    end
+
+    A1 --> UC_AUTH
+    A1 --> UC_DASH
+    A1 --> UC_SYNC
+    A1 --> UC_EXPORT
+    A1 --> UC_BOARD
     A1 --> UC1
     A1 --> UC2
     A1 --> UC3
@@ -42,25 +50,26 @@ flowchart LR
 
     A2 --> UC6
 
-    A3 --> UC7
-    A3 --> UC8
-    A3 --> UC9
-    A3 --> UC10
-    A3 --> UC11
-    A3 --> UC12
-    A3 --> UC13
-    A3 --> UC14
-
-    UC7 -.->|include| UC11
-    UC8 -.->|include| UC11
-    UC9 -.->|include| UC11
-    UC7 -.->|include| UC10
-    UC8 -.->|include| UC10
-    UC11 -.->|include| UC12
-    UC12 -.->|extend| UC13
+    UC_SYNC -.->|include| UC9A
+    UC_SYNC -.->|include| UC9B
+    UC_SYNC -.->|include| UC9C
+    UC_SYNC -.->|include| UC16
+    UC_DASH -.->|include| UC_AUTH
 ```
 
 ## Краткое описание use cases
+
+### Веб-приложение ЗНИ
+
+| ID | Use Case | Актор | Описание |
+|----|----------|-------|----------|
+| UC_AUTH | Вход по PAT TFS | Аналитик | PAT сохраняется в `auth_session`; клиент получает `sessionId` |
+| UC_DASH | Дашборд ЗНИ | Аналитик | KPI: всего, скоро запуск, запущено, ошибок; таблица с поиском и сортировкой |
+| UC_SYNC | Синхронизация TFS | Аналитик | WIQL → batch ЗНИ → WIQL связи → batch ошибок; аудит в `sync_run` |
+| UC_EXPORT | Экспорт CSV | Аналитик | Только ЗНИ и связанные ошибки по выбранной доске |
+| UC_BOARD | Фильтр доски | Аналитик | «Все доски», Digital Streams B2b, BE-T2 Team |
+
+### Отчётность и ETL (единая БД)
 
 | ID | Use Case | Актор | Описание |
 |----|----------|-------|----------|
@@ -69,40 +78,10 @@ flowchart LR
 | UC3 | Анализ времени в бэклоге | Аналитик, FineBI | Метрика «застоя» до начала работ |
 | UC4 | Загрузка команды и бэклога | Аналитик, FineBI | Открытые задачи, story points, размер бэклога |
 | UC5 | Отгрузка по релизам и датам | Аналитик, FineBI | Сколько задач ушло в релиз / на дату |
-| UC6 | Настройка маппинга | Администратор | `field_mapping`, `source_status_mapping` |
-| UC7–UC9 | Выгрузка из систем | ETL | API Jira, TFS, прочие |
-| UC10 | Синхронизация комментариев | ETL | Таблица `task_comment` |
-| UC11 | История статусов | ETL | `task_status_history` из changelog |
-| UC12 | Расчёт длительности | ETL / job | `task_status_duration` |
-| UC13 | Снимки загрузки | ETL / job | `team_workload_snapshot` |
-| UC14 | Аудит синхронизаций | ETL, Админ | `sync_run`, `sync_run_log` |
+| UC6 | Настройка маппинга | Администратор | `field_mapping`, `source_status_mapping`, `source_team_mapping` |
+| UC9A–C | Выгрузка из TFS | Sync Service | Оптимизированный batch без `$expand` Relations |
+| UC16 | Аудит синхронизаций | Sync, Админ | `sync_run`, `sync_run_log` |
 
-## PlantUML (альтернатива для экспорта в draw.io)
+## PlantUML (экспорт в SVG)
 
-```plantuml
-@startuml
-left to right direction
-actor "Аналитик" as analyst
-actor "Администратор" as admin
-actor "ETL-сервис" as etl
-actor "FineBI" as bi
-
-rectangle "Система учёта задач" {
-  usecase "Отчёты по задачам" as UC1
-  usecase "Время в статусах" as UC2
-  usecase "Время в бэклоге" as UC3
-  usecase "Загрузка команды" as UC4
-  usecase "Отгрузка в релиз" as UC5
-  usecase "Маппинг полей" as UC6
-  usecase "Загрузка Jira/TFS" as UC7
-  usecase "История статусов" as UC11
-}
-
-analyst --> UC1
-analyst --> UC2
-bi --> UC1
-admin --> UC6
-etl --> UC7
-UC7 ..> UC11 : include
-@enduml
-```
+Исходник: [plantuml/use-case.puml](../plantuml/use-case.puml) · SVG: [diagrams/svg/use-case.svg](diagrams/svg/use-case.svg)

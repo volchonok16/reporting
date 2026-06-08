@@ -554,3 +554,52 @@
 | `source_team` | task | Сырая команда из источника |
 
 Полный перечень колонок `task` — в разделе [task](#task--задача-единая-модель) выше. Команды — [teams.md](teams.md).
+
+---
+
+## Веб-приложение reporting
+
+Дашборд ЗНИ: FastAPI + Vite, домен production — **pallink.fun**.
+
+| Компонент | Путь / URL | Назначение |
+|-----------|------------|------------|
+| Frontend | `frontend/`, `https://pallink.fun` | React UI: вход PAT, дашборд, экспорт |
+| Backend | `backend/`, `https://api.pallink.fun` | REST API, TFS sync, сессии |
+| nginx | `deploy/nginx/` | HTTPS, reverse proxy на :5173 и :8000 |
+| certbot | `scripts/production.sh` | Let's Encrypt для pallink.fun |
+
+Аутентификация: PAT TFS → `POST /api/auth/login` → `auth_session` → заголовок `X-Session-Id`. PAT не отдаётся клиенту после входа.
+
+### Метрики дашборда
+
+| Метрика | Условие подсчёта |
+|---------|------------------|
+| **Всего задач** | `task_type = change_request`, фильтр по доске (`extra_json.area_path` / `team_id`) |
+| **Скоро запуск** | ЗНИ с `release_date` (`TargetDate`) в заданном окне |
+| **Запущено** | Заглушка 0; правила подсчёта — TBD |
+| **Ошибок** | `task_type = error`, `parent_task_id` → ЗНИ той же доски |
+
+### Синхронизация TFS (оптимизация)
+
+| Параметр `.env` | По умолчанию | Назначение |
+|-----------------|--------------|------------|
+| `TFS_FETCH_ALL_FIELDS` | `false` | Не запрашивать все поля |
+| `TFS_FETCH_RELATIONS` | `false` | Не использовать `$expand` Relations на ЗНИ |
+| `TFS_BATCH_SIZE` | `200` | Размер batch workItems |
+| `TFS_LINKED_BATCH_SIZE` | `500` | Batch для связанных ошибок |
+| `TFS_EXCLUDE_CLOSED_OLDER_THAN_DAYS` | `365` | Пропуск Closed ЗНИ старше N дней |
+| `TFS_CLOSED_STATE_VALUES` | `Closed` | Статусы для фильтра |
+
+Алгоритм: WIQL по AreaPath → `workItemsBatch` (поля) → WIQL `WorkItemLinks` (ЗНИ→Ошибка) → batch ошибок → upsert в `task`.
+
+### REST API
+
+| Endpoint | Описание |
+|----------|----------|
+| `POST /api/auth/login` | `{ pat, base_url?, project? }` → `{ sessionId }` |
+| `GET /api/dashboard?board=` | Метрики + список ЗНИ |
+| `POST /api/sync` | Синхронизация; body `{ board }` |
+| `GET /api/sync/status` | Статус и прогресс |
+| `GET /api/export/csv?board=` | CSV: ЗНИ + ошибки |
+
+Диаграммы: [diagrams.md](diagrams.md) · Production: [deploy/DEPLOY.md](../deploy/DEPLOY.md).

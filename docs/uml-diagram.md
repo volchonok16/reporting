@@ -37,10 +37,20 @@ erDiagram
     release ||--o{ task_release : many
     release ||--o{ team_workload_snapshot : shipped
 
+    team ||--o{ task : assigned
+
+    auth_session {
+        varchar id PK
+        jsonb payload
+        timestamptz created_at
+    }
+
     task {
         bigint id PK
-        uuid uuid UK
+        bigint team_id FK
+        bigint parent_task_id FK
         varchar external_id
+        varchar task_type
         varchar title
         date start_date
         date release_date
@@ -87,12 +97,20 @@ classDiagram
         +Long id
         +UUID uuid
         +String externalId
+        +String taskType
+        +Long parentTaskId
         +String title
         +Date startDate
         +Date releaseDate
         +Status canonicalStatus
         +String sourceStatus
         +sync()
+    }
+
+    class AuthSession {
+        +String id
+        +Json payload
+        +DateTime createdAt
     }
 
     class CanonicalStatus {
@@ -146,33 +164,33 @@ classDiagram
     Task "1" --> "*" TaskComment
     Task "1" --> "*" TaskStatusHistory
     Task "1" --> "*" TaskStatusDuration
+    Task "0..1" --> "0..*" Task : parent
     Task --> CanonicalStatus
     Task --> Release
     TaskStatusHistory --> CanonicalStatus
     TaskStatusDuration --> CanonicalStatus
 ```
 
-## Диаграмма компонентов (целевая архитектура)
+## Диаграмма компонентов
 
 ```mermaid
 flowchart TB
     subgraph External["Внешние системы"]
-        Jira[Jira API]
-        TFS[Azure DevOps API]
-        Other[Другие API]
+        TFS[Azure DevOps / TFS]
+        Jira[Jira API — будущее]
     end
 
-    subgraph ETL["Слой загрузки (будущее)"]
-        ConnectorJ[Jira Connector]
-        ConnectorT[TFS Connector]
-        Mapper[Field / Status Mapper]
-        DurationJob[Duration Calculator]
-        SnapshotJob[Team Snapshot Job]
+    subgraph Web["Веб-приложение (реализовано)"]
+        FE[Vite + React]
+        API[FastAPI]
+        Sync[TFS Sync\nWIQL + Batch]
+        Auth[auth_session PAT]
     end
 
     subgraph Storage["PostgreSQL"]
-        Core[(task, comment, history)]
+        Core[(task: ЗНИ, error)]
         Ref[(mapping, status, team)]
+        App[(auth_session, sync_run)]
         Metrics[(duration, workload_snapshot)]
         Views[(v_* views)]
     end
@@ -181,20 +199,17 @@ flowchart TB
         FineBI[FineBI]
     end
 
-    Jira --> ConnectorJ
-    TFS --> ConnectorT
-    Other --> Mapper
-    ConnectorJ --> Mapper
-    ConnectorT --> Mapper
-    Mapper --> Core
-    Mapper --> Ref
-    Core --> DurationJob
-    DurationJob --> Metrics
-    Metrics --> SnapshotJob
+    Analyst[Аналитик] --> FE
+    FE --> API
+    API --> Auth
+    API --> Sync
+    Sync --> TFS
+    Sync --> Core
+    Auth --> App
     Core --> Views
     Metrics --> Views
     Views --> FineBI
-    Core --> FineBI
+    FE -->|CSV| Analyst
 ```
 
 ## Поток данных: время в статусе

@@ -171,8 +171,8 @@ body {
 }
 
 .metric-launched {
-  background: #fff;
-  border: 1px solid #d8d8d8;
+  background: #111;
+  color: #fff;
 }
 
 .metric-errors {

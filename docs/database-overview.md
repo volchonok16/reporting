@@ -29,13 +29,43 @@
 
 ## Приложение reporting
 
-| Сервис | Порт | Назначение |
-|--------|------|------------|
+| Сервис | Порт (dev) | Назначение |
+|--------|------------|------------|
 | `frontend` | 5173 | Дашборд ЗНИ: фильтры, метрики, экспорт CSV |
-| `backend` | 8000 | FastAPI: синхронизация TFS, REST API |
+| `backend` | 8000 | FastAPI: синхронизация TFS, REST API, PAT-сессии |
 | `postgres` | 5432 | PostgreSQL |
 
-Запуск: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build`
+**Локально:** `bash scripts/dev.sh` или `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build`
+
+**Production (pallink.fun):** nginx + certbot → `https://pallink.fun` (UI), `https://api.pallink.fun` (API). Запуск: `sudo bash scripts/production.sh`. См. [deploy/DEPLOY.md](../deploy/DEPLOY.md).
+
+### Доски TFS
+
+| Код | AreaPath | Отображаемое имя |
+|-----|----------|------------------|
+| `digital_streams_b2b` | `Tele2\Digital\Streams\B2b` | Digital Streams B2b |
+| `be_t2_team` | `BE-T2` | BE-T2 Team |
+
+Фильтр «Все доски» — объединение обеих досок.
+
+### Метрики дашборда (ЗНИ)
+
+| Карточка | Источник | Примечание |
+|----------|----------|------------|
+| Всего задач | `task` где `task_type = change_request` | По выбранной доске |
+| Скоро запуск | `release_date` в ближайшем окне | `TargetDate` из TFS |
+| Запущено | — | Заглушка 0; логика уточняется |
+| Ошибок | `task` где `task_type = error` | Связаны с ЗНИ через `parent_task_id` |
+
+### REST API (основное)
+
+| Метод | Путь | Назначение |
+|-------|------|------------|
+| POST | `/api/auth/login` | Вход по PAT → `sessionId` |
+| GET | `/api/dashboard` | Метрики и список ЗНИ |
+| POST | `/api/sync` | Запуск синхронизации доски |
+| GET | `/api/sync/status` | Прогресс синхронизации |
+| GET | `/api/export/csv` | Экспорт ЗНИ + ошибки |
 
 ## Таблицы (23) + представления (4)
 
@@ -99,14 +129,16 @@
 | Поле | Смысл |
 |------|--------|
 | `source_system_id` + `external_id` | Уникальность в источниках |
+| `task_type` | `change_request` (ЗНИ), `error` (Ошибка) |
+| `parent_task_id` | Ошибка → родительская ЗНИ |
 | `team_id` | Каноническая команда (фильтр отчётов) |
 | `source_team` | Команда из API до маппинга |
 | `title`, `description` | Текст |
 | `canonical_status_id`, `source_status` | Статус |
-| `start_date`, `due_date`, `release_date` | Даты |
+| `start_date`, `due_date`, `release_date` | Даты; `start_date` пусто → `created_at` |
 | `story_points`, `*_hours` | Оценки |
 | `assignee_id`, `reporter_id` | Люди |
-| `extra_json` | Немапленные поля |
+| `extra_json` | `area_path`, `board_column` и др. |
 
 ## Связи
 
@@ -122,9 +154,9 @@ task → task_comment, task_status_*, team (через team_id)
 ## Развёртывание
 
 ```bash
-docker-compose up -d          # новая БД — схема с командами сразу
-# или миграция:
-# psql ... -f db/migrations/002_add_team_to_task.sql
+bash scripts/dev.sh           # локально: postgres + backend + frontend
+# миграции для существующей БД:
+# bash scripts/migrate.sh
 ```
 
-См. [docker.md](docker.md).
+См. [docker.md](docker.md), [deploy/DEPLOY.md](../deploy/DEPLOY.md).

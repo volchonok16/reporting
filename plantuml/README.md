@@ -7,9 +7,9 @@
 
 | Файл | Содержание |
 |------|------------|
-| `database-er.puml` | ER-схема всех таблиц и связей |
-| `architecture.puml` | Архитектура: Jira, TFS, Trello, Other → PostgreSQL → FineBI |
-| `use-case.puml` | Use case диаграмма |
+| `database-er.puml` | ER: таблицы, `auth_session`, ЗНИ/error, `team_id` |
+| `architecture.puml` | FastAPI + Vite + TFS sync + nginx (pallink.fun) |
+| `use-case.puml` | Веб-дашборд ЗНИ + BI + TFS sync |
 
 ## Как открыть
 

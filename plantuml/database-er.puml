@@ -90,27 +90,17 @@ package "Задачи" #FFF8E8 {
     source_system_id : FK
     external_id : varchar
     project_id : FK
+    team_id : FK
     parent_task_id : FK
     --
     title : varchar
-    description : text
     task_type : varchar
-    priority : varchar
-    canonical_status_id : FK
     source_status : varchar
-    assignee_id : FK
-    reporter_id : FK
+    source_team : varchar
     created_at : timestamptz
     start_date : date
-    due_date : date
     release_date : date
-    resolved_at : timestamptz
     closed_at : timestamptz
-    story_points : numeric
-    release_id : FK
-    sprint_name : varchar
-    iteration_path : varchar
-    labels : text[]
     extra_json : jsonb
   }
 
@@ -163,13 +153,21 @@ package "Статусы и время" #FCE8F4 {
   }
 }
 
-package "Синхронизация и метрики" #F0E8FC {
+package "Приложение и синхронизация" #F0E8FC {
+  class auth_session <<table>> {
+    +id : varchar PK
+    payload : jsonb
+    created_at : timestamptz
+  }
+
   class sync_run <<table>> {
     +id : bigserial PK
     source_system_id : FK
     started_at : timestamptz
     status : varchar
+    records_fetched : int
     records_upserted : int
+    parameters_json : jsonb
   }
 
   class sync_run_log <<table>> {
@@ -204,6 +202,7 @@ source_system "1" -- "0..*" source_status_mapping
 source_system "1" -- "0..*" sync_run
 
 team "1" -- "0..*" project
+team "1" -- "0..*" task
 team "1" -- "0..*" team_workload_snapshot
 
 project "1" -- "0..*" task
@@ -232,7 +231,16 @@ team ..> v_team_open_tasks : feeds
 note right of source_system
   **Коды источников:**
   jira · tfs · trello · other
-  (добавляются без смены схемы)
+end note
+
+note right of task
+  **ЗНИ:** task_type = change_request
+  **Ошибка:** task_type = error
+  parent_task_id → ЗНИ
+end note
+
+note bottom of auth_session
+  PAT TFS; клиент — только sessionId
 end note
 
 note bottom of task_status_duration

@@ -56,12 +56,15 @@ sudo bash scripts/production.sh
 reporting/
 ├── backend/                      # FastAPI: TFS sync, отчёты, экспорт
 ├── frontend/                     # Vite + React: дашборд ЗНИ
+├── deploy/                       # nginx, certbot, production-скрипты
 ├── db/schema.sql                 # DDL PostgreSQL
 ├── db/migrations/                # Миграции (auth_session и др.)
 ├── plantuml/                     # ER, архитектура, use case
 ├── docs/                         # Глоссарий, docker, диаграммы
+├── scripts/                      # dev.sh, production.sh, migrate.sh
 ├── docker-compose.yml            # postgres + backend + frontend
 ├── docker-compose.dev.yml        # порты для локальной разработки
+├── docker-compose.prod.yml       # bind 127.0.0.1 для nginx
 └── README.md
 ```
 
@@ -74,17 +77,19 @@ reporting/
 | `trello` | Trello |
 | `other` | Прочая система |
 
-## Возможности схемы
+## Возможности
 
-| Метрика / функция | Таблицы / views |
-|-------------------|-----------------|
+| Функция | Реализация |
+|---------|------------|
+| Дашборд ЗНИ | Frontend + `GET /api/dashboard` |
+| Синхронизация TFS | WIQL + batch, доски Digital / BE-T2 |
+| Экспорт CSV | ЗНИ + связанные ошибки |
+| PAT-авторизация | `auth_session`, `X-Session-Id` |
 | Единая задача | `task`, `project`, `source_system` |
-| Комментарии | `task_comment` |
-| Маппинг полей и статусов | `field_mapping`, `source_status_mapping` |
-| Время в статусе и бэклоге | `task_status_duration`, `v_task_backlog_duration` |
-| Загрузка команды | `team_workload_snapshot`, `v_team_open_tasks` |
-| Релизы | `release`, `v_tasks_by_release` |
+| ЗНИ ↔ Ошибка | `task_type`, `parent_task_id` |
+| Время в статусе / бэклоге | `task_status_duration`, views `v_*` |
 | FineBI | views `v_*` |
+| Production HTTPS | nginx + certbot, pallink.fun |
 
 ## Правила для Cursor (AI)
 

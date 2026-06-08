@@ -1,65 +1,68 @@
 @startuml architecture
-title Архитектура: reporting — ЗНИ и ошибки TFS
+title Архитектура reporting — ЗНИ, TFS, pallink.fun
 
 skinparam componentStyle rectangle
 skinparam defaultTextAlignment center
 
 actor "Аналитик" as analyst
 
+cloud "Internet" as inet
+
+package "Production (VPS)" #LightGray {
+  node "nginx + Let's Encrypt" as nginx {
+    [pallink.fun\nHTTPS] as fe_ssl
+    [api.pallink.fun\nHTTPS] as api_ssl
+  }
+
+  package "Docker Compose" #LightGreen {
+    [Frontend\nVite + React\n:5173] as fe
+    [Backend\nFastAPI\n:8000] as api
+    database "PostgreSQL\n:5432" as pg
+  }
+}
+
 package "Внешние системы" #LightBlue {
   [Azure DevOps\nTFS API] as tfs
 }
 
-package "Веб-приложение" #LightGreen {
-  [Frontend\nVite + React] as fe
-  [Backend\nFastAPI] as api
+package "Слой интеграции" #LightYellow {
+  [TfsClient\nWIQL + Batch] as client
+  [Sync Service] as sync
+  [Auth PAT\nauth_session] as auth
 }
 
-package "Слой интеграции TFS" #LightYellow {
-  [TfsClient\nWIQL + workItemsBatch] as client
-  [Sync Service\nЗНИ + Ошибки] as sync
-  [Auth Sessions\nPAT] as auth
-}
+analyst --> inet
+inet --> nginx
+fe_ssl --> fe : proxy
+api_ssl --> api : proxy
+fe --> api : REST\nX-Session-Id
 
-database "PostgreSQL\nreporting" as pg {
-  frame "Справочники" {
-    [source_system]
-    [team]
-    [project]
-  }
-  frame "Данные" {
-    [task\nchange_request / error]
-    [sync_run]
-    [auth_session]
-  }
-  frame "Отчёты" {
-    [v_task_backlog_duration]
-    [v_team_open_tasks]
-  }
-}
-
-analyst --> fe : фильтры, экспорт
-fe --> api : REST + X-Session-Id
 api --> auth
 api --> sync
-sync --> client
-client --> tfs : PAT
-sync --> pg
+api --> pg
 auth --> pg
-api --> pg : dashboard, CSV
+sync --> client
+sync --> pg
+client --> tfs : PAT
 
-note right of task
+note right of pg
   **ЗНИ:** task_type = change_request
   **Ошибка:** task_type = error
   parent_task_id → ЗНИ
-  start_date: StartDate или CreatedDate
-  release_date: TargetDate
+  auth_session — PAT (сервер)
 end note
 
-note bottom of fe
-  Доски:
-  Digital Streams B2b (Tele2)
-  BE-T2 Team (BE-T2)
+note bottom of sync
+  Оптимизация:
+  • поля без $expand All
+  • ошибки через WIQL WorkItemLinks
+  • Closed > 365 дней — пропуск
+  Доски: Digital Streams B2b, BE-T2 Team
+end note
+
+note bottom of nginx
+  Запуск: sudo bash scripts/production.sh
+  certbot → /etc/letsencrypt/live/pallink.fun
 end note
 
 @enduml

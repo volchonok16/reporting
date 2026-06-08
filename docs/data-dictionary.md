@@ -48,7 +48,22 @@
 | sprint_name | varchar | Спринт / итерация |
 | iteration_path | varchar | Путь итерации (TFS) |
 | labels | text[] | Метки |
-| extra_json | jsonb | Немапленные поля |
+| extra_json | jsonb | `area_path`, `board_column` и др. |
+
+### extra_json (TFS ЗНИ)
+
+| Ключ | Источник TFS | Описание |
+|------|--------------|----------|
+| area_path | System.AreaPath | Область доски |
+| board_column | System.BoardColumn | Колонка Kanban |
+
+## auth_session — сессия PAT
+
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| id | varchar(64) | sessionId для заголовка `X-Session-Id` |
+| payload | jsonb | `pat`, `base_url`, `project` (не в API) |
+| created_at | timestamptz | Время создания |
 
 ## project — команда по умолчанию
 
@@ -84,3 +99,22 @@
 | v_task_status_time | Время в статусе | team_code, team_name |
 | v_team_open_tasks | Открытые задачи по команде | team_id, team_code, team_name |
 | v_tasks_by_release | Отгрузка в релиз | team_code, team_name |
+
+## Метрики веб-дашборда (ЗНИ)
+
+| Метрика | Таблица / поле |
+|---------|----------------|
+| Всего ЗНИ | `task` · `task_type = change_request` |
+| Скоро запуск | `task.release_date` |
+| Запущено | TBD (сейчас 0) |
+| Ошибок | `task` · `task_type = error` · `parent_task_id` |
+
+## sync_run — аудит синхронизации
+
+| Колонка | Описание |
+|---------|----------|
+| source_system_id | `tfs` |
+| status | `running`, `success`, `failed` |
+| records_fetched | Получено из API |
+| records_upserted | Записано в `task` |
+| parameters_json | `board`, фильтры |
