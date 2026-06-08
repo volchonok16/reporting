@@ -311,6 +311,22 @@ def _renumber_shape_ids(element, start_id: int) -> int:
     return current
 
 
+_SHAPE_LOCK_TAGS = (
+    qn("a:spLocks"),
+    qn("a:graphicFrameLocks"),
+    qn("a:picLocks"),
+)
+
+
+def _strip_shape_locks(element) -> None:
+    """Снимает XML-блокировки фигур — иначе PowerPoint не даёт править текст в таблице."""
+    for tag in _SHAPE_LOCK_TAGS:
+        for node in list(element.iter(tag)):
+            parent = node.getparent()
+            if parent is not None:
+                parent.remove(node)
+
+
 def _duplicate_slide_safe(prs: Presentation, source_slide):
     """Копирует слайд без think-cell OLE и с уникальными id фигур."""
     dest = prs.slides.add_slide(_blank_layout(prs))
@@ -323,6 +339,7 @@ def _duplicate_slide_safe(prs: Presentation, source_slide):
         if shape.shape_type == MSO_SHAPE_TYPE.EMBEDDED_OLE_OBJECT:
             continue
         new_element = deepcopy(shape.element)
+        _strip_shape_locks(new_element)
         next_id = _renumber_shape_ids(new_element, next_id)
         dest.shapes._spTree.insert_element_before(new_element, "p:extLst")
 
@@ -540,8 +557,25 @@ def _normalize_tx_body_element(
             _set_xml_solid_black(props)
 
 
-def _normalize_cell_xml(cell, *, font_name: str, font_sz: str) -> None:
-    _normalize_tx_body_element(cell._tc.txBody, font_name=font_name, font_sz=font_sz)
+def _ensure_table_cells_editable(table) -> None:
+    """Оставляет в ячейках простой txBody, совместимый с редактированием в PowerPoint."""
+    for row in table.rows:
+        for cell in row.cells:
+            tc = cell._tc
+            tc_pr = tc.find(qn("a:tcPr"))
+            if tc_pr is None:
+                tc_pr = parse_xml(f'<a:tcPr xmlns:a="{A_NS}" anchor="t"/>')
+                tc.append(tc_pr)
+            else:
+                tc_pr.set("anchor", "t")
+
+            tx_body = tc.txBody
+            if tx_body is None:
+                continue
+            body_pr = tx_body.find(qn("a:bodyPr"))
+            if body_pr is not None:
+                body_pr.set("wrap", "square")
+                body_pr.set("anchor", "t")
 
 
 def _normalize_text_frame_xml(frame, *, font_name: str, font_sz: str) -> None:
@@ -621,18 +655,16 @@ def _resize_table_shape(table_shape, table, *, max_height: int | None = None) ->
 
 def _replace_cell_text(cell, text: str, *, col_index: int) -> None:
     value = _sanitize_cell_text(text)
-    font_size, font_sz_xml = _cell_font_size(col_index, value)
+    font_size, _font_sz_xml = _cell_font_size(col_index, value)
+    del _font_sz_xml
+    cell.text = value
     frame = cell.text_frame
-    frame.clear()
     _apply_table_cell_frame_style(
         frame,
         font_name=TABLE_FONT_NAME,
         font_size=font_size,
     )
-
-    lines = value.split("\n") if value else [""]
-    for line_index, line in enumerate(lines):
-        paragraph = frame.paragraphs[0] if line_index == 0 else frame.add_paragraph()
+    for paragraph in frame.paragraphs:
         paragraph.alignment = PP_ALIGN.LEFT
         paragraph.space_after = Pt(0)
         paragraph.space_before = Pt(0)
@@ -643,11 +675,8 @@ def _replace_cell_text(cell, text: str, *, col_index: int) -> None:
             size=font_size,
             bold=False,
         )
-        run = paragraph.add_run()
-        run.text = line
-        _set_run_font(run, name=TABLE_FONT_NAME, size=font_size, bold=False)
-
-    _normalize_cell_xml(cell, font_name=TABLE_FONT_NAME, font_sz=font_sz_xml)
+        for run in paragraph.runs:
+            _set_run_font(run, name=TABLE_FONT_NAME, size=font_size, bold=False)
 
 
 def _replace_title(title_shape, sheet_name: str) -> None:
@@ -675,7 +704,7 @@ def _normalize_table_fonts(table) -> None:
     for row in table.rows:
         for col_index, cell in enumerate(row.cells):
             text = cell.text_frame.text
-            font_size, font_sz_xml = _cell_font_size(col_index, text)
+            font_size, _ = _cell_font_size(col_index, text)
             frame = cell.text_frame
             frame.word_wrap = True
             for paragraph in frame.paragraphs:
@@ -695,7 +724,6 @@ def _normalize_table_fonts(table) -> None:
                         size=font_size,
                         bold=False,
                     )
-            _normalize_cell_xml(cell, font_name=TABLE_FONT_NAME, font_sz=font_sz_xml)
 
 
 def _find_column(
@@ -822,6 +850,7 @@ def _fill_content_slide(
 
     _trim_table_rows(table, data_rows)
     _normalize_table_fonts(table)
+    _ensure_table_cells_editable(table)
     _layout_table_rows(
         table,
         rows=rows,
@@ -829,6 +858,7 @@ def _fill_content_slide(
         target_height=target_table_height,
     )
     if table_shape is not None:
+        _strip_shape_locks(table_shape.element)
         _resize_table_shape(table_shape, table, max_height=target_table_height)
 
 
