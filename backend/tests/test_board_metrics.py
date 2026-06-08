@@ -84,6 +84,22 @@ def test_be_analytics_closed_is_launched() -> None:
     assert count_launched_rows([task], date_from=None, date_to=None) == 1
 
 
+def test_b2b_product_core_uses_digital_launch_rules() -> None:
+    today = date(2026, 6, 8)
+    uat = _task(
+        board_code="b2b_product_core",
+        source_team="B2B Product",
+        source_status="UAT",
+    )
+    pilot = _task(
+        board_code="b2b_product_core",
+        source_team="B2B Product",
+        source_status="Pilot",
+    )
+    assert is_launching_soon(uat, today=today, horizon=today)
+    assert is_launched(pilot, date_from=None, date_to=None)
+
+
 def test_esb_analytics_uses_be_analytics_launch_rules() -> None:
     today = date(2026, 6, 8)
     uat_prod = _task(

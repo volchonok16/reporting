@@ -43,7 +43,14 @@
 
 | Код | AreaPath | Теги ЗНИ | Теги ошибок | Отображаемое имя |
 |-----|----------|----------|-------------|------------------|
-| `digital_streams_b2b` | `Tele2\Digital\Streams\B2b` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | Digital Streams B2b |
+| `digital_streams_b2b` | `Tele2\Digital\Streams\B2b` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | Digital |
+| `b2b_product_core` | `Tele2\B2B Product` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | CORE |
+| `b2b_product_partners` | `Tele2\B2B Product Partners` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | КАТС |
+| `b2b_voice_products` | `Tele2\B2B Product\B2B Voice Products` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | Голосовые продукты |
+| `b2b_m2m_platform` | `Tele2\B2B Product\M2M Platform` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | М2М / IoT |
+| `b2b_sms_target` | `Tele2\B2B Product\SMS-Target` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | SMS |
+| `b2b_solar` | `Tele2\B2B Product\Solar` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | Solar |
+| `b2b_umnico` | `Tele2\B2B Product\Umnico` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | Umnico |
 | `be_t2_team` | `BE-T2\BE Analytics` | `b2b_product` | `FE B2B`, `microservice` | BE Analytics (без статуса `Rejected`) |
 | `esb_analytics` | `BE-T2\ESB\ESB Analytics` | `b2b_product` | `FE B2B`, `microservice` | ESB (без статуса `Rejected`) |
 
@@ -54,8 +61,8 @@
 | Карточка | Источник | Примечание |
 |----------|----------|------------|
 | Всего задач | `task` где `task_type = change_request` | По выбранной доске |
-| Скоро запуск | Digital: `UAT`; BE Analytics / ESB: `UAT Prod`, `Implementation Prod` или Triage `в Работе` | `System.State` / `Triage` |
-| Запущено | Digital: `Pilot`; BE Analytics / ESB: `Closed` | workflow |
+| Скоро запуск | Digital и B2B Product (*): `UAT`; BE Analytics / ESB: `UAT Prod`, `Implementation Prod` или Triage `в Работе` | `System.State` / `Triage` |
+| Запущено | Digital и B2B Product (*): `Pilot`; BE Analytics / ESB: `Closed` | workflow |
 | С ошибками | ЗНИ с привязанными `error` | Клик по карточке — фильтр таблицы |
 
 ### REST API (основное)
@@ -79,7 +86,7 @@
 | `source_status_mapping` | Статус источника → канонический статус |
 | `source_team_mapping` | Признак источника → команда (`team_id`) |
 | `field_mapping` | Поле источника → поле `task` |
-| `team` | Канонические команды (`digital_streams_b2b`, `be_t2_team`, `esb_analytics`) |
+| `team` | Канонические команды (коды досок из `boards.py`, напр. `digital_streams_b2b`, `b2b_product_core`, `be_t2_team`) |
 | `auth_session` | Сессии PAT для веб-приложения |
 | `person` | Человек |
 | `person_external` | ID пользователя в Jira/TFS/Trello |

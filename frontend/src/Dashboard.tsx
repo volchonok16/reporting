@@ -6,6 +6,13 @@ const ALL_BOARDS = 'all'
 const BOARD_LABELS: Record<string, string> = {
   all: 'Все доски',
   digital_streams_b2b: 'Digital',
+  b2b_product_core: 'CORE',
+  b2b_product_partners: 'КАТС',
+  b2b_voice_products: 'Голосовые продукты',
+  b2b_m2m_platform: 'М2М / IoT',
+  b2b_sms_target: 'SMS',
+  b2b_solar: 'Solar',
+  b2b_umnico: 'Umnico',
   be_t2_team: 'Bercut',
   esb_analytics: 'ESB',
 }
@@ -236,7 +243,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     <div className="app">
       <section className="board-filter-bar">
         <div className="board-filter">
-          <span className="board-filter-label">Система digital</span>
+          <span className="board-filter-label">Доска</span>
           <div className="board-filter-buttons" role="group" aria-label="Доска">
             {boards.map((board) => (
               <button
