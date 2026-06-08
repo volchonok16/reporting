@@ -32,11 +32,19 @@ def test_cell_font_size_matches_template_columns() -> None:
     long_text = "Запуск акции для абонентов программы Бизнес-окружение " * 2
     assert _cell_font_size(2, long_text) == (TABLE_FONT_SIZE_DENSE, "800")
     assert _cell_font_size(3, "") == (TABLE_FONT_SIZE, "1000")
+    assert _cell_font_size(3, "Кратко") == (TABLE_FONT_SIZE_DENSE, "800")
     assert _cell_font_size(3, long_text) == (TABLE_FONT_SIZE_DENSE, "800")
 
 
 def test_normalize_title() -> None:
     assert _normalize_title("  Продуктовый офис: CORE  ") == "продуктовый офис: core"
+
+
+def test_catalog_excludes_cover_slide() -> None:
+    prs = Presentation(str(TEMPLATE_PATH))
+    catalog = TemplateCatalog.from_presentation(prs)
+    assert catalog.title_slide_index == 0
+    assert all(template.index != 0 for template in catalog._templates)
 
 
 def test_catalog_discovers_slides_by_title() -> None:
@@ -168,6 +176,14 @@ def test_generate_b2b_product_status_presentation(mock_load) -> None:
 
     prs = Presentation(__import__("io").BytesIO(content))
     assert len(prs.slides) == 2
+
+    cover_title = next(
+        shape.text_frame.text
+        for shape in prs.slides[0].shapes
+        if shape.has_text_frame and "заголовок" in shape.name.lower()
+    )
+    assert cover_title.startswith("Статус продукта B2B")
+
     title = next(
         shape.text_frame.text
         for shape in prs.slides[1].shapes
@@ -177,6 +193,7 @@ def test_generate_b2b_product_status_presentation(mock_load) -> None:
 
     table = next(shape.table for shape in prs.slides[1].shapes if shape.has_table)
     assert table.rows[0].cells[1].text == "CORE"
+    assert len(table.rows) == 1
 
     sizes: set[int] = set()
     for row in table.rows:
@@ -187,7 +204,7 @@ def test_generate_b2b_product_status_presentation(mock_load) -> None:
                 for run in paragraph.runs:
                     if run.font.size:
                         sizes.add(int(run.font.size))
-    assert sizes == {int(TABLE_FONT_SIZE)}
+    assert sizes == {int(TABLE_FONT_SIZE), int(TABLE_FONT_SIZE_DENSE)}
 
 
 def _slide_xml_font_sizes(content: bytes, slide_index: int) -> set[str]:

@@ -39,14 +39,14 @@ TABLE_FONT_SIZE_DENSE = Pt(8)
 TABLE_FONT_SZ_XML = "1000"
 TABLE_FONT_SZ_DENSE_XML = "800"
 DENSE_TEXT_MIN_CHARS = 40
-DENSE_COLUMN_INDICES = (2, 3)
+WHY_COLUMN_INDEX = 3
+COVER_SLIDE_INDEX = 0
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 LINE_HEIGHT_EMU = 145000
 MIN_ROW_HEIGHT_EMU = 396000
 ROW_PADDING_EMU = 50000
 CHAR_WIDTH_EMU = 76000
-HEIGHT_SAFETY_RATIO = 0.82
-MAX_ROWS_PER_SLIDE = 5
+HEIGHT_SAFETY_RATIO = 0.88
 LONG_CELL_CHARS = 180
 
 
@@ -90,6 +90,8 @@ class TemplateCatalog:
 
         templates: list[ContentSlideTemplate] = []
         for index, slide in enumerate(prs.slides):
+            if index == COVER_SLIDE_INDEX:
+                continue
             title = _slide_title(slide)
             table_shape, table = _find_table(slide)
             if not title or table is None or table_shape is None:
@@ -111,8 +113,7 @@ class TemplateCatalog:
                 detail="В шаблоне не найдено контентных слайдов с заголовком и таблицей.",
             )
 
-        title_slide_index = 0 if _find_table(prs.slides[0])[1] is not None else templates[0].index
-        return cls(title_slide_index=title_slide_index, templates=templates)
+        return cls(title_slide_index=COVER_SLIDE_INDEX, templates=templates)
 
     def match(self, sheet_name: str) -> list[ContentSlideTemplate]:
         normalized = _normalize_title(sheet_name)
@@ -139,24 +140,30 @@ class TemplateCatalog:
         if not rows:
             return [(pool[0], [])]
 
-        primary = pool[0]
-        max_table_height = int(primary.table_height * HEIGHT_SAFETY_RATIO)
-        col_chars = primary.col_chars_per_line
-        avg_row_height = max(MIN_ROW_HEIGHT_EMU, primary.table_height // max(primary.row_count, 1))
+        max_pool_rows = max(item.row_count for item in pool)
 
         chunks: list[tuple[ContentSlideTemplate, list[dict[str, str]]]] = []
         current_chunk: list[dict[str, str]] = []
         current_height = 0
 
         for row in rows:
-            values = _row_values(row, columns, len(col_chars))
+            values = _row_values(row, columns, 4)
+            prospective = len(current_chunk) + 1
+            estimate_template = self._pick_template_for_chunk(pool, prospective)
+            max_table_height = int(estimate_template.table_height * HEIGHT_SAFETY_RATIO)
+            col_chars = estimate_template.col_chars_per_line
+            avg_row_height = max(
+                MIN_ROW_HEIGHT_EMU,
+                estimate_template.table_height // max(estimate_template.row_count, 1),
+            )
+
             row_height = _estimate_row_height(values, col_chars)
             row_is_heavy = _row_is_heavy(values)
 
             should_split = bool(current_chunk) and (
                 current_height + row_height > max_table_height
-                or len(current_chunk) >= MAX_ROWS_PER_SLIDE
-                or (row_is_heavy and len(current_chunk) >= max(1, MAX_ROWS_PER_SLIDE - 1))
+                or len(current_chunk) >= max_pool_rows
+                or (row_is_heavy and len(current_chunk) >= max(1, max_pool_rows - 1))
                 or (
                     row_height > avg_row_height * 1.15
                     and current_height + row_height > avg_row_height * 2.5
@@ -360,7 +367,9 @@ def _set_paragraph_font(
 
 def _cell_font_size(col_index: int, text: str) -> tuple[Pt, str]:
     cleaned = _sanitize_cell_text(text)
-    if col_index in DENSE_COLUMN_INDICES and len(cleaned) >= DENSE_TEXT_MIN_CHARS:
+    if col_index == WHY_COLUMN_INDEX and cleaned:
+        return TABLE_FONT_SIZE_DENSE, TABLE_FONT_SZ_DENSE_XML
+    if col_index == 2 and len(cleaned) >= DENSE_TEXT_MIN_CHARS:
         return TABLE_FONT_SIZE_DENSE, TABLE_FONT_SZ_DENSE_XML
     return TABLE_FONT_SIZE, TABLE_FONT_SZ_XML
 
@@ -482,25 +491,51 @@ def _normalize_text_frame_xml(frame, *, font_name: str, font_sz: str) -> None:
     _normalize_tx_body_element(frame._txBody, font_name=font_name, font_sz=font_sz)
 
 
-def _resize_table_rows(table, data_rows: int, *, target_height: int | None = None) -> None:
-    row_count = len(table.rows)
-    if data_rows <= 0 or row_count == 0:
+def _delete_table_row(table, row_index: int) -> None:
+    tbl = table._tbl
+    tbl.remove(tbl.tr_lst[row_index])
+
+
+def _trim_table_rows(table, data_rows: int) -> None:
+    while len(table.rows) > data_rows:
+        _delete_table_row(table, len(table.rows) - 1)
+
+
+def _layout_table_rows(
+    table,
+    *,
+    rows: list[dict[str, str]],
+    columns: list[str],
+    target_height: int | None,
+) -> None:
+    data_rows = len(rows)
+    if data_rows <= 0:
         return
 
+    col_count = len(table.columns)
+    col_chars = _column_chars_per_line(table)
+    estimated_heights = [
+        _estimate_row_height(_row_values(row, columns, col_count), col_chars)
+        for row in rows
+    ]
+    total_estimated = sum(estimated_heights)
     total_height = target_height if target_height is not None else sum(int(row.height) for row in table.rows)
-    if data_rows >= row_count:
-        per_row = max(MIN_ROW_HEIGHT_EMU, total_height // row_count)
+    total_height = max(total_height, MIN_ROW_HEIGHT_EMU * data_rows)
+
+    if total_estimated <= 0:
+        per_row = total_height // data_rows
         for row in table.rows:
-            row.height = per_row
+            row.height = max(MIN_ROW_HEIGHT_EMU, per_row)
         return
 
-    spare_rows = row_count - data_rows
-    empty_total = MIN_ROW_HEIGHT_EMU * spare_rows
-    data_total = max(MIN_ROW_HEIGHT_EMU * data_rows, total_height - empty_total)
-    per_data = data_total // data_rows
-
+    allocated = 0
     for index, row in enumerate(table.rows):
-        row.height = per_data if index < data_rows else MIN_ROW_HEIGHT_EMU
+        if index < data_rows - 1:
+            height = max(MIN_ROW_HEIGHT_EMU, int(total_height * estimated_heights[index] / total_estimated))
+            row.height = height
+            allocated += height
+        else:
+            row.height = max(MIN_ROW_HEIGHT_EMU, total_height - allocated)
 
 
 def _replace_cell_text(cell, text: str, *, col_index: int) -> None:
@@ -608,6 +643,38 @@ def _row_values(row: dict[str, str], columns: list[str], col_count: int) -> list
     return values
 
 
+def _fill_cover_slide(slide, *, title: str, generated_at: datetime) -> None:
+    title_shape = _find_title_shape(slide)
+    if title_shape is None:
+        return
+
+    frame = title_shape.text_frame
+    frame.clear()
+    _apply_text_frame_style(
+        frame,
+        font_name=TITLE_FONT_NAME,
+        font_size=TITLE_FONT_SIZE,
+        bold=True,
+    )
+
+    title_paragraph = frame.paragraphs[0]
+    title_run = title_paragraph.add_run()
+    title_run.text = title
+    _set_run_font(title_run, name=TITLE_FONT_NAME, size=TITLE_FONT_SIZE, bold=True)
+
+    date_paragraph = frame.add_paragraph()
+    date_paragraph.alignment = PP_ALIGN.LEFT
+    date_run = date_paragraph.add_run()
+    date_run.text = generated_at.strftime("%d.%m.%Y")
+    _set_run_font(date_run, name=TABLE_FONT_NAME, size=TABLE_FONT_SIZE, bold=False)
+
+    _normalize_text_frame_xml(
+        frame,
+        font_name=TITLE_FONT_NAME,
+        font_sz=TITLE_FONT_SZ_XML,
+    )
+
+
 def _fill_content_slide(
     slide,
     *,
@@ -627,18 +694,21 @@ def _fill_content_slide(
 
     col_count = len(table.columns)
     data_rows = len(rows)
-    for row_index in range(len(table.rows)):
-        if row_index < data_rows:
-            values = _row_values(rows[row_index], columns, col_count)
-        else:
-            values = [""] * col_count
+    for row_index in range(min(len(table.rows), data_rows)):
+        values = _row_values(rows[row_index], columns, col_count)
         table_row = table.rows[row_index]
         for col_index in range(col_count):
             value = values[col_index] if col_index < len(values) else ""
             _replace_cell_text(table_row.cells[col_index], value, col_index=col_index)
 
+    _trim_table_rows(table, data_rows)
     _normalize_table_fonts(table)
-    _resize_table_rows(table, data_rows, target_height=target_table_height)
+    _layout_table_rows(
+        table,
+        rows=rows,
+        columns=columns,
+        target_height=target_table_height,
+    )
 
 
 def _build_slide_specs(
@@ -667,6 +737,9 @@ def generate_b2b_product_status_presentation() -> tuple[bytes, str]:
         )
 
     generated_at = datetime.now(MOSCOW_TZ)
+
+    cover_slide = output_prs.slides[catalog.title_slide_index]
+    _fill_cover_slide(cover_slide, title=data.title, generated_at=generated_at)
 
     while len(output_prs.slides) > 1:
         _delete_slide(output_prs, len(output_prs.slides) - 1)

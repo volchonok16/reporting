@@ -1,0 +1,47 @@
+# Манифест шаблона презентации «Статус продукта B2B».
+# Используется для документирования и регрессионных проверок.
+
+cover:
+  slide_index: 0
+  title_shape: "Заголовок 1"
+  default_title: "Статус продукта B2B"
+
+typography:
+  title:
+    font: "T2 Halvar Breit ExtraBold"
+    size_pt: 32
+  table:
+    font: "T2 Rooftop"
+    columns:
+      - key: date
+        size_pt: 10
+      - key: project
+        size_pt: 10
+      - key: description
+        size_pt: 10
+        dense_size_pt: 8
+        dense_min_chars: 40
+      - key: why
+        size_pt: 8
+
+columns:
+  mapping:
+    - pattern: "^Дата"
+    - pattern: "^Проект"
+    - pattern: "Описание"
+    - pattern: "Зачем"
+
+# Варианты контентных слайдов в исходном эталоне (до очистки think-cell).
+sheets:
+  "Продуктовый офис: SMS":
+    variants: [7, 7, 3]
+  "Продуктовый офис: VOICE":
+    variants: [10, 5, 10]
+  "Продуктовый офис: M2M / IoT":
+    variants: [6, 4]
+  "Продуктовый офис: Перспективные продукты":
+    variants: [11, 8, 8, 6, 8]
+  "Продуктовый офис: CORE":
+    variants: [8, 9, 8, 2]
+  "Продуктовый офис: Продуктовый маркетинг":
+    variants: [8, 5]
