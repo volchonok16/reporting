@@ -3,7 +3,7 @@ import logging
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -11,6 +11,7 @@ from app.boards import BOARDS, BoardConfig, boards_for_sync
 from app.config import settings
 from app.db import SessionLocal, close_db_session
 from app.json_utils import as_work_item_list
+from app.iteration_plan import parse_planned_date_from_iteration, quarter_key_from_date
 from app.linked_errors import is_error_work_item_type
 from app.models import Project, SourceSystem, SyncRun, Task, Team
 from app.tfs_client import TfsClient, date_from_field_list, parse_tfs_datetime
@@ -34,6 +35,22 @@ def effective_release_date(fields: dict[str, Any]) -> date | None:
     return date_from_field_list(fields, settings.target_date_field_list)
 
 
+def work_item_tags(fields: dict[str, Any] | None) -> list[str]:
+    if not fields:
+        return []
+    raw = fields.get("System.Tags")
+    if raw in (None, ""):
+        return []
+    return [part.strip() for part in str(raw).split(";") if part.strip()]
+
+
+def has_required_tags(fields: dict[str, Any], required_tags: tuple[str, ...]) -> bool:
+    if not required_tags:
+        return True
+    tags = {tag.casefold() for tag in work_item_tags(fields)}
+    return any(required.casefold() in tags for required in required_tags)
+
+
 def should_skip_closed_zni(fields: dict[str, Any]) -> bool:
     if settings.tfs_exclude_closed_older_than_days <= 0 or not settings.closed_state_list:
         return False
@@ -51,6 +68,39 @@ def should_skip_closed_zni(fields: dict[str, Any]) -> bool:
 
 def tfs_item_url(item_id: int, board: BoardConfig) -> str:
     return f"{board.base_url.rstrip('/')}/{board.project}/_workitems/edit/{item_id}"
+
+
+def prune_stale_board_tasks(
+    db: Session,
+    *,
+    board: BoardConfig,
+    source_system_id: int,
+    synced_external_ids: set[str],
+) -> int:
+    """Удаляет из БД ЗНИ/ошибки доски, не попавшие в текущую выгрузку."""
+    board_names = {board.name, board.display_name, "BE-T2 Team"}
+    stale_rows = list(
+        db.scalars(
+            select(Task).where(
+                Task.source_system_id == source_system_id,
+                or_(
+                    Task.source_team.in_(board_names),
+                    Task.extra_json["board_code"].as_string() == board.code,
+                ),
+            )
+        )
+    )
+    stale_ids = [row.id for row in stale_rows if row.external_id not in synced_external_ids]
+    if not stale_ids:
+        return 0
+
+    db.execute(delete(Task).where(Task.parent_task_id.in_(stale_ids)))
+    result = db.execute(delete(Task).where(Task.id.in_(stale_ids)))
+    db.commit()
+    removed = result.rowcount or 0
+    if removed:
+        logger.info("sync_prune_stale board=%s removed=%s", board.code, removed)
+    return removed
 
 
 def touch_sync_progress(db: Session, sync_run: SyncRun, message: str) -> None:
@@ -184,8 +234,17 @@ async def sync_board(
         if sync_run:
             touch_sync_progress(db, sync_run, f"{board.display_name}: поиск ЗНИ (WIQL)…")
 
-        zni_ids = await client.get_change_request_ids(area_path=board.area_path)
+        zni_ids = await client.get_change_request_ids(
+            area_path=board.area_path,
+            tags=board.sync_tags or None,
+        )
         if not zni_ids:
+            prune_stale_board_tasks(
+                db,
+                board=board,
+                source_system_id=source_system_id,
+                synced_external_ids=set(),
+            )
             return 0, 0
 
         if sync_run:
@@ -196,7 +255,8 @@ async def sync_board(
         zni_payloads = [
             item
             for item in as_work_item_list(zni_payloads_raw)
-            if not should_skip_closed_zni(item.get("fields") or {})
+            if has_required_tags(item.get("fields") or {}, board.sync_tags)
+            and not should_skip_closed_zni(item.get("fields") or {})
         ]
         skipped = len(zni_payloads_raw) - len(zni_payloads)
         if skipped:
@@ -220,11 +280,20 @@ async def sync_board(
             updated = parse_tfs_datetime(fields.get("System.ChangedDate"))
             closed = parse_tfs_datetime(fields.get("Microsoft.VSTS.Common.ClosedDate"))
 
+            iteration_path = fields.get("System.IterationPath")
+            planned_date = parse_planned_date_from_iteration(
+                str(iteration_path) if iteration_path not in (None, "") else None
+            )
             extra_json: dict[str, Any] = {
                 "area_path": fields.get("System.AreaPath"),
                 "board_column": fields.get("System.BoardColumn"),
                 "board_code": board.code,
+                "tags": work_item_tags(fields),
+                "iteration_path": iteration_path,
             }
+            if planned_date:
+                extra_json["planned_date"] = planned_date.isoformat()
+                extra_json["plan_quarter"] = quarter_key_from_date(planned_date)
 
             if settings.tfs_fetch_pilot_history:
                 existing = db.scalar(
@@ -272,7 +341,10 @@ async def sync_board(
         if sync_run:
             touch_sync_progress(db, sync_run, f"{board.display_name}: поиск ошибок (WIQL)…")
 
-        error_child_map = await client.get_error_links_for_area(board.area_path)
+        error_child_map = await client.get_error_links_for_area(
+            board.area_path,
+            tags=board.sync_tags or None,
+        )
         zni_id_set = set(zni_db_ids.keys())
         error_child_map = {
             error_id: zni_id for error_id, zni_id in error_child_map.items() if zni_id in zni_id_set
@@ -329,6 +401,15 @@ async def sync_board(
                 upserted += 1
 
             db.commit()
+
+        synced_external_ids = {str(item["id"]) for item in zni_payloads}
+        synced_external_ids.update(str(error_id) for error_id in error_child_map.keys())
+        prune_stale_board_tasks(
+            db,
+            board=board,
+            source_system_id=source_system_id,
+            synced_external_ids=synced_external_ids,
+        )
 
         return fetched, upserted
     finally:

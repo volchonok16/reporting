@@ -386,9 +386,16 @@
 
 ---
 
-## auth_session — сессия TFS (PAT)
+## auth_session — сессия веб-приложения
 
-Серверное хранение PAT-токена для веб-приложения. Клиент получает только `sessionId` (заголовок `X-Session-Id`).
+Серверное хранение учётных данных TFS для синхронизации. Клиент получает только `sessionId` (заголовок `X-Session-Id`).
+
+| Способ входа | `auth_mode` | PAT в сессии |
+|--------------|-------------|--------------|
+| PAT пользователя | `pat` | PAT из формы входа |
+| Логин/пароль приложения | `app_user` | `TFS_SYNC_PAT` с сервера |
+
+Пользователи приложения задаются в `APP_AUTH_USERS` (`login:password`, по строке). Секреты — только в `.env`, не в репозитории.
 
 | Поле | Тип | Описание |
 |------|-----|----------|
@@ -411,8 +418,14 @@
 | `Microsoft.VSTS.Scheduling.TargetDate` | `release_date` | Целевая дата релиза (колонка «Скоро запуск») |
 | `System.AreaPath` | `extra_json.area_path` | Область доски |
 | `System.BoardColumn` | `extra_json.board_column` | Колонка Kanban |
+| `System.IterationPath` | `extra_json.iteration_path` | Итерация (план релиза) |
+| `System.Tags` | `extra_json.tags` | Теги TFS (разделитель `;`) |
 
-**Доски приложения:** Digital Streams B2b (`Tele2\Digital\Streams\B2b`), BE-T2 Team (`BE-T2`).
+**Планируемая дата** берётся из листа `System.IterationPath` (напр. `Tele2\Общие\Digital\2026\2026.08.11.0-R` → `2026-08-11`). **План квартала** — `Q3 2026` по этой дате; фильтр `quarter` в API дашборда.
+
+**Доски приложения:** Digital Streams B2b (`Tele2\Digital\Streams\B2b`); BE Analytics (`BE-T2\Area\BE Analytics`, тег `b2b_product`).
+
+После синхронизации доски записи `task` с тем же `board_code`, не попавшие в выгрузку, удаляются (очистка устаревших ЗНИ/ошибок).
 
 **Фильтр синхронизации:** ЗНИ в статусе `Closed` с `ChangedDate` / `ClosedDate` старше 365 дней не загружаются (`TFS_EXCLUDE_CLOSED_OLDER_THAN_DAYS`).
 
@@ -563,12 +576,12 @@
 
 | Компонент | Путь / URL | Назначение |
 |-----------|------------|------------|
-| Frontend | `frontend/`, `https://pallink.fun` | React UI: вход PAT, дашборд, экспорт |
+| Frontend | `frontend/`, `https://pallink.fun` | React UI: вход (логин/PAT), дашборд, экспорт |
 | Backend | `backend/`, `https://api.pallink.fun` | REST API, TFS sync, сессии |
 | nginx | `deploy/nginx/` | HTTPS, reverse proxy на :5173 и :8000 |
 | certbot | `scripts/production.sh` | Let's Encrypt для pallink.fun |
 
-Аутентификация: PAT TFS → `POST /api/auth/login` → `auth_session` → заголовок `X-Session-Id`. PAT не отдаётся клиенту после входа.
+Аутентификация: `POST /api/auth/login` — **PAT** (свой токен) или **логин/пароль** приложения (`APP_AUTH_USERS`, выгрузка через `TFS_SYNC_PAT`) → `auth_session` → `X-Session-Id`. Секреты TFS не отдаются клиенту.
 
 ### Метрики дашборда
 

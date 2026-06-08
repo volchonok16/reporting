@@ -1,10 +1,12 @@
 import httpx
 from fastapi import HTTPException
 
+from app.app_users import verify_app_user
 from app.auth_sessions import create_session
+from app.config import settings
 from app.http_auth import auth_attempts
 from app.schemas import AuthLoginOut
-from app.tfs_auth import TfsAuth
+from app.tfs_auth import TfsAuth, build_tfs_auth
 from app.tfs_client import TfsClient, wiql_quote
 
 
@@ -68,5 +70,38 @@ async def resolve_working_auth(auth: TfsAuth) -> TfsAuth:
 
 async def login_with_pat(auth: TfsAuth) -> AuthLoginOut:
     resolved = await resolve_working_auth(auth)
-    session_id = create_session(resolved)
-    return AuthLoginOut(sessionId=session_id)
+    session_id = create_session(resolved, auth_mode="pat")
+    return AuthLoginOut(sessionId=session_id, authMode="pat")
+
+
+async def login_with_app_user(
+    *,
+    username: str,
+    password: str,
+    base_url: str | None = None,
+    project: str | None = None,
+    project_id: str | None = None,
+) -> AuthLoginOut:
+    login = username.strip()
+    if not login or not password:
+        raise HTTPException(status_code=400, detail="Укажите логин и пароль.")
+
+    users = settings.app_auth_users_map
+    if not users:
+        raise HTTPException(status_code=500, detail="Пользователи приложения не настроены (APP_AUTH_USERS).")
+    if not verify_app_user(users, login, password):
+        raise HTTPException(status_code=401, detail="Неверный логин или пароль.")
+
+    sync_pat = settings.tfs_sync_pat.strip()
+    if not sync_pat:
+        raise HTTPException(status_code=500, detail="TFS_SYNC_PAT не настроен на сервере.")
+
+    auth = build_tfs_auth(
+        base_url=base_url,
+        project=project,
+        project_id=project_id,
+        pat=sync_pat,
+    )
+    resolved = await resolve_working_auth(auth)
+    session_id = create_session(resolved, auth_mode="app_user", app_login=login)
+    return AuthLoginOut(sessionId=session_id, authMode="app_user", username=login)

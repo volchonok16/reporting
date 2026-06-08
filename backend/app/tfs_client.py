@@ -89,6 +89,16 @@ def wiql_quote(value: str) -> str:
     return f"'{wiql_escape(value)}'"
 
 
+def wiql_tags_clause(tags: Iterable[str] | None, *, field: str = "[System.Tags]") -> str:
+    values = [tag.strip() for tag in (tags or []) if tag and tag.strip()]
+    if not values:
+        return ""
+    parts = [f"{field} CONTAINS {wiql_quote(tag)}" for tag in values]
+    if len(parts) == 1:
+        return f" AND {parts[0]}"
+    return " AND (" + " OR ".join(parts) + ")"
+
+
 def wiql_date(value: date) -> str:
     return wiql_quote(value.isoformat())
 
@@ -189,6 +199,7 @@ class TfsClient:
         self,
         *,
         area_path: str | None = None,
+        tags: Iterable[str] | None = None,
         limit_results: bool = True,
     ) -> list[int]:
         types = ", ".join(wiql_quote(item) for item in settings.change_type_list)
@@ -201,6 +212,7 @@ class TfsClient:
         area_clause = ""
         if area_path:
             area_clause = f" AND [System.AreaPath] UNDER {wiql_quote(area_path)}"
+        tags_clause = wiql_tags_clause(tags)
 
         closed_exclude_clause = ""
         if settings.closed_state_list and settings.tfs_exclude_closed_older_than_days > 0:
@@ -214,12 +226,12 @@ class TfsClient:
         queries = [
             (
                 f"SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = {project} "
-                f"AND [System.WorkItemType] IN ({types}){state_clause}{area_clause}"
+                f"AND [System.WorkItemType] IN ({types}){state_clause}{area_clause}{tags_clause}"
                 f"{closed_exclude_clause} ORDER BY [System.ChangedDate] DESC"
             ),
             (
                 f"SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = {project} "
-                f"AND [System.WorkItemType] IN ({types}){area_clause}{closed_exclude_clause} "
+                f"AND [System.WorkItemType] IN ({types}){area_clause}{tags_clause}{closed_exclude_clause} "
                 f"ORDER BY [System.ChangedDate] DESC"
             ),
         ]
@@ -254,23 +266,31 @@ class TfsClient:
                 "System.AssignedTo",
                 "System.TeamProject",
                 "System.BoardColumn",
+                "System.IterationPath",
+                "System.Tags",
                 "Microsoft.VSTS.Common.ClosedDate",
                 "Microsoft.VSTS.Common.Severity",
                 *settings.scheduling_batch_field_list,
             ]
         )
 
-    async def get_error_links_for_area(self, area_path: str) -> dict[int, int]:
+    async def get_error_links_for_area(
+        self,
+        area_path: str,
+        *,
+        tags: Iterable[str] | None = None,
+    ) -> dict[int, int]:
         """error_id -> zni_id через один WIQL вместо Relations на каждом ЗНИ."""
         types = ", ".join(wiql_quote(item) for item in settings.change_type_list)
         error_types = ", ".join(wiql_quote(item) for item in settings.error_type_list)
         project = wiql_quote(self.project)
         area = wiql_quote(area_path)
+        tags_clause = wiql_tags_clause(tags, field="[Source].[System.Tags]")
         query = (
             f"SELECT [System.Id] FROM WorkItemLinks "
             f"WHERE [Source].[System.TeamProject] = {project} "
             f"AND [Source].[System.WorkItemType] IN ({types}) "
-            f"AND [Source].[System.AreaPath] UNDER {area} "
+            f"AND [Source].[System.AreaPath] UNDER {area}{tags_clause} "
             f"AND [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward' "
             f"AND [Target].[System.WorkItemType] IN ({error_types}) "
             f"MODE (MustContain)"

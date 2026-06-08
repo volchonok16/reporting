@@ -1,6 +1,8 @@
 from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.app_users import parse_app_users
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -64,6 +66,16 @@ class Settings(BaseSettings):
     app_public_url: str = Field(default="http://localhost:5173", alias="APP_PUBLIC_URL")
     api_public_url: str = Field(default="http://localhost:8000", alias="API_PUBLIC_URL")
     cors_allow_origins: str = Field(default="", alias="CORS_ALLOW_ORIGINS")
+    tfs_sync_pat: str = Field(
+        default="",
+        alias="TFS_SYNC_PAT",
+        description="PAT TFS для синхронизации при входе по логину/паролю приложения.",
+    )
+    app_auth_users: str = Field(
+        default="",
+        alias="APP_AUTH_USERS",
+        description="Пользователи приложения: login:password (по одному на строку).",
+    )
 
     @computed_field
     @property
@@ -129,6 +141,11 @@ class Settings(BaseSettings):
     @property
     def closed_state_list(self) -> list[str]:
         return [item.strip() for item in self.tfs_closed_state_values.split(",") if item.strip()]
+
+    @computed_field
+    @property
+    def app_auth_users_map(self) -> dict[str, str]:
+        return parse_app_users(self.app_auth_users)
 
 
 settings = Settings()

@@ -7,6 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.boards import ALL_BOARDS_CODE, BOARDS, BoardConfig, board_by_code, is_all_boards
 from app.config import settings
+from app.iteration_plan import (
+    parse_planned_date_from_iteration,
+    quarter_key_from_date,
+    quarter_label_from_key,
+)
 from app.models import Task
 from app.pilot_metrics import count_launched
 from app.schemas import (
@@ -15,6 +20,7 @@ from app.schemas import (
     DashboardMetricsOut,
     DashboardOut,
     LinkedErrorOut,
+    QuarterOptionOut,
 )
 
 
@@ -29,10 +35,43 @@ def _matches_search(task: Task, search: str) -> bool:
     return needle in task.external_id.lower() or needle in task.title.lower()
 
 
+def _extra(task: Task) -> dict:
+    return task.extra_json if isinstance(task.extra_json, dict) else {}
+
+
 def _board_column(task: Task) -> str | None:
-    extra = task.extra_json if isinstance(task.extra_json, dict) else {}
-    value = extra.get("board_column")
+    value = _extra(task).get("board_column")
     return str(value).strip() if value else None
+
+
+def _task_plan_meta(task: Task) -> tuple[date | None, str | None, str | None]:
+    extra = _extra(task)
+    planned_raw = extra.get("planned_date")
+    quarter_key = extra.get("plan_quarter")
+    planned: date | None = None
+    if isinstance(planned_raw, str) and planned_raw:
+        try:
+            planned = date.fromisoformat(planned_raw)
+        except ValueError:
+            planned = None
+    if planned is None:
+        iteration_path = extra.get("iteration_path")
+        if isinstance(iteration_path, str):
+            planned = parse_planned_date_from_iteration(iteration_path)
+    if planned and not quarter_key:
+        quarter_key = quarter_key_from_date(planned)
+    quarter_key_str = str(quarter_key).strip() if quarter_key else None
+    quarter_label = quarter_label_from_key(quarter_key_str) if quarter_key_str else None
+    return planned, quarter_key_str, quarter_label
+
+
+def _matches_quarter(task: Task, quarter: str | None) -> bool:
+    if not quarter:
+        return True
+    _, quarter_key, _ = _task_plan_meta(task)
+    if quarter == "__none__":
+        return quarter_key is None
+    return quarter_key == quarter
 
 
 def _matches_status(task: Task, status: str | None) -> bool:
@@ -64,6 +103,9 @@ def _in_date_range(task: Task, date_from: date | None, date_to: date | None) -> 
 def _sort_key(task: Task, sort: str):
     if sort == "release_date":
         return task.release_date or date.min
+    if sort == "planned_date":
+        planned, _, _ = _task_plan_meta(task)
+        return planned or date.min
     if sort == "start_date":
         return _effective_start(task) or date.min
     if sort == "created_at":
@@ -81,6 +123,18 @@ def _board_name_by_code(code: str | None) -> str | None:
         if board.code == code:
             return board.display_name
     return None
+
+
+def _collect_available_quarters(rows: list[Task]) -> list[QuarterOptionOut]:
+    keys: set[str] = set()
+    for row in rows:
+        _, quarter_key, _ = _task_plan_meta(row)
+        if quarter_key:
+            keys.add(quarter_key)
+    return [
+        QuarterOptionOut(key=key, label=quarter_label_from_key(key))
+        for key in sorted(keys, reverse=True)
+    ]
 
 
 def _collect_available_statuses(rows: list[Task]) -> list[str]:
@@ -125,6 +179,7 @@ def load_change_requests(
     date_from: date | None = None,
     date_to: date | None = None,
     status: str | None = None,
+    quarter: str | None = None,
 ) -> DashboardOut:
     all_boards = is_all_boards(board_code)
     board = board_by_code(board_code)
@@ -160,6 +215,7 @@ def load_change_requests(
         if _matches_search(row, search or "")
         and _in_date_range(row, date_from, date_to)
         and _matches_status(row, status)
+        and _matches_quarter(row, quarter)
     ]
 
     reverse = sort.endswith("_desc") or sort == "id_desc"
@@ -174,28 +230,24 @@ def load_change_requests(
     items: list[ChangeRequestOut] = []
     for row in filtered:
         linked = errors_by_parent.get(row.id, [])
-        board_code_value = (row.extra_json or {}).get("board_code")
+        board_code_value = _extra(row).get("board_code")
+        planned_date, _, quarter_label = _task_plan_meta(row)
         items.append(
             ChangeRequestOut(
                 id=str(row.id),
                 number=row.external_id,
                 title=row.title,
-                url=row.external_url,
                 status=row.source_status,
                 boardColumn=_board_column(row),
                 startDate=_effective_start(row),
                 releaseDate=row.release_date,
+                plannedDate=planned_date,
+                planQuarter=quarter_label,
                 createdAt=row.created_at,
                 boardCode=str(board_code_value) if board_code_value else None,
                 boardName=row.source_team or _board_name_by_code(str(board_code_value) if board_code_value else None),
                 errors=[
-                    LinkedErrorOut(
-                        id=e.external_id,
-                        title=e.title,
-                        status=e.source_status,
-                        url=e.external_url,
-                    )
-                    for e in linked
+                    LinkedErrorOut(id=e.external_id, title=e.title, status=e.source_status) for e in linked
                 ],
             )
         )
@@ -207,6 +259,7 @@ def load_change_requests(
         items=items,
         totalShown=len(items),
         availableStatuses=_collect_available_statuses(rows),
+        availableQuarters=_collect_available_quarters(rows),
     )
 
 
@@ -227,6 +280,8 @@ def export_csv(db: Session, *, board_code: str | None = None) -> str:
             "Статус доски",
             "Дата начала",
             "Целевая дата",
+            "Планируемая дата",
+            "План квартала",
             "Доска",
             "Ошибки",
         ]
@@ -243,6 +298,8 @@ def export_csv(db: Session, *, board_code: str | None = None) -> str:
                     item.boardColumn or "",
                     item.startDate.isoformat() if item.startDate else "",
                     item.releaseDate.isoformat() if item.releaseDate else "",
+                    item.plannedDate.isoformat() if item.plannedDate else "",
+                    item.planQuarter or "",
                     item.boardName or "",
                     errors_text,
                 ]
@@ -262,6 +319,8 @@ def export_csv(db: Session, *, board_code: str | None = None) -> str:
                         item.boardColumn or "",
                         item.startDate.isoformat() if item.startDate else "",
                         item.releaseDate.isoformat() if item.releaseDate else "",
+                        item.plannedDate.isoformat() if item.plannedDate else "",
+                        item.planQuarter or "",
                         item.boardName or "",
                         errors_text,
                     ]

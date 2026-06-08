@@ -6,8 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
-from app.auth_service import login_with_pat
-from app.auth_sessions import delete_session, get_session
+from app.auth_service import login_with_app_user, login_with_pat
+from app.auth_sessions import delete_session, get_session, get_session_meta
 from app.boards import ALL_BOARDS_CODE, BOARDS, boards_for_sync
 from app.config import settings
 from app.db import ensure_auth_session_table, get_db
@@ -46,7 +46,7 @@ def startup() -> None:
 def require_pat(x_session_id: str | None = Header(default=None, alias="X-Session-Id")) -> str:
     auth = get_session(x_session_id)
     if auth is None or not auth.pat:
-        raise HTTPException(status_code=401, detail="Сессия TFS отсутствует. Войдите по PAT-токену.")
+        raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
     return auth.pat
 
 
@@ -70,22 +70,41 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
     auth = get_session(x_session_id)
     if auth is None:
         return TfsAuthStatusOut(authenticated=False)
+    meta = get_session_meta(x_session_id)
     return TfsAuthStatusOut(
         authenticated=True,
         baseUrl=auth.base_url,
         project=auth.project,
+        authMode=meta.get("auth_mode"),
+        username=meta.get("app_login"),
     )
 
 
 @app.post("/api/auth/login", response_model=AuthLoginOut)
 async def auth_login(payload: TfsAuthIn) -> AuthLoginOut:
-    auth = build_tfs_auth(
-        base_url=payload.baseUrl,
-        project=payload.project,
-        project_id=payload.projectId,
-        pat=payload.pat,
-    )
-    return await login_with_pat(auth)
+    pat = (payload.pat or "").strip()
+    username = (payload.username or "").strip()
+    password = payload.password or ""
+
+    if pat:
+        auth = build_tfs_auth(
+            base_url=payload.baseUrl,
+            project=payload.project,
+            project_id=payload.projectId,
+            pat=pat,
+        )
+        return await login_with_pat(auth)
+
+    if username and password:
+        return await login_with_app_user(
+            username=username,
+            password=password,
+            base_url=payload.baseUrl,
+            project=payload.project,
+            project_id=payload.projectId,
+        )
+
+    raise HTTPException(status_code=400, detail="Укажите PAT-токен или логин и пароль.")
 
 
 @app.post("/api/auth/logout")
@@ -114,6 +133,7 @@ def dashboard(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     status: str | None = Query(default=None),
+    quarter: str | None = Query(default=None),
 ) -> DashboardOut:
     return load_change_requests(
         db,
@@ -123,6 +143,7 @@ def dashboard(
         date_from=date_from,
         date_to=date_to,
         status=status,
+        quarter=quarter,
     )
 
 

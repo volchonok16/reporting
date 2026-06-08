@@ -12,17 +12,22 @@ type Board = {
 type LinkedError = {
   id: string
   title: string
-  url?: string | null
+}
+
+type QuarterOption = {
+  key: string
+  label: string
 }
 
 type ChangeRequest = {
   number: string
   title: string
-  url?: string | null
   status?: string | null
   boardColumn?: string | null
   startDate?: string | null
   releaseDate?: string | null
+  plannedDate?: string | null
+  planQuarter?: string | null
   boardName?: string | null
   errors: LinkedError[]
 }
@@ -39,6 +44,7 @@ type DashboardData = {
   items: ChangeRequest[]
   totalShown: number
   availableStatuses: string[]
+  availableQuarters: QuarterOption[]
 }
 
 function formatDate(value?: string | null): string {
@@ -58,6 +64,8 @@ const SORT_OPTIONS = [
   { value: 'release_date_desc', label: 'Целевая дата (убыв.)' },
   { value: 'release_date_asc', label: 'Целевая дата (возр.)' },
   { value: 'start_date_desc', label: 'Дата начала (убыв.)' },
+  { value: 'planned_date_desc', label: 'План. дата (убыв.)' },
+  { value: 'planned_date_asc', label: 'План. дата (возр.)' },
 ]
 
 export default function Dashboard({ onLogout }: DashboardProps) {
@@ -68,6 +76,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [quarterFilter, setQuarterFilter] = useState('')
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -82,6 +91,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
 
   useEffect(() => {
     setStatusFilter('')
+    setQuarterFilter('')
   }, [boardCode])
 
   const loadDashboard = useCallback(async () => {
@@ -93,6 +103,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     if (dateFrom) params.set('date_from', dateFrom)
     if (dateTo) params.set('date_to', dateTo)
     if (statusFilter) params.set('status', statusFilter)
+    if (quarterFilter) params.set('quarter', quarterFilter)
     try {
       const payload = await getJson<DashboardData>(`/api/dashboard?${params}`)
       setData(payload)
@@ -101,7 +112,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     } finally {
       setLoading(false)
     }
-  }, [boardCode, search, sort, dateFrom, dateTo, statusFilter])
+  }, [boardCode, search, sort, dateFrom, dateTo, statusFilter, quarterFilter])
 
   useEffect(() => {
     void loadDashboard()
@@ -234,6 +245,19 @@ export default function Dashboard({ onLogout }: DashboardProps) {
               ))}
             </select>
           </label>
+
+          <label className="select-wrap">
+            <span>План квартала</span>
+            <select value={quarterFilter} onChange={(e) => setQuarterFilter(e.target.value)}>
+              <option value="">Все кварталы</option>
+              {(data?.availableQuarters ?? []).map((quarter) => (
+                <option key={quarter.key} value={quarter.key}>
+                  {quarter.label}
+                </option>
+              ))}
+              <option value="__none__">Без квартала</option>
+            </select>
+          </label>
         </div>
 
         <div className="toolbar-right">
@@ -284,6 +308,8 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             <div>ЗНИ</div>
             <div>Дата начала</div>
             <div>Целевая дата</div>
+            <div>План. дата</div>
+            <div>План квартала</div>
             <div>Статус</div>
           </div>
           <div className="table-body">
@@ -292,43 +318,24 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                 className={`table-row${data.allBoards ? ' table-row-all' : ''}`}
                 key={`${item.boardName ?? ''}-${item.number}`}
               >
-                <div className="cell-number">
-                  {item.url ? (
-                    <a className="zni-link" href={item.url} target="_blank" rel="noreferrer">
-                      {item.number}
-                    </a>
-                  ) : (
-                    item.number
-                  )}
-                </div>
+                <div className="cell-number">{item.number}</div>
                 {data.allBoards && <div className="cell-board">{item.boardName}</div>}
                 <div className="cell-title">
                   <div>{item.title}</div>
                   {item.errors.length > 0 && (
                     <div className="cell-errors">
-                      {item.errors.map((err) =>
-                        err.url ? (
-                          <a
-                            key={err.id}
-                            className="error-tag zni-link"
-                            href={err.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            title={err.title}
-                          >
-                            {err.id}
-                          </a>
-                        ) : (
-                          <span key={err.id} className="error-tag">
-                            {err.id}
-                          </span>
-                        ),
-                      )}
+                      {item.errors.map((err) => (
+                        <span key={err.id} className="error-tag">
+                          {err.id}: {err.title}
+                        </span>
+                      ))}
                     </div>
                   )}
                 </div>
                 <div className="cell-date">{formatDate(item.startDate)}</div>
                 <div className="cell-date">{formatDate(item.releaseDate)}</div>
+                <div className="cell-date">{formatDate(item.plannedDate)}</div>
+                <div className="cell-quarter">{item.planQuarter || '—'}</div>
                 <div className="cell-status">
                   <span className="status-board">{item.boardColumn || item.status || '—'}</span>
                   {item.boardColumn && item.status && item.boardColumn !== item.status && (

@@ -56,15 +56,21 @@
 |------|--------------|----------|
 | area_path | System.AreaPath | Область доски |
 | board_column | System.BoardColumn | Колонка Kanban (статус на доске) |
+| tags | System.Tags | Теги TFS (массив строк) |
+| iteration_path | System.IterationPath | Итерация TFS |
+| planned_date | из листа итерации | Планируемая дата (`YYYY.MM.DD` в имени, напр. `2026.08.11.0-R`) |
+| plan_quarter | из planned_date | Ключ квартала (`2026-Q3`) |
 | pilot_transitions | TFS updates | Переходы в «Пилот»: `[{at, status}]` |
 
-## auth_session — сессия PAT
+## auth_session — сессия веб-приложения
 
 | Колонка | Тип | Описание |
 |---------|-----|----------|
 | id | varchar(64) | sessionId для заголовка `X-Session-Id` |
-| payload | jsonb | `pat`, `base_url`, `project` (не в API) |
+| payload | jsonb | `pat`, `base_url`, `project`, `auth_mode` (`pat` / `app_user`), `app_login` |
 | created_at | timestamptz | Время создания |
+
+Переменные окружения: `APP_AUTH_USERS` (логин:пароль), `TFS_SYNC_PAT` (PAT для входа по логину).
 
 ## project — команда по умолчанию
 

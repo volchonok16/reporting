@@ -13,6 +13,7 @@ class BoardConfig:
     project_id: str
     team_id: str
     area_path: str
+    sync_tags: tuple[str, ...] = ()
     base_url: str = settings.tfs_base_url
 
     def to_tfs_auth(self, pat: str) -> TfsAuth:
@@ -39,12 +40,13 @@ BOARDS: list[BoardConfig] = [
     ),
     BoardConfig(
         code="be_t2_team",
-        name="BE-T2 Team",
-        display_name="BE-T2 Team",
+        name="BE Analytics",
+        display_name="BE Analytics",
         project="BE-T2",
         project_id="03cc4df6-e5d2-43a6-9f9a-024573edff5a",
-        team_id="b085b610-9249-4077-8d41-6c29bb6853f5",
-        area_path="BE-T2",
+        team_id="cbc10e7f-8dfa-479f-9a31-0fa6258a1f9f",
+        area_path=r"BE-T2\Area\BE Analytics",
+        sync_tags=("b2b_product",),
     ),
 ]
 
