@@ -1,12 +1,11 @@
 import csv
 import io
-from datetime import date, timedelta
+from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.boards import ALL_BOARDS_CODE, BOARDS, BoardConfig, board_by_code, is_all_boards
-from app.config import settings
 from app.iteration_plan import (
     PLAN_QUARTER_TBD,
     parse_iteration_plan,
@@ -14,7 +13,7 @@ from app.iteration_plan import (
     quarter_label_from_key,
 )
 from app.models import Task
-from app.pilot_metrics import count_launched
+from app.board_metrics import count_launched_rows, count_launching_soon
 from app.schemas import (
     BoardOut,
     ChangeRequestOut,
@@ -176,17 +175,10 @@ def _compute_metrics(
     date_from: date | None,
     date_to: date | None,
 ) -> DashboardMetricsOut:
-    today = date.today()
-    horizon = today + timedelta(days=settings.launching_soon_days)
-    launching_soon = sum(
-        1
-        for row in rows
-        if row.release_date and today <= row.release_date <= horizon and row.closed_at is None
-    )
     return DashboardMetricsOut(
         totalTasks=len(rows),
-        launchingSoon=launching_soon,
-        launched=count_launched(rows, date_from=date_from, date_to=date_to),
+        launchingSoon=count_launching_soon(rows),
+        launched=count_launched_rows(rows, date_from=date_from, date_to=date_to),
         errorsCount=len(error_rows),
     )
 

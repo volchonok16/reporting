@@ -425,7 +425,7 @@
 
 **Планируемая дата** — из листа `System.IterationPath`: `2026.08.11.0-R` → `2026-08-11`; если в пути есть **TBD** — в UI выводится `TBD`. **План квартала** — `Q3 2026` или `TBD`; фильтр `quarter` в API (`TBD`, `2026-Q3`, …). **Плановый релиз** — из `Logrocon.FoundinRelease` или `Logrocon.Release`, если поле проставлено или релиз привязан; колонка «План. релиз» в дашборде и CSV.
 
-**Доски приложения:** Digital Streams B2b (`Tele2\Digital\Streams\B2b`, ошибки с тегом `FE B2B` или `microservice`); BE Analytics (`BE-T2\BE Analytics`, ЗНИ с `b2b_product`, ошибки с `FE B2B` или `microservice`).
+**Доски приложения:** Digital Streams B2b (`Tele2\Digital\Streams\B2b`, ошибки с тегом `FE B2B` или `microservice`); BE Analytics (`BE-T2\BE Analytics`, ЗНИ с `b2b_product`, ошибки с `FE B2B` или `microservice`, статус `Rejected` не выгружается).
 
 После синхронизации доски записи `task` с тем же `board_code`, не попавшие в выгрузку, удаляются (очистка устаревших ЗНИ/ошибок).
 
@@ -590,8 +590,8 @@
 | Метрика | Условие подсчёта |
 |---------|------------------|
 | **Всего задач** | `task_type = change_request`, фильтр по доске (`extra_json.area_path` / `team_id`) |
-| **Скоро запуск** | ЗНИ с `release_date` (`TargetDate`) в заданном окне |
-| **Запущено** | ЗНИ, переведённые в статус «Пилот» в выбранном периоде дат (`extra_json.pilot_transitions`) |
+| **Скоро запуск** | Digital Streams B2b: статус workflow `UAT`; BE Analytics: `release_date` (`TargetDate`) в окне `LAUNCHING_SOON_DAYS` |
+| **Запущено** | Digital Streams B2b: статус `Pilot` / `Пилот`; BE Analytics: переход в пилот в выбранном периоде дат (`extra_json.pilot_transitions`) |
 | **Ошибок** | `task_type = error`, `parent_task_id` → ЗНИ той же доски |
 
 ### Синхронизация TFS (оптимизация)

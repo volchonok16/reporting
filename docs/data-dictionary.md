@@ -114,8 +114,8 @@
 | Метрика | Таблица / поле |
 |---------|----------------|
 | Всего ЗНИ | `task` · `task_type = change_request` |
-| Скоро запуск | `task.release_date` |
-| Запущено | `pilot_transitions` в периоде дат |
+| Скоро запуск | Digital: `source_status` = `UAT`; BE Analytics: `release_date` |
+| Запущено | Digital: `source_status` = `Pilot`; BE Analytics: `pilot_transitions` в периоде дат |
 | Ошибок | `task` · `task_type = error` · `parent_task_id` |
 
 ## sync_run — аудит синхронизации

@@ -99,6 +99,20 @@ def wiql_tags_clause(tags: Iterable[str] | None, *, field: str = "[System.Tags]"
     return " AND (" + " OR ".join(parts) + ")"
 
 
+def wiql_exclude_states_clause(
+    states: Iterable[str] | None,
+    *,
+    field: str = "[System.State]",
+) -> str:
+    values = [state.strip() for state in (states or []) if state and state.strip()]
+    if not values:
+        return ""
+    parts = [f"{field} <> {wiql_quote(state)}" for state in values]
+    if len(parts) == 1:
+        return f" AND {parts[0]}"
+    return " AND (" + " AND ".join(parts) + ")"
+
+
 def wiql_date(value: date) -> str:
     return wiql_quote(value.isoformat())
 
@@ -200,6 +214,7 @@ class TfsClient:
         *,
         area_path: str | None = None,
         tags: Iterable[str] | None = None,
+        exclude_states: Iterable[str] | None = None,
         limit_results: bool = True,
     ) -> list[int]:
         types = ", ".join(wiql_quote(item) for item in settings.change_type_list)
@@ -213,6 +228,7 @@ class TfsClient:
         if area_path:
             area_clause = f" AND [System.AreaPath] UNDER {wiql_quote(area_path)}"
         tags_clause = wiql_tags_clause(tags)
+        exclude_states_clause = wiql_exclude_states_clause(exclude_states)
 
         closed_exclude_clause = ""
         if settings.closed_state_list and settings.tfs_exclude_closed_older_than_days > 0:
@@ -227,11 +243,12 @@ class TfsClient:
             (
                 f"SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = {project} "
                 f"AND [System.WorkItemType] IN ({types}){state_clause}{area_clause}{tags_clause}"
-                f"{closed_exclude_clause} ORDER BY [System.ChangedDate] DESC"
+                f"{exclude_states_clause}{closed_exclude_clause} ORDER BY [System.ChangedDate] DESC"
             ),
             (
                 f"SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = {project} "
-                f"AND [System.WorkItemType] IN ({types}){area_clause}{tags_clause}{closed_exclude_clause} "
+                f"AND [System.WorkItemType] IN ({types}){area_clause}{tags_clause}"
+                f"{exclude_states_clause}{closed_exclude_clause} "
                 f"ORDER BY [System.ChangedDate] DESC"
             ),
         ]
@@ -283,6 +300,7 @@ class TfsClient:
         *,
         zni_tags: Iterable[str] | None = None,
         error_tags: Iterable[str] | None = None,
+        exclude_zni_states: Iterable[str] | None = None,
     ) -> dict[int, int]:
         """error_id -> zni_id через один WIQL вместо Relations на каждом ЗНИ."""
         types = ", ".join(wiql_quote(item) for item in settings.change_type_list)
@@ -291,11 +309,16 @@ class TfsClient:
         area = wiql_quote(area_path)
         zni_tags_clause = wiql_tags_clause(zni_tags, field="[Source].[System.Tags]")
         error_tags_clause = wiql_tags_clause(error_tags, field="[Target].[System.Tags]")
+        exclude_zni_states_clause = wiql_exclude_states_clause(
+            exclude_zni_states,
+            field="[Source].[System.State]",
+        )
         query = (
             f"SELECT [System.Id] FROM WorkItemLinks "
             f"WHERE [Source].[System.TeamProject] = {project} "
             f"AND [Source].[System.WorkItemType] IN ({types}) "
-            f"AND [Source].[System.AreaPath] UNDER {area}{zni_tags_clause} "
+            f"AND [Source].[System.AreaPath] UNDER {area}{zni_tags_clause}"
+            f"{exclude_zni_states_clause} "
             f"AND [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward' "
             f"AND [Target].[System.WorkItemType] IN ({error_types})"
             f"{error_tags_clause} "

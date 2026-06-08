@@ -52,6 +52,13 @@ def has_required_tags(fields: dict[str, Any], required_tags: tuple[str, ...]) ->
     return any(required.casefold() in tags for required in required_tags)
 
 
+def is_excluded_sync_state(fields: dict[str, Any], excluded_states: tuple[str, ...]) -> bool:
+    if not excluded_states:
+        return False
+    state = str(fields.get("System.State") or "").strip().casefold()
+    return state in {value.casefold() for value in excluded_states}
+
+
 def should_skip_closed_zni(fields: dict[str, Any]) -> bool:
     if settings.tfs_exclude_closed_older_than_days <= 0 or not settings.closed_state_list:
         return False
@@ -238,6 +245,7 @@ async def sync_board(
         zni_ids = await client.get_change_request_ids(
             area_path=board.area_path,
             tags=board.sync_tags or None,
+            exclude_states=board.exclude_sync_states or None,
         )
         if not zni_ids:
             prune_stale_board_tasks(
@@ -257,6 +265,7 @@ async def sync_board(
             item
             for item in as_work_item_list(zni_payloads_raw)
             if has_required_tags(item.get("fields") or {}, board.sync_tags)
+            and not is_excluded_sync_state(item.get("fields") or {}, board.exclude_sync_states)
             and not should_skip_closed_zni(item.get("fields") or {})
         ]
         skipped = len(zni_payloads_raw) - len(zni_payloads)
@@ -354,6 +363,7 @@ async def sync_board(
             board.area_path,
             zni_tags=board.sync_tags or None,
             error_tags=board.error_sync_tags or None,
+            exclude_zni_states=board.exclude_sync_states or None,
         )
         zni_id_set = set(zni_db_ids.keys())
         error_child_map = {

@@ -44,7 +44,7 @@
 | Код | AreaPath | Теги ЗНИ | Теги ошибок | Отображаемое имя |
 |-----|----------|----------|-------------|------------------|
 | `digital_streams_b2b` | `Tele2\Digital\Streams\B2b` | — | `FE B2B`, `microservice` | Digital Streams B2b |
-| `be_t2_team` | `BE-T2\BE Analytics` | `b2b_product` | `FE B2B`, `microservice` | BE Analytics |
+| `be_t2_team` | `BE-T2\BE Analytics` | `b2b_product` | `FE B2B`, `microservice` | BE Analytics (без статуса `Rejected`) |
 
 Фильтр «Все доски» — объединение обеих досок.
 
@@ -53,8 +53,8 @@
 | Карточка | Источник | Примечание |
 |----------|----------|------------|
 | Всего задач | `task` где `task_type = change_request` | По выбранной доске |
-| Скоро запуск | `release_date` в ближайшем окне | `TargetDate` из TFS |
-| Запущено | `extra_json.pilot_transitions` | Переход в «Пилот» между датами фильтра |
+| Скоро запуск | Digital: статус `UAT`; BE Analytics: `release_date` в окне | `TargetDate` / `System.State` |
+| Запущено | Digital: статус `Pilot`; BE Analytics: `pilot_transitions` в периоде дат | workflow / история TFS |
 | Ошибок | `task` где `task_type = error` | Связаны с ЗНИ через `parent_task_id` |
 
 ### REST API (основное)

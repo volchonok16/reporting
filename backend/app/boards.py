@@ -15,6 +15,9 @@ class BoardConfig:
     area_path: str
     sync_tags: tuple[str, ...] = ()
     error_sync_tags: tuple[str, ...] = ()
+    exclude_sync_states: tuple[str, ...] = ()
+    launching_soon_states: tuple[str, ...] = ()
+    launched_states: tuple[str, ...] = ()
     base_url: str = settings.tfs_base_url
 
     def to_tfs_auth(self, pat: str) -> TfsAuth:
@@ -39,6 +42,8 @@ BOARDS: list[BoardConfig] = [
         team_id="95d94210-a12e-4b11-b13b-4bbbc698d30b",
         area_path=r"Tele2\Digital\Streams\B2b",
         error_sync_tags=("FE B2B", "microservice"),
+        launching_soon_states=("UAT",),
+        launched_states=("Pilot", "Пилот"),
     ),
     BoardConfig(
         code="be_t2_team",
@@ -50,6 +55,7 @@ BOARDS: list[BoardConfig] = [
         area_path=r"BE-T2\BE Analytics",
         sync_tags=("b2b_product",),
         error_sync_tags=("FE B2B", "microservice"),
+        exclude_sync_states=("Rejected",),
     ),
 ]
 
