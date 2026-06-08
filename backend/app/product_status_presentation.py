@@ -136,6 +136,26 @@ class TemplateCatalog:
         matched = self.match(sheet_name)
         return matched if matched else [self._default]
 
+    def _primary_templates(self, pool: list[ContentSlideTemplate]) -> list[ContentSlideTemplate]:
+        """Полноразмерные макеты слайда — без урезанных вариантов из шаблона."""
+        if not pool:
+            return pool
+        max_height = max(item.table_height for item in pool)
+        height_floor = int(max_height * 0.85)
+        primary = [
+            item
+            for item in pool
+            if item.table_height >= height_floor
+            and item.table_height // max(item.row_count, 1) >= MIN_ROW_HEIGHT_EMU // 2
+        ]
+        return primary or list(pool)
+
+    def _canonical_table_height(self, pool: list[ContentSlideTemplate]) -> int:
+        return max(item.table_height for item in self._primary_templates(pool))
+
+    def _max_rows_for_pool(self, pool: list[ContentSlideTemplate]) -> int:
+        return max(item.row_count for item in self._primary_templates(pool))
+
     def chunk_plan(
         self,
         sheet_name: str,
@@ -144,9 +164,17 @@ class TemplateCatalog:
     ) -> list[tuple[ContentSlideTemplate, list[dict[str, str]]]]:
         pool = self.template_pool(sheet_name)
         if not rows:
-            return [(pool[0], [])]
+            return [(self._pick_template_for_chunk(pool, 1), [])]
 
-        max_pool_rows = max(item.row_count for item in pool)
+        primary = self._primary_templates(pool)
+        max_table_height = int(self._canonical_table_height(pool) * HEIGHT_SAFETY_RATIO)
+        max_pool_rows = self._max_rows_for_pool(pool)
+        layout_template = max(primary, key=lambda item: item.table_height)
+        col_chars = layout_template.col_chars_per_line
+        avg_row_height = max(
+            MIN_ROW_HEIGHT_EMU,
+            layout_template.table_height // max(layout_template.row_count, 1),
+        )
 
         chunks: list[tuple[ContentSlideTemplate, list[dict[str, str]]]] = []
         current_chunk: list[dict[str, str]] = []
@@ -154,15 +182,6 @@ class TemplateCatalog:
 
         for row in rows:
             values = _row_values(row, columns, 4)
-            prospective = len(current_chunk) + 1
-            estimate_template = self._pick_template_for_chunk(pool, prospective)
-            max_table_height = int(estimate_template.table_height * HEIGHT_SAFETY_RATIO)
-            col_chars = estimate_template.col_chars_per_line
-            avg_row_height = max(
-                MIN_ROW_HEIGHT_EMU,
-                estimate_template.table_height // max(estimate_template.row_count, 1),
-            )
-
             row_height = _estimate_row_height(values, col_chars)
             row_is_heavy = _row_is_heavy(values)
 
@@ -211,17 +230,16 @@ class TemplateCatalog:
         if not chunks:
             return chunks
 
+        max_height = int(self._canonical_table_height(pool) * HEIGHT_SAFETY_RATIO)
         merged: list[tuple[ContentSlideTemplate, list[dict[str, str]]]] = [chunks[0]]
         for template, chunk in chunks[1:]:
             prev_template, prev_chunk = merged[-1]
             combined = prev_chunk + chunk
             combined_template = self._pick_template_for_chunk(pool, len(combined))
-            max_height = int(combined_template.table_height * HEIGHT_SAFETY_RATIO)
             combined_height = self._chunk_height(combined_template, combined, columns)
             if (
                 len(combined) <= combined_template.row_count
                 and combined_height <= max_height
-                and (len(chunk) == 1 or (len(chunk) <= 2 and len(prev_chunk) <= 2))
             ):
                 merged[-1] = (combined_template, combined)
                 continue
@@ -233,10 +251,11 @@ class TemplateCatalog:
         pool: list[ContentSlideTemplate],
         row_count: int,
     ) -> ContentSlideTemplate:
-        fitting = [item for item in pool if item.row_count >= row_count]
+        primary = self._primary_templates(pool)
+        fitting = [item for item in primary if item.row_count >= row_count]
         if fitting:
-            return min(fitting, key=lambda item: (item.row_count, item.table_height, item.index))
-        return max(pool, key=lambda item: item.row_count)
+            return min(fitting, key=lambda item: (item.row_count, item.index))
+        return max(primary, key=lambda item: item.row_count)
 
     def _pick_default_template(self) -> ContentSlideTemplate:
         if not self._templates:
@@ -244,7 +263,10 @@ class TemplateCatalog:
                 status_code=503,
                 detail="В шаблоне не найдено контентных слайдов.",
             )
-        return max(self._templates, key=lambda item: (item.row_count, -item.index))
+        return max(
+            self._primary_templates(self._templates),
+            key=lambda item: (item.row_count, item.table_height, -item.index),
+        )
 
 
 def _normalize_title(value: str) -> str:

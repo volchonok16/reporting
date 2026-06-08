@@ -56,6 +56,17 @@ def test_catalog_excludes_cover_slide() -> None:
     assert all(template.index != 0 for template in catalog._templates)
 
 
+def test_catalog_prefers_full_height_templates() -> None:
+    prs = Presentation(str(TEMPLATE_PATH))
+    catalog = TemplateCatalog.from_presentation(prs)
+    pool = catalog.template_pool("Продуктовый офис: CORE")
+    primary = catalog._primary_templates(pool)
+    assert all(item.index in {14, 15} for item in primary)
+    picked = catalog._pick_template_for_chunk(pool, 4)
+    assert picked.index in {14, 15}
+    assert picked.table_height >= 5_000_000
+
+
 def test_catalog_discovers_slides_by_title() -> None:
     prs = Presentation(str(TEMPLATE_PATH))
     catalog = TemplateCatalog.from_presentation(prs)
@@ -158,8 +169,8 @@ def test_chunk_plan_splits_long_content_across_slides() -> None:
         {
             "Дата запуска": "02.06",
             "Проект": "CORE",
-            "Описание проекта": "Очень длинное описание " * 40,
-            "Зачем и для чего делаем": "Ещё текст " * 20,
+            "Описание проекта": "Очень длинное описание " * 120,
+            "Зачем и для чего делаем": "Ещё текст " * 80,
         },
         {
             "Дата запуска": "03.06",
