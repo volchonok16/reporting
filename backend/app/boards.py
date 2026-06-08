@@ -24,6 +24,9 @@ class BoardConfig:
         )
 
 
+ALL_BOARDS_CODE = "all"
+
+
 BOARDS: list[BoardConfig] = [
     BoardConfig(
         code="digital_streams_b2b",
@@ -46,14 +49,25 @@ BOARDS: list[BoardConfig] = [
 ]
 
 
+def is_all_boards(code: str | None) -> bool:
+    return (code or "").strip().lower() == ALL_BOARDS_CODE
+
+
 def board_by_code(code: str | None) -> BoardConfig | None:
-    if not code:
+    if not code or is_all_boards(code):
         return None
     normalized = code.strip().lower()
     for board in BOARDS:
         if board.code == normalized:
             return board
     return None
+
+
+def boards_for_sync(board_code: str | None) -> list[BoardConfig]:
+    if is_all_boards(board_code) or not board_code:
+        return list(BOARDS)
+    board = board_by_code(board_code)
+    return [board] if board else list(BOARDS)
 
 
 def default_board() -> BoardConfig:

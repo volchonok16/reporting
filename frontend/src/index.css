@@ -139,9 +139,14 @@ body {
   min-width: 180px;
 }
 
+.banner-info {
+  color: #1d4ed8;
+  margin: 0 0 12px;
+}
+
 .metrics {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   margin-bottom: 24px;
 }
@@ -161,6 +166,11 @@ body {
 }
 
 .metric-soon {
+  background: #fff;
+  border: 1px solid #d8d8d8;
+}
+
+.metric-launched {
   background: #fff;
   border: 1px solid #d8d8d8;
 }
@@ -201,6 +211,11 @@ body {
   padding: 12px 16px;
 }
 
+.table-head-all,
+.table-row-all {
+  grid-template-columns: 120px 180px 1fr;
+}
+
 .table-head {
   background: #e8e8e8;
   font-weight: 600;
@@ -239,13 +254,26 @@ body {
   text-align: center;
 }
 
+.cell-board {
+  font-size: 13px;
+  color: #555;
+}
+
+@media (max-width: 1000px) {
+  .metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 800px) {
   .metrics {
     grid-template-columns: 1fr;
   }
 
   .table-head,
-  .table-row {
+  .table-row,
+  .table-head-all,
+  .table-row-all {
     grid-template-columns: 1fr;
   }
 }

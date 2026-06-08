@@ -25,12 +25,21 @@
 ```bash
 git clone https://github.com/volchonok16/reporting.git
 cd reporting
-cp .env.example .env
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+bash scripts/dev.sh
 ```
 
 - UI: http://localhost:5173
 - API: http://localhost:8000/api/health
+
+### Production (pallink.fun + nginx + certbot)
+
+```bash
+cp .env.production.example .env
+# CERTBOT_EMAIL=you@example.com
+sudo bash scripts/production.sh
+```
+
+Подробнее: [deploy/DEPLOY.md](deploy/DEPLOY.md)
 
 Подключение снаружи (порт `5432`):
 

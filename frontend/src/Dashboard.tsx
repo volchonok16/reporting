@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiFetch, clearSessionId, getJson } from './api'
 
+const ALL_BOARDS = 'all'
+
 type Board = {
   code: string
   name: string
@@ -16,14 +18,17 @@ type ChangeRequest = {
   number: string
   title: string
   status?: string | null
+  boardName?: string | null
   errors: LinkedError[]
 }
 
 type DashboardData = {
-  board: Board
+  board: Board | null
+  allBoards: boolean
   metrics: {
     totalTasks: number
     launchingSoon: number
+    launched: number
     errorsCount: number
   }
   items: ChangeRequest[]
@@ -44,7 +49,7 @@ const SORT_OPTIONS = [
 
 export default function Dashboard({ onLogout }: DashboardProps) {
   const [boards, setBoards] = useState<Board[]>([])
-  const [boardCode, setBoardCode] = useState('')
+  const [boardCode, setBoardCode] = useState(ALL_BOARDS)
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('id_desc')
   const [dateFrom, setDateFrom] = useState('')
@@ -52,6 +57,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [syncProgress, setSyncProgress] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -89,38 +95,48 @@ export default function Dashboard({ onLogout }: DashboardProps) {
 
   const handleSync = async () => {
     setSyncing(true)
+    setSyncProgress('Старт…')
     setError(null)
     try {
-      const response = await apiFetch('/api/sync', { method: 'POST' })
+      const params = boardCode ? `?board=${encodeURIComponent(boardCode)}` : ''
+      const response = await apiFetch(`/api/sync${params}`, { method: 'POST' })
       if (!response.ok) {
         const text = await response.text()
         throw new Error(text || 'Ошибка синхронизации')
       }
       const sync = (await response.json()) as { id: number }
       const poll = async () => {
-        const status = await getJson<{ status: string; errorMessage?: string | null }>(
-          `/api/sync/${sync.id}`,
-        )
+        const status = await getJson<{
+          status: string
+          errorMessage?: string | null
+          progressMessage?: string | null
+        }>(`/api/sync/${sync.id}`)
+        if (status.progressMessage) {
+          setSyncProgress(status.progressMessage)
+        }
         if (status.status === 'running') {
-          setTimeout(poll, 2000)
+          setTimeout(poll, 1500)
           return
         }
         if (status.status === 'failed') {
           throw new Error(status.errorMessage || 'Синхронизация не удалась')
         }
+        setSyncProgress(null)
         await loadDashboard()
         setSyncing(false)
       }
       void poll()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка синхронизации')
+      setSyncProgress(null)
       setSyncing(false)
     }
   }
 
   const handleExport = async () => {
     try {
-      const response = await apiFetch('/api/export')
+      const params = boardCode ? `?board=${encodeURIComponent(boardCode)}` : ''
+      const response = await apiFetch(`/api/export${params}`)
       if (!response.ok) {
         throw new Error('Не удалось выгрузить отчёт')
       }
@@ -143,6 +159,10 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   }
 
   const selectedBoard = boards.find((b) => b.code === boardCode)
+  const boardLabel =
+    data?.allBoards || boardCode === ALL_BOARDS
+      ? 'Все доски'
+      : selectedBoard?.displayName ?? ''
 
   return (
     <div className="app">
@@ -203,6 +223,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         </div>
       </header>
 
+      {syncProgress && <p className="banner-info">{syncProgress}</p>}
       {error && <p className="banner-error">{error}</p>}
 
       <section className="metrics">
@@ -214,6 +235,10 @@ export default function Dashboard({ onLogout }: DashboardProps) {
           <span className="metric-label">Скоро запуск</span>
           <strong className="metric-value">{data?.metrics.launchingSoon ?? '—'}</strong>
         </article>
+        <article className="metric-card metric-launched">
+          <span className="metric-label">Запущено</span>
+          <strong className="metric-value">{data?.metrics.launched ?? '—'}</strong>
+        </article>
         <article className="metric-card metric-errors">
           <span className="metric-label">Ошибок</span>
           <strong className="metric-value">{data?.metrics.errorsCount ?? '—'}</strong>
@@ -223,18 +248,23 @@ export default function Dashboard({ onLogout }: DashboardProps) {
       <section className="table-section">
         <p className="table-meta">
           Показано строк {data?.totalShown ?? 0}
-          {selectedBoard ? ` · ${selectedBoard.displayName}` : ''}
+          {boardLabel ? ` · ${boardLabel}` : ''}
           {loading ? ' · загрузка…' : ''}
         </p>
         <div className="table">
-          <div className="table-head">
+          <div className={`table-head${data?.allBoards ? ' table-head-all' : ''}`}>
             <div>Номер ЗНИ</div>
+            {data?.allBoards && <div>Доска</div>}
             <div>ЗНИ</div>
           </div>
           <div className="table-body">
             {data?.items.map((item) => (
-              <div className="table-row" key={item.number}>
+              <div
+                className={`table-row${data.allBoards ? ' table-row-all' : ''}`}
+                key={`${item.boardName ?? ''}-${item.number}`}
+              >
                 <div className="cell-number">{item.number}</div>
+                {data.allBoards && <div className="cell-board">{item.boardName}</div>}
                 <div className="cell-title">
                   <div>{item.title}</div>
                   {item.errors.length > 0 && (

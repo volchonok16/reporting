@@ -1,9 +1,24 @@
 # Docker: reporting (PostgreSQL + FastAPI + Vite)
 
-## Полный стек (приложение + БД)
+## Локально (один скрипт)
 
 ```bash
 cp .env.example .env
+bash scripts/dev.sh
+```
+
+## Production (pallink.fun)
+
+```bash
+cp .env.production.example .env
+sudo bash scripts/production.sh
+```
+
+Скрипт поднимает Docker, nginx и при необходимости certbot. См. [deploy/DEPLOY.md](../deploy/DEPLOY.md).
+
+## Полный стек вручную (dev)
+
+```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
 

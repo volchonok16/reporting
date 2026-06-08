@@ -1,0 +1,29 @@
+# Production: приложение на localhost, снаружи — nginx + Let's Encrypt.
+#
+#   cp .env.production.example .env
+#   sudo bash scripts/production.sh
+
+services:
+  postgres:
+    ports: []
+
+  backend:
+    command: sh -c "uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${BACKEND_WORKERS:-2}"
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-https://pallink.fun}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-https://api.pallink.fun}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-https://pallink.fun,https://www.pallink.fun}
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-https://api.pallink.fun}
+    ports:
+      - "127.0.0.1:5173:5173"
+    command: sh -c "npm ci --no-fund --no-audit && npm run dev -- --host 0.0.0.0"
+    environment:
+      NPM_CONFIG_UPDATE_NOTIFIER: "false"
+      NPM_CONFIG_FUND: "false"

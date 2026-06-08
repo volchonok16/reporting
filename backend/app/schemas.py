@@ -55,11 +55,13 @@ class ChangeRequestOut(BaseModel):
 class DashboardMetricsOut(BaseModel):
     totalTasks: int
     launchingSoon: int
+    launched: int
     errorsCount: int
 
 
 class DashboardOut(BaseModel):
-    board: BoardOut
+    board: BoardOut | None = None
+    allBoards: bool = False
     metrics: DashboardMetricsOut
     items: list[ChangeRequestOut]
     totalShown: int
@@ -71,5 +73,6 @@ class SyncRunOut(BaseModel):
     recordsFetched: int | None = None
     recordsUpserted: int | None = None
     errorMessage: str | None = None
+    progressMessage: str | None = None
     startedAt: datetime
     finishedAt: datetime | None = None

@@ -2,10 +2,10 @@ import csv
 import io
 from datetime import date, timedelta
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.boards import BOARDS, BoardConfig, board_by_code, default_board
+from app.boards import ALL_BOARDS_CODE, BOARDS, BoardConfig, board_by_code, is_all_boards
 from app.config import settings
 from app.models import Task
 from app.schemas import (
@@ -58,6 +58,31 @@ def _sort_key(task: Task, sort: str):
         return 0
 
 
+def _board_name_by_code(code: str | None) -> str | None:
+    if not code:
+        return None
+    for board in BOARDS:
+        if board.code == code:
+            return board.display_name
+    return None
+
+
+def _compute_metrics(rows: list[Task], error_rows: list[Task]) -> DashboardMetricsOut:
+    today = date.today()
+    horizon = today + timedelta(days=settings.launching_soon_days)
+    launching_soon = sum(
+        1
+        for row in rows
+        if row.release_date and today <= row.release_date <= horizon and row.closed_at is None
+    )
+    return DashboardMetricsOut(
+        totalTasks=len(rows),
+        launchingSoon=launching_soon,
+        launched=0,
+        errorsCount=len(error_rows),
+    )
+
+
 def load_change_requests(
     db: Session,
     *,
@@ -67,13 +92,33 @@ def load_change_requests(
     date_from: date | None = None,
     date_to: date | None = None,
 ) -> DashboardOut:
-    board = board_by_code(board_code) or default_board()
+    all_boards = is_all_boards(board_code)
+    board = board_by_code(board_code)
 
-    query = select(Task).where(
-        Task.task_type == "change_request",
-        Task.source_team == board.name,
-    )
-    rows = list(db.scalars(query))
+    if all_boards:
+        board_names = [b.name for b in BOARDS]
+        zni_query = select(Task).where(
+            Task.task_type == "change_request",
+            Task.source_team.in_(board_names),
+        )
+        error_query = select(Task).where(
+            Task.task_type == "error",
+            Task.source_team.in_(board_names),
+        )
+    else:
+        if board is None:
+            board = BOARDS[0]
+        zni_query = select(Task).where(
+            Task.task_type == "change_request",
+            Task.source_team == board.name,
+        )
+        error_query = select(Task).where(
+            Task.task_type == "error",
+            Task.source_team == board.name,
+        )
+
+    rows = list(db.scalars(zni_query))
+    error_rows = list(db.scalars(error_query))
 
     filtered = [row for row in rows if _matches_search(row, search or "") and _in_date_range(row, date_from, date_to)]
 
@@ -81,20 +126,6 @@ def load_change_requests(
     sort_field = sort.replace("_desc", "").replace("_asc", "")
     filtered.sort(key=lambda t: _sort_key(t, sort_field), reverse=reverse)
 
-    today = date.today()
-    horizon = today + timedelta(days=settings.launching_soon_days)
-    launching_soon = sum(
-        1
-        for row in rows
-        if row.release_date and today <= row.release_date <= horizon and row.closed_at is None
-    )
-
-    error_rows = db.scalars(
-        select(Task).where(
-            Task.task_type == "error",
-            Task.source_team == board.name,
-        )
-    ).all()
     errors_by_parent: dict[int, list[Task]] = {}
     for error in error_rows:
         if error.parent_task_id:
@@ -103,6 +134,7 @@ def load_change_requests(
     items: list[ChangeRequestOut] = []
     for row in filtered:
         linked = errors_by_parent.get(row.id, [])
+        board_code_value = (row.extra_json or {}).get("board_code")
         items.append(
             ChangeRequestOut(
                 id=str(row.id),
@@ -112,8 +144,8 @@ def load_change_requests(
                 startDate=_effective_start(row),
                 releaseDate=row.release_date,
                 createdAt=row.created_at,
-                boardCode=board.code,
-                boardName=board.display_name,
+                boardCode=str(board_code_value) if board_code_value else None,
+                boardName=row.source_team or _board_name_by_code(str(board_code_value) if board_code_value else None),
                 errors=[
                     LinkedErrorOut(id=e.external_id, title=e.title, status=e.source_status) for e in linked
                 ],
@@ -121,20 +153,20 @@ def load_change_requests(
         )
 
     return DashboardOut(
-        board=_board_out(board),
-        metrics=DashboardMetricsOut(
-            totalTasks=len(rows),
-            launchingSoon=launching_soon,
-            errorsCount=len(error_rows),
-        ),
+        board=_board_out(board) if board and not all_boards else None,
+        allBoards=all_boards,
+        metrics=_compute_metrics(rows, error_rows),
         items=items,
         totalShown=len(items),
     )
 
 
 def export_csv(db: Session, *, board_code: str | None = None) -> str:
-    boards = [board_by_code(board_code)] if board_code else list(BOARDS)
-    boards = [b for b in boards if b is not None]
+    if is_all_boards(board_code) or not board_code:
+        dashboard = load_change_requests(db, board_code=ALL_BOARDS_CODE)
+        boards_to_export = [None]
+    else:
+        boards_to_export = [board_by_code(board_code)]
 
     output = io.StringIO()
     writer = csv.writer(output, delimiter=";")
@@ -149,8 +181,8 @@ def export_csv(db: Session, *, board_code: str | None = None) -> str:
             "Ошибки",
         ]
     )
-    for board in boards:
-        dashboard = load_change_requests(db, board_code=board.code)
+
+    if is_all_boards(board_code) or not board_code:
         for item in dashboard.items:
             errors_text = "; ".join(f"{e.id}: {e.title}" for e in item.errors)
             writer.writerow(
@@ -164,4 +196,22 @@ def export_csv(db: Session, *, board_code: str | None = None) -> str:
                     errors_text,
                 ]
             )
+    else:
+        for board in boards_to_export:
+            if board is None:
+                continue
+            single = load_change_requests(db, board_code=board.code)
+            for item in single.items:
+                errors_text = "; ".join(f"{e.id}: {e.title}" for e in item.errors)
+                writer.writerow(
+                    [
+                        item.number,
+                        item.title,
+                        item.status or "",
+                        item.startDate.isoformat() if item.startDate else "",
+                        item.releaseDate.isoformat() if item.releaseDate else "",
+                        item.boardName or "",
+                        errors_text,
+                    ]
+                )
     return output.getvalue()

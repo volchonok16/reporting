@@ -238,17 +238,8 @@ class TfsClient:
             raise last_exc
         return []
 
-    async def get_work_items_batch(
-        self,
-        ids: list[int],
-        *,
-        on_progress: Callable[[int, int], None] | None = None,
-    ) -> list[dict[str, Any]]:
-        if not ids:
-            return []
-
-        result: list[dict[str, Any]] = []
-        fields = wit_api_field_names(
+    def _batch_field_list(self) -> list[str]:
+        return wit_api_field_names(
             [
                 "System.Id",
                 "System.Title",
@@ -261,13 +252,66 @@ class TfsClient:
                 "System.TeamProject",
                 "System.BoardColumn",
                 "Microsoft.VSTS.Common.ClosedDate",
+                "Microsoft.VSTS.Common.Severity",
                 *settings.scheduling_batch_field_list,
             ]
         )
 
-        for offset in range(0, len(ids), settings.tfs_batch_size):
-            chunk = ids[offset : offset + settings.tfs_batch_size]
-            body: dict[str, Any] = {"ids": chunk, "$expand": "Relations", "errorPolicy": 2}
+    async def get_error_links_for_area(self, area_path: str) -> dict[int, int]:
+        """error_id -> zni_id через один WIQL вместо Relations на каждом ЗНИ."""
+        types = ", ".join(wiql_quote(item) for item in settings.change_type_list)
+        error_types = ", ".join(wiql_quote(item) for item in settings.error_type_list)
+        project = wiql_quote(self.project)
+        area = wiql_quote(area_path)
+        query = (
+            f"SELECT [System.Id] FROM WorkItemLinks "
+            f"WHERE [Source].[System.TeamProject] = {project} "
+            f"AND [Source].[System.WorkItemType] IN ({types}) "
+            f"AND [Source].[System.AreaPath] UNDER {area} "
+            f"AND [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward' "
+            f"AND [Target].[System.WorkItemType] IN ({error_types}) "
+            f"MODE (MustContain)"
+        )
+        payload = await self.run_wiql(query)
+        result: dict[int, int] = {}
+        for rel in as_list(payload.get("workItemRelations")):
+            if not isinstance(rel, dict):
+                continue
+            source = rel.get("source")
+            target = rel.get("target")
+            if not isinstance(source, dict) or not isinstance(target, dict):
+                continue
+            try:
+                zni_id = int(source["id"])
+                error_id = int(target["id"])
+                result[error_id] = zni_id
+            except (KeyError, TypeError, ValueError):
+                continue
+        return result
+
+    async def get_work_items_batch(
+        self,
+        ids: list[int],
+        *,
+        on_progress: Callable[[int, int], None] | None = None,
+        expand_relations: bool | None = None,
+        batch_size: int | None = None,
+    ) -> list[dict[str, Any]]:
+        if not ids:
+            return []
+
+        result: list[dict[str, Any]] = []
+        fields = self._batch_field_list()
+        chunk_size = batch_size or settings.tfs_batch_size
+        with_relations = (
+            settings.tfs_fetch_relations if expand_relations is None else expand_relations
+        )
+
+        for offset in range(0, len(ids), chunk_size):
+            chunk = ids[offset : offset + chunk_size]
+            body: dict[str, Any] = {"ids": chunk, "errorPolicy": 2}
+            if with_relations:
+                body["$expand"] = "Relations"
             if not settings.tfs_fetch_all_fields:
                 body["fields"] = fields
             response = await self._post_with_api_versions(
@@ -279,7 +323,8 @@ class TfsClient:
             result.extend(as_work_item_list(batch.get("value") if isinstance(batch, dict) else None))
             if on_progress is not None:
                 on_progress(min(offset + len(chunk), len(ids)), len(ids))
-            await asyncio.sleep(settings.tfs_request_delay_seconds)
+            if offset + chunk_size < len(ids):
+                await asyncio.sleep(settings.tfs_request_delay_seconds)
 
         return result
 
@@ -322,7 +367,8 @@ class TfsClient:
                 fields.update(row.get("fields") or {})
             if on_progress is not None:
                 on_progress(min(offset + len(chunk), len(missing_ids)), len(missing_ids))
-            await asyncio.sleep(settings.tfs_request_delay_seconds)
+            if offset + settings.tfs_batch_size < len(missing_ids):
+                await asyncio.sleep(settings.tfs_request_delay_seconds)
 
     async def _post_with_api_versions(self, path: str, *, json: dict[str, Any]) -> httpx.Response:
         versions = (

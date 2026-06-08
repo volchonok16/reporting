@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.auth_service import login_with_pat
 from app.auth_sessions import delete_session, get_session
-from app.boards import BOARDS
+from app.boards import ALL_BOARDS_CODE, BOARDS, boards_for_sync
 from app.config import settings
 from app.db import ensure_auth_session_table, get_db
 from app.models import SyncRun
@@ -96,9 +96,13 @@ def auth_logout(x_session_id: str | None = Header(default=None, alias="X-Session
 
 @app.get("/api/boards", response_model=list[BoardOut])
 def list_boards() -> list[BoardOut]:
-    return [
-        BoardOut(code=b.code, name=b.name, displayName=b.display_name, project=b.project) for b in BOARDS
+    items = [
+        BoardOut(code=ALL_BOARDS_CODE, name="Все доски", displayName="Все доски", project=""),
     ]
+    items.extend(
+        BoardOut(code=b.code, name=b.name, displayName=b.display_name, project=b.project) for b in BOARDS
+    )
+    return items
 
 
 @app.get("/api/dashboard", response_model=DashboardOut)
@@ -134,9 +138,9 @@ def export_report(
     )
 
 
-async def _run_sync_background(sync_run_id: int, pat: str) -> None:
+async def _run_sync_background(sync_run_id: int, pat: str, board_code: str | None) -> None:
     try:
-        await run_sync(pat, sync_run_id=sync_run_id)
+        await run_sync(pat, sync_run_id=sync_run_id, board_code=board_code)
     except Exception:
         logger.exception("background_sync_failed id=%s", sync_run_id)
 
@@ -146,6 +150,7 @@ async def start_sync(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     pat: str = Depends(require_pat),
+    board: str | None = Query(default=None),
 ) -> SyncRunOut:
     from app.models import SourceSystem
 
@@ -153,19 +158,21 @@ async def start_sync(
     if tfs is None:
         raise HTTPException(status_code=500, detail="source_system tfs not found")
 
+    target_boards = boards_for_sync(board)
     sync_run = SyncRun(
         source_system_id=tfs.id,
         status="running",
-        parameters_json={"boards": [b.code for b in BOARDS]},
+        parameters_json={"boards": [b.code for b in target_boards], "progress": "Старт…"},
     )
     db.add(sync_run)
     db.commit()
     db.refresh(sync_run)
 
-    background_tasks.add_task(_run_sync_background, sync_run.id, pat)
+    background_tasks.add_task(_run_sync_background, sync_run.id, pat, board)
     return SyncRunOut(
         id=sync_run.id,
         status=sync_run.status,
+        progressMessage="Старт…",
         startedAt=sync_run.started_at,
     )
 
@@ -175,12 +182,14 @@ def sync_status(sync_id: int, db: Session = Depends(get_db)) -> SyncRunOut:
     sync_run = db.get(SyncRun, sync_id)
     if sync_run is None:
         raise HTTPException(status_code=404, detail="Sync run not found")
+    params = sync_run.parameters_json if isinstance(sync_run.parameters_json, dict) else {}
     return SyncRunOut(
         id=sync_run.id,
         status=sync_run.status,
         recordsFetched=sync_run.records_fetched,
         recordsUpserted=sync_run.records_upserted,
         errorMessage=sync_run.error_message,
+        progressMessage=params.get("progress"),
         startedAt=sync_run.started_at,
         finishedAt=sync_run.finished_at,
     )

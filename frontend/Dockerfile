@@ -4,9 +4,11 @@ WORKDIR /app
 
 ARG VITE_API_URL=http://localhost:8000
 ENV VITE_API_URL=$VITE_API_URL
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
+ENV NPM_CONFIG_FUND=false
 
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --no-fund --no-audit
 
 COPY . .
 

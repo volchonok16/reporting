@@ -5,6 +5,12 @@ function resolveApiBase(): string {
   if (typeof window === 'undefined') return fromEnv
 
   const { hostname, protocol } = window.location
+  const isPallinkHost = hostname === 'pallink.fun' || hostname === 'www.pallink.fun'
+
+  if (isPallinkHost) {
+    return 'https://api.pallink.fun'
+  }
+
   const envPointsToLocal =
     !fromEnv || fromEnv.includes('localhost') || fromEnv.includes('127.0.0.1')
   if ((hostname === 'localhost' || hostname === '127.0.0.1') && envPointsToLocal) {
@@ -40,14 +46,23 @@ export async function readApiError(response: Response): Promise<string> {
   return text || response.statusText
 }
 
+function formatFetchError(path: string, cause: unknown): Error {
+  const target = apiBase ? `${apiBase}${path}` : path
+  const detail = cause instanceof Error ? cause.message : String(cause)
+  return new Error(`Не удалось подключиться к API (${target}). ${detail}`)
+}
+
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers)
   const sessionId = getSessionId()
   if (sessionId) {
     headers.set('X-Session-Id', sessionId)
   }
-  const response = await fetch(`${apiBase}${path}`, { ...init, headers })
-  return response
+  try {
+    return await fetch(`${apiBase}${path}`, { ...init, headers })
+  } catch (cause) {
+    throw formatFetchError(path, cause)
+  }
 }
 
 export async function getJson<T>(path: string): Promise<T> {
