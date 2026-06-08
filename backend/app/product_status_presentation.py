@@ -35,7 +35,11 @@ TITLE_FONT_SIZE = Pt(32)
 TITLE_FONT_SZ_XML = "3200"
 TABLE_FONT_NAME = "T2 Rooftop"
 TABLE_FONT_SIZE = Pt(10)
+TABLE_FONT_SIZE_DENSE = Pt(8)
 TABLE_FONT_SZ_XML = "1000"
+TABLE_FONT_SZ_DENSE_XML = "800"
+DENSE_TEXT_MIN_CHARS = 40
+DENSE_COLUMN_INDICES = (2, 3)
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 LINE_HEIGHT_EMU = 145000
 MIN_ROW_HEIGHT_EMU = 396000
@@ -354,6 +358,36 @@ def _set_paragraph_font(
     paragraph.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
 
+def _cell_font_size(col_index: int, text: str) -> tuple[Pt, str]:
+    cleaned = _sanitize_cell_text(text)
+    if col_index in DENSE_COLUMN_INDICES and len(cleaned) >= DENSE_TEXT_MIN_CHARS:
+        return TABLE_FONT_SIZE_DENSE, TABLE_FONT_SZ_DENSE_XML
+    return TABLE_FONT_SIZE, TABLE_FONT_SZ_XML
+
+
+def _apply_table_cell_frame_style(
+    frame,
+    *,
+    font_name: str,
+    font_size: Pt,
+) -> None:
+    frame.word_wrap = True
+    frame.vertical_anchor = MSO_VERTICAL_ANCHOR.TOP
+    frame.margin_left = Pt(2)
+    frame.margin_right = Pt(2)
+    frame.margin_top = Pt(2)
+    frame.margin_bottom = Pt(2)
+
+    for paragraph in frame.paragraphs:
+        paragraph.alignment = PP_ALIGN.LEFT
+        paragraph.space_after = Pt(0)
+        paragraph.space_before = Pt(0)
+        paragraph.level = 0
+        _set_paragraph_font(paragraph, name=font_name, size=font_size, bold=False)
+        for run in paragraph.runs:
+            _set_run_font(run, name=font_name, size=font_size, bold=False)
+
+
 def _apply_text_frame_style(
     frame,
     *,
@@ -423,10 +457,6 @@ def _normalize_tx_body_element(
     body_pr = tx_body.find(qn("a:bodyPr"))
     if body_pr is not None:
         body_pr.set("wrap", "square")
-        for autofit_tag in ("normAutofit", "spAutoFit"):
-            autofit = body_pr.find(qn(f"a:{autofit_tag}"))
-            if autofit is not None:
-                body_pr.remove(autofit)
 
     for paragraph_props in tx_body.findall(".//" + qn("a:pPr")):
         for bullet_tag in ("buChar", "buAutoNum", "buBlip", "buFont"):
@@ -473,15 +503,15 @@ def _resize_table_rows(table, data_rows: int, *, target_height: int | None = Non
         row.height = per_data if index < data_rows else MIN_ROW_HEIGHT_EMU
 
 
-def _replace_cell_text(cell, text: str) -> None:
+def _replace_cell_text(cell, text: str, *, col_index: int) -> None:
     value = _sanitize_cell_text(text)
+    font_size, font_sz_xml = _cell_font_size(col_index, value)
     frame = cell.text_frame
     frame.clear()
-    _apply_text_frame_style(
+    _apply_table_cell_frame_style(
         frame,
         font_name=TABLE_FONT_NAME,
-        font_size=TABLE_FONT_SIZE,
-        bold=False,
+        font_size=font_size,
     )
 
     lines = value.split("\n") if value else [""]
@@ -494,14 +524,14 @@ def _replace_cell_text(cell, text: str) -> None:
         _set_paragraph_font(
             paragraph,
             name=TABLE_FONT_NAME,
-            size=TABLE_FONT_SIZE,
+            size=font_size,
             bold=False,
         )
         run = paragraph.add_run()
         run.text = line
-        _set_run_font(run, name=TABLE_FONT_NAME, size=TABLE_FONT_SIZE, bold=False)
+        _set_run_font(run, name=TABLE_FONT_NAME, size=font_size, bold=False)
 
-    _normalize_cell_xml(cell, font_name=TABLE_FONT_NAME, font_sz=TABLE_FONT_SZ_XML)
+    _normalize_cell_xml(cell, font_name=TABLE_FONT_NAME, font_sz=font_sz_xml)
 
 
 def _replace_title(title_shape, sheet_name: str) -> None:
@@ -527,9 +557,10 @@ def _replace_title(title_shape, sheet_name: str) -> None:
 def _normalize_table_fonts(table) -> None:
     """Принудительно выравнивает шрифт во всех ячейках (в т.ч. наследие шаблона)."""
     for row in table.rows:
-        for cell in row.cells:
+        for col_index, cell in enumerate(row.cells):
+            text = cell.text_frame.text
+            font_size, font_sz_xml = _cell_font_size(col_index, text)
             frame = cell.text_frame
-            frame.auto_size = MSO_AUTO_SIZE.NONE
             frame.word_wrap = True
             for paragraph in frame.paragraphs:
                 paragraph.level = 0
@@ -538,17 +569,17 @@ def _normalize_table_fonts(table) -> None:
                 _set_paragraph_font(
                     paragraph,
                     name=TABLE_FONT_NAME,
-                    size=TABLE_FONT_SIZE,
+                    size=font_size,
                     bold=False,
                 )
                 for run in paragraph.runs:
                     _set_run_font(
                         run,
                         name=TABLE_FONT_NAME,
-                        size=TABLE_FONT_SIZE,
+                        size=font_size,
                         bold=False,
                     )
-            _normalize_cell_xml(cell, font_name=TABLE_FONT_NAME, font_sz=TABLE_FONT_SZ_XML)
+            _normalize_cell_xml(cell, font_name=TABLE_FONT_NAME, font_sz=font_sz_xml)
 
 
 def _find_column(columns: list[str], pattern: str) -> str:
@@ -604,7 +635,7 @@ def _fill_content_slide(
         table_row = table.rows[row_index]
         for col_index in range(col_count):
             value = values[col_index] if col_index < len(values) else ""
-            _replace_cell_text(table_row.cells[col_index], value)
+            _replace_cell_text(table_row.cells[col_index], value, col_index=col_index)
 
     _normalize_table_fonts(table)
     _resize_table_rows(table, data_rows, target_height=target_table_height)

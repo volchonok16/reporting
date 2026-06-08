@@ -9,7 +9,9 @@ from pptx.util import Pt
 
 from app.product_status_presentation import (
     TABLE_FONT_SIZE,
+    TABLE_FONT_SIZE_DENSE,
     TemplateCatalog,
+    _cell_font_size,
     _mapped_columns,
     _normalize_title,
     _row_values,
@@ -22,6 +24,15 @@ TEMPLATE_PATH = (
     / "assets"
     / "b2b_product_status_template.pptx"
 )
+
+
+def test_cell_font_size_matches_template_columns() -> None:
+    assert _cell_font_size(0, "июль") == (TABLE_FONT_SIZE, "1000")
+    assert _cell_font_size(1, "Акция") == (TABLE_FONT_SIZE, "1000")
+    long_text = "Запуск акции для абонентов программы Бизнес-окружение " * 2
+    assert _cell_font_size(2, long_text) == (TABLE_FONT_SIZE_DENSE, "800")
+    assert _cell_font_size(3, "") == (TABLE_FONT_SIZE, "1000")
+    assert _cell_font_size(3, long_text) == (TABLE_FONT_SIZE_DENSE, "800")
 
 
 def test_normalize_title() -> None:
@@ -186,7 +197,7 @@ def _slide_xml_font_sizes(content: bytes, slide_index: int) -> set[str]:
 
 
 @patch("app.product_status_presentation.load_b2b_product_status")
-def test_generate_presentation_has_uniform_table_font_in_xml(mock_load) -> None:
+def test_generate_presentation_uses_column_font_sizes(mock_load) -> None:
     long_text = "Длинный текст " * 30
     mock_load.return_value = ProductStatusB2BOut(
         title="Статус продукта B2B",
@@ -210,5 +221,6 @@ def test_generate_presentation_has_uniform_table_font_in_xml(mock_load) -> None:
 
     content, _ = generate_b2b_product_status_presentation()
     table_sizes = _slide_xml_font_sizes(content, 1)
-    assert "800" not in table_sizes
-    assert table_sizes <= {"1000", "3200"}
+    assert "800" in table_sizes
+    assert "1000" in table_sizes
+    assert table_sizes <= {"800", "1000", "3200"}
