@@ -2,32 +2,35 @@
 
 **Репозиторий:** [github.com/volchonok16/reporting](https://github.com/volchonok16/reporting)
 
-Централизованная платформа для выгрузки задач из **Jira**, **TFS (Azure DevOps)**, **Trello** и **прочих систем** в единую **PostgreSQL**-базу с каноническими полями. На этой базе планируются отчёты в **FineBI**: что сделано, что в работе, время в бэклоге и статусах, загрузка команд, отгрузка по релизам.
+Централизованная платформа для выгрузки задач из **Jira**, **TFS (Azure DevOps)**, **Trello** и **прочих систем** в единую **PostgreSQL**-базу с каноническими полями. Веб-приложение **FastAPI + Vite** выгружает **ЗНИ** (запросы на изменение) и **ошибки** с досок TFS Digital Streams B2b и BE-T2 Team.
 
 ## Текущий этап
 
-- Схема БД (`db/schema.sql`) — без тестовых задач
+- Схема БД (`db/schema.sql`) + веб-приложение отчётности
+- **Backend:** FastAPI, синхронизация TFS (PAT), экспорт CSV
+- **Frontend:** дашборд ЗНИ по макету (фильтры, метрики, таблица)
 - PlantUML: ER, архитектура, use case (`plantuml/`)
-- Документация и план (`docs/`)
-- ETL и маппинг полей — следующий этап (после примеров из ваших систем)
+- Документация (`docs/`)
 
 ## Быстрый старт
 
 | Задача | Файл |
 |--------|------|
-| **Диаграммы (схема в браузере)** | [**docs/diagrams.md**](docs/diagrams.md) — Mermaid на GitHub без PlantUML |
+| **Запуск приложения** | `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build` |
+| **Диаграммы** | [docs/diagrams.md](docs/diagrams.md) |
 | Обзор всех таблиц | [docs/database-overview.md](docs/database-overview.md) |
-| **Глоссарий: таблицы и поля** | [docs/glossary.md](docs/glossary.md) |
-| **Команды (поля + ETL)** | [docs/teams.md](docs/teams.md) |
-| PlantUML SVG | [docs/diagrams/svg/](docs/diagrams/svg/) (авто при push) |
-| Создать БД | [db/schema.sql](db/schema.sql), [scripts/apply-schema.ps1](scripts/apply-schema.ps1) |
-| Docker PostgreSQL | `docker compose up -d` → [docs/docker.md](docs/docker.md) |
+| **Глоссарий** | [docs/glossary.md](docs/glossary.md) |
+| Docker | [docs/docker.md](docs/docker.md) |
 
 ```bash
 git clone https://github.com/volchonok16/reporting.git
 cd reporting
-docker compose up -d
+cp .env.example .env
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
+
+- UI: http://localhost:5173
+- API: http://localhost:8000/api/health
 
 Подключение снаружи (порт `5432`):
 
@@ -42,24 +45,14 @@ docker compose up -d
 
 ```
 reporting/
+├── backend/                      # FastAPI: TFS sync, отчёты, экспорт
+├── frontend/                     # Vite + React: дашборд ЗНИ
 ├── db/schema.sql                 # DDL PostgreSQL
-├── plantuml/                     # .puml — ER, архитектура, use case
-├── docs/
-│   ├── diagrams.md               # Все диаграммы (Mermaid в браузере)
-│   ├── diagrams/svg/             # PlantUML → SVG (GitHub Actions)
-│   ├── glossary.md               # Глоссарий: таблицы и поля
-│   ├── teams.md                  # Команды: team_id, маппинг, FineBI
-│   ├── database-overview.md      # Краткий обзор БД
-│   ├── plan.md                   # Этапы проекта
-│   ├── data-dictionary.md        # Краткая выжимка полей task
-│   ├── use-case-diagram.md
-│   └── uml-diagram.md
-├── db/init-users.sh            # ETL + BI пользователи (Docker init)
-├── scripts/apply-schema.ps1
-├── docker-compose.yml
-├── .env.example
-├── .cursor/rules/                # Правила Cursor (глоссарий + push)
-├── docs/docker.md
+├── db/migrations/                # Миграции (auth_session и др.)
+├── plantuml/                     # ER, архитектура, use case
+├── docs/                         # Глоссарий, docker, диаграммы
+├── docker-compose.yml            # postgres + backend + frontend
+├── docker-compose.dev.yml        # порты для локальной разработки
 └── README.md
 ```
 

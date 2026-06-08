@@ -11,8 +11,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-reporting}
       TASKHUB_ALEX_PASSWORD: ${TASKHUB_ALEX_PASSWORD:-alex}
       TASKHUB_IVAN_PASSWORD: ${TASKHUB_IVAN_PASSWORD:-ivan}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - reporting_pgdata:/var/lib/postgresql/data
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
@@ -23,6 +21,41 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+
+  backend:
+    build:
+      context: ./backend
+    container_name: reporting-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-alex}:${TASKHUB_ALEX_PASSWORD:-alex}@postgres:5432/${POSTGRES_DB:-reporting}
+      TFS_BASE_URL: ${TFS_BASE_URL:-https://tfs.t2.ru/tfs/Main}
+      TFS_VERIFY_TLS: ${TFS_VERIFY_TLS:-true}
+      TFS_BATCH_SIZE: ${TFS_BATCH_SIZE:-100}
+      TFS_REQUEST_DELAY_SECONDS: ${TFS_REQUEST_DELAY_SECONDS:-0.2}
+      TFS_TIMEOUT_SECONDS: ${TFS_TIMEOUT_SECONDS:-45}
+      TFS_API_VERSION: ${TFS_API_VERSION:-6.1}
+      TFS_FETCH_ALL_FIELDS: ${TFS_FETCH_ALL_FIELDS:-true}
+      TFS_WIQL_MAX_RESULTS: ${TFS_WIQL_MAX_RESULTS:-15000}
+      TFS_CLOSED_STATE_VALUES: ${TFS_CLOSED_STATE_VALUES:-Closed}
+      TFS_EXCLUDE_CLOSED_OLDER_THAN_DAYS: ${TFS_EXCLUDE_CLOSED_OLDER_THAN_DAYS:-365}
+      LAUNCHING_SOON_DAYS: ${LAUNCHING_SOON_DAYS:-60}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:5173}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:8000}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    container_name: reporting-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
 
 volumes:
   reporting_pgdata:

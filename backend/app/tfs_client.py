@@ -1,0 +1,354 @@
+import asyncio
+import logging
+import re
+import time
+from collections.abc import Callable, Iterable
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
+from zoneinfo import ZoneInfo
+
+import httpx
+from dateutil.parser import parse as parse_datetime
+
+from app.config import settings
+from app.http_auth import build_http_auth
+from app.json_utils import as_list, as_work_item_list
+from app.tfs_auth import TfsAuth
+
+logger = logging.getLogger(__name__)
+
+MS_DATE_RE = re.compile(r"^/Date\((?P<milliseconds>-?\d+)(?:[+-]\d+)?\)/$")
+TFS_CALENDAR_TZ = ZoneInfo("Europe/Moscow")
+
+
+def parse_tfs_date(value: Any) -> date | None:
+    if not value:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, str):
+        match = MS_DATE_RE.match(value)
+        if match:
+            return datetime.fromtimestamp(int(match.group("milliseconds")) / 1000, UTC).date()
+        return parse_datetime(value, dayfirst=True).date()
+    return None
+
+
+def parse_tfs_datetime(value: Any) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime(value.year, value.month, value.day, tzinfo=UTC)
+    if isinstance(value, str):
+        text = value.strip()
+        if "T" in text and text.endswith("Z"):
+            return datetime.fromisoformat(text.replace("Z", "+00:00"))
+        match = MS_DATE_RE.match(text)
+        if match:
+            return datetime.fromtimestamp(int(match.group("milliseconds")) / 1000, UTC)
+        parsed = parse_datetime(text, dayfirst=True)
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+    return None
+
+
+def parse_tfs_calendar_date(value: Any) -> date | None:
+    parsed = parse_tfs_datetime(value)
+    if parsed:
+        return parsed.astimezone(TFS_CALENDAR_TZ).date()
+    return parse_tfs_date(value)
+
+
+def date_from_field_list(fields: dict[str, Any], names: Iterable[str]) -> date | None:
+    for name in names:
+        value = fields.get(name)
+        if value in (None, ""):
+            continue
+        if name.startswith("Microsoft.VSTS.Scheduling.") or (
+            isinstance(value, str) and "T" in value and value.endswith("Z")
+        ):
+            parsed = parse_tfs_calendar_date(value)
+        else:
+            parsed = parse_tfs_date(value)
+        if parsed:
+            return parsed
+    return None
+
+
+def wiql_escape(value: str) -> str:
+    return value.replace("'", "''")
+
+
+def wiql_quote(value: str) -> str:
+    return f"'{wiql_escape(value)}'"
+
+
+def wiql_date(value: date) -> str:
+    return wiql_quote(value.isoformat())
+
+
+def wit_api_field_names(names: Iterable[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        candidate = name.strip()
+        if not candidate or candidate in seen:
+            continue
+        if candidate.isdigit() or "." not in candidate:
+            continue
+        seen.add(candidate)
+        result.append(candidate)
+    return result
+
+
+def _dedupe_api_versions(versions: Iterable[str]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for version in versions:
+        version = version.strip()
+        if not version or version in seen:
+            continue
+        seen.add(version)
+        result.append(version)
+    return tuple(result)
+
+
+def _api_version_candidates(preferred: str | None = None) -> tuple[str, ...]:
+    ordered = (preferred or settings.tfs_api_version, "6.1", "6.0", "5.1")
+    return _dedupe_api_versions(ordered)
+
+
+def _wit_batch_api_version_candidates(preferred: str | None = None) -> tuple[str, ...]:
+    base = (preferred or settings.tfs_api_version).strip()
+    ordered: list[str] = []
+    if base:
+        ordered.append(base)
+        if "preview" not in base.lower():
+            root = base.split("-", 1)[0]
+            if re.fullmatch(r"\d+\.\d+", root):
+                ordered.append(f"{root}-preview")
+                ordered.append(f"{root}-preview.1")
+    ordered.extend(["6.1-preview", "6.1-preview.1", "6.0-preview", "6.0", "5.1"])
+    return _dedupe_api_versions(ordered)
+
+
+class TfsClient:
+    def __init__(self, tfs_auth: TfsAuth) -> None:
+        if not tfs_auth.has_credentials():
+            raise ValueError("TFS credentials are not configured.")
+
+        headers = {"Accept": "application/json"}
+        http_auth = build_http_auth(tfs_auth)
+        if tfs_auth.cookie:
+            headers["Cookie"] = tfs_auth.cookie
+        if tfs_auth.extra_headers:
+            headers.update(tfs_auth.extra_headers)
+
+        self.tfs_auth = tfs_auth
+        self.project = tfs_auth.project
+        self.project_id = tfs_auth.project_id
+        self.base_url = tfs_auth.base_url
+
+        self.client = httpx.AsyncClient(
+            base_url=self.base_url,
+            auth=http_auth,
+            headers=headers,
+            timeout=settings.tfs_timeout_seconds,
+            verify=settings.tfs_verify_tls,
+        )
+
+    async def close(self) -> None:
+        await self.client.aclose()
+
+    async def run_wiql(self, query: str) -> dict[str, Any]:
+        normalized = " ".join(line.strip() for line in query.strip().splitlines())
+        last_response: httpx.Response | None = None
+        for api_version in _api_version_candidates():
+            response = await self.client.post(
+                f"/{self.project}/_apis/wit/wiql",
+                params={"api-version": api_version},
+                json={"query": normalized},
+            )
+            last_response = response
+            if response.status_code == 200:
+                body = response.json()
+                return body if isinstance(body, dict) else {}
+            if response.status_code == 400 and "out of range" in response.text.lower():
+                continue
+        if last_response is not None:
+            last_response.raise_for_status()
+        raise httpx.HTTPError("WIQL request failed without response")
+
+    async def get_change_request_ids(
+        self,
+        *,
+        area_path: str | None = None,
+        limit_results: bool = True,
+    ) -> list[int]:
+        types = ", ".join(wiql_quote(item) for item in settings.change_type_list)
+        project = wiql_quote(self.project)
+        states = settings.change_request_state_list
+        state_clause = ""
+        if states:
+            state_values = ", ".join(wiql_quote(state) for state in states)
+            state_clause = f" AND [System.State] IN ({state_values})"
+        area_clause = ""
+        if area_path:
+            area_clause = f" AND [System.AreaPath] UNDER {wiql_quote(area_path)}"
+
+        closed_exclude_clause = ""
+        if settings.closed_state_list and settings.tfs_exclude_closed_older_than_days > 0:
+            closed_states = ", ".join(wiql_quote(state) for state in settings.closed_state_list)
+            cutoff = date.today() - timedelta(days=settings.tfs_exclude_closed_older_than_days)
+            closed_exclude_clause = (
+                f" AND ([System.State] NOT IN ({closed_states})"
+                f" OR [System.ChangedDate] >= {wiql_date(cutoff)})"
+            )
+
+        queries = [
+            (
+                f"SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = {project} "
+                f"AND [System.WorkItemType] IN ({types}){state_clause}{area_clause}"
+                f"{closed_exclude_clause} ORDER BY [System.ChangedDate] DESC"
+            ),
+            (
+                f"SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = {project} "
+                f"AND [System.WorkItemType] IN ({types}){area_clause}{closed_exclude_clause} "
+                f"ORDER BY [System.ChangedDate] DESC"
+            ),
+        ]
+
+        last_exc: Exception | None = None
+        for query in queries:
+            try:
+                payload = await self.run_wiql(query)
+                ids = [item["id"] for item in as_list(payload.get("workItems")) if isinstance(item, dict)]
+                if limit_results and len(ids) > settings.tfs_wiql_max_results:
+                    return ids[: settings.tfs_wiql_max_results]
+                return ids
+            except httpx.HTTPStatusError as exc:
+                last_exc = exc
+                if exc.response.status_code != 400:
+                    raise
+
+        if last_exc:
+            raise last_exc
+        return []
+
+    async def get_work_items_batch(
+        self,
+        ids: list[int],
+        *,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> list[dict[str, Any]]:
+        if not ids:
+            return []
+
+        result: list[dict[str, Any]] = []
+        fields = wit_api_field_names(
+            [
+                "System.Id",
+                "System.Title",
+                "System.WorkItemType",
+                "System.State",
+                "System.AreaPath",
+                "System.CreatedDate",
+                "System.ChangedDate",
+                "System.AssignedTo",
+                "System.TeamProject",
+                "System.BoardColumn",
+                "Microsoft.VSTS.Common.ClosedDate",
+                *settings.scheduling_batch_field_list,
+            ]
+        )
+
+        for offset in range(0, len(ids), settings.tfs_batch_size):
+            chunk = ids[offset : offset + settings.tfs_batch_size]
+            body: dict[str, Any] = {"ids": chunk, "$expand": "Relations", "errorPolicy": 2}
+            if not settings.tfs_fetch_all_fields:
+                body["fields"] = fields
+            response = await self._post_with_api_versions(
+                f"/{self.project}/_apis/wit/workItemsBatch",
+                json=body,
+            )
+            response.raise_for_status()
+            batch = response.json()
+            result.extend(as_work_item_list(batch.get("value") if isinstance(batch, dict) else None))
+            if on_progress is not None:
+                on_progress(min(offset + len(chunk), len(ids)), len(ids))
+            await asyncio.sleep(settings.tfs_request_delay_seconds)
+
+        return result
+
+    async def enrich_scheduling_fields(
+        self,
+        items: list[dict[str, Any]],
+        *,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> None:
+        if not items:
+            return
+
+        scheduling_fields = wit_api_field_names(settings.scheduling_batch_field_list)
+        missing_ids = [
+            item["id"]
+            for item in items
+            if isinstance(item, dict)
+            and not (item.get("fields") or {}).get(settings.tfs_user_start_date_field)
+        ]
+        if not missing_ids:
+            return
+
+        by_id = {item["id"]: item for item in items if isinstance(item, dict)}
+        for offset in range(0, len(missing_ids), settings.tfs_batch_size):
+            chunk = missing_ids[offset : offset + settings.tfs_batch_size]
+            body: dict[str, Any] = {"ids": chunk, "fields": scheduling_fields, "errorPolicy": 2}
+            response = await self._post_with_api_versions(
+                f"/{self.project}/_apis/wit/workItemsBatch",
+                json=body,
+            )
+            response.raise_for_status()
+            batch = response.json()
+            for row in as_list(batch.get("value") if isinstance(batch, dict) else None):
+                if not isinstance(row, dict):
+                    continue
+                item = by_id.get(row["id"])
+                if not item:
+                    continue
+                fields = item.setdefault("fields", {})
+                fields.update(row.get("fields") or {})
+            if on_progress is not None:
+                on_progress(min(offset + len(chunk), len(missing_ids)), len(missing_ids))
+            await asyncio.sleep(settings.tfs_request_delay_seconds)
+
+    async def _post_with_api_versions(self, path: str, *, json: dict[str, Any]) -> httpx.Response:
+        versions = (
+            _wit_batch_api_version_candidates()
+            if "workitemsbatch" in path.lower()
+            else _api_version_candidates()
+        )
+        last_response: httpx.Response | None = None
+        for api_version in versions:
+            for attempt in range(1, 4):
+                try:
+                    response = await self.client.post(path, params={"api-version": api_version}, json=json)
+                except (httpx.TimeoutException, httpx.RequestError) as exc:
+                    logger.warning("tfs_post_retry path=%s attempt=%s error=%s", path, attempt, exc)
+                    if attempt >= 3:
+                        raise
+                    await asyncio.sleep(min(1.0 * attempt, 3.0))
+                    continue
+                last_response = response
+                if response.status_code == 200:
+                    return response
+                if response.status_code == 400:
+                    body_lower = response.text.lower()
+                    if "out of range" in body_lower or "preview" in body_lower:
+                        break
+                return response
+        if last_response is not None:
+            return last_response
+        raise httpx.HTTPError(f"Request failed without response for {path}")

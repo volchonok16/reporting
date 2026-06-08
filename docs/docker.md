@@ -1,15 +1,24 @@
-# Docker: PostgreSQL reporting
+# Docker: reporting (PostgreSQL + FastAPI + Vite)
 
-Одна команда поднимает PostgreSQL со схемой и двумя пользователями **alex** и **ivan** с полными правами на базу `reporting`. Порт **5432** проброшен наружу.
-
-## Запуск
+## Полный стек (приложение + БД)
 
 ```bash
-# Docker Compose V2 (плагин)
-docker compose up -d
+cp .env.example .env
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
 
-# Если ошибка "unknown shorthand flag: 'd'" — используйте старую команду:
-docker-compose up -d
+| Сервис | URL |
+|--------|-----|
+| UI | http://localhost:5173 |
+| API | http://localhost:8000/api/health |
+| PostgreSQL | `localhost:5432` |
+
+Вход: PAT-токен TFS (Work Items Read). После входа — «Обновить из TFS» для загрузки ЗНИ и ошибок.
+
+## Только PostgreSQL
+
+```bash
+docker compose up -d postgres
 ```
 
 Проверка, что установлено:
@@ -104,6 +113,12 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 ```
 
 Документация: [teams.md](teams.md).
+
+Таблица сессий PAT (веб-приложение):
+
+```bash
+./scripts/migrate.sh 004_auth_sessions.sql
+```
 
 ## Остановка
 

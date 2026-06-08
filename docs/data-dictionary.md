@@ -33,7 +33,8 @@
 | source_team | varchar | Команда из источника до маппинга |
 | title | varchar | Заголовок |
 | description | text | Описание |
-| task_type | varchar | Тип задачи |
+| task_type | varchar | `change_request` (ЗНИ), `error` (Ошибка) |
+| parent_task_id | bigint | ЗНИ → Ошибка |
 | priority | varchar | Приоритет |
 | source_status | varchar | Статус как в источнике |
 | canonical_status_id | int | Единый статус |

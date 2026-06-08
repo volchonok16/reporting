@@ -27,7 +27,17 @@
 
 Подробно: [teams.md](teams.md).
 
-## Таблицы (22) + представления (4)
+## Приложение reporting
+
+| Сервис | Порт | Назначение |
+|--------|------|------------|
+| `frontend` | 5173 | Дашборд ЗНИ: фильтры, метрики, экспорт CSV |
+| `backend` | 8000 | FastAPI: синхронизация TFS, REST API |
+| `postgres` | 5432 | PostgreSQL |
+
+Запуск: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build`
+
+## Таблицы (23) + представления (4)
 
 ### Справочники и маппинг
 
@@ -38,7 +48,8 @@
 | `source_status_mapping` | Статус источника → канонический статус |
 | `source_team_mapping` | Признак источника → команда (`team_id`) |
 | `field_mapping` | Поле источника → поле `task` |
-| `team` | Канонические команды (заполняет ETL) |
+| `team` | Канонические команды (`digital_streams_b2b`, `be_t2_team`) |
+| `auth_session` | Сессии PAT для веб-приложения |
 | `person` | Человек |
 | `person_external` | ID пользователя в Jira/TFS/Trello |
 

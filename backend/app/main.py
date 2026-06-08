@@ -1,0 +1,186 @@
+import logging
+from datetime import date
+
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
+from sqlalchemy.orm import Session
+
+from app.auth_service import login_with_pat
+from app.auth_sessions import delete_session, get_session
+from app.boards import BOARDS
+from app.config import settings
+from app.db import ensure_auth_session_table, get_db
+from app.models import SyncRun
+from app.report_service import export_csv, load_change_requests
+from app.schemas import (
+    AuthDefaultsOut,
+    AuthLoginOut,
+    BoardOut,
+    DashboardOut,
+    SyncRunOut,
+    TfsAuthIn,
+    TfsAuthStatusOut,
+)
+from app.sync_service import run_sync
+from app.tfs_auth import TfsAuth, build_tfs_auth
+
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="Reporting API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origin_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.on_event("startup")
+def startup() -> None:
+    ensure_auth_session_table()
+
+
+def require_pat(x_session_id: str | None = Header(default=None, alias="X-Session-Id")) -> str:
+    auth = get_session(x_session_id)
+    if auth is None or not auth.pat:
+        raise HTTPException(status_code=401, detail="Сессия TFS отсутствует. Войдите по PAT-токену.")
+    return auth.pat
+
+
+@app.get("/api/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/api/auth/defaults", response_model=AuthDefaultsOut)
+def auth_defaults() -> AuthDefaultsOut:
+    board = BOARDS[0]
+    return AuthDefaultsOut(
+        baseUrl=settings.tfs_base_url,
+        project=board.project,
+        projectId=board.project_id,
+    )
+
+
+@app.get("/api/auth/status", response_model=TfsAuthStatusOut)
+def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session-Id")) -> TfsAuthStatusOut:
+    auth = get_session(x_session_id)
+    if auth is None:
+        return TfsAuthStatusOut(authenticated=False)
+    return TfsAuthStatusOut(
+        authenticated=True,
+        baseUrl=auth.base_url,
+        project=auth.project,
+    )
+
+
+@app.post("/api/auth/login", response_model=AuthLoginOut)
+async def auth_login(payload: TfsAuthIn) -> AuthLoginOut:
+    auth = build_tfs_auth(
+        base_url=payload.baseUrl,
+        project=payload.project,
+        project_id=payload.projectId,
+        pat=payload.pat,
+    )
+    return await login_with_pat(auth)
+
+
+@app.post("/api/auth/logout")
+def auth_logout(x_session_id: str | None = Header(default=None, alias="X-Session-Id")) -> dict[str, bool]:
+    delete_session(x_session_id)
+    return {"ok": True}
+
+
+@app.get("/api/boards", response_model=list[BoardOut])
+def list_boards() -> list[BoardOut]:
+    return [
+        BoardOut(code=b.code, name=b.name, displayName=b.display_name, project=b.project) for b in BOARDS
+    ]
+
+
+@app.get("/api/dashboard", response_model=DashboardOut)
+def dashboard(
+    db: Session = Depends(get_db),
+    board: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    sort: str = Query(default="id_desc"),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+) -> DashboardOut:
+    return load_change_requests(
+        db,
+        board_code=board,
+        search=search,
+        sort=sort,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
+@app.get("/api/export")
+def export_report(
+    db: Session = Depends(get_db),
+    board: str | None = Query(default=None),
+    _: str = Depends(require_pat),
+) -> PlainTextResponse:
+    content = export_csv(db, board_code=board)
+    return PlainTextResponse(
+        content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="zni-report.csv"'},
+    )
+
+
+async def _run_sync_background(sync_run_id: int, pat: str) -> None:
+    try:
+        await run_sync(pat, sync_run_id=sync_run_id)
+    except Exception:
+        logger.exception("background_sync_failed id=%s", sync_run_id)
+
+
+@app.post("/api/sync", response_model=SyncRunOut)
+async def start_sync(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    pat: str = Depends(require_pat),
+) -> SyncRunOut:
+    from app.models import SourceSystem
+
+    tfs = db.query(SourceSystem).filter(SourceSystem.code == "tfs").first()
+    if tfs is None:
+        raise HTTPException(status_code=500, detail="source_system tfs not found")
+
+    sync_run = SyncRun(
+        source_system_id=tfs.id,
+        status="running",
+        parameters_json={"boards": [b.code for b in BOARDS]},
+    )
+    db.add(sync_run)
+    db.commit()
+    db.refresh(sync_run)
+
+    background_tasks.add_task(_run_sync_background, sync_run.id, pat)
+    return SyncRunOut(
+        id=sync_run.id,
+        status=sync_run.status,
+        startedAt=sync_run.started_at,
+    )
+
+
+@app.get("/api/sync/{sync_id}", response_model=SyncRunOut)
+def sync_status(sync_id: int, db: Session = Depends(get_db)) -> SyncRunOut:
+    sync_run = db.get(SyncRun, sync_id)
+    if sync_run is None:
+        raise HTTPException(status_code=404, detail="Sync run not found")
+    return SyncRunOut(
+        id=sync_run.id,
+        status=sync_run.status,
+        recordsFetched=sync_run.records_fetched,
+        recordsUpserted=sync_run.records_upserted,
+        errorMessage=sync_run.error_message,
+        startedAt=sync_run.started_at,
+        finishedAt=sync_run.finished_at,
+    )

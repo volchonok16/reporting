@@ -17,53 +17,42 @@
 
 ## Архитектура
 
-Целевая схема: Jira, TFS, Trello → ETL → PostgreSQL `reporting` → FineBI.
+Веб-приложение reporting: TFS (ЗНИ + Ошибки) → FastAPI sync → PostgreSQL → Vite UI + CSV.
 
 ```mermaid
 flowchart TB
     subgraph External["Внешние системы"]
-        Jira[Jira API]
         TFS[Azure DevOps / TFS]
-        Trello[Trello API]
-        Other[Прочая система]
     end
 
-    subgraph ETL["Слой загрузки (будущее)"]
-        CJ[Jira Connector]
-        CT[TFS Connector]
-        CTr[Trello Connector]
-        Mapper[Маппер полей и статусов]
-        Duration[Расчёт времени в статусах]
-        Snapshot[Снимки загрузки команд]
+    subgraph App["Веб-приложение"]
+        FE[Vite + React]
+        API[FastAPI]
+        Sync[TFS Sync Service]
+        Client[TfsClient WIQL + Batch]
     end
 
     subgraph Storage["PostgreSQL — reporting"]
-        Core[(task, comment, history)]
-        Ref[(mapping, status, team)]
-        Metrics[(duration, workload_snapshot)]
-        Views[(v_* views)]
+        Task[(task: change_request, error)]
+        Auth[(auth_session)]
+        SyncRun[(sync_run)]
     end
 
-    subgraph BI["Отчётность"]
+    Analyst[Аналитик] --> FE
+    FE --> API
+    API --> Sync
+    Sync --> Client
+    Client --> TFS
+    Sync --> Task
+    API --> Task
+    API --> Auth
+
+    subgraph BI["Отчётность (опционально)"]
         FineBI[FineBI]
     end
 
-    Jira --> CJ
-    TFS --> CT
-    Trello --> CTr
-    Other --> Mapper
-    CJ --> Mapper
-    CT --> Mapper
-    CTr --> Mapper
-    Mapper --> Core
-    Mapper --> Ref
-    Core --> Duration
-    Duration --> Metrics
-    Metrics --> Snapshot
-    Core --> Views
-    Metrics --> Views
-    Views --> FineBI
-    Core --> FineBI
+    Task --> FineBI
+    FE -->|CSV export| Analyst
 ```
 
 ---

@@ -18,7 +18,9 @@
 | **Сырая команда** | Значение до нормализации (`task.source_team`: доска, тег, area) |
 | **Категория статуса** | Группа для отчётов: `backlog`, `active`, `waiting`, `done`, `cancelled` |
 | **Внешний ID** | Идентификатор задачи/комментария в исходной системе |
-| **ETL** | Процесс выгрузки и записи данных (будущий; аудит в `sync_run`) |
+| **ЗНИ** | Запрос на изменение (TFS: `Запрос на изменение`); в БД `task_type = change_request` |
+| **Ошибка** | Дефект TFS (`Ошибка`); в БД `task_type = error`, связь с ЗНИ через `parent_task_id` |
+| **ETL / синхронизация** | Выгрузка из TFS в `task`; аудит в `sync_run` |
 
 ---
 
@@ -219,7 +221,7 @@
 | `external_url` | text | Прямая ссылка на задачу в веб-интерфейсе источника |
 | `project_id` | bigint | Проект / доска |
 | `team_id` | bigint | Каноническая команда (FK → `team`) — основное поле для фильтрации |
-| `parent_task_id` | bigint | Родительская задача (epic → story, подзадачи) |
+| `parent_task_id` | bigint | Родительская задача (ЗНИ → Ошибка, epic → story) |
 
 ### Содержание
 
@@ -227,7 +229,7 @@
 |------|-----|----------|
 | `title` | varchar(1000) | Заголовок задачи |
 | `description` | text | Полное описание |
-| `task_type` | varchar(64) | Тип: `story`, `bug`, `epic`, `task`, `feature` и т.д. (после нормализации) |
+| `task_type` | varchar(64) | Тип: `change_request` (ЗНИ), `error` (Ошибка), `story`, `bug`, `epic`, `task`, `feature` |
 | `priority` | varchar(32) | Приоритет: `critical`, `high`, `medium`, `low` (единая шкала) |
 
 ### Статус
@@ -381,6 +383,38 @@
 | `assignee_id` | bigint | Исполнитель; `NULL` — снят с задачи |
 | `assigned_at` | timestamptz | Начало периода |
 | `unassigned_at` | timestamptz | Конец периода; `NULL` — ещё назначен |
+
+---
+
+## auth_session — сессия TFS (PAT)
+
+Серверное хранение PAT-токена для веб-приложения. Клиент получает только `sessionId` (заголовок `X-Session-Id`).
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | varchar(64) | Идентификатор сессии |
+| `payload` | jsonb | `base_url`, `project`, `pat` и др. (не отдаётся в API) |
+| `created_at` | timestamptz | Время создания сессии |
+
+---
+
+## Маппинг полей TFS → task (ЗНИ)
+
+| Поле TFS | Поле `task` | Примечание |
+|----------|-------------|------------|
+| `System.Id` | `external_id` | Номер ЗНИ |
+| `System.Title` | `title` | Название |
+| `System.State` | `source_status` | Статус workflow |
+| `System.WorkItemType` | `task_type` | `Запрос на изменение` → `change_request`, `Ошибка` → `error` |
+| `System.CreatedDate` | `created_at` | Дата создания |
+| `Microsoft.VSTS.Scheduling.StartDate` | `start_date` | Если пусто — берётся `created_at` |
+| `Microsoft.VSTS.Scheduling.TargetDate` | `release_date` | Целевая дата релиза (колонка «Скоро запуск») |
+| `System.AreaPath` | `extra_json.area_path` | Область доски |
+| `System.BoardColumn` | `extra_json.board_column` | Колонка Kanban |
+
+**Доски приложения:** Digital Streams B2b (`Tele2\Digital\Streams\B2b`), BE-T2 Team (`BE-T2`).
+
+**Фильтр синхронизации:** ЗНИ в статусе `Closed` с `ChangedDate` / `ClosedDate` старше 365 дней не загружаются (`TFS_EXCLUDE_CLOSED_OLDER_THAN_DAYS`).
 
 ---
 
