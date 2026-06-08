@@ -41,6 +41,8 @@ class Project(Base):
     external_key: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     team_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("team.id"))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Task(Base):
