@@ -425,7 +425,7 @@
 
 **Планируемая дата** — из листа `System.IterationPath`: `2026.08.11.0-R` → `2026-08-11`; если в пути есть **TBD** — в UI выводится `TBD`. **План квартала** — `Q3 2026` или `TBD`; фильтр `quarter` в API (`TBD`, `2026-Q3`, …). **Плановый релиз** — из `Logrocon.FoundinRelease` или `Logrocon.Release`, если поле проставлено или релиз привязан; колонка «План. релиз» в дашборде и CSV.
 
-**Доски приложения:** Digital Streams B2b (`Tele2\Digital\Streams\B2b`, ЗНИ/ошибки с тегом `EFO` не выгружаются, ошибки с `FE B2B` или `microservice`); BE Analytics (`BE-T2\BE Analytics`, ЗНИ с `b2b_product`, ошибки с `FE B2B` или `microservice`, статус `Rejected` не выгружается).
+**Доски приложения:** Digital Streams B2b (`Tele2\Digital\Streams\B2b`, ЗНИ/ошибки с тегом `EFO` не выгружаются, ошибки с `FE B2B` или `microservice`); BE Analytics (`BE-T2\BE Analytics`, ЗНИ с `b2b_product`, ошибки с `FE B2B` или `microservice`, статус `Rejected` не выгружается); ESB (`BE-T2\ESB\ESB Analytics`, в UI — «ESB», те же теги и правила метрик, что у BE Analytics).
 
 После синхронизации доски записи `task` с тем же `board_code`, не попавшие в выгрузку, удаляются (очистка устаревших ЗНИ/ошибок).
 
@@ -590,8 +590,8 @@
 | Метрика | Условие подсчёта |
 |---------|------------------|
 | **Всего задач** | `task_type = change_request`, фильтр по доске (`extra_json.area_path` / `team_id`) |
-| **Скоро запуск** | Digital Streams B2b: статус `UAT`; BE Analytics: `UAT Prod`, `Implementation Prod` или Triage `в Работе` (`extra_json.triage`) |
-| **Запущено** | Digital Streams B2b: статус `Pilot` / `Пилот`; BE Analytics: статус `Closed` |
+| **Скоро запуск** | Digital Streams B2b: статус `UAT`; BE Analytics / ESB: `UAT Prod`, `Implementation Prod` или Triage `в Работе` (`extra_json.triage`) |
+| **Запущено** | Digital Streams B2b: статус `Pilot` / `Пилот`; BE Analytics / ESB: статус `Closed` |
 | **С ошибками** | ЗНИ с хотя бы одной привязанной ошибкой (`parent_task_id` у `task_type = error`) |
 
 Клик по карточке метрики фильтрует таблицу (`metric=launching_soon|launched|errors`); повторный клик снимает фильтр.

@@ -45,16 +45,17 @@
 |-----|----------|----------|-------------|------------------|
 | `digital_streams_b2b` | `Tele2\Digital\Streams\B2b` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | Digital Streams B2b |
 | `be_t2_team` | `BE-T2\BE Analytics` | `b2b_product` | `FE B2B`, `microservice` | BE Analytics (без статуса `Rejected`) |
+| `esb_analytics` | `BE-T2\ESB\ESB Analytics` | `b2b_product` | `FE B2B`, `microservice` | ESB (без статуса `Rejected`) |
 
-Фильтр «Все доски» — объединение обеих досок.
+Фильтр «Все доски» — объединение всех досок.
 
 ### Метрики дашборда (ЗНИ)
 
 | Карточка | Источник | Примечание |
 |----------|----------|------------|
 | Всего задач | `task` где `task_type = change_request` | По выбранной доске |
-| Скоро запуск | Digital: `UAT`; BE Analytics: `UAT Prod`, `Implementation Prod` или Triage `в Работе` | `System.State` / `Triage` |
-| Запущено | Digital: `Pilot`; BE Analytics: `Closed` | workflow |
+| Скоро запуск | Digital: `UAT`; BE Analytics / ESB: `UAT Prod`, `Implementation Prod` или Triage `в Работе` | `System.State` / `Triage` |
+| Запущено | Digital: `Pilot`; BE Analytics / ESB: `Closed` | workflow |
 | С ошибками | ЗНИ с привязанными `error` | Клик по карточке — фильтр таблицы |
 
 ### REST API (основное)
@@ -78,7 +79,7 @@
 | `source_status_mapping` | Статус источника → канонический статус |
 | `source_team_mapping` | Признак источника → команда (`team_id`) |
 | `field_mapping` | Поле источника → поле `task` |
-| `team` | Канонические команды (`digital_streams_b2b`, `be_t2_team`) |
+| `team` | Канонические команды (`digital_streams_b2b`, `be_t2_team`, `esb_analytics`) |
 | `auth_session` | Сессии PAT для веб-приложения |
 | `person` | Человек |
 | `person_external` | ID пользователя в Jira/TFS/Trello |

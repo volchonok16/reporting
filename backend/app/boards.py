@@ -63,6 +63,21 @@ BOARDS: list[BoardConfig] = [
         launching_soon_triage_values=("в Работе",),
         launched_states=("Closed",),
     ),
+    BoardConfig(
+        code="esb_analytics",
+        name="ESB Analytics",
+        display_name="ESB",
+        project="BE-T2",
+        project_id="03cc4df6-e5d2-43a6-9f9a-024573edff5a",
+        team_id="69adf97c-07fc-4f05-98ad-3fa9c77b56d0",
+        area_path=r"BE-T2\ESB\ESB Analytics",
+        sync_tags=("b2b_product",),
+        error_sync_tags=("FE B2B", "microservice"),
+        exclude_sync_states=("Rejected",),
+        launching_soon_states=("UAT Prod", "Implementation Prod"),
+        launching_soon_triage_values=("в Работе",),
+        launched_states=("Closed",),
+    ),
 ]
 
 

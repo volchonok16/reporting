@@ -113,7 +113,7 @@ sequenceDiagram
     API-->>UI: progress / done
 ```
 
-**Доски:** Digital Streams B2b (`Tele2\Digital\Streams\B2b`), BE-T2 Team (`BE-T2`). Фильтр «Все доски» — объединение.
+**Доски:** Digital Streams B2b (`Tele2\Digital\Streams\B2b`), BE Analytics (`BE-T2\BE Analytics`), ESB (`BE-T2\ESB\ESB Analytics`). Фильтр «Все доски» — объединение.
 
 ---
 

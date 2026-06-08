@@ -115,8 +115,8 @@
 | Метрика | Таблица / поле |
 |---------|----------------|
 | Всего ЗНИ | `task` · `task_type = change_request` |
-| Скоро запуск | Digital: `UAT`; BE Analytics: `UAT Prod` / `Implementation Prod` / Triage `в Работе` |
-| Запущено | Digital: `Pilot`; BE Analytics: `Closed` |
+| Скоро запуск | Digital: `UAT`; BE Analytics / ESB: `UAT Prod` / `Implementation Prod` / Triage `в Работе` |
+| Запущено | Digital: `Pilot`; BE Analytics / ESB: `Closed` |
 | Ошибок | `task` · `task_type = error` · `parent_task_id` |
 
 ## sync_run — аудит синхронизации

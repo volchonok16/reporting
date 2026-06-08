@@ -82,3 +82,19 @@ def test_be_analytics_closed_is_launched() -> None:
     )
     assert is_launched(task, date_from=None, date_to=None)
     assert count_launched_rows([task], date_from=None, date_to=None) == 1
+
+
+def test_esb_analytics_uses_be_analytics_launch_rules() -> None:
+    today = date(2026, 6, 8)
+    uat_prod = _task(
+        board_code="esb_analytics",
+        source_team="ESB Analytics",
+        source_status="UAT Prod",
+    )
+    closed = _task(
+        board_code="esb_analytics",
+        source_team="ESB Analytics",
+        source_status="Closed",
+    )
+    assert is_launching_soon(uat_prod, today=today, horizon=today)
+    assert is_launched(closed, date_from=None, date_to=None)

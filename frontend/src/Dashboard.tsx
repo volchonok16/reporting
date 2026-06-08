@@ -7,6 +7,7 @@ const BOARD_LABELS: Record<string, string> = {
   all: 'Все доски',
   digital_streams_b2b: 'Digital',
   be_t2_team: 'Bercut',
+  esb_analytics: 'ESB',
 }
 
 function boardButtonLabel(code: string, fallback?: string): string {
@@ -18,6 +19,7 @@ function boardNameLabel(name?: string | null, code?: string | null): string {
   if (name && BOARD_LABELS[name]) return BOARD_LABELS[name]
   if (name === 'Digital Streams B2b') return 'Digital'
   if (name === 'BE Analytics') return 'Bercut'
+  if (name === 'ESB Analytics') return 'ESB'
   return name || '—'
 }
 
@@ -400,22 +402,6 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                 )}
                 <div className="cell-title">
                   <div>{item.title}</div>
-                  {item.errors.length > 0 && (
-                    <div className="cell-errors">
-                      {item.errors.map((err) => (
-                        <span key={err.id} className="error-tag">
-                          {err.url ? (
-                            <a className="zni-link" href={err.url} target="_blank" rel="noreferrer">
-                              {err.id}
-                            </a>
-                          ) : (
-                            err.id
-                          )}
-                          : {err.title}
-                        </span>
-                      ))}
-                    </div>
-                  )}
                 </div>
                 <div className="cell-date">{formatDate(item.startDate)}</div>
                 <div className="cell-date">{formatDate(item.releaseDate)}</div>
