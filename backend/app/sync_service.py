@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -206,11 +207,44 @@ async def sync_board(
         team_id = team_ids[board.code]
         zni_db_ids: dict[int, int] = {}
 
+        if settings.tfs_fetch_pilot_history and zni_payloads and sync_run:
+            touch_sync_progress(
+                db,
+                sync_run,
+                f"{board.display_name}: история пилот ({len(zni_payloads)} ЗНИ)…",
+            )
+
         for item in zni_payloads:
             fields = item.get("fields") or {}
             created = parse_tfs_datetime(fields.get("System.CreatedDate"))
             updated = parse_tfs_datetime(fields.get("System.ChangedDate"))
             closed = parse_tfs_datetime(fields.get("Microsoft.VSTS.Common.ClosedDate"))
+
+            extra_json: dict[str, Any] = {
+                "area_path": fields.get("System.AreaPath"),
+                "board_column": fields.get("System.BoardColumn"),
+                "board_code": board.code,
+            }
+
+            if settings.tfs_fetch_pilot_history:
+                existing = db.scalar(
+                    select(Task).where(
+                        Task.source_system_id == source_system_id,
+                        Task.external_id == str(item["id"]),
+                    )
+                )
+                cached = (
+                    existing is not None
+                    and existing.updated_at == updated
+                    and isinstance(existing.extra_json, dict)
+                    and isinstance(existing.extra_json.get("pilot_transitions"), list)
+                )
+                if cached and isinstance(existing.extra_json, dict):
+                    extra_json["pilot_transitions"] = existing.extra_json["pilot_transitions"]
+                else:
+                    extra_json["pilot_transitions"] = await client.extract_pilot_transitions(item["id"])
+                    await asyncio.sleep(settings.tfs_request_delay_seconds)
+
             task_id = upsert_task(
                 db,
                 source_system_id=source_system_id,
@@ -228,11 +262,7 @@ async def sync_board(
                 closed_at=closed,
                 parent_task_id=None,
                 external_url=tfs_item_url(item["id"], board),
-                extra_json={
-                    "area_path": fields.get("System.AreaPath"),
-                    "board_column": fields.get("System.BoardColumn"),
-                    "board_code": board.code,
-                },
+                extra_json=extra_json,
             )
             zni_db_ids[item["id"]] = task_id
             upserted += 1

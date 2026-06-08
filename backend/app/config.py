@@ -42,6 +42,16 @@ class Settings(BaseSettings):
     )
     tfs_change_type_values: str = Field(default="Запрос на изменение", alias="TFS_CHANGE_TYPE_VALUES")
     tfs_error_type_values: str = Field(default="Ошибка", alias="TFS_ERROR_TYPE_VALUES")
+    tfs_pilot_state_values: str = Field(
+        default="Пилот,Pilot",
+        alias="TFS_PILOT_STATE_VALUES",
+        description="Статусы workflow «пилот» для метрики Запущено.",
+    )
+    tfs_fetch_pilot_history: bool = Field(
+        default=True,
+        alias="TFS_FETCH_PILOT_HISTORY",
+        description="Загружать историю updates TFS для переходов в пилот.",
+    )
     change_request_states: str = Field(default="", alias="CHANGE_REQUEST_STATES")
     tfs_closed_state_values: str = Field(default="Closed", alias="TFS_CLOSED_STATE_VALUES")
     tfs_exclude_closed_older_than_days: int = Field(
@@ -109,6 +119,11 @@ class Settings(BaseSettings):
     @property
     def error_type_list(self) -> list[str]:
         return [item.strip() for item in self.tfs_error_type_values.split(",") if item.strip()]
+
+    @computed_field
+    @property
+    def pilot_state_list(self) -> list[str]:
+        return [item.strip() for item in self.tfs_pilot_state_values.split(",") if item.strip()]
 
     @computed_field
     @property

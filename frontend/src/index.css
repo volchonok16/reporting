@@ -206,14 +206,15 @@ body {
 .table-head,
 .table-row {
   display: grid;
-  grid-template-columns: 160px 1fr;
-  gap: 16px;
+  grid-template-columns: 120px minmax(200px, 1fr) 110px 110px 150px;
+  gap: 12px;
   padding: 12px 16px;
+  align-items: start;
 }
 
 .table-head-all,
 .table-row-all {
-  grid-template-columns: 120px 180px 1fr;
+  grid-template-columns: 100px 150px minmax(180px, 1fr) 110px 110px 150px;
 }
 
 .table-head {
@@ -248,6 +249,20 @@ body {
   padding: 2px 8px;
 }
 
+.zni-link {
+  color: #1d4ed8;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.zni-link:hover {
+  text-decoration: underline;
+}
+
+a.error-tag {
+  display: inline-block;
+}
+
 .table-empty {
   padding: 32px 16px;
   color: #666;
@@ -257,6 +272,29 @@ body {
 .cell-board {
   font-size: 13px;
   color: #555;
+}
+
+.cell-date {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: #444;
+  white-space: nowrap;
+}
+
+.cell-status {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.status-board {
+  font-weight: 500;
+  color: #222;
+}
+
+.status-workflow {
+  font-size: 12px;
+  color: #666;
 }
 
 @media (max-width: 1000px) {

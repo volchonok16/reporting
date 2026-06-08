@@ -113,6 +113,7 @@ def dashboard(
     sort: str = Query(default="id_desc"),
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
+    status: str | None = Query(default=None),
 ) -> DashboardOut:
     return load_change_requests(
         db,
@@ -121,6 +122,7 @@ def dashboard(
         sort=sort,
         date_from=date_from,
         date_to=date_to,
+        status=status,
     )
 
 

@@ -55,7 +55,8 @@
 | Ключ | Источник TFS | Описание |
 |------|--------------|----------|
 | area_path | System.AreaPath | Область доски |
-| board_column | System.BoardColumn | Колонка Kanban |
+| board_column | System.BoardColumn | Колонка Kanban (статус на доске) |
+| pilot_transitions | TFS updates | Переходы в «Пилот»: `[{at, status}]` |
 
 ## auth_session — сессия PAT
 
@@ -106,7 +107,7 @@
 |---------|----------------|
 | Всего ЗНИ | `task` · `task_type = change_request` |
 | Скоро запуск | `task.release_date` |
-| Запущено | TBD (сейчас 0) |
+| Запущено | `pilot_transitions` в периоде дат |
 | Ошибок | `task` · `task_type = error` · `parent_task_id` |
 
 ## sync_run — аудит синхронизации

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.boards import ALL_BOARDS_CODE, BOARDS, BoardConfig, board_by_code, is_all_boards
 from app.config import settings
 from app.models import Task
+from app.pilot_metrics import count_launched
 from app.schemas import (
     BoardOut,
     ChangeRequestOut,
@@ -26,6 +27,21 @@ def _matches_search(task: Task, search: str) -> bool:
         return True
     needle = search.strip().lower()
     return needle in task.external_id.lower() or needle in task.title.lower()
+
+
+def _board_column(task: Task) -> str | None:
+    extra = task.extra_json if isinstance(task.extra_json, dict) else {}
+    value = extra.get("board_column")
+    return str(value).strip() if value else None
+
+
+def _matches_status(task: Task, status: str | None) -> bool:
+    if not status:
+        return True
+    needle = status.strip().lower()
+    column = (_board_column(task) or "").lower()
+    workflow = (task.source_status or "").lower()
+    return needle in {column, workflow}
 
 
 def _effective_start(task: Task) -> date | None:
@@ -67,7 +83,24 @@ def _board_name_by_code(code: str | None) -> str | None:
     return None
 
 
-def _compute_metrics(rows: list[Task], error_rows: list[Task]) -> DashboardMetricsOut:
+def _collect_available_statuses(rows: list[Task]) -> list[str]:
+    values: set[str] = set()
+    for row in rows:
+        column = _board_column(row)
+        if column:
+            values.add(column)
+        if row.source_status:
+            values.add(row.source_status)
+    return sorted(values, key=str.casefold)
+
+
+def _compute_metrics(
+    rows: list[Task],
+    error_rows: list[Task],
+    *,
+    date_from: date | None,
+    date_to: date | None,
+) -> DashboardMetricsOut:
     today = date.today()
     horizon = today + timedelta(days=settings.launching_soon_days)
     launching_soon = sum(
@@ -78,7 +111,7 @@ def _compute_metrics(rows: list[Task], error_rows: list[Task]) -> DashboardMetri
     return DashboardMetricsOut(
         totalTasks=len(rows),
         launchingSoon=launching_soon,
-        launched=0,
+        launched=count_launched(rows, date_from=date_from, date_to=date_to),
         errorsCount=len(error_rows),
     )
 
@@ -91,6 +124,7 @@ def load_change_requests(
     sort: str = "id_desc",
     date_from: date | None = None,
     date_to: date | None = None,
+    status: str | None = None,
 ) -> DashboardOut:
     all_boards = is_all_boards(board_code)
     board = board_by_code(board_code)
@@ -120,7 +154,13 @@ def load_change_requests(
     rows = list(db.scalars(zni_query))
     error_rows = list(db.scalars(error_query))
 
-    filtered = [row for row in rows if _matches_search(row, search or "") and _in_date_range(row, date_from, date_to)]
+    filtered = [
+        row
+        for row in rows
+        if _matches_search(row, search or "")
+        and _in_date_range(row, date_from, date_to)
+        and _matches_status(row, status)
+    ]
 
     reverse = sort.endswith("_desc") or sort == "id_desc"
     sort_field = sort.replace("_desc", "").replace("_asc", "")
@@ -140,14 +180,22 @@ def load_change_requests(
                 id=str(row.id),
                 number=row.external_id,
                 title=row.title,
+                url=row.external_url,
                 status=row.source_status,
+                boardColumn=_board_column(row),
                 startDate=_effective_start(row),
                 releaseDate=row.release_date,
                 createdAt=row.created_at,
                 boardCode=str(board_code_value) if board_code_value else None,
                 boardName=row.source_team or _board_name_by_code(str(board_code_value) if board_code_value else None),
                 errors=[
-                    LinkedErrorOut(id=e.external_id, title=e.title, status=e.source_status) for e in linked
+                    LinkedErrorOut(
+                        id=e.external_id,
+                        title=e.title,
+                        status=e.source_status,
+                        url=e.external_url,
+                    )
+                    for e in linked
                 ],
             )
         )
@@ -155,9 +203,10 @@ def load_change_requests(
     return DashboardOut(
         board=_board_out(board) if board and not all_boards else None,
         allBoards=all_boards,
-        metrics=_compute_metrics(rows, error_rows),
+        metrics=_compute_metrics(rows, error_rows, date_from=date_from, date_to=date_to),
         items=items,
         totalShown=len(items),
+        availableStatuses=_collect_available_statuses(rows),
     )
 
 
@@ -174,7 +223,8 @@ def export_csv(db: Session, *, board_code: str | None = None) -> str:
         [
             "Номер ЗНИ",
             "ЗНИ",
-            "Статус",
+            "Статус workflow",
+            "Статус доски",
             "Дата начала",
             "Целевая дата",
             "Доска",
@@ -190,6 +240,7 @@ def export_csv(db: Session, *, board_code: str | None = None) -> str:
                     item.number,
                     item.title,
                     item.status or "",
+                    item.boardColumn or "",
                     item.startDate.isoformat() if item.startDate else "",
                     item.releaseDate.isoformat() if item.releaseDate else "",
                     item.boardName or "",
@@ -208,6 +259,7 @@ def export_csv(db: Session, *, board_code: str | None = None) -> str:
                         item.number,
                         item.title,
                         item.status or "",
+                        item.boardColumn or "",
                         item.startDate.isoformat() if item.startDate else "",
                         item.releaseDate.isoformat() if item.releaseDate else "",
                         item.boardName or "",

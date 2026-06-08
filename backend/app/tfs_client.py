@@ -380,6 +380,54 @@ class TfsClient:
 
         return result
 
+    async def get_work_item_updates(self, item_id: int) -> list[dict[str, Any]]:
+        last_response: httpx.Response | None = None
+        for api_version in _api_version_candidates():
+            response = await self.client.get(
+                f"/{self.project}/_apis/wit/workitems/{item_id}/updates",
+                params={"api-version": api_version},
+            )
+            last_response = response
+            if response.status_code == 200:
+                body = response.json()
+                return [item for item in as_list(body.get("value")) if isinstance(item, dict)]
+            if response.status_code == 404:
+                return []
+            if response.status_code == 400 and "out of range" in response.text.lower():
+                continue
+        if last_response is not None:
+            last_response.raise_for_status()
+        return []
+
+    async def extract_pilot_transitions(self, item_id: int) -> list[dict[str, str]]:
+        """Переходы workflow в статус «пилот» по истории updates TFS."""
+        if not settings.pilot_state_list:
+            return []
+
+        pilot_lower = {value.lower() for value in settings.pilot_state_list}
+        transitions: list[dict[str, str]] = []
+        updates = await self.get_work_item_updates(item_id)
+        for update in updates:
+            fields = update.get("fields")
+            if not isinstance(fields, dict):
+                continue
+            state_change = fields.get("System.State")
+            if not isinstance(state_change, dict):
+                continue
+            new_value = str(state_change.get("newValue") or "").strip()
+            if not new_value or new_value.lower() not in pilot_lower:
+                continue
+            revised = parse_tfs_datetime(update.get("revisedDate"))
+            if revised is None:
+                continue
+            transitions.append(
+                {
+                    "at": revised.isoformat(),
+                    "status": new_value,
+                }
+            )
+        return transitions
+
     async def enrich_scheduling_fields(
         self,
         items: list[dict[str, Any]],

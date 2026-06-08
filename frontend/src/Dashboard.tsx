@@ -12,12 +12,17 @@ type Board = {
 type LinkedError = {
   id: string
   title: string
+  url?: string | null
 }
 
 type ChangeRequest = {
   number: string
   title: string
+  url?: string | null
   status?: string | null
+  boardColumn?: string | null
+  startDate?: string | null
+  releaseDate?: string | null
   boardName?: string | null
   errors: LinkedError[]
 }
@@ -33,6 +38,14 @@ type DashboardData = {
   }
   items: ChangeRequest[]
   totalShown: number
+  availableStatuses: string[]
+}
+
+function formatDate(value?: string | null): string {
+  if (!value) return '—'
+  const [year, month, day] = value.split('-')
+  if (!year || !month || !day) return value
+  return `${day}.${month}.${year}`
 }
 
 type DashboardProps = {
@@ -54,6 +67,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const [sort, setSort] = useState('id_desc')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -62,14 +76,13 @@ export default function Dashboard({ onLogout }: DashboardProps) {
 
   useEffect(() => {
     void getJson<Board[]>('/api/boards')
-      .then((items) => {
-        setBoards(items)
-        if (items.length > 0) {
-          setBoardCode(items[0].code)
-        }
-      })
+      .then((items) => setBoards(items))
       .catch((err) => setError(err instanceof Error ? err.message : 'Ошибка загрузки досок'))
   }, [])
+
+  useEffect(() => {
+    setStatusFilter('')
+  }, [boardCode])
 
   const loadDashboard = useCallback(async () => {
     if (!boardCode) return
@@ -79,6 +92,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     if (search.trim()) params.set('search', search.trim())
     if (dateFrom) params.set('date_from', dateFrom)
     if (dateTo) params.set('date_to', dateTo)
+    if (statusFilter) params.set('status', statusFilter)
     try {
       const payload = await getJson<DashboardData>(`/api/dashboard?${params}`)
       setData(payload)
@@ -87,7 +101,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     } finally {
       setLoading(false)
     }
-  }, [boardCode, search, sort, dateFrom, dateTo])
+  }, [boardCode, search, sort, dateFrom, dateTo, statusFilter])
 
   useEffect(() => {
     void loadDashboard()
@@ -208,6 +222,18 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             <span>Дата конца</span>
             <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
           </label>
+
+          <label className="select-wrap">
+            <span>Статус доски</span>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="">Все статусы</option>
+              {(data?.availableStatuses ?? []).map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         <div className="toolbar-right">
@@ -256,6 +282,9 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             <div>Номер ЗНИ</div>
             {data?.allBoards && <div>Доска</div>}
             <div>ЗНИ</div>
+            <div>Дата начала</div>
+            <div>Целевая дата</div>
+            <div>Статус</div>
           </div>
           <div className="table-body">
             {data?.items.map((item) => (
@@ -263,18 +292,47 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                 className={`table-row${data.allBoards ? ' table-row-all' : ''}`}
                 key={`${item.boardName ?? ''}-${item.number}`}
               >
-                <div className="cell-number">{item.number}</div>
+                <div className="cell-number">
+                  {item.url ? (
+                    <a className="zni-link" href={item.url} target="_blank" rel="noreferrer">
+                      {item.number}
+                    </a>
+                  ) : (
+                    item.number
+                  )}
+                </div>
                 {data.allBoards && <div className="cell-board">{item.boardName}</div>}
                 <div className="cell-title">
                   <div>{item.title}</div>
                   {item.errors.length > 0 && (
                     <div className="cell-errors">
-                      {item.errors.map((err) => (
-                        <span key={err.id} className="error-tag">
-                          {err.id}: {err.title}
-                        </span>
-                      ))}
+                      {item.errors.map((err) =>
+                        err.url ? (
+                          <a
+                            key={err.id}
+                            className="error-tag zni-link"
+                            href={err.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={err.title}
+                          >
+                            {err.id}
+                          </a>
+                        ) : (
+                          <span key={err.id} className="error-tag">
+                            {err.id}
+                          </span>
+                        ),
+                      )}
                     </div>
+                  )}
+                </div>
+                <div className="cell-date">{formatDate(item.startDate)}</div>
+                <div className="cell-date">{formatDate(item.releaseDate)}</div>
+                <div className="cell-status">
+                  <span className="status-board">{item.boardColumn || item.status || '—'}</span>
+                  {item.boardColumn && item.status && item.boardColumn !== item.status && (
+                    <span className="status-workflow">{item.status}</span>
                   )}
                 </div>
               </div>

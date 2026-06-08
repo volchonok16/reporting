@@ -37,13 +37,16 @@ class LinkedErrorOut(BaseModel):
     id: str
     title: str
     status: str | None = None
+    url: str | None = None
 
 
 class ChangeRequestOut(BaseModel):
     id: str
     number: str
     title: str
+    url: str | None = None
     status: str | None = None
+    boardColumn: str | None = None
     startDate: date | None = None
     releaseDate: date | None = None
     createdAt: datetime | None = None
@@ -65,6 +68,7 @@ class DashboardOut(BaseModel):
     metrics: DashboardMetricsOut
     items: list[ChangeRequestOut]
     totalShown: int
+    availableStatuses: list[str] = Field(default_factory=list)
 
 
 class SyncRunOut(BaseModel):
