@@ -87,18 +87,18 @@ class DashboardOut(BaseModel):
     availableQuarters: list[QuarterOptionOut] = Field(default_factory=list)
 
 
-class ProductStatusRowOut(BaseModel):
-    launchDate: str = ""
-    project: str = ""
-    description: str = ""
-    purpose: str = ""
+class ProductStatusSheetOut(BaseModel):
+    gid: str
+    name: str
+    columns: list[str]
+    rows: list[dict[str, str]]
+    totalShown: int
 
 
 class ProductStatusB2BOut(BaseModel):
     title: str
     sourceUrl: str | None = None
-    items: list[ProductStatusRowOut]
-    totalShown: int
+    sheets: list[ProductStatusSheetOut]
 
 
 class SyncRunOut(BaseModel):

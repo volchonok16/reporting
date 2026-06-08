@@ -76,13 +76,26 @@ class Settings(BaseSettings):
         alias="APP_AUTH_USERS",
         description="Пользователи приложения: login:password (по одному на строку).",
     )
+    b2b_product_status_spreadsheet_id: str = Field(
+        default="1zTxzUqa1p6wFUjmk-8_2czfsJaSm3eTrNGazN0oFKqI",
+        alias="B2B_PRODUCT_STATUS_SPREADSHEET_ID",
+        description="ID Google Sheets для вкладки «Статус продукта B2B».",
+    )
     b2b_product_status_sheet_url: str = Field(
         default=(
             "https://docs.google.com/spreadsheets/d/"
             "1zTxzUqa1p6wFUjmk-8_2czfsJaSm3eTrNGazN0oFKqI/export?format=csv&gid=0"
         ),
         alias="B2B_PRODUCT_STATUS_SHEET_URL",
-        description="CSV-экспорт Google Sheets для вкладки «Статус продукта B2B».",
+        description="CSV-экспорт первого листа (fallback, если нет списка листов).",
+    )
+    b2b_product_status_sheets: str = Field(
+        default="",
+        alias="B2B_PRODUCT_STATUS_SHEETS",
+        description=(
+            "Список листов: JSON [{gid,name}] или gid:имя;gid2:имя2. "
+            "Пусто — автоизвлечение из Google Sheets."
+        ),
     )
     b2b_product_status_sheet_public_url: str = Field(
         default="https://docs.google.com/spreadsheets/d/1zTxzUqa1p6wFUjmk-8_2czfsJaSm3eTrNGazN0oFKqI/edit",

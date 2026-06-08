@@ -30,6 +30,22 @@ export default function WorkbookApp({ onLogout }: WorkbookAppProps) {
 
   return (
     <div className="workbook">
+      <header className="workbook-header">
+        <nav className="workbook-tabs" aria-label="Вкладки книги">
+          {SHEETS.map((sheet) => (
+            <button
+              key={sheet.id}
+              type="button"
+              className={`workbook-tab${activeSheet === sheet.id ? ' workbook-tab-active' : ''}`}
+              onClick={() => setActiveSheet(sheet.id)}
+              aria-selected={activeSheet === sheet.id}
+            >
+              {sheet.label}
+            </button>
+          ))}
+        </nav>
+      </header>
+
       <div className="workbook-content">
         {activeSheet === 'zni' ? (
           <Dashboard onLogout={() => void handleLogout()} />
@@ -44,20 +60,6 @@ export default function WorkbookApp({ onLogout }: WorkbookAppProps) {
           </div>
         )}
       </div>
-
-      <nav className="workbook-tabs" aria-label="Вкладки книги">
-        {SHEETS.map((sheet) => (
-          <button
-            key={sheet.id}
-            type="button"
-            className={`workbook-tab${activeSheet === sheet.id ? ' workbook-tab-active' : ''}`}
-            onClick={() => setActiveSheet(sheet.id)}
-            aria-selected={activeSheet === sheet.id}
-          >
-            {sheet.label}
-          </button>
-        ))}
-      </nav>
     </div>
   )
 }
