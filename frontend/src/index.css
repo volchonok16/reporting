@@ -164,6 +164,39 @@ body {
   min-width: 180px;
 }
 
+.board-filter {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.board-filter-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.board-filter-btn {
+  padding: 8px 14px;
+  border: 1px solid #d0d0d0;
+  border-radius: 8px;
+  background: #fff;
+  color: #111;
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.board-filter-btn:hover {
+  border-color: #999;
+}
+
+.board-filter-btn-active {
+  background: #111;
+  border-color: #111;
+  color: #fff;
+}
+
 .banner-info {
   color: #1d4ed8;
   margin: 0 0 12px;

@@ -3,6 +3,24 @@ import { apiFetch, clearSessionId, getJson } from './api'
 
 const ALL_BOARDS = 'all'
 
+const BOARD_LABELS: Record<string, string> = {
+  all: 'Все доски',
+  digital_streams_b2b: 'Digital',
+  be_t2_team: 'Bercut',
+}
+
+function boardButtonLabel(code: string, fallback?: string): string {
+  return BOARD_LABELS[code] ?? fallback ?? code
+}
+
+function boardNameLabel(name?: string | null, code?: string | null): string {
+  if (code && BOARD_LABELS[code]) return BOARD_LABELS[code]
+  if (name && BOARD_LABELS[name]) return BOARD_LABELS[name]
+  if (name === 'Digital Streams B2b') return 'Digital'
+  if (name === 'BE Analytics') return 'Bercut'
+  return name || '—'
+}
+
 type Board = {
   code: string
   name: string
@@ -33,6 +51,7 @@ type ChangeRequest = {
   planQuarter?: string | null
   plannedRelease?: string | null
   boardName?: string | null
+  boardCode?: string | null
   errors: LinkedError[]
 }
 
@@ -209,25 +228,27 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   }
 
   const selectedBoard = boards.find((b) => b.code === boardCode)
-  const boardLabel =
-    data?.allBoards || boardCode === ALL_BOARDS
-      ? 'Все доски'
-      : selectedBoard?.displayName ?? ''
+  const boardLabel = boardButtonLabel(boardCode, selectedBoard?.displayName)
 
   return (
     <div className="app">
       <header className="toolbar">
         <div className="toolbar-left">
-          <label className="select-wrap">
-            <span>Система digital</span>
-            <select value={boardCode} onChange={(e) => setBoardCode(e.target.value)}>
+          <div className="board-filter">
+            <span className="board-filter-label">Система digital</span>
+            <div className="board-filter-buttons" role="group" aria-label="Доска">
               {boards.map((board) => (
-                <option key={board.code} value={board.code}>
-                  {board.displayName}
-                </option>
+                <button
+                  key={board.code}
+                  type="button"
+                  className={`board-filter-btn${boardCode === board.code ? ' board-filter-btn-active' : ''}`}
+                  onClick={() => setBoardCode(board.code)}
+                >
+                  {boardButtonLabel(board.code, board.displayName)}
+                </button>
               ))}
-            </select>
-          </label>
+            </div>
+          </div>
 
           <label className="search-wrap">
             <input
@@ -372,7 +393,9 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                     item.number
                   )}
                 </div>
-                {data.allBoards && <div className="cell-board">{item.boardName}</div>}
+                {data.allBoards && (
+                  <div className="cell-board">{boardNameLabel(item.boardName, item.boardCode)}</div>
+                )}
                 <div className="cell-title">
                   <div>{item.title}</div>
                   {item.errors.length > 0 && (
