@@ -10,9 +10,7 @@ fi
 
 chmod +x db/init-users.sh 2>/dev/null || true
 
-# shellcheck source=resolve-compose.sh
-source "$(dirname "$0")/resolve-compose.sh" dev
-"${COMPOSE[@]}" up --build -d "$@"
+exec bash "$(dirname "$0")/compose-up.sh" dev --build "$@"
 
 echo ""
 echo "Локально:"

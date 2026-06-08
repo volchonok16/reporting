@@ -21,9 +21,29 @@ COMPOSE_CMD=docker-compose
 
 ```bash
 cd /var/database/reporting
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+bash scripts/compose-up.sh prod --build
 docker-compose -f docker-compose.yml -f docker-compose.prod.yml ps
 docker-compose -f docker-compose.yml -f docker-compose.prod.yml logs -f backend
+```
+
+### Ошибка `KeyError: 'ContainerConfig'` (docker-compose 1.29)
+
+Старый `docker-compose` 1.29 несовместим с новым Docker Engine при **пересоздании** контейнеров.
+
+**Быстрый фикс — пересобрать frontend:**
+
+```bash
+docker rm -f reporting-frontend
+bash scripts/compose-up.sh prod --build frontend
+```
+
+**Или обновить Compose (рекомендуется):**
+
+```bash
+sudo apt-get install -y docker-compose-plugin
+# в .env заменить на:
+# COMPOSE_CMD=docker compose
+docker compose version
 ```
 
 ### Полный production (Docker + nginx + certbot)

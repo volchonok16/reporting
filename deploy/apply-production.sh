@@ -167,7 +167,7 @@ if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: a
 fi
 
 echo "==> Docker Compose (prod)…"
-"${COMPOSE[@]}" up -d --build
+bash "$ROOT/scripts/compose-up.sh" prod --build
 
 if [[ ! -f "$CERT_DIR/fullchain.pem" ]]; then
   issue_certificate || true
