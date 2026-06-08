@@ -26,9 +26,11 @@ docker-compose -f docker-compose.yml -f docker-compose.prod.yml ps
 docker-compose -f docker-compose.yml -f docker-compose.prod.yml logs -f backend
 ```
 
-### Ошибка `KeyError: 'ContainerConfig'` (docker-compose 1.29)
+### Ошибки docker-compose 1.29 (`ContainerConfig`, `KeyError: 'id'`)
 
-Старый `docker-compose` 1.29 несовместим с новым Docker Engine при **пересоздании** контейнеров.
+Старый `docker-compose` 1.29 несовместим с новым Docker Engine: падает при **пересоздании** контейнеров (`ContainerConfig`) и в фоновом потоке логов (`KeyError: 'id'` в `watch_events`).
+
+Скрипт `scripts/compose-up.sh` обходит это для v1 (purge → `create` → `start` вместо `up`). Всё равно лучше перейти на Compose v2.
 
 **Быстрый фикс — пересобрать frontend:**
 

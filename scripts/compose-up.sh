@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Безопасный compose up (обход KeyError ContainerConfig на docker-compose 1.29 + Docker 24+)
+# Безопасный compose up (обход багов docker-compose 1.29 + Docker 24+:
+# ContainerConfig, KeyError id в watch_events)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -45,7 +46,7 @@ purge_service() {
 }
 
 if uses_compose_v1; then
-  echo "==> docker-compose v1: очистка старых контейнеров (ContainerConfig workaround)…"
+  echo "==> docker-compose v1: очистка старых контейнеров…"
   if [[ ${#SERVICES[@]} -eq 0 ]]; then
     purge_service postgres
     purge_service backend
@@ -55,6 +56,27 @@ if uses_compose_v1; then
       purge_service "$svc"
     done
   fi
+
+  if [[ "$BUILD" -eq 1 ]]; then
+    if [[ ${#SERVICES[@]} -gt 0 ]]; then
+      echo "==> ${COMPOSE[*]} build ${SERVICES[*]}"
+      "${COMPOSE[@]}" build "${SERVICES[@]}"
+    else
+      echo "==> ${COMPOSE[*]} build"
+      "${COMPOSE[@]}" build
+    fi
+  fi
+
+  CREATE_ARGS=(create)
+  [[ ${#SERVICES[@]} -gt 0 ]] && CREATE_ARGS+=(--no-deps "${SERVICES[@]}")
+  echo "==> ${COMPOSE[*]} ${CREATE_ARGS[*]}"
+  "${COMPOSE[@]}" "${CREATE_ARGS[@]}"
+
+  START_ARGS=(start)
+  [[ ${#SERVICES[@]} -gt 0 ]] && START_ARGS+=("${SERVICES[@]}")
+  echo "==> ${COMPOSE[*]} ${START_ARGS[*]}"
+  "${COMPOSE[@]}" "${START_ARGS[@]}"
+  exit 0
 fi
 
 ARGS=(up -d)

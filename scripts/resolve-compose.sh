@@ -20,6 +20,9 @@ pick_compose_bin() {
   fi
 
   if [[ -n "$override" ]]; then
+    if [[ "$override" == "docker-compose" ]] && docker compose version &>/dev/null 2>&1; then
+      echo "Предупреждение: COMPOSE_CMD=docker-compose — лучше «docker compose» (Compose v2)." >&2
+    fi
     echo "$override"
     return
   fi

@@ -507,6 +507,12 @@ body {
   margin-bottom: 12px;
 }
 
+.product-status-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .product-status-sheet-tabs {
   display: flex;
   flex-wrap: wrap;

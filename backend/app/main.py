@@ -3,7 +3,7 @@ from datetime import date
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy.orm import Session
 
 from app.auth_service import login_with_app_user, login_with_pat
@@ -12,6 +12,7 @@ from app.boards import ALL_BOARDS_CODE, BOARDS, boards_for_sync
 from app.config import settings
 from app.db import ensure_auth_session_table, get_db
 from app.models import SyncRun
+from app.product_status_presentation import generate_b2b_product_status_presentation
 from app.product_status_service import load_b2b_product_status
 from app.report_service import export_csv, load_change_requests
 from app.schemas import (
@@ -157,6 +158,16 @@ def dashboard(
 @app.get("/api/product-status/b2b", response_model=ProductStatusB2BOut)
 def product_status_b2b() -> ProductStatusB2BOut:
     return load_b2b_product_status()
+
+
+@app.get("/api/product-status/b2b/presentation")
+def product_status_b2b_presentation() -> Response:
+    content, filename = generate_b2b_product_status_presentation()
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/api/export")

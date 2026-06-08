@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { getJson } from './api'
+import { getJson, apiFetch, readApiError } from './api'
 
 type ProductStatusSheet = {
   gid: string
@@ -23,6 +23,7 @@ export default function ProductStatusB2B() {
   const [data, setData] = useState<ProductStatusData | null>(null)
   const [activeGid, setActiveGid] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
@@ -41,6 +42,31 @@ export default function ProductStatusB2B() {
       setError(err instanceof Error ? err.message : 'Ошибка загрузки')
     } finally {
       setLoading(false)
+    }
+  }, [])
+
+  const handleExportPresentation = useCallback(async () => {
+    setExporting(true)
+    setError(null)
+    try {
+      const response = await apiFetch('/api/product-status/b2b/presentation')
+      if (!response.ok) {
+        throw new Error(await readApiError(response))
+      }
+      const blob = await response.blob()
+      const disposition = response.headers.get('Content-Disposition') ?? ''
+      const match = disposition.match(/filename="([^"]+)"/)
+      const filename = match?.[1] ?? 'status-b2b.pptx'
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка выгрузки презентации')
+    } finally {
+      setExporting(false)
     }
   }, [])
 
@@ -70,9 +96,19 @@ export default function ProductStatusB2B() {
             ) : null}
           </p>
         </div>
-        <button type="button" className="btn-secondary" onClick={() => void loadData()} disabled={loading}>
-          {loading ? 'Загрузка…' : 'Обновить'}
-        </button>
+        <div className="product-status-toolbar-actions">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => void handleExportPresentation()}
+            disabled={loading || exporting || !data?.sheets.length}
+          >
+            {exporting ? 'Формирование…' : 'Выгрузить презентацию'}
+          </button>
+          <button type="button" className="btn-secondary" onClick={() => void loadData()} disabled={loading}>
+            {loading ? 'Загрузка…' : 'Обновить'}
+          </button>
+        </div>
       </header>
 
       {(data?.sheets.length ?? 0) > 0 && (

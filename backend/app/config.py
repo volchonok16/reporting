@@ -102,6 +102,11 @@ class Settings(BaseSettings):
         alias="B2B_PRODUCT_STATUS_SHEET_PUBLIC_URL",
         description="Ссылка на исходную таблицу (для кнопки «Открыть в Google Sheets»).",
     )
+    b2b_product_status_presentation_template: str = Field(
+        default="",
+        alias="B2B_PRODUCT_STATUS_PRESENTATION_TEMPLATE",
+        description="Путь к шаблону .pptx для выгрузки презентации (пусто — backend/assets).",
+    )
 
     @computed_field
     @property
