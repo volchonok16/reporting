@@ -24,13 +24,13 @@ pick_compose_bin() {
     return
   fi
 
-  if command -v docker-compose &>/dev/null; then
-    echo "docker-compose"
+  if docker compose version &>/dev/null 2>&1; then
+    echo "docker compose"
     return
   fi
 
-  if docker compose version &>/dev/null 2>&1; then
-    echo "docker compose"
+  if command -v docker-compose &>/dev/null; then
+    echo "docker-compose"
     return
   fi
 

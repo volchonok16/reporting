@@ -47,8 +47,9 @@ purge_service() {
 if uses_compose_v1; then
   echo "==> docker-compose v1: очистка старых контейнеров (ContainerConfig workaround)…"
   if [[ ${#SERVICES[@]} -eq 0 ]]; then
-    purge_service frontend
+    purge_service postgres
     purge_service backend
+    purge_service frontend
   else
     for svc in "${SERVICES[@]}"; do
       purge_service "$svc"
