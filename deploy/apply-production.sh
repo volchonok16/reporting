@@ -7,10 +7,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.prod.yml)
 CERT_DIR="/etc/letsencrypt/live/pallink.fun"
 
+# shellcheck source=scripts/resolve-compose.sh
+source "$ROOT/scripts/resolve-compose.sh" prod
+
 echo "==> Reporting production: $ROOT"
+echo "==> Compose: ${COMPOSE[*]}"
 
 if [[ "${EUID:-0}" -ne 0 ]]; then
   echo "Запустите с sudo: sudo bash scripts/production.sh" >&2
@@ -90,6 +93,48 @@ install_nginx_config() {
   systemctl reload nginx
 }
 
+ensure_certbot() {
+  if command -v certbot >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "==> Установка certbot…"
+  apt-get update -qq
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq certbot
+}
+
+setup_certbot_auto_renewal() {
+  if ! command -v certbot >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "==> Автопродление сертификата…"
+
+  local hook_dir="/etc/letsencrypt/renewal-hooks/deploy"
+  mkdir -p "$hook_dir"
+  cp -f "$ROOT/deploy/certbot-renew-hook.sh" "$hook_dir/reporting-reload-nginx.sh"
+  chmod +x "$hook_dir/reporting-reload-nginx.sh"
+  echo "    Hook: $hook_dir/reporting-reload-nginx.sh (reload nginx после renew)"
+
+  if systemctl list-unit-files certbot.timer &>/dev/null 2>&1; then
+    systemctl enable certbot.timer 2>/dev/null || true
+    systemctl start certbot.timer 2>/dev/null || true
+    echo "    Timer: certbot.timer (проверка ~2 раза в сутки)"
+    systemctl status certbot.timer --no-pager 2>/dev/null | head -3 || true
+  else
+    local cron_file="/etc/cron.d/certbot-reporting"
+    if [[ ! -f /etc/cron.d/certbot ]] && [[ ! -f "$cron_file" ]]; then
+      cat >"$cron_file" <<'CRON'
+# Автопродление Let's Encrypt (reporting)
+0 3,15 * * * root certbot -q renew --deploy-hook /etc/letsencrypt/renewal-hooks/deploy/reporting-reload-nginx.sh
+CRON
+      chmod 644 "$cron_file"
+      echo "    Cron: $cron_file (03:00 и 15:00 UTC)"
+    else
+      echo "    Cron/timer certbot уже настроен системой — hook для nginx установлен."
+    fi
+  fi
+}
+
 issue_certificate() {
   if [[ -f "$CERT_DIR/fullchain.pem" ]]; then
     return 0
@@ -101,10 +146,7 @@ issue_certificate() {
   fi
 
   echo "==> Certbot: выпуск сертификата…"
-  if ! command -v certbot >/dev/null 2>&1; then
-    apt-get update -qq
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq certbot
-  fi
+  ensure_certbot
 
   local -a domain_args=()
   local IFS=,
@@ -126,6 +168,9 @@ if [[ ! -f "$CERT_DIR/fullchain.pem" ]]; then
   issue_certificate || true
 fi
 
+ensure_certbot 2>/dev/null || true
+setup_certbot_auto_renewal
+
 if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
   ufw allow OpenSSH 2>/dev/null || true
   ufw allow 'Nginx Full' 2>/dev/null || ufw allow 80/tcp 443/tcp 2>/dev/null || true
@@ -142,7 +187,7 @@ for i in $(seq 1 20); do
     echo "OK: $(curl -sf http://127.0.0.1:8000/api/health)"
     break
   fi
-  [[ "$i" -eq 20 ]] && echo "Предупреждение: backend не отвечает — docker compose logs backend" >&2
+  [[ "$i" -eq 20 ]] && echo "Предупреждение: backend не отвечает — ${COMPOSE[*]} logs backend" >&2
   sleep 2
 done
 
@@ -164,4 +209,8 @@ if [[ ! -f "$CERT_DIR/fullchain.pem" ]]; then
   echo ""
   echo "Сертификат не выпущен. Убедитесь, что DNS указывает на этот сервер, задайте CERTBOT_EMAIL в .env и:"
   echo "  sudo bash scripts/production.sh"
+else
+  echo ""
+  echo "Автопродление: certbot renew (timer/cron) + reload nginx."
+  echo "  Проверка: sudo certbot renew --dry-run"
 fi

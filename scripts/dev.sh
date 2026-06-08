@@ -10,14 +10,9 @@ fi
 
 chmod +x db/init-users.sh 2>/dev/null || true
 
-if docker compose version &>/dev/null; then
-  docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d "$@"
-elif command -v docker-compose &>/dev/null; then
-  docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d "$@"
-else
-  echo "Docker Compose не найден." >&2
-  exit 1
-fi
+# shellcheck source=resolve-compose.sh
+source "$(dirname "$0")/resolve-compose.sh" dev
+"${COMPOSE[@]}" up --build -d "$@"
 
 echo ""
 echo "Локально:"

@@ -3,11 +3,41 @@
 ## Требования
 
 - Ubuntu/Debian VPS
-- Docker + Docker Compose
+- Docker + Docker Compose (`docker compose` или `docker-compose`)
 - DNS: `pallink.fun`, `www.pallink.fun`, `api.pallink.fun` → IP сервера
 - Порты `8000` и `5173` на localhost свободны (backend и frontend)
 
 > На том же сервере не должно работать другое приложение на `:8000` / `:5173` (например, старый roadmap).
+
+## Docker Compose
+
+На сервере часто используется классический **`docker-compose`** (через дефис). Скрипты подхватывают его автоматически; можно явно задать в `.env`:
+
+```env
+COMPOSE_CMD=docker-compose
+```
+
+### Только Docker (без nginx) — вручную
+
+```bash
+cd /var/database/reporting
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml ps
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml logs -f backend
+```
+
+### Полный production (Docker + nginx + certbot)
+
+```bash
+sudo bash scripts/production.sh
+```
+
+Если ошибка `unknown shorthand flag: 'f'` — в `.env` добавьте `COMPOSE_CMD=docker-compose` или установите пакет:
+
+```bash
+sudo apt-get install -y docker-compose
+docker-compose --version
+```
 
 ## Один скрипт
 
@@ -39,14 +69,28 @@ sudo bash scripts/production.sh
 bash scripts/dev.sh
 ```
 
-## Продление сертификата
+## Автопродление сертификата
+
+`scripts/production.sh` настраивает автопродление автоматически:
+
+1. **Deploy-hook** — после успешного renew перезагружает nginx  
+   `/etc/letsencrypt/renewal-hooks/deploy/reporting-reload-nginx.sh`
+2. **systemd timer** `certbot.timer` — проверка ~2 раза в сутки (если есть в системе)
+3. **Иначе cron** — `/etc/cron.d/certbot-reporting` (03:00 и 15:00 UTC)
+
+Проверить, что всё работает:
 
 ```bash
+sudo systemctl status certbot.timer    # или: cat /etc/cron.d/certbot-reporting
 sudo certbot renew --dry-run
-sudo systemctl reload nginx
 ```
 
-Cron (обычно ставится certbot автоматически): `certbot renew`
+Ручное продление (обычно не нужно):
+
+```bash
+sudo certbot renew
+sudo systemctl reload nginx
+```
 
 ## Ручной выпуск сертификата
 
