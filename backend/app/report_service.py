@@ -40,6 +40,11 @@ def _extra(task: Task) -> dict:
     return task.extra_json if isinstance(task.extra_json, dict) else {}
 
 
+def _planned_release(task: Task) -> str | None:
+    value = _extra(task).get("planned_release")
+    return str(value).strip() if value else None
+
+
 def _board_column(task: Task) -> str | None:
     value = _extra(task).get("board_column")
     return str(value).strip() if value else None
@@ -261,6 +266,7 @@ def load_change_requests(
                 plannedDate=planned_date,
                 plannedLabel=planned_label,
                 planQuarter=quarter_label,
+                plannedRelease=_planned_release(row),
                 createdAt=row.created_at,
                 boardCode=str(board_code_value) if board_code_value else None,
                 boardName=row.source_team or _board_name_by_code(str(board_code_value) if board_code_value else None),
@@ -306,6 +312,7 @@ def export_csv(db: Session, *, board_code: str | None = None) -> str:
             "Целевая дата",
             "Планируемая дата",
             "План квартала",
+            "Плановый релиз",
             "Доска",
             "Ошибки",
         ]
@@ -324,6 +331,7 @@ def export_csv(db: Session, *, board_code: str | None = None) -> str:
                     item.releaseDate.isoformat() if item.releaseDate else "",
                     item.plannedLabel or (item.plannedDate.isoformat() if item.plannedDate else ""),
                     item.planQuarter or "",
+                    item.plannedRelease or "",
                     item.boardName or "",
                     errors_text,
                 ]
@@ -345,6 +353,7 @@ def export_csv(db: Session, *, board_code: str | None = None) -> str:
                         item.releaseDate.isoformat() if item.releaseDate else "",
                         item.plannedLabel or (item.plannedDate.isoformat() if item.plannedDate else ""),
                         item.planQuarter or "",
+                        item.plannedRelease or "",
                         item.boardName or "",
                         errors_text,
                     ]

@@ -63,6 +63,7 @@ class ChangeRequestOut(BaseModel):
     plannedDate: date | None = None
     plannedLabel: str | None = None
     planQuarter: str | None = None
+    plannedRelease: str | None = None
     createdAt: datetime | None = None
     boardCode: str | None = None
     boardName: str | None = None

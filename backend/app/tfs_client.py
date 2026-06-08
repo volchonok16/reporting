@@ -268,6 +268,9 @@ class TfsClient:
                 "System.BoardColumn",
                 "System.IterationPath",
                 "System.Tags",
+                "Logrocon.FoundinRelease",
+                "Logrocon.Release",
+                "Microsoft.VSTS.Scheduling.Plannedreleasedate",
                 "Microsoft.VSTS.Common.ClosedDate",
                 "Microsoft.VSTS.Common.Severity",
                 *settings.scheduling_batch_field_list,
@@ -278,21 +281,24 @@ class TfsClient:
         self,
         area_path: str,
         *,
-        tags: Iterable[str] | None = None,
+        zni_tags: Iterable[str] | None = None,
+        error_tags: Iterable[str] | None = None,
     ) -> dict[int, int]:
         """error_id -> zni_id через один WIQL вместо Relations на каждом ЗНИ."""
         types = ", ".join(wiql_quote(item) for item in settings.change_type_list)
         error_types = ", ".join(wiql_quote(item) for item in settings.error_type_list)
         project = wiql_quote(self.project)
         area = wiql_quote(area_path)
-        tags_clause = wiql_tags_clause(tags, field="[Source].[System.Tags]")
+        zni_tags_clause = wiql_tags_clause(zni_tags, field="[Source].[System.Tags]")
+        error_tags_clause = wiql_tags_clause(error_tags, field="[Target].[System.Tags]")
         query = (
             f"SELECT [System.Id] FROM WorkItemLinks "
             f"WHERE [Source].[System.TeamProject] = {project} "
             f"AND [Source].[System.WorkItemType] IN ({types}) "
-            f"AND [Source].[System.AreaPath] UNDER {area}{tags_clause} "
+            f"AND [Source].[System.AreaPath] UNDER {area}{zni_tags_clause} "
             f"AND [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward' "
-            f"AND [Target].[System.WorkItemType] IN ({error_types}) "
+            f"AND [Target].[System.WorkItemType] IN ({error_types})"
+            f"{error_tags_clause} "
             f"MODE (MustContain)"
         )
         payload = await self.run_wiql(query)

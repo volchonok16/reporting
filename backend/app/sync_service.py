@@ -12,6 +12,7 @@ from app.config import settings
 from app.db import SessionLocal, close_db_session
 from app.json_utils import as_work_item_list
 from app.iteration_plan import parse_iteration_plan
+from app.release_fields import work_item_planned_release
 from app.linked_errors import is_error_work_item_type
 from app.models import Project, SourceSystem, SyncRun, Task, Team
 from app.tfs_client import TfsClient, date_from_field_list, parse_tfs_datetime
@@ -299,6 +300,10 @@ async def sync_board(
                 extra_json["planned_date"] = iteration_plan.planned_date.isoformat()
                 extra_json["plan_quarter"] = iteration_plan.quarter_key
 
+            planned_release = work_item_planned_release(fields)
+            if planned_release:
+                extra_json["planned_release"] = planned_release
+
             if settings.tfs_fetch_pilot_history:
                 existing = db.scalar(
                     select(Task).where(
@@ -347,17 +352,26 @@ async def sync_board(
 
         error_child_map = await client.get_error_links_for_area(
             board.area_path,
-            tags=board.sync_tags or None,
+            zni_tags=board.sync_tags or None,
+            error_tags=board.error_sync_tags or None,
         )
         zni_id_set = set(zni_db_ids.keys())
         error_child_map = {
             error_id: zni_id for error_id, zni_id in error_child_map.items() if zni_id in zni_id_set
         }
 
-        if not error_child_map:
+        synced_error_ids: set[str] = set()
+        error_ids = sorted(error_child_map.keys())
+        if not error_ids:
+            synced_external_ids = {str(item["id"]) for item in zni_payloads}
+            prune_stale_board_tasks(
+                db,
+                board=board,
+                source_system_id=source_system_id,
+                synced_external_ids=synced_external_ids,
+            )
             return fetched, upserted
 
-        error_ids = sorted(error_child_map.keys())
         if sync_run:
             touch_sync_progress(db, sync_run, f"{board.display_name}: загрузка {len(error_ids)} ошибок…")
 
@@ -373,6 +387,8 @@ async def sync_board(
             for item in as_work_item_list(error_payloads):
                 fields = item.get("fields") or {}
                 if not is_error_work_item_type(str(fields.get("System.WorkItemType") or "")):
+                    continue
+                if not has_required_tags(fields, board.error_sync_tags):
                     continue
                 parent_zni_id = error_child_map.get(item["id"])
                 parent_db_id = zni_db_ids.get(parent_zni_id) if parent_zni_id else None
@@ -399,15 +415,17 @@ async def sync_board(
                     extra_json={
                         "parent_zni_id": parent_zni_id,
                         "board_code": board.code,
+                        "tags": work_item_tags(fields),
                         "severity": fields.get("Microsoft.VSTS.Common.Severity"),
                     },
                 )
+                synced_error_ids.add(str(item["id"]))
                 upserted += 1
 
             db.commit()
 
         synced_external_ids = {str(item["id"]) for item in zni_payloads}
-        synced_external_ids.update(str(error_id) for error_id in error_child_map.keys())
+        synced_external_ids.update(synced_error_ids)
         prune_stale_board_tasks(
             db,
             board=board,

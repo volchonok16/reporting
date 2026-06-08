@@ -420,10 +420,12 @@
 | `System.BoardColumn` | `extra_json.board_column` | Колонка Kanban |
 | `System.IterationPath` | `extra_json.iteration_path` | Итерация (план релиза) |
 | `System.Tags` | `extra_json.tags` | Теги TFS (разделитель `;`) |
+| `Logrocon.FoundinRelease` | `extra_json.planned_release` | Плановый релиз (дата `2026.06.02.0-R`) |
+| `Logrocon.Release` | `extra_json.planned_release` | Привязанный релиз (имя, напр. `Bercut InVoice 4.7.90.0 (1034184)`) |
 
-**Планируемая дата** — из листа `System.IterationPath`: `2026.08.11.0-R` → `2026-08-11`; если в пути есть **TBD** — в UI выводится `TBD`. **План квартала** — `Q3 2026` или `TBD`; фильтр `quarter` в API (`TBD`, `2026-Q3`, …).
+**Планируемая дата** — из листа `System.IterationPath`: `2026.08.11.0-R` → `2026-08-11`; если в пути есть **TBD** — в UI выводится `TBD`. **План квартала** — `Q3 2026` или `TBD`; фильтр `quarter` в API (`TBD`, `2026-Q3`, …). **Плановый релиз** — из `Logrocon.FoundinRelease` или `Logrocon.Release`, если поле проставлено или релиз привязан; колонка «План. релиз» в дашборде и CSV.
 
-**Доски приложения:** Digital Streams B2b (`Tele2\Digital\Streams\B2b`); BE Analytics (`BE-T2\BE Analytics`, команда TFS `BE Analytics`).
+**Доски приложения:** Digital Streams B2b (`Tele2\Digital\Streams\B2b`, ошибки с тегом `FE B2B` или `microservice`); BE Analytics (`BE-T2\BE Analytics`, ЗНИ с `b2b_product`, ошибки с `FE B2B` или `microservice`).
 
 После синхронизации доски записи `task` с тем же `board_code`, не попавшие в выгрузку, удаляются (очистка устаревших ЗНИ/ошибок).
 

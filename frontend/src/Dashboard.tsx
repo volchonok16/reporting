@@ -31,6 +31,7 @@ type ChangeRequest = {
   plannedDate?: string | null
   plannedLabel?: string | null
   planQuarter?: string | null
+  plannedRelease?: string | null
   boardName?: string | null
   errors: LinkedError[]
 }
@@ -319,6 +320,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             <div>Целевая дата</div>
             <div>План. дата</div>
             <div>План квартала</div>
+            <div>План. релиз</div>
             <div>Статус</div>
           </div>
           <div className="table-body">
@@ -360,6 +362,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                 <div className="cell-date">{formatDate(item.releaseDate)}</div>
                 <div className="cell-date">{formatPlannedDate(item)}</div>
                 <div className="cell-quarter">{item.planQuarter || '—'}</div>
+                <div className="cell-release">{item.plannedRelease || '—'}</div>
                 <div className="cell-status">
                   <span className="status-board">{item.boardColumn || item.status || '—'}</span>
                   {item.boardColumn && item.status && item.boardColumn !== item.status && (

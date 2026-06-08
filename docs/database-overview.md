@@ -41,10 +41,10 @@
 
 ### Доски TFS
 
-| Код | AreaPath | Теги WIQL | Отображаемое имя |
-|-----|----------|-----------|------------------|
-| `digital_streams_b2b` | `Tele2\Digital\Streams\B2b` | — | Digital Streams B2b |
-| `be_t2_team` | `BE-T2\BE Analytics` | — | BE Analytics |
+| Код | AreaPath | Теги ЗНИ | Теги ошибок | Отображаемое имя |
+|-----|----------|----------|-------------|------------------|
+| `digital_streams_b2b` | `Tele2\Digital\Streams\B2b` | — | `FE B2B`, `microservice` | Digital Streams B2b |
+| `be_t2_team` | `BE-T2\BE Analytics` | `b2b_product` | `FE B2B`, `microservice` | BE Analytics |
 
 Фильтр «Все доски» — объединение обеих досок.
 
