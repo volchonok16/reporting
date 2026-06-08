@@ -3,6 +3,7 @@ import io
 import json
 import logging
 import re
+import time
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -46,9 +47,10 @@ def _spreadsheet_id() -> str:
 
 
 def _csv_export_url(spreadsheet_id: str, gid: str) -> str:
+    cache_bust = int(time.time())
     return (
         "https://docs.google.com/spreadsheets/d/"
-        f"{spreadsheet_id}/export?format=csv&gid={gid}"
+        f"{spreadsheet_id}/export?format=csv&gid={gid}&_={cache_bust}"
     )
 
 

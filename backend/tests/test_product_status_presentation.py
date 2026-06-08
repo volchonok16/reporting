@@ -8,13 +8,16 @@ from pptx import Presentation
 from pptx.util import Pt
 
 from app.product_status_presentation import (
+    COVER_SECTION_NAME,
     TABLE_FONT_SIZE,
     TABLE_FONT_SIZE_DENSE,
     TemplateCatalog,
     _cell_font_size,
     _mapped_columns,
     _normalize_title,
+    _read_presentation_sections,
     _row_values,
+    _section_name_for_sheet,
     generate_b2b_product_status_presentation,
 )
 from app.schemas import ProductStatusB2BOut, ProductStatusSheetOut
@@ -38,6 +41,12 @@ def test_cell_font_size_matches_template_columns() -> None:
 
 def test_normalize_title() -> None:
     assert _normalize_title("  Продуктовый офис: CORE  ") == "продуктовый офис: core"
+
+
+def test_section_name_for_sheet() -> None:
+    assert _section_name_for_sheet("Продуктовый офис: SMS") == "SMS"
+    assert _section_name_for_sheet("Продуктовый офис: VOICE") == "Voice"
+    assert _section_name_for_sheet("Продуктовый офис: M2M / IoT") == "M2M / IoT"
 
 
 def test_catalog_excludes_cover_slide() -> None:
@@ -72,6 +81,22 @@ def test_estimate_row_height_grows_with_text() -> None:
     assert _mapped_columns(columns) == columns
 
 
+def test_mapped_columns_falls_back_to_column_order() -> None:
+    columns = ["Месяц", "Направление", "Статус работ", "Комментарий"]
+    assert _mapped_columns(columns) == columns
+
+
+def test_row_values_maps_renamed_headers_by_position() -> None:
+    columns = ["Месяц", "Направление", "Статус работ", "Комментарий"]
+    row = {
+        "Месяц": "июнь",
+        "Направление": "SMS Hub",
+        "Статус работ": "Настройка performance",
+        "Комментарий": "Важно",
+    }
+    assert _row_values(row, columns, 4) == ["июнь", "SMS Hub", "Настройка performance", "Важно"]
+
+
 def test_row_values_maps_semantic_columns() -> None:
     columns = [
         "Дата запуска",
@@ -86,6 +111,37 @@ def test_row_values_maps_semantic_columns() -> None:
         "Зачем и для чего делаем": "Комментарий",
     }
     assert _row_values(row, columns, 4) == ["01.06", "SMS Hub", "Статус", "Комментарий"]
+
+
+def test_chunk_plan_merges_trailing_single_row_chunks() -> None:
+    prs = Presentation(str(TEMPLATE_PATH))
+    catalog = TemplateCatalog.from_presentation(prs)
+    columns = ["Дата запуска", "Проект", "Описание проекта", "Зачем и для чего делаем"]
+    rows = [
+        {
+            "Дата запуска": "1",
+            "Проект": "A",
+            "Описание проекта": "Коротко",
+            "Зачем и для чего делаем": "",
+        },
+        {
+            "Дата запуска": "2",
+            "Проект": "B",
+            "Описание проекта": "Коротко",
+            "Зачем и для чего делаем": "",
+        },
+        {
+            "Дата запуска": "3",
+            "Проект": "C",
+            "Описание проекта": "Коротко",
+            "Зачем и для чего делаем": "",
+        },
+    ]
+
+    chunks = catalog.chunk_plan("Продуктовый офис: CORE", rows, columns)
+    assert sum(len(chunk) for _, chunk in chunks) == 3
+    assert len(chunks) == 1
+    assert len(chunks[0][1]) == 3
 
 
 def test_chunk_plan_splits_long_content_across_slides() -> None:
@@ -145,6 +201,59 @@ def test_build_specs_keeps_sheet_order() -> None:
     specs = _build_slide_specs(data, catalog)
     assert specs[0][0].name == "Продуктовый офис: CORE"
     assert specs[-1][0].name == "Продуктовый офис: SMS"
+
+
+@patch("app.product_status_presentation.load_b2b_product_status")
+def test_generate_presentation_groups_slides_into_sections(mock_load) -> None:
+    mock_load.return_value = ProductStatusB2BOut(
+        title="Статус продукта B2B",
+        sheets=[
+            ProductStatusSheetOut(
+                gid="0",
+                name="Продуктовый офис: CORE",
+                columns=["Дата запуска", "Проект", "Описание проекта", "Зачем и для чего делаем"],
+                rows=[
+                    {
+                        "Дата запуска": "",
+                        "Проект": "CORE",
+                        "Описание проекта": "A",
+                        "Зачем и для чего делаем": "B",
+                    }
+                ],
+                totalShown=1,
+            ),
+            ProductStatusSheetOut(
+                gid="1",
+                name="Продуктовый офис: SMS",
+                columns=["Дата запуска", "Проект", "Описание проекта и статус", "Зачем и для чего делаем"],
+                rows=[
+                    {
+                        "Дата запуска": "",
+                        "Проект": "SMS Hub",
+                        "Описание проекта и статус": "C",
+                        "Зачем и для чего делаем": "D",
+                    },
+                    {
+                        "Дата запуска": "",
+                        "Проект": "Контроль",
+                        "Описание проекта и статус": "E",
+                        "Зачем и для чего делаем": "F",
+                    },
+                ],
+                totalShown=2,
+            ),
+        ],
+    )
+
+    content, _ = generate_b2b_product_status_presentation()
+    prs = Presentation(io.BytesIO(content))
+    slide_ids = [slide.slide_id for slide in prs.slides]
+    sections = _read_presentation_sections(prs)
+
+    assert [name for name, _ in sections] == [COVER_SECTION_NAME, "CORE", "SMS"]
+    assert sections[0][1] == [slide_ids[0]]
+    assert sections[1][1] == [slide_ids[1]]
+    assert sections[2][1] == slide_ids[2:]
 
 
 @patch("app.product_status_presentation.load_b2b_product_status")
@@ -211,6 +320,49 @@ def _slide_xml_font_sizes(content: bytes, slide_index: int) -> set[str]:
     with zipfile.ZipFile(io.BytesIO(content)) as archive:
         xml = archive.read(f"ppt/slides/slide{slide_index + 1}.xml").decode("utf-8")
     return set(re.findall(r'sz="(\d+)"', xml))
+
+
+@patch("app.product_status_presentation.load_b2b_product_status")
+def test_generate_presentation_table_height_follows_content(mock_load) -> None:
+    mock_load.return_value = ProductStatusB2BOut(
+        title="Статус продукта B2B",
+        sheets=[
+            ProductStatusSheetOut(
+                gid="0",
+                name="Продуктовый офис: SMS",
+                columns=["Дата запуска", "Проект", "Описание проекта и статус", "Зачем и для чего делаем"],
+                rows=[
+                    {
+                        "Дата запуска": "",
+                        "Проект": "SMS-Таргет",
+                        "Описание проекта и статус": "Короткий статус",
+                        "Зачем и для чего делаем": "Комментарий",
+                    },
+                    {
+                        "Дата запуска": "04.06.",
+                        "Проект": "SMS-Таргет",
+                        "Описание проекта и статус": "Ещё статус",
+                        "Зачем и для чего делаем": "Причина",
+                    },
+                    {
+                        "Дата запуска": "",
+                        "Проект": "",
+                        "Описание проекта и статус": "Третья строка",
+                        "Зачем и для чего делаем": "Цель",
+                    },
+                ],
+                totalShown=3,
+            )
+        ],
+    )
+
+    content, _ = generate_b2b_product_status_presentation()
+    prs = Presentation(io.BytesIO(content))
+    table_shape = next(shape for shape in prs.slides[1].shapes if shape.has_table)
+    table = table_shape.table
+    row_sum = sum(int(row.height) for row in table.rows)
+    assert table_shape.height == row_sum
+    assert table_shape.height < 3_000_000
 
 
 @patch("app.product_status_presentation.load_b2b_product_status")

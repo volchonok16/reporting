@@ -3,7 +3,9 @@ from __future__ import annotations
 import io
 import logging
 import re
+import uuid
 from copy import deepcopy
+from xml.sax.saxutils import escape as xml_escape
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -41,6 +43,10 @@ TABLE_FONT_SZ_DENSE_XML = "800"
 DENSE_TEXT_MIN_CHARS = 40
 WHY_COLUMN_INDEX = 3
 COVER_SLIDE_INDEX = 0
+P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
+P14_NS = "http://schemas.microsoft.com/office/powerpoint/2010/main"
+SECTION_EXT_URI = "{521415D9-36F7-43E2-AB2F-B90AF26B5E84}"
+COVER_SECTION_NAME = "Раздел по умолчанию"
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 LINE_HEIGHT_EMU = 145000
 MIN_ROW_HEIGHT_EMU = 396000
@@ -181,7 +187,46 @@ class TemplateCatalog:
         if current_chunk:
             chunks.append((self._pick_template_for_chunk(pool, len(current_chunk)), current_chunk))
 
-        return chunks
+        return self._consolidate_chunks(pool, chunks, columns)
+
+    def _chunk_height(
+        self,
+        template: ContentSlideTemplate,
+        chunk: list[dict[str, str]],
+        columns: list[str],
+    ) -> int:
+        col_count = len(template.col_chars_per_line)
+        return sum(
+            _estimate_row_height(_row_values(row, columns, col_count), template.col_chars_per_line)
+            for row in chunk
+        )
+
+    def _consolidate_chunks(
+        self,
+        pool: list[ContentSlideTemplate],
+        chunks: list[tuple[ContentSlideTemplate, list[dict[str, str]]]],
+        columns: list[str],
+    ) -> list[tuple[ContentSlideTemplate, list[dict[str, str]]]]:
+        """Склеивает хвостовые мелкие куски, чтобы не плодить полупустые слайды."""
+        if not chunks:
+            return chunks
+
+        merged: list[tuple[ContentSlideTemplate, list[dict[str, str]]]] = [chunks[0]]
+        for template, chunk in chunks[1:]:
+            prev_template, prev_chunk = merged[-1]
+            combined = prev_chunk + chunk
+            combined_template = self._pick_template_for_chunk(pool, len(combined))
+            max_height = int(combined_template.table_height * HEIGHT_SAFETY_RATIO)
+            combined_height = self._chunk_height(combined_template, combined, columns)
+            if (
+                len(combined) <= combined_template.row_count
+                and combined_height <= max_height
+                and (len(chunk) == 1 or (len(chunk) <= 2 and len(prev_chunk) <= 2))
+            ):
+                merged[-1] = (combined_template, combined)
+                continue
+            merged.append((template, chunk))
+        return merged
 
     def _pick_template_for_chunk(
         self,
@@ -190,7 +235,7 @@ class TemplateCatalog:
     ) -> ContentSlideTemplate:
         fitting = [item for item in pool if item.row_count >= row_count]
         if fitting:
-            return min(fitting, key=lambda item: (item.row_count, item.index))
+            return min(fitting, key=lambda item: (item.row_count, item.table_height, item.index))
         return max(pool, key=lambda item: item.row_count)
 
     def _pick_default_template(self) -> ContentSlideTemplate:
@@ -508,6 +553,7 @@ def _layout_table_rows(
     columns: list[str],
     target_height: int | None,
 ) -> None:
+    del target_height
     data_rows = len(rows)
     if data_rows <= 0:
         return
@@ -518,24 +564,23 @@ def _layout_table_rows(
         _estimate_row_height(_row_values(row, columns, col_count), col_chars)
         for row in rows
     ]
-    total_estimated = sum(estimated_heights)
-    total_height = target_height if target_height is not None else sum(int(row.height) for row in table.rows)
-    total_height = max(total_height, MIN_ROW_HEIGHT_EMU * data_rows)
 
-    if total_estimated <= 0:
-        per_row = total_height // data_rows
+    if not any(estimated_heights):
         for row in table.rows:
-            row.height = max(MIN_ROW_HEIGHT_EMU, per_row)
+            row.height = MIN_ROW_HEIGHT_EMU
         return
 
-    allocated = 0
     for index, row in enumerate(table.rows):
-        if index < data_rows - 1:
-            height = max(MIN_ROW_HEIGHT_EMU, int(total_height * estimated_heights[index] / total_estimated))
-            row.height = height
-            allocated += height
-        else:
-            row.height = max(MIN_ROW_HEIGHT_EMU, total_height - allocated)
+        row.height = max(MIN_ROW_HEIGHT_EMU, estimated_heights[index])
+
+
+def _resize_table_shape(table_shape, table, *, max_height: int | None = None) -> None:
+    total_height = sum(int(row.height) for row in table.rows)
+    if total_height <= 0:
+        return
+    if max_height is not None:
+        total_height = min(total_height, max_height)
+    table_shape.height = total_height
 
 
 def _replace_cell_text(cell, text: str, *, col_index: int) -> None:
@@ -617,21 +662,54 @@ def _normalize_table_fonts(table) -> None:
             _normalize_cell_xml(cell, font_name=TABLE_FONT_NAME, font_sz=font_sz_xml)
 
 
-def _find_column(columns: list[str], pattern: str) -> str:
+def _find_column(
+    columns: list[str],
+    pattern: str,
+    *,
+    exclude: set[str] | None = None,
+) -> str:
     regex = re.compile(pattern, re.IGNORECASE)
+    excluded = exclude or set()
     for column in columns:
+        if column in excluded:
+            continue
         if regex.search(column.strip()):
             return column
     return ""
 
 
 def _mapped_columns(columns: list[str]) -> list[str]:
-    return [
-        _find_column(columns, r"^Дата"),
-        _find_column(columns, r"^Проект"),
-        _find_column(columns, r"Описание"),
-        _find_column(columns, r"Зачем"),
+    """Сопоставление колонок Google Sheets → 4 колонки таблицы PPTX."""
+    slot_patterns = [
+        (r"^Дата", r"Дата"),
+        (r"^Проект", r"Проект"),
+        (r"Описание",),
+        (r"Зачем",),
     ]
+    usable = [column.strip() for column in columns if column.strip()]
+    mapped: list[str] = []
+    used: set[str] = set()
+
+    for patterns in slot_patterns:
+        found = ""
+        for pattern in patterns:
+            found = _find_column(columns, pattern, exclude=used)
+            if found:
+                break
+        if found:
+            mapped.append(found)
+            used.add(found)
+        else:
+            mapped.append("")
+
+    remaining = [column for column in usable if column not in used]
+    for index, column_name in enumerate(mapped):
+        if column_name or not remaining:
+            continue
+        mapped[index] = remaining.pop(0)
+        used.add(mapped[index])
+
+    return mapped
 
 
 def _row_values(row: dict[str, str], columns: list[str], col_count: int) -> list[str]:
@@ -694,6 +772,11 @@ def _fill_content_slide(
 
     col_count = len(table.columns)
     data_rows = len(rows)
+
+    for table_row in table.rows:
+        for col_index in range(col_count):
+            _replace_cell_text(table_row.cells[col_index], "", col_index=col_index)
+
     for row_index in range(min(len(table.rows), data_rows)):
         values = _row_values(rows[row_index], columns, col_count)
         table_row = table.rows[row_index]
@@ -709,6 +792,85 @@ def _fill_content_slide(
         columns=columns,
         target_height=target_table_height,
     )
+    if table_shape is not None:
+        _resize_table_shape(table_shape, table, max_height=target_table_height)
+
+
+def _section_name_for_sheet(sheet_name: str) -> str:
+    """Имя секции PowerPoint (блок в навигации) по листу Google Sheets."""
+    short = sheet_name.split(":", 1)[1].strip() if ":" in sheet_name else sheet_name.strip()
+    aliases = {
+        "voice": "Voice",
+        "продуктовый маркетинг": "Продуктовый Маркетинг",
+    }
+    return aliases.get(short.casefold(), short)
+
+
+def _remove_section_list(prs: Presentation) -> None:
+    root = prs.element
+    ext_lst = root.find(f"{{{P_NS}}}extLst")
+    if ext_lst is None:
+        return
+    for ext in list(ext_lst.findall(f"{{{P_NS}}}ext")):
+        if ext.find(f"{{{P14_NS}}}sectionLst") is not None:
+            ext_lst.remove(ext)
+
+
+def _apply_presentation_sections(prs: Presentation, slide_sections: list[str]) -> None:
+    """Пересобирает p14:sectionLst — группы слайдов по листам источника."""
+    if len(slide_sections) != len(prs.slides):
+        raise ValueError("Количество секций не совпадает с количеством слайдов")
+
+    _remove_section_list(prs)
+    root = prs.element
+    ext_lst = root.find(f"{{{P_NS}}}extLst")
+    if ext_lst is None:
+        ext_lst = parse_xml(f'<p:extLst xmlns:p="{P_NS}"/>')
+        root.append(ext_lst)
+
+    groups: list[tuple[str, list]] = []
+    for slide, section_name in zip(prs.slides, slide_sections, strict=True):
+        if groups and groups[-1][0] == section_name:
+            groups[-1][1].append(slide)
+        else:
+            groups.append((section_name, [slide]))
+
+    parts = [
+        f'<p:ext uri="{SECTION_EXT_URI}" xmlns:p="{P_NS}" xmlns:p14="{P14_NS}">',
+        "<p14:sectionLst>",
+    ]
+    for section_name, slides in groups:
+        section_id = f"{{{uuid.uuid4()}}}"
+        safe_name = xml_escape(section_name, {'"': "&quot;"})
+        parts.append(f'<p14:section name="{safe_name}" id="{section_id}">')
+        parts.append("<p14:sldIdLst>")
+        for slide in slides:
+            parts.append(f'<p14:sldId id="{slide.slide_id}"/>')
+        parts.append("</p14:sldIdLst></p14:section>")
+    parts.append("</p14:sectionLst></p:ext>")
+
+    ext_lst.append(parse_xml("".join(parts)))
+
+
+def _read_presentation_sections(prs: Presentation) -> list[tuple[str, list[int]]]:
+    root = prs.element
+    ext_lst = root.find(f"{{{P_NS}}}extLst")
+    if ext_lst is None:
+        return []
+    result: list[tuple[str, list[int]]] = []
+    for ext in ext_lst.findall(f"{{{P_NS}}}ext"):
+        sec_list = ext.find(f"{{{P14_NS}}}sectionLst")
+        if sec_list is None:
+            continue
+        for sec in sec_list.findall(f"{{{P14_NS}}}section"):
+            name = sec.get("name") or ""
+            slide_ids = [
+                int(node.get("id"))
+                for node in sec.findall(f"{{{P14_NS}}}sldIdLst/{{{P14_NS}}}sldId")
+                if node.get("id")
+            ]
+            result.append((name, slide_ids))
+    return result
 
 
 def _build_slide_specs(
@@ -744,6 +906,7 @@ def generate_b2b_product_status_presentation() -> tuple[bytes, str]:
     while len(output_prs.slides) > 1:
         _delete_slide(output_prs, len(output_prs.slides) - 1)
 
+    slide_sections = [COVER_SECTION_NAME]
     for sheet, template, chunk in specs:
         source_slide = source_prs.slides[template.index]
         new_slide = _duplicate_slide_safe(output_prs, source_slide)
@@ -753,6 +916,9 @@ def generate_b2b_product_status_presentation() -> tuple[bytes, str]:
             columns=sheet.columns,
             rows=chunk,
         )
+        slide_sections.append(_section_name_for_sheet(sheet.name))
+
+    _apply_presentation_sections(output_prs, slide_sections)
 
     buffer = io.BytesIO()
     output_prs.save(buffer)
