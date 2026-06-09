@@ -110,3 +110,29 @@ def test_extract_business_goal_inline_in_div() -> None:
     )
     result = extract_business_goal_from_description(html)
     assert result == "Предоставить возможность подключить услугу в рамках ЛК B2B"
+
+
+def test_extract_business_goal_self_employed_page_case() -> None:
+    plain = (
+        "Текущая реализация* доступна страница https://msk.t2.ru/business/self-employed "
+        "Цель и бизнес-смысл доработки* удаление страницы, т.к самозанятые = физлица. "
+        "и по процессу они подключаться стали с 2026г как физлица "
+        "Ценность доработки/Ожидаемый эффект* - снижение нагрузки"
+    )
+    result = extract_business_goal_from_description(plain)
+    assert result is not None
+    assert "удаление страницы" in result
+    assert "2026г" in result
+    assert "Ценность" not in result
+    assert "снижение нагрузки" not in result
+
+    html = (
+        "<b>Цель и бизнес-смысл доработки* удаление страницы, т.к самозанятые = физлица. "
+        "и по процессу они подключаться стали с 2026г как физлица "
+        "Ценность доработки/Ожидаемый эффект* - снижение нагрузки</b>"
+    )
+    result_html = extract_business_goal_from_description(html)
+    assert result_html is not None
+    assert "удаление страницы" in result_html
+    assert "2026г" in result_html
+    assert "снижение нагрузки" not in result_html

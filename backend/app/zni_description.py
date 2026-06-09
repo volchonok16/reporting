@@ -16,9 +16,13 @@ _START_SECTION_RE = re.compile(
     re.IGNORECASE,
 )
 _PLAIN_GOAL_HEADER_RE = re.compile(
-    r"(?:^|>|\n|<br\s*/?>)\s*(?:<[^>]+>\s*)*"
+    r"(?:^|[\n\r]|>|\s)\s*(?:<[^>]+>\s*)*"
     r"цель\s+и\s+бизнес[-\s]*смысл\s+доработки\s*\*?",
     re.IGNORECASE,
+)
+_GOAL_INLINE_AFTER_HEADER_RE = re.compile(
+    r"^цель\s+и\s+бизнес[-\s]*смысл\s+доработки\s*\*?\s*(.*)$",
+    re.IGNORECASE | re.DOTALL,
 )
 # Следующие секции шаблона ЗНИ — иногда без <b>, только текст после <br>/<div>.
 _FOLLOWING_SECTION_RE = re.compile(
@@ -39,11 +43,17 @@ _FOLLOWING_SECTION_RE = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 _FOLLOWING_SECTION_TEXT_RE = re.compile(
-    r"(?:^|\n\s*)(?:"
+    r"(?:"
+    r"(?:^|\n)\s*(?:"
     r"детальные\s+требования\s+к\s+изменению"
     r"|ценность\s+доработки(?:/ожидаемый\s+эффект)?"
     r"|use-cases\s*\("
-    r")",
+    r")"
+    r"|\s+(?:"
+    r"детальные\s+требования\s+к\s+изменению\s*\*"
+    r"|ценность\s+доработки(?:/ожидаемый\s+эффект)?\s*\*"
+    r"|use-cases\s*\("
+    r"))",
     re.IGNORECASE,
 )
 
@@ -111,6 +121,23 @@ def _strip_following_sections_text(text: str) -> str:
     return text.strip()
 
 
+def _goal_inline_from_header(header: str) -> str:
+    text = unescape(re.sub(r"<[^>]+>", "", header)).strip()
+    match = _GOAL_INLINE_AFTER_HEADER_RE.match(text)
+    return match.group(1).strip() if match else ""
+
+
+def _combine_goal_parts(header: str, body: str) -> str:
+    parts: list[str] = []
+    inline = _goal_inline_from_header(header)
+    if inline:
+        parts.append(inline)
+    body_text = body.strip()
+    if body_text:
+        parts.append(body_text)
+    return "\n\n".join(parts)
+
+
 def _finalize_goal_text(raw_body: str) -> str | None:
     raw_body = _strip_following_sections_html(raw_body)
     text = _strip_following_sections_text(_html_to_text(raw_body))
@@ -139,7 +166,10 @@ def extract_business_goal_from_description(html: str | None) -> str | None:
     for match in _SECTION_HEADER_RE.finditer(content):
         header = unescape(re.sub(r"<[^>]+>", "", match.group(1))).strip()
         if _START_SECTION_RE.match(_normalize_header(header)):
-            return _finalize_goal_text(match.group(2))
+            combined = _combine_goal_parts(header, match.group(2))
+            if combined:
+                return _finalize_goal_text(combined)
+            return None
 
     for match in _PLAIN_GOAL_HEADER_RE.finditer(content):
         return _finalize_goal_text(content[match.end() :])
