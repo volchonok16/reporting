@@ -61,6 +61,7 @@ type ChangeRequest = {
   plannedRelease?: string | null
   boardName?: string | null
   boardCode?: string | null
+  ectResourceReservation?: boolean
   errors: LinkedError[]
 }
 
@@ -89,6 +90,10 @@ function formatDate(value?: string | null): string {
 function formatPlannedDate(item: ChangeRequest): string {
   if (item.plannedLabel) return item.plannedLabel
   return formatDate(item.plannedDate)
+}
+
+function formatEctReservation(value?: boolean): string {
+  return value ? 'ДА' : 'НЕТ'
 }
 
 type MetricFilter = '' | 'launching_soon' | 'launched' | 'errors'
@@ -452,6 +457,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
               <div>План. дата</div>
               <div>План квартала</div>
               <div>План. релиз</div>
+              <div>Бронь ресурса ЕЦТ</div>
               <div>Статус</div>
             </div>
             <div className="table-body">
@@ -480,6 +486,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                 <div className="cell-date">{formatPlannedDate(item)}</div>
                 <div className="cell-quarter">{item.planQuarter || '—'}</div>
                 <div className="cell-release">{item.plannedRelease || '—'}</div>
+                <div className="cell-reservation">{formatEctReservation(item.ectResourceReservation)}</div>
                 <div className="cell-status">
                   <span className="status-board">{item.boardColumn || item.status || '—'}</span>
                   {item.boardColumn && item.status && item.boardColumn !== item.status && (

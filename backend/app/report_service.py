@@ -16,6 +16,7 @@ from app.iteration_plan import (
 )
 from app.models import Task
 from app.board_metrics import count_launched_rows, count_launching_soon
+from app.resource_reservation import ect_resource_reservation_label
 from app.schemas import (
     BoardOut,
     ChangeRequestOut,
@@ -44,6 +45,11 @@ def _extra(task: Task) -> dict:
 def _planned_release(task: Task) -> str | None:
     value = _extra(task).get("planned_release")
     return str(value).strip() if value else None
+
+
+def _ect_resource_reservation(task: Task) -> bool:
+    value = _extra(task).get("ect_resource_reservation")
+    return value is True
 
 
 def _board_column(task: Task) -> str | None:
@@ -293,6 +299,7 @@ def load_change_requests(
                 createdAt=row.created_at,
                 boardCode=str(board_code_value) if board_code_value else None,
                 boardName=row.source_team or _board_name_by_code(str(board_code_value) if board_code_value else None),
+                ectResourceReservation=_ect_resource_reservation(row),
                 errors=[
                     LinkedErrorOut(
                         id=e.external_id,
@@ -342,6 +349,7 @@ def _write_export_rows(writer: csv.writer, items: list[ChangeRequestOut]) -> Non
                 item.plannedLabel or (item.plannedDate.isoformat() if item.plannedDate else ""),
                 item.planQuarter or "",
                 item.plannedRelease or "",
+                ect_resource_reservation_label(item.ectResourceReservation),
                 item.boardName or "",
                 errors_text,
             ]
@@ -364,6 +372,7 @@ def export_csv(db: Session, *, board_code: str | None = None) -> str:
             "Планируемая дата",
             "План квартала",
             "Плановый релиз",
+            "Бронь ресурса ЕЦТ",
             "Доска",
             "Ошибки",
         ]

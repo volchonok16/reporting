@@ -14,6 +14,7 @@ from app.json_utils import as_work_item_list
 from app.iteration_plan import parse_iteration_plan
 from app.release_fields import work_item_planned_release
 from app.linked_errors import is_error_work_item_type
+from app.resource_reservation import compute_ect_resource_reservation, merge_undirected_pairs
 from app.models import Project, SourceSystem, SyncRun, Task, Team
 from app.tfs_client import TfsClient, date_from_field_list, parse_tfs_datetime
 
@@ -366,6 +367,40 @@ async def sync_board(
             )
             zni_db_ids[item["id"]] = task_id
             upserted += 1
+
+        if zni_db_ids:
+            if sync_run:
+                touch_sync_progress(
+                    db,
+                    sync_run,
+                    f"{board.display_name}: связи «Бронь ресурсов»…",
+                )
+            direct_reservation = await client.get_zni_resource_reservation_links(
+                board.area_path,
+                zni_tags=board.sync_tags or None,
+                exclude_zni_states=board.exclude_sync_states or None,
+                exclude_zni_tags=board.exclude_sync_tags or None,
+            )
+            related_pairs = await client.get_zni_related_change_request_links(
+                board.area_path,
+                zni_tags=board.sync_tags or None,
+                exclude_zni_states=board.exclude_sync_states or None,
+                exclude_zni_tags=board.exclude_sync_tags or None,
+            )
+            related_zni_ids = merge_undirected_pairs(related_pairs)
+            reservation_flags = compute_ect_resource_reservation(
+                zni_db_ids.keys(),
+                direct_reservation_zni_ids=direct_reservation,
+                related_zni_ids=related_zni_ids,
+            )
+            for external_id, task_id in zni_db_ids.items():
+                row = db.get(Task, task_id)
+                if row is None:
+                    continue
+                extra = dict(row.extra_json) if isinstance(row.extra_json, dict) else {}
+                extra["ect_resource_reservation"] = reservation_flags.get(external_id, False)
+                row.extra_json = extra
+                db.add(row)
 
         db.commit()
 

@@ -369,6 +369,131 @@ class TfsClient:
                 continue
         return result
 
+    @staticmethod
+    def _work_item_link_pairs(payload: dict[str, Any]) -> list[tuple[int, int]]:
+        result: list[tuple[int, int]] = []
+        for rel in as_list(payload.get("workItemRelations")):
+            if not isinstance(rel, dict):
+                continue
+            source = rel.get("source")
+            target = rel.get("target")
+            if not isinstance(source, dict) or not isinstance(target, dict):
+                continue
+            try:
+                source_id = int(source["id"])
+                target_id = int(target["id"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            result.append((source_id, target_id))
+        return result
+
+    def _zni_area_link_clauses(
+        self,
+        *,
+        side: str,
+        area_path: str,
+        zni_tags: Iterable[str] | None,
+        exclude_zni_states: Iterable[str] | None,
+        exclude_zni_tags: Iterable[str] | None,
+    ) -> str:
+        types = ", ".join(wiql_quote(item) for item in settings.change_type_list)
+        project = wiql_quote(self.project)
+        area = wiql_quote(area_path)
+        tags_clause = wiql_tags_clause(zni_tags, field=f"[{side}].[System.Tags]")
+        exclude_states_clause = wiql_exclude_states_clause(
+            exclude_zni_states,
+            field=f"[{side}].[System.State]",
+        )
+        exclude_tags_clause = wiql_exclude_tags_clause(
+            exclude_zni_tags,
+            field=f"[{side}].[System.Tags]",
+        )
+        return (
+            f"[{side}].[System.TeamProject] = {project} "
+            f"AND [{side}].[System.WorkItemType] IN ({types}) "
+            f"AND [{side}].[System.AreaPath] UNDER {area}{tags_clause}"
+            f"{exclude_states_clause}{exclude_tags_clause}"
+        )
+
+    async def get_zni_related_change_request_links(
+        self,
+        area_path: str,
+        *,
+        zni_tags: Iterable[str] | None = None,
+        exclude_zni_states: Iterable[str] | None = None,
+        exclude_zni_tags: Iterable[str] | None = None,
+    ) -> list[tuple[int, int]]:
+        """Пары ЗНИ↔ЗНИ по Related (источник — ЗНИ в area path)."""
+        types = ", ".join(wiql_quote(item) for item in settings.change_type_list)
+        source_clause = self._zni_area_link_clauses(
+            side="Source",
+            area_path=area_path,
+            zni_tags=zni_tags,
+            exclude_zni_states=exclude_zni_states,
+            exclude_zni_tags=exclude_zni_tags,
+        )
+        query = (
+            f"SELECT [System.Id] FROM WorkItemLinks "
+            f"WHERE {source_clause} "
+            f"AND [System.Links.LinkType] = 'System.LinkTypes.Related' "
+            f"AND [Target].[System.WorkItemType] IN ({types}) "
+            f"MODE (MustContain)"
+        )
+        payload = await self.run_wiql(query)
+        return self._work_item_link_pairs(payload)
+
+    async def get_zni_resource_reservation_links(
+        self,
+        area_path: str,
+        *,
+        zni_tags: Iterable[str] | None = None,
+        exclude_zni_states: Iterable[str] | None = None,
+        exclude_zni_tags: Iterable[str] | None = None,
+    ) -> set[int]:
+        """ID ЗНИ с Related на тип «Бронь ресурсов» (прямая связь, оба направления WIQL)."""
+        reservation_types = settings.resource_reservation_type_list
+        if not reservation_types:
+            return set()
+
+        reservation = ", ".join(wiql_quote(item) for item in reservation_types)
+        source_clause = self._zni_area_link_clauses(
+            side="Source",
+            area_path=area_path,
+            zni_tags=zni_tags,
+            exclude_zni_states=exclude_zni_states,
+            exclude_zni_tags=exclude_zni_tags,
+        )
+        target_clause = self._zni_area_link_clauses(
+            side="Target",
+            area_path=area_path,
+            zni_tags=zni_tags,
+            exclude_zni_states=exclude_zni_states,
+            exclude_zni_tags=exclude_zni_tags,
+        )
+        forward_query = (
+            f"SELECT [System.Id] FROM WorkItemLinks "
+            f"WHERE {source_clause} "
+            f"AND [System.Links.LinkType] = 'System.LinkTypes.Related' "
+            f"AND [Target].[System.WorkItemType] IN ({reservation}) "
+            f"MODE (MustContain)"
+        )
+        reverse_query = (
+            f"SELECT [System.Id] FROM WorkItemLinks "
+            f"WHERE [Source].[System.WorkItemType] IN ({reservation}) "
+            f"AND [System.Links.LinkType] = 'System.LinkTypes.Related' "
+            f"AND {target_clause} "
+            f"MODE (MustContain)"
+        )
+
+        result: set[int] = set()
+        forward_payload = await self.run_wiql(forward_query)
+        for source_id, _target_id in self._work_item_link_pairs(forward_payload):
+            result.add(source_id)
+        reverse_payload = await self.run_wiql(reverse_query)
+        for _source_id, target_id in self._work_item_link_pairs(reverse_payload):
+            result.add(target_id)
+        return result
+
     async def _fetch_work_items_chunk(
         self,
         ids: list[int],

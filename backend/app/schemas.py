@@ -67,6 +67,7 @@ class ChangeRequestOut(BaseModel):
     createdAt: datetime | None = None
     boardCode: str | None = None
     boardName: str | None = None
+    ectResourceReservation: bool = False
     errors: list[LinkedErrorOut] = Field(default_factory=list)
 
 

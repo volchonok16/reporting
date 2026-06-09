@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     )
     tfs_change_type_values: str = Field(default="Запрос на изменение", alias="TFS_CHANGE_TYPE_VALUES")
     tfs_error_type_values: str = Field(default="Ошибка", alias="TFS_ERROR_TYPE_VALUES")
+    tfs_resource_reservation_type_values: str = Field(
+        default="Бронь ресурсов,Бронь ресурсов ЦК Продукты и Расчеты",
+        alias="TFS_RESOURCE_RESERVATION_TYPE_VALUES",
+        description="Типы TFS «Бронь ресурсов» для колонки «Бронь ресурса ЕЦТ».",
+    )
     tfs_pilot_state_values: str = Field(
         default="Пилот,Pilot",
         alias="TFS_PILOT_STATE_VALUES",
@@ -170,6 +175,15 @@ class Settings(BaseSettings):
     @property
     def error_type_list(self) -> list[str]:
         return [item.strip() for item in self.tfs_error_type_values.split(",") if item.strip()]
+
+    @computed_field
+    @property
+    def resource_reservation_type_list(self) -> list[str]:
+        return [
+            item.strip()
+            for item in self.tfs_resource_reservation_type_values.split(",")
+            if item.strip()
+        ]
 
     @computed_field
     @property
