@@ -64,7 +64,7 @@
 | planned_release | Logrocon.FoundinRelease / Logrocon.Release | Плановый релиз (`2026.06.02.0-R` или имя релиза) |
 | triage | Microsoft.VSTS.Common.Triage | Triage ЗНИ (для метрики «Скоро запуск» на BE Analytics) |
 | pilot_transitions | TFS updates | Переходы в «Пилот»: `[{at, status}]` |
-| ect_resource_reservation | WIQL WorkItemLinks (Related) | `true` / `false`: бронь ресурса ЕЦТ (колонка «Бронь ресурса ЕЦТ», значения `ДА` / `НЕТ`) |
+| ect_resource_reservation | WIQL WorkItemLinks (Related) | `true` / `false`: у ЗНИ есть Related на элемент «Бронь ресурсов» (колонка «Бронь ресурса ЕЦТ», `ДА` / `НЕТ`) |
 
 ## auth_session — сессия веб-приложения
 

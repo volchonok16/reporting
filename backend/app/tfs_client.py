@@ -415,33 +415,6 @@ class TfsClient:
             f"{exclude_states_clause}{exclude_tags_clause}"
         )
 
-    async def get_zni_related_change_request_links(
-        self,
-        area_path: str,
-        *,
-        zni_tags: Iterable[str] | None = None,
-        exclude_zni_states: Iterable[str] | None = None,
-        exclude_zni_tags: Iterable[str] | None = None,
-    ) -> list[tuple[int, int]]:
-        """Пары ЗНИ↔ЗНИ по Related (источник — ЗНИ в area path)."""
-        types = ", ".join(wiql_quote(item) for item in settings.change_type_list)
-        source_clause = self._zni_area_link_clauses(
-            side="Source",
-            area_path=area_path,
-            zni_tags=zni_tags,
-            exclude_zni_states=exclude_zni_states,
-            exclude_zni_tags=exclude_zni_tags,
-        )
-        query = (
-            f"SELECT [System.Id] FROM WorkItemLinks "
-            f"WHERE {source_clause} "
-            f"AND [System.Links.LinkType] = 'System.LinkTypes.Related' "
-            f"AND [Target].[System.WorkItemType] IN ({types}) "
-            f"MODE (MustContain)"
-        )
-        payload = await self.run_wiql(query)
-        return self._work_item_link_pairs(payload)
-
     async def get_zni_resource_reservation_links(
         self,
         area_path: str,

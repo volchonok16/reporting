@@ -422,9 +422,9 @@
 | `System.Tags` | `extra_json.tags` | Теги TFS (разделитель `;`) |
 | `Logrocon.FoundinRelease` | `extra_json.planned_release` | Плановый релиз (дата `2026.06.02.0-R`) |
 | `Logrocon.Release` | `extra_json.planned_release` | Привязанный релиз (имя, напр. `Bercut InVoice 4.7.90.0 (1034184)`) |
-| Related → «Бронь ресурсов» | `extra_json.ect_resource_reservation` | `true` / `false`: есть Related на тип «Бронь ресурсов» у ЗНИ или у связанной ЗНИ (колонка «Бронь ресурса ЕЦТ») |
+| Related → «Бронь ресурсов» | `extra_json.ect_resource_reservation` | `true` / `false`: у ЗНИ есть Related на элемент типа «Бронь ресурсов» (колонка «Бронь ресурса ЕЦТ») |
 
-**Планируемая дата** — из листа `System.IterationPath`: `2026.08.11.0-R` → `2026-08-11`; если в пути есть **TBD** — в UI выводится `TBD`. **План квартала** — `Q3 2026` или `TBD`; фильтр `quarter` в API (`TBD`, `2026-Q3`, …). **Плановый релиз** — из `Logrocon.FoundinRelease` или `Logrocon.Release`, если поле проставлено или релиз привязан; колонка «План. релиз» в дашборде и CSV. **Бронь ресурса ЕЦТ** — `ДА` / `НЕТ` по `ect_resource_reservation`: WIQL `WorkItemLinks` (Related) на типы из `TFS_RESOURCE_RESERVATION_TYPE_VALUES` или через связанную ЗНИ с такой связью.
+**Планируемая дата** — из листа `System.IterationPath`: `2026.08.11.0-R` → `2026-08-11`; если в пути есть **TBD** — в UI выводится `TBD`. **План квартала** — `Q3 2026` или `TBD`; фильтр `quarter` в API (`TBD`, `2026-Q3`, …). **Плановый релиз** — из `Logrocon.FoundinRelease` или `Logrocon.Release`, если поле проставлено или релиз привязан; колонка «План. релиз» в дашборде и CSV. **Бронь ресурса ЕЦТ** — `ДА` / `НЕТ`: прямая Related-связь ЗНИ с элементом «Бронь ресурсов» (`TFS_RESOURCE_RESERVATION_TYPE_VALUES`, по умолчанию `Бронь ресурсов`).
 
 **Доски приложения:** Digital Streams B2b (`Tele2\Digital\Streams\B2b`, в UI — «Digital»); B2B Product — CORE, КАТС, Голосовые продукты, М2М / IoT, SMS, Solar, Umnico (area path `Tele2\B2B Product…`, те же правила синка и метрик, что у Digital: без `EFO`, ошибки `FE B2B` / `microservice`, «Скоро запуск» — `UAT`, «Запущено» — `Pilot`); BE Analytics (`BE-T2\BE Analytics`, ЗНИ с `b2b_product`); ESB (`BE-T2\ESB\ESB Analytics`, в UI — «ESB», те же теги и метрики, что у BE Analytics).
 
@@ -607,9 +607,9 @@
 | `TFS_LINKED_BATCH_SIZE` | `200` | Порция ошибок (лимит TFS workItemsBatch = 200) |
 | `TFS_EXCLUDE_CLOSED_OLDER_THAN_DAYS` | `365` | Пропуск Closed ЗНИ старше N дней |
 | `TFS_CLOSED_STATE_VALUES` | `Closed` | Статусы для фильтра |
-| `TFS_RESOURCE_RESERVATION_TYPE_VALUES` | `Бронь ресурсов,Бронь ресурсов ЦК Продукты и Расчеты` | Типы TFS для колонки «Бронь ресурса ЕЦТ» |
+| `TFS_RESOURCE_RESERVATION_TYPE_VALUES` | `Бронь ресурсов` | Тип элемента TFS «Бронь ресурсов» для колонки «Бронь ресурса ЕЦТ» |
 
-Алгоритм: WIQL по AreaPath → `workItemsBatch` (поля) → WIQL `WorkItemLinks` (ЗНИ→Ошибка, ЗНИ→Related ЗНИ, ЗНИ→«Бронь ресурсов») → batch ошибок → upsert в `task`.
+Алгоритм: WIQL по AreaPath → `workItemsBatch` (поля) → WIQL `WorkItemLinks` (ЗНИ→Ошибка, ЗНИ→Related «Бронь ресурсов») → batch ошибок → upsert в `task`.
 
 ### REST API
 

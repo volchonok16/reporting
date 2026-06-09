@@ -45,9 +45,9 @@ class Settings(BaseSettings):
     tfs_change_type_values: str = Field(default="Запрос на изменение", alias="TFS_CHANGE_TYPE_VALUES")
     tfs_error_type_values: str = Field(default="Ошибка", alias="TFS_ERROR_TYPE_VALUES")
     tfs_resource_reservation_type_values: str = Field(
-        default="Бронь ресурсов,Бронь ресурсов ЦК Продукты и Расчеты",
+        default="Бронь ресурсов",
         alias="TFS_RESOURCE_RESERVATION_TYPE_VALUES",
-        description="Типы TFS «Бронь ресурсов» для колонки «Бронь ресурса ЕЦТ».",
+        description="Тип TFS «Бронь ресурсов» для колонки «Бронь ресурса ЕЦТ».",
     )
     tfs_pilot_state_values: str = Field(
         default="Пилот,Pilot",
