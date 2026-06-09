@@ -224,14 +224,23 @@ def test_generate_presentation_table_cells_contain_text_xml(mock_load) -> None:
 
     content, _ = generate_b2b_product_status_presentation()
     prs = Presentation(io.BytesIO(content))
-    table = next(shape.table for shape in prs.slides[FIXED_SLIDE_COUNT].shapes if shape.has_table)
+    content_slide = prs.slides[FIXED_SLIDE_COUNT]
+    title = next(
+        shape.text_frame.text
+        for shape in content_slide.shapes
+        if shape.is_placeholder and shape.has_text_frame
+    )
+    table = next(shape.table for shape in content_slide.shapes if shape.has_table)
     assert table.rows[1].cells[1].text == "Ремонт"
-    xml = prs.slides[FIXED_SLIDE_COUNT].part.blob.decode()
+    assert table.rows[0].cells[0].text == "Дата запуска"
+    xml = content_slide.part.blob.decode()
 
     assert "<a:t>Ремонт</a:t>" in xml
     assert "<a:t>300 рублевые офферы</a:t>" in xml
     assert "<a:highlight>" in xml
     assert 'srgbClr val="FFFFFF"' in xml
+    assert 'srgbClr val="C0C0C0"' in xml
+    assert title == "Продуктовый офис: CORE"
 
 
 @patch("app.product_status_presentation.load_b2b_product_status")

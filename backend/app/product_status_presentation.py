@@ -16,6 +16,7 @@ from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.enum.text import MSO_AUTO_SIZE, PP_ALIGN, MSO_VERTICAL_ANCHOR
 from pptx.oxml import parse_xml
 from pptx.oxml.ns import qn
+from pptx.oxml.xmlchemy import OxmlElement
 from pptx.util import Pt
 
 from app.config import settings
@@ -32,12 +33,15 @@ COLUMN_COUNT = 4
 WHY_COLUMN_INDEX = 3
 
 TABLE_FONT_NAME = "T2 Rooftop"
+TITLE_FONT_NAME = "T2 Halvar Breit ExtraBold"
 TABLE_FONT_SIZE = Pt(10)
 TABLE_FONT_SIZE_DENSE = Pt(8)
 TITLE_FONT_SIZE = Pt(28)
-TITLE_COLOR = RGBColor(0xFF, 0xFF, 0xFF)
+TITLE_COLOR = RGBColor(0x00, 0x00, 0x00)
 TEXT_COLOR = RGBColor(0x00, 0x00, 0x00)
 WHITE_FILL = RGBColor(0xFF, 0xFF, 0xFF)
+TABLE_BORDER_COLOR = "C0C0C0"
+TABLE_BORDER_WIDTH = "9525"
 HIGHLIGHT_COLOR_XML = "FFFF00"
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
@@ -353,7 +357,52 @@ def _find_main_body_shape(slide):
     return max(bodies, key=lambda shape: shape.width * shape.height)
 
 
-def _replace_placeholder_text(shape, text: str, *, font_size: Pt, color: RGBColor, bold: bool = False) -> None:
+def _oxml_child(parent, tag: str, **attrs) -> OxmlElement:
+    element = OxmlElement(tag)
+    element.attrib.update(attrs)
+    parent.append(element)
+    return element
+
+
+def _set_cell_border(
+    cell,
+    *,
+    color: str = TABLE_BORDER_COLOR,
+    width: str = TABLE_BORDER_WIDTH,
+) -> None:
+    tc_pr = cell._tc.get_or_add_tcPr()
+    for side in ("a:lnL", "a:lnR", "a:lnT", "a:lnB"):
+        tag = qn(side)
+        for existing in list(tc_pr.findall(tag)):
+            tc_pr.remove(existing)
+        line = _oxml_child(tc_pr, side, w=width, cap="flat", cmpd="sng", algn="ctr")
+        fill = _oxml_child(line, "a:solidFill")
+        _oxml_child(fill, "a:srgbClr", val=color)
+        _oxml_child(line, "a:prstDash", val="solid")
+
+
+def _apply_table_grid(table) -> None:
+    for row in table.rows:
+        for cell in row.cells:
+            _set_cell_border(cell)
+
+
+def _clear_secondary_body_placeholders(slide) -> None:
+    bodies = [
+        shape
+        for shape in slide.shapes
+        if shape.is_placeholder and shape.placeholder_format.type == PP_PLACEHOLDER.BODY
+    ]
+    if len(bodies) <= 1:
+        return
+    main = max(bodies, key=lambda shape: shape.width * shape.height)
+    for shape in bodies:
+        if shape is main:
+            continue
+        shape.text_frame.clear()
+
+
+def _set_slide_title(shape, sheet_name: str) -> None:
     frame = shape.text_frame
     frame.clear()
     frame.word_wrap = True
@@ -362,11 +411,11 @@ def _replace_placeholder_text(shape, text: str, *, font_size: Pt, color: RGBColo
     paragraph = frame.paragraphs[0]
     paragraph.alignment = PP_ALIGN.LEFT
     run = paragraph.add_run()
-    run.text = text
-    run.font.name = TABLE_FONT_NAME
-    run.font.size = font_size
-    run.font.bold = bold
-    run.font.color.rgb = color
+    run.text = sheet_name
+    run.font.name = TITLE_FONT_NAME
+    run.font.size = TITLE_FONT_SIZE
+    run.font.bold = True
+    run.font.color.rgb = TITLE_COLOR
 
 
 def _fill_date_slide(slide, generated_at: datetime) -> None:
@@ -394,7 +443,7 @@ def _set_run_highlight(run) -> None:
     )
 
 
-def _fill_white_cell(cell, value: str, *, col_index: int) -> None:
+def _fill_white_cell(cell, value: str, *, col_index: int, bold: bool = False) -> None:
     sanitized = _sanitize_cell_text(value)
     font_size, _ = _cell_font_size(col_index, sanitized)
     frame = cell.text_frame
@@ -422,6 +471,7 @@ def _fill_white_cell(cell, value: str, *, col_index: int) -> None:
             run.text = segment_text
             run.font.name = TABLE_FONT_NAME
             run.font.size = font_size
+            run.font.bold = bold
             run.font.color.rgb = TEXT_COLOR
             if highlighted:
                 _set_run_highlight(run)
@@ -469,15 +519,11 @@ def _fill_content_slide(
     columns: list[str],
     rows: list[dict[str, str]],
 ) -> None:
+    _clear_secondary_body_placeholders(slide)
+
     title_shape = _find_title_shape(slide)
     if title_shape is not None:
-        _replace_placeholder_text(
-            title_shape,
-            sheet_name,
-            font_size=TITLE_FONT_SIZE,
-            color=TITLE_COLOR,
-            bold=True,
-        )
+        _set_slide_title(title_shape, sheet_name)
 
     body_shape = _find_main_body_shape(slide)
     if body_shape is None:
@@ -497,13 +543,14 @@ def _fill_content_slide(
     _apply_table_column_widths(table, body_shape.width)
 
     for col_index, header in enumerate(mapped_headers):
-        _fill_white_cell(table.rows[0].cells[col_index], header, col_index=col_index)
+        _fill_white_cell(table.rows[0].cells[col_index], header, col_index=col_index, bold=True)
 
     for row_index, row in enumerate(rows, start=1):
         values = _row_values(row, columns, COLUMN_COUNT)
         for col_index, value in enumerate(values):
             _fill_white_cell(table.rows[row_index].cells[col_index], value, col_index=col_index)
 
+    _apply_table_grid(table)
     _layout_table_rows(table, rows, columns, body_shape.height)
 
 
