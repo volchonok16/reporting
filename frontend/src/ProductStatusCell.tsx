@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import { serializeEditableCell, splitHighlightSegments } from './productStatusRichText'
 
 type ProductStatusCellProps = {
@@ -35,9 +35,9 @@ export default function ProductStatusCell({
   onChange,
 }: ProductStatusCellProps) {
   const ref = useRef<HTMLDivElement>(null)
-  const lastSerialized = useRef(value)
+  const lastSerialized = useRef<string | null>(null)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = ref.current
     if (!element || value === lastSerialized.current) {
       return
