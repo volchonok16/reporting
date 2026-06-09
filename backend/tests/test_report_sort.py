@@ -30,24 +30,14 @@ def test_planned_date_upcoming_sort_future_nearest_first() -> None:
     assert [t.external_id for t in tasks] == ["1", "2", "3"]
 
 
-def test_planned_date_upcoming_sort_past_at_end() -> None:
-    today = date(2026, 6, 9)
-    tasks = [
-        _task("past", "2026-01-01"),
-        _task("future", "2026-06-15"),
-        _task("today", "2026-06-09"),
-    ]
-    tasks.sort(key=lambda t: _planned_date_upcoming_sort_key(t, today=today))
-    assert [t.external_id for t in tasks] == ["today", "future", "past"]
-
-
-def test_planned_date_upcoming_sort_tbd_and_missing_before_past() -> None:
+def test_planned_date_upcoming_sort_past_before_tbd_and_empty() -> None:
     today = date(2026, 6, 9)
     tasks = [
         _task("past", "2026-01-01"),
         _task("tbd", None, tbd=True),
         _task("future", "2026-06-15"),
+        _task("today", "2026-06-09"),
         _task("empty", None),
     ]
     tasks.sort(key=lambda t: _planned_date_upcoming_sort_key(t, today=today))
-    assert [t.external_id for t in tasks] == ["future", "tbd", "empty", "past"]
+    assert [t.external_id for t in tasks] == ["today", "future", "past", "tbd", "empty"]

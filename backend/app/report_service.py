@@ -150,7 +150,7 @@ def _uses_start_date_period(metric: str | None) -> bool:
 
 
 def _planned_date_upcoming_sort_key(task: Task, *, today: date | None = None) -> tuple[int, date, int]:
-    """Будущие плановые даты — от ближайших; TBD/без даты — далее; прошедшие — в конце."""
+    """Будущие — от ближайших; затем прошедшие; TBD и без даты — в конце."""
     today_value = today or date.today()
     planned, quarter_key, _, planned_label = _task_plan_meta(task)
     try:
@@ -159,13 +159,13 @@ def _planned_date_upcoming_sort_key(task: Task, *, today: date | None = None) ->
         number_key = 0
 
     if quarter_key == PLAN_QUARTER_TBD or planned_label == "TBD":
-        return (1, date.max, number_key)
-
-    if planned is None:
         return (2, date.max, number_key)
 
+    if planned is None:
+        return (3, date.max, number_key)
+
     if planned < today_value:
-        return (3, date.max - planned, number_key)
+        return (1, date.max - planned, number_key)
 
     return (0, planned, number_key)
 
