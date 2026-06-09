@@ -14,6 +14,32 @@ _START_SECTION_RE = re.compile(
     r"^цель\s+и\s+бизнес[-\s]*смысл\s+доработки",
     re.IGNORECASE,
 )
+# Следующие секции шаблона ЗНИ — иногда без <b>, только текст после <br>/<div>.
+_FOLLOWING_SECTION_RE = re.compile(
+    r"(?:"
+    r"<(?:b|strong)[^>]*>\s*(?:"
+    r"детальные\s+требования\s+к\s+изменению"
+    r"|ценность\s+доработки"
+    r"|use-cases\s*\("
+    r")"
+    r"|(?:^|[\n\r]|(?:<br\s*/?>\s*)+|(?:</div>\s*)+|<div[^>]*>\s*)+"
+    r"(?:<[^>]+>\s*)*"
+    r"(?:"
+    r"детальные\s+требования\s+к\s+изменению"
+    r"|ценность\s+доработки(?:/ожидаемый\s+эффект)?"
+    r"|use-cases\s*\("
+    r")"
+    r")",
+    re.IGNORECASE | re.DOTALL,
+)
+_FOLLOWING_SECTION_TEXT_RE = re.compile(
+    r"(?:^|\n\s*)(?:"
+    r"детальные\s+требования\s+к\s+изменению"
+    r"|ценность\s+доработки(?:/ожидаемый\s+эффект)?"
+    r"|use-cases\s*\("
+    r")",
+    re.IGNORECASE,
+)
 
 
 def tfs_identity_display_name(value: Any) -> str | None:
@@ -61,6 +87,24 @@ def _html_to_text(fragment: str) -> str:
     return text.strip()
 
 
+def _strip_following_sections_html(fragment: str) -> str:
+    if not fragment:
+        return ""
+    match = _FOLLOWING_SECTION_RE.search(fragment)
+    if match:
+        return fragment[: match.start()]
+    return fragment
+
+
+def _strip_following_sections_text(text: str) -> str:
+    if not text:
+        return ""
+    match = _FOLLOWING_SECTION_TEXT_RE.search(text)
+    if match:
+        return text[: match.start()].strip()
+    return text.strip()
+
+
 def parse_description_sections(html: str) -> list[tuple[str, str]]:
     sections: list[tuple[str, str]] = []
     for match in _SECTION_HEADER_RE.finditer(html):
@@ -78,8 +122,11 @@ def extract_business_goal_from_description(html: str | None) -> str | None:
     if not html or not str(html).strip():
         return None
 
-    for header, body in parse_description_sections(str(html)):
-        if _START_SECTION_RE.match(_normalize_header(header)):
-            text = body.strip()
-            return text or None
+    for match in _SECTION_HEADER_RE.finditer(str(html)):
+        header = unescape(re.sub(r"<[^>]+>", "", match.group(1))).strip()
+        if not _START_SECTION_RE.match(_normalize_header(header)):
+            continue
+        raw_body = _strip_following_sections_html(match.group(2))
+        text = _strip_following_sections_text(_html_to_text(raw_body))
+        return text or None
     return None

@@ -55,3 +55,29 @@ def test_extract_business_goal_multi_paragraph_section() -> None:
     assert "Повысить процент базы" in result
     assert "изменения процесса идентификации" in result
     assert "Администратор" not in result
+
+
+def test_extract_business_goal_stops_at_plain_text_requirements_header() -> None:
+    html = (
+        "<b>Текущая реализация*</b><br><div>Отсутствует</div><br>"
+        "<b>Цель и бизнес-смысл доработки*</b><br>"
+        "<div>Запуск решения \"Рекламный номер\", нацеленное на стратегическую задачу.</div><br>"
+        "Детальные требования к изменению*<br>"
+        "<div>Необходима реализация проксирования T-CSI CAMEL-обмена.</div>"
+    )
+    result = extract_business_goal_from_description(html)
+    assert result is not None
+    assert "Рекламный номер" in result
+    assert "Детальные требования" not in result
+    assert "проксирования T-CSI" not in result
+
+
+def test_extract_business_goal_stops_at_requirements_in_div() -> None:
+    html = (
+        "<b>Цель и бизнес-смысл доработки*</b><br>"
+        "<div>Запуск решения.</div><br>"
+        "<div>Детальные требования к изменению*</div>"
+        "<div>Требования к API.</div>"
+    )
+    result = extract_business_goal_from_description(html)
+    assert result == "Запуск решения."
