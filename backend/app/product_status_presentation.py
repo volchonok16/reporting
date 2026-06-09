@@ -42,7 +42,7 @@ TEXT_COLOR = RGBColor(0x00, 0x00, 0x00)
 WHITE_FILL = RGBColor(0xFF, 0xFF, 0xFF)
 TABLE_BORDER_COLOR = "7F7F7F"
 TABLE_BORDER_WIDTH = "12700"
-HIGHLIGHT_COLOR_XML = "FFFF00"
+DEFAULT_HIGHLIGHT_COLOR = "FFFF00"
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 CHAR_WIDTH_EMU = 76000
@@ -451,7 +451,7 @@ def _fill_date_slide(slide, generated_at: datetime) -> None:
         shape.text_frame.text = text.replace(DATE_PLACEHOLDER, formatted)
 
 
-def _set_run_highlight(run) -> None:
+def _set_run_highlight(run, color_hex: str = DEFAULT_HIGHLIGHT_COLOR) -> None:
     r_pr = run._r.get_or_add_rPr()
     for child in list(r_pr):
         if child.tag == qn("a:highlight"):
@@ -460,7 +460,7 @@ def _set_run_highlight(run) -> None:
         0,
         parse_xml(
             f'<a:highlight xmlns:a="{A_NS}">'
-            f'<a:srgbClr val="{HIGHLIGHT_COLOR_XML}"/></a:highlight>'
+            f'<a:srgbClr val="{color_hex.upper()}"/></a:highlight>'
         ),
     )
 
@@ -483,17 +483,17 @@ def _fill_white_cell(cell, value: str, *, col_index: int, bold: bool = False) ->
         paragraph.alignment = PP_ALIGN.LEFT
         paragraph.space_after = Pt(0)
         paragraph.space_before = Pt(0)
-        for segment_text, highlighted in split_highlight_segments(line):
-            if not segment_text:
+        for segment in split_highlight_segments(line):
+            if not segment.text:
                 continue
             run = paragraph.add_run()
-            run.text = segment_text
+            run.text = segment.text
             run.font.name = TABLE_FONT_NAME
             run.font.size = font_size
             run.font.bold = bold
             run.font.color.rgb = TEXT_COLOR
-            if highlighted:
-                _set_run_highlight(run)
+            if segment.color:
+                _set_run_highlight(run, segment.color)
 
 
 def _apply_table_column_widths(table, total_width: int) -> None:

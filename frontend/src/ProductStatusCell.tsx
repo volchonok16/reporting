@@ -14,9 +14,11 @@ function renderSegments(value: string, container: HTMLElement) {
     if (!segment.text) {
       continue
     }
-    if (segment.highlighted) {
+    if (segment.color) {
       const mark = document.createElement('mark')
       mark.className = 'product-status-highlight'
+      mark.dataset.color = segment.color
+      mark.style.backgroundColor = `#${segment.color}`
       mark.textContent = segment.text
       container.append(mark)
       continue
