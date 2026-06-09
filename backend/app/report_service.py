@@ -92,6 +92,9 @@ def _task_plan_meta(task: Task) -> tuple[date | None, str | None, str | None, st
             if not quarter_key:
                 quarter_key = plan.quarter_key
 
+    if not is_tbd and planned is None and task.release_date:
+        planned = task.release_date
+
     if is_tbd:
         return None, PLAN_QUARTER_TBD, "TBD", "TBD"
 
@@ -124,6 +127,26 @@ def _matches_status(task: Task, status: str | None) -> bool:
 
 def _effective_start(task: Task) -> date | None:
     return task.start_date or (task.created_at.date() if task.created_at else None)
+
+
+def _in_date_range(task: Task, date_from: date | None, date_to: date | None) -> bool:
+    if not date_from and not date_to:
+        return True
+    start = _effective_start(task)
+    if start is None:
+        return False
+    if date_from and start < date_from:
+        return False
+    if date_to and start > date_to:
+        return False
+    return True
+
+
+def _uses_start_date_period(metric: str | None) -> bool:
+    """Период «Дата начала»–«Дата конца» по start_date / created_at."""
+    if not metric:
+        return True
+    return metric not in {"launching_soon", "launched", "completed"}
 
 
 def _sort_key(task: Task, sort: str):
@@ -202,6 +225,27 @@ def _matches_metric_filter(
     return True
 
 
+def _matches_dashboard_row(
+    row: Task,
+    metric: str | None,
+    *,
+    errors_by_parent: dict[int, list[Task]],
+    date_from: date | None,
+    date_to: date | None,
+) -> bool:
+    if _uses_start_date_period(metric) and not _in_date_range(row, date_from, date_to):
+        return False
+    if not metric:
+        return True
+    return _matches_metric_filter(
+        row,
+        metric,
+        errors_by_parent=errors_by_parent,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
 def _compute_metrics(
     rows: list[Task],
     *,
@@ -210,11 +254,11 @@ def _compute_metrics(
     date_to: date | None,
 ) -> DashboardMetricsOut:
     return DashboardMetricsOut(
-        totalTasks=len(rows),
+        totalTasks=sum(1 for row in rows if _in_date_range(row, date_from, date_to)),
         launchingSoon=sum(
             1
             for row in rows
-            if _matches_metric_filter(
+            if _matches_dashboard_row(
                 row,
                 "launching_soon",
                 errors_by_parent=errors_by_parent,
@@ -225,7 +269,7 @@ def _compute_metrics(
         launched=sum(
             1
             for row in rows
-            if _matches_metric_filter(
+            if _matches_dashboard_row(
                 row,
                 "launched",
                 errors_by_parent=errors_by_parent,
@@ -236,7 +280,7 @@ def _compute_metrics(
         completed=sum(
             1
             for row in rows
-            if _matches_metric_filter(
+            if _matches_dashboard_row(
                 row,
                 "completed",
                 errors_by_parent=errors_by_parent,
@@ -247,7 +291,7 @@ def _compute_metrics(
         errorsCount=sum(
             1
             for row in rows
-            if _matches_metric_filter(
+            if _matches_dashboard_row(
                 row,
                 "errors",
                 errors_by_parent=errors_by_parent,
@@ -311,7 +355,7 @@ def load_change_requests(
         if _matches_search(row, search or "")
         and _matches_status(row, status)
         and _matches_quarter(row, quarter)
-        and _matches_metric_filter(
+        and _matches_dashboard_row(
             row,
             metric,
             errors_by_parent=errors_by_parent,

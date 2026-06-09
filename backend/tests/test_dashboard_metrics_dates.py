@@ -1,7 +1,7 @@
 from datetime import date
 
 from app.models import Task
-from app.report_service import _compute_metrics, _matches_metric_filter
+from app.report_service import _compute_metrics, _matches_dashboard_row
 
 
 def _zni(**kwargs) -> Task:
@@ -31,17 +31,21 @@ def test_launching_soon_ignores_start_date_range() -> None:
     metrics = _compute_metrics(rows, errors_by_parent={}, date_from=date_from, date_to=date_to)
 
     assert metrics.launchingSoon == 2
-    assert metrics.totalTasks == 2
+    assert metrics.totalTasks == 1
 
 
-def test_default_table_is_not_limited_by_start_date() -> None:
+def test_total_tasks_and_default_table_use_start_date_range() -> None:
     old = _zni(start_date=date(2020, 1, 1), external_id="1")
     recent = _zni(start_date=date(2026, 4, 15), external_id="2")
     date_from = date(2026, 1, 1)
     date_to = date(2026, 12, 31)
 
-    assert _matches_metric_filter(old, None, errors_by_parent={}, date_from=date_from, date_to=date_to)
-    assert _matches_metric_filter(recent, "", errors_by_parent={}, date_from=date_from, date_to=date_to)
+    assert _matches_dashboard_row(
+        old, None, errors_by_parent={}, date_from=date_from, date_to=date_to
+    ) is False
+    assert _matches_dashboard_row(
+        recent, "", errors_by_parent={}, date_from=date_from, date_to=date_to
+    )
 
     metrics = _compute_metrics([old, recent], errors_by_parent={}, date_from=date_from, date_to=date_to)
-    assert metrics.totalTasks == 2
+    assert metrics.totalTasks == 1

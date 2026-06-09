@@ -11,7 +11,7 @@ from app.boards import BOARDS, BoardConfig, boards_for_sync
 from app.config import settings
 from app.db import SessionLocal, close_db_session
 from app.json_utils import as_work_item_list
-from app.iteration_plan import parse_iteration_plan
+from app.iteration_plan import parse_iteration_plan, quarter_key_from_date
 from app.release_fields import work_item_planned_release
 from app.linked_errors import is_error_work_item_type
 from app.resource_reservation import compute_ect_resource_reservation
@@ -323,6 +323,12 @@ async def sync_board(
                 extra_json["planned_status"] = "date"
                 extra_json["planned_date"] = iteration_plan.planned_date.isoformat()
                 extra_json["plan_quarter"] = iteration_plan.quarter_key
+            else:
+                target_date = effective_release_date(fields)
+                if target_date:
+                    extra_json["planned_status"] = "date"
+                    extra_json["planned_date"] = target_date.isoformat()
+                    extra_json["plan_quarter"] = quarter_key_from_date(target_date)
 
             planned_release = work_item_planned_release(fields)
             if planned_release:

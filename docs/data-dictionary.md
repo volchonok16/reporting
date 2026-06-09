@@ -58,7 +58,7 @@
 | board_column | System.BoardColumn | Колонка Kanban (статус на доске) |
 | tags | System.Tags | Теги TFS (массив строк; ЗНИ — `b2b_product`, ошибки — `FE B2B` / `microservice`) |
 | iteration_path | System.IterationPath | Итерация TFS |
-| planned_date | из листа итерации | Планируемая дата (`2026.08.11.0-R` → `2026-08-11`) |
+| planned_date | из листа итерации или `release_date` | Планируемая дата (`2026.08.11.0-R` → `2026-08-11`; иначе Целевая дата TFS) |
 | planned_status | `tbd` / `date` | `tbd` — дата в плане неизвестна |
 | plan_quarter | из planned_date или `TBD` | Ключ квартала (`2026-Q3` или `TBD`) |
 | planned_release | Logrocon.FoundinRelease / Logrocon.Release | Плановый релиз (`2026.06.02.0-R` или имя релиза) |
