@@ -133,7 +133,7 @@ def dashboard(
     db: Session = Depends(get_db),
     board: str | None = Query(default=None),
     search: str | None = Query(default=None),
-    sort: str = Query(default="id_desc"),
+    sort: str = Query(default="planned_date_upcoming"),
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     status: str | None = Query(default=None),

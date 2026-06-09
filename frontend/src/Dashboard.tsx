@@ -175,20 +175,15 @@ function currentQuarterIsoRange(): { from: string; to: string } {
 }
 
 const SORT_OPTIONS = [
-  { value: 'id_desc', label: 'Номер ЗНИ (убыв.)' },
-  { value: 'id_asc', label: 'Номер ЗНИ (возр.)' },
-  { value: 'release_date_desc', label: 'Целевая дата (убыв.)' },
-  { value: 'release_date_asc', label: 'Целевая дата (возр.)' },
+  { value: 'planned_date_upcoming', label: 'План. дата (ближайшие)' },
   { value: 'start_date_desc', label: 'Дата начала (убыв.)' },
-  { value: 'planned_date_desc', label: 'План. дата (убыв.)' },
-  { value: 'planned_date_asc', label: 'План. дата (возр.)' },
 ]
 
 export default function Dashboard({ onLogout }: DashboardProps) {
   const [boards, setBoards] = useState<Board[]>([])
   const [boardCode, setBoardCode] = useState(ALL_BOARDS)
   const [search, setSearch] = useState('')
-  const [sort, setSort] = useState('id_desc')
+  const [sort, setSort] = useState('planned_date_upcoming')
   const [dateFrom, setDateFrom] = useState(() => currentQuarterIsoRange().from)
   const [dateTo, setDateTo] = useState(() => currentQuarterIsoRange().to)
   const [statusFilter, setStatusFilter] = useState('')

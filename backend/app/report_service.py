@@ -149,6 +149,27 @@ def _uses_start_date_period(metric: str | None) -> bool:
     return metric not in {"launching_soon", "launched", "completed"}
 
 
+def _planned_date_upcoming_sort_key(task: Task, *, today: date | None = None) -> tuple[int, date, int]:
+    """Будущие плановые даты — от ближайших; TBD/без даты — далее; прошедшие — в конце."""
+    today_value = today or date.today()
+    planned, quarter_key, _, planned_label = _task_plan_meta(task)
+    try:
+        number_key = int(task.external_id)
+    except ValueError:
+        number_key = 0
+
+    if quarter_key == PLAN_QUARTER_TBD or planned_label == "TBD":
+        return (1, date.max, number_key)
+
+    if planned is None:
+        return (2, date.max, number_key)
+
+    if planned < today_value:
+        return (3, date.max - planned, number_key)
+
+    return (0, planned, number_key)
+
+
 def _sort_key(task: Task, sort: str):
     if sort == "release_date":
         return task.release_date or date.min
@@ -364,9 +385,12 @@ def load_change_requests(
         )
     ]
 
-    reverse = sort.endswith("_desc") or sort == "id_desc"
-    sort_field = sort.replace("_desc", "").replace("_asc", "")
-    filtered.sort(key=lambda t: _sort_key(t, sort_field), reverse=reverse)
+    if sort == "planned_date_upcoming":
+        filtered.sort(key=_planned_date_upcoming_sort_key)
+    else:
+        reverse = sort.endswith("_desc") or sort == "id_desc"
+        sort_field = sort.replace("_desc", "").replace("_asc", "")
+        filtered.sort(key=lambda t: _sort_key(t, sort_field), reverse=reverse)
 
     items: list[ChangeRequestOut] = []
     for row in filtered:
