@@ -10,7 +10,6 @@ _SECTION_HEADER_RE = re.compile(
     r"<b>\s*(.*?)\s*</b>(.*?)(?=<b>|$)",
     re.IGNORECASE | re.DOTALL,
 )
-_END_SECTION_RE = re.compile(r"ценность\s+доработки", re.IGNORECASE)
 _START_SECTION_RE = re.compile(
     r"^цель\s+и\s+бизнес[-\s]*смысл\s+доработки",
     re.IGNORECASE,
@@ -73,35 +72,14 @@ def parse_description_sections(html: str) -> list[tuple[str, str]]:
 
 def extract_business_goal_from_description(html: str | None) -> str | None:
     """
-    Текст от «Цель и бизнес-смысл доработки*» до «Ценность доработки…» (не включая).
-    Промежуточные секции описания тоже включаются.
+    Только текст секции «Цель и бизнес-смысл доработки*» из System.Description.
+    Следующие секции (требования, use-cases, ценность и т.д.) не включаются.
     """
     if not html or not str(html).strip():
         return None
 
-    sections = parse_description_sections(str(html))
-    if not sections:
-        return None
-
-    collecting = False
-    blocks: list[str] = []
-    for header, body in sections:
-        normalized = _normalize_header(header)
-        if not collecting:
-            if _START_SECTION_RE.match(normalized):
-                collecting = True
-                if body:
-                    blocks.append(body)
-            continue
-        if _END_SECTION_RE.search(normalized):
-            break
-        if body:
-            clean_header = header.rstrip("*").strip()
-            if _START_SECTION_RE.match(normalized):
-                blocks.append(body)
-            else:
-                blocks.append(f"{clean_header}\n\n{body}")
-
-    if not blocks:
-        return None
-    return "\n\n".join(blocks).strip() or None
+    for header, body in parse_description_sections(str(html)):
+        if _START_SECTION_RE.match(_normalize_header(header)):
+            text = body.strip()
+            return text or None
+    return None

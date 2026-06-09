@@ -28,8 +28,8 @@ def test_extract_business_goal_from_description() -> None:
     result = extract_business_goal_from_description(html)
     assert result is not None
     assert "Увеличение продаж БО." in result
-    assert "Детальные требования к изменению" in result
-    assert "Ссылка на wiki." in result
+    assert "Детальные требования к изменению" not in result
+    assert "Ссылка на wiki." not in result
     assert "Эффект." not in result
 
 
@@ -39,4 +39,19 @@ def test_extract_business_goal_without_end_section() -> None:
         "<b>Детальные требования к изменению*</b><br><div>Требования.</div>"
     )
     result = extract_business_goal_from_description(html)
-    assert result == "Только цель.\n\nДетальные требования к изменению\n\nТребования."
+    assert result == "Только цель."
+
+
+def test_extract_business_goal_multi_paragraph_section() -> None:
+    html = (
+        "<b>Цель и бизнес-смысл доработки*</b><br>"
+        "<div>Повысить процент базы с указанным кодовым словом.</div>"
+        "<div>Это необходимо для изменения процесса идентификации.</div><br>"
+        "<b>Детальные требования к изменению*</b><br>"
+        "<div>Необходимо, чтобы в роли «Администратор»...</div>"
+    )
+    result = extract_business_goal_from_description(html)
+    assert result is not None
+    assert "Повысить процент базы" in result
+    assert "изменения процесса идентификации" in result
+    assert "Администратор" not in result
