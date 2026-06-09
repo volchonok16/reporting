@@ -16,6 +16,7 @@ from app.iteration_plan import (
 )
 from app.models import Task
 from app.board_metrics import count_completed_rows, count_launched_rows, count_launching_soon
+from app.completed_metrics import has_customer_name
 from app.resource_reservation import ect_resource_reservation_label
 from app.zni_description import tfs_identity_display_name
 from app.schemas import (
@@ -278,6 +279,7 @@ def load_change_requests(
         row
         for row in rows
         if _matches_search(row, search or "")
+        and has_customer_name(row)
         and (not apply_start_date_filter or _in_date_range(row, date_from, date_to))
         and _matches_status(row, status)
         and _matches_quarter(row, quarter)
