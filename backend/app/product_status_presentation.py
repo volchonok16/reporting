@@ -40,8 +40,18 @@ TABLE_FONT_SIZE = Pt(10)
 TABLE_FONT_SIZE_DENSE = Pt(8)
 TABLE_FONT_SZ_XML = "1000"
 TABLE_FONT_SZ_DENSE_XML = "800"
-DENSE_TEXT_MIN_CHARS = 40
+TABLE_CELL_MARGIN = Pt(3)
+TABLE_LINE_SPACING = 1.05
+TABLE_DENSE_LINE_SPACING = 1.0
 WHY_COLUMN_INDEX = 3
+COVER_DATE_FONT_SIZE = Pt(14)
+COVER_DATE_COLOR = RGBColor(0x55, 0x55, 0x55)
+_CELL_FONT_BY_INDEX: tuple[tuple[Pt, str], ...] = (
+    (TABLE_FONT_SIZE, TABLE_FONT_SZ_XML),
+    (TABLE_FONT_SIZE, TABLE_FONT_SZ_XML),
+    (TABLE_FONT_SIZE, TABLE_FONT_SZ_XML),
+    (TABLE_FONT_SIZE_DENSE, TABLE_FONT_SZ_DENSE_XML),
+)
 COVER_SLIDE_INDEX = 0
 P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 P14_NS = "http://schemas.microsoft.com/office/powerpoint/2010/main"
@@ -439,13 +449,17 @@ def _set_paragraph_font(
     paragraph.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
 
-def _cell_font_size(col_index: int, text: str) -> tuple[Pt, str]:
-    cleaned = _sanitize_cell_text(text)
-    if col_index == WHY_COLUMN_INDEX and cleaned:
-        return TABLE_FONT_SIZE_DENSE, TABLE_FONT_SZ_DENSE_XML
-    if col_index == 2 and len(cleaned) >= DENSE_TEXT_MIN_CHARS:
-        return TABLE_FONT_SIZE_DENSE, TABLE_FONT_SZ_DENSE_XML
+def _cell_font_size(col_index: int, text: str = "") -> tuple[Pt, str]:
+    del text
+    if 0 <= col_index < len(_CELL_FONT_BY_INDEX):
+        return _CELL_FONT_BY_INDEX[col_index]
     return TABLE_FONT_SIZE, TABLE_FONT_SZ_XML
+
+
+def _cell_line_spacing(col_index: int) -> float:
+    if col_index == WHY_COLUMN_INDEX:
+        return TABLE_DENSE_LINE_SPACING
+    return TABLE_LINE_SPACING
 
 
 def _apply_table_cell_frame_style(
@@ -453,19 +467,22 @@ def _apply_table_cell_frame_style(
     *,
     font_name: str,
     font_size: Pt,
+    col_index: int,
 ) -> None:
     frame.word_wrap = True
     frame.vertical_anchor = MSO_VERTICAL_ANCHOR.TOP
-    frame.margin_left = Pt(2)
-    frame.margin_right = Pt(2)
-    frame.margin_top = Pt(2)
-    frame.margin_bottom = Pt(2)
+    frame.margin_left = TABLE_CELL_MARGIN
+    frame.margin_right = TABLE_CELL_MARGIN
+    frame.margin_top = TABLE_CELL_MARGIN
+    frame.margin_bottom = TABLE_CELL_MARGIN
 
+    line_spacing = _cell_line_spacing(col_index)
     for paragraph in frame.paragraphs:
         paragraph.alignment = PP_ALIGN.LEFT
         paragraph.space_after = Pt(0)
         paragraph.space_before = Pt(0)
         paragraph.level = 0
+        paragraph.line_spacing = line_spacing
         _set_paragraph_font(paragraph, name=font_name, size=font_size, bold=False)
         for run in paragraph.runs:
             _set_run_font(run, name=font_name, size=font_size, bold=False)
@@ -528,11 +545,81 @@ def _set_xml_latin_typeface(rpr_element, font_name: str) -> None:
         latin.set("typeface", font_name)
 
 
+def _reset_cell_tc_pr(tc) -> None:
+    tc_pr = tc.find(qn("a:tcPr"))
+    if tc_pr is None:
+        tc_pr = parse_xml(f'<a:tcPr xmlns:a="{A_NS}"/>')
+        tc.insert(0, tc_pr)
+
+    for tag in (
+        "a:solidFill",
+        "a:noFill",
+        "a:gradFill",
+        "a:blipFill",
+        "a:pattFill",
+        "a:grpFill",
+        "a:lnL",
+        "a:lnR",
+        "a:lnT",
+        "a:lnB",
+        "a:lnTlToBr",
+        "a:lnBlToTr",
+    ):
+        for node in list(tc_pr.findall(qn(tag))):
+            tc_pr.remove(node)
+
+    tc_pr.insert(0, parse_xml(f'<a:noFill xmlns:a="{A_NS}"/>'))
+    tc_pr.set("anchor", "t")
+    for attr in ("marL", "marR", "marT", "marB", "vert", "horzAnchor"):
+        tc_pr.attrib.pop(attr, None)
+
+
+def _reset_cell_tx_body(tc) -> None:
+    old = tc.find(qn("a:txBody"))
+    if old is not None:
+        tc.remove(old)
+    tc.append(
+        parse_xml(
+            f'<a:txBody xmlns:a="{A_NS}">'
+            f'<a:bodyPr wrap="square" anchor="t" lIns="38100" rIns="38100" '
+            f'tIns="38100" bIns="38100"/>'
+            f"<a:lstStyle/>"
+            f'<a:p><a:pPr algn="l" lvl="0"><a:buNone/></a:pPr>'
+            f'<a:endParaRPr lang="ru-RU"/></a:p>'
+            f"</a:txBody>"
+        )
+    )
+
+
+def _reset_table_cell(cell) -> None:
+    tc = cell._tc
+    _reset_cell_tc_pr(tc)
+    _reset_cell_tx_body(tc)
+
+
+def _reset_table(table) -> None:
+    for row in table.rows:
+        for cell in row.cells:
+            _reset_table_cell(cell)
+
+
+def _reset_text_frame(frame) -> None:
+    frame.clear()
+    frame.word_wrap = True
+    frame.auto_size = MSO_AUTO_SIZE.NONE
+    frame.vertical_anchor = MSO_VERTICAL_ANCHOR.TOP
+    frame.margin_left = TABLE_CELL_MARGIN
+    frame.margin_right = TABLE_CELL_MARGIN
+    frame.margin_top = TABLE_CELL_MARGIN
+    frame.margin_bottom = TABLE_CELL_MARGIN
+
+
 def _normalize_tx_body_element(
     tx_body,
     *,
     font_name: str,
     font_sz: str,
+    align: str = "l",
 ) -> None:
     if tx_body is None:
         return
@@ -540,6 +627,7 @@ def _normalize_tx_body_element(
     body_pr = tx_body.find(qn("a:bodyPr"))
     if body_pr is not None:
         body_pr.set("wrap", "square")
+        body_pr.set("anchor", "t")
 
     for paragraph_props in tx_body.findall(".//" + qn("a:pPr")):
         for bullet_tag in ("buChar", "buAutoNum", "buBlip", "buFont"):
@@ -548,13 +636,32 @@ def _normalize_tx_body_element(
         if paragraph_props.find(qn("a:buNone")) is None:
             paragraph_props.insert(0, parse_xml(f'<a:buNone xmlns:a="{A_NS}"/>'))
         paragraph_props.set("lvl", "0")
+        paragraph_props.set("algn", align)
+        for spacing_tag in ("spcBef", "spcAft", "lnSpc"):
+            for spacing_node in paragraph_props.findall(qn(f"a:{spacing_tag}")):
+                paragraph_props.remove(spacing_node)
 
     for prop_tag in ("a:rPr", "a:endParaRPr", "a:defRPr"):
         for props in tx_body.findall(".//" + qn(prop_tag)):
             props.set("sz", font_sz)
             props.set("dirty", "0")
+            props.attrib.pop("b", None)
+            props.attrib.pop("i", None)
             _set_xml_latin_typeface(props, font_name)
             _set_xml_solid_black(props)
+
+
+def _normalize_table_cells_xml(table) -> None:
+    for row in table.rows:
+        for col_index, cell in enumerate(row.cells):
+            _, font_sz_xml = _cell_font_size(col_index, cell.text_frame.text)
+            tx_body = cell._tc.txBody
+            if tx_body is not None:
+                _normalize_tx_body_element(
+                    tx_body,
+                    font_name=TABLE_FONT_NAME,
+                    font_sz=font_sz_xml,
+                )
 
 
 def _ensure_table_cells_editable(table) -> None:
@@ -655,20 +762,22 @@ def _resize_table_shape(table_shape, table, *, max_height: int | None = None) ->
 
 def _replace_cell_text(cell, text: str, *, col_index: int) -> None:
     value = _sanitize_cell_text(text)
-    font_size, _font_sz_xml = _cell_font_size(col_index, value)
-    del _font_sz_xml
+    font_size, font_sz_xml = _cell_font_size(col_index, value)
+    _reset_table_cell(cell)
     cell.text = value
     frame = cell.text_frame
     _apply_table_cell_frame_style(
         frame,
         font_name=TABLE_FONT_NAME,
         font_size=font_size,
+        col_index=col_index,
     )
     for paragraph in frame.paragraphs:
         paragraph.alignment = PP_ALIGN.LEFT
         paragraph.space_after = Pt(0)
         paragraph.space_before = Pt(0)
         paragraph.level = 0
+        paragraph.line_spacing = _cell_line_spacing(col_index)
         _set_paragraph_font(
             paragraph,
             name=TABLE_FONT_NAME,
@@ -677,11 +786,16 @@ def _replace_cell_text(cell, text: str, *, col_index: int) -> None:
         )
         for run in paragraph.runs:
             _set_run_font(run, name=TABLE_FONT_NAME, size=font_size, bold=False)
+    _normalize_tx_body_element(
+        frame._txBody,
+        font_name=TABLE_FONT_NAME,
+        font_sz=font_sz_xml,
+    )
 
 
 def _replace_title(title_shape, sheet_name: str) -> None:
     frame = title_shape.text_frame
-    frame.clear()
+    _reset_text_frame(frame)
     _apply_text_frame_style(
         frame,
         font_name=TITLE_FONT_NAME,
@@ -700,17 +814,19 @@ def _replace_title(title_shape, sheet_name: str) -> None:
 
 
 def _normalize_table_fonts(table) -> None:
-    """Принудительно выравнивает шрифт во всех ячейках (в т.ч. наследие шаблона)."""
+    """Принудительно выравнивает шрифт во всех ячейках после сброса стилей шаблона."""
     for row in table.rows:
         for col_index, cell in enumerate(row.cells):
             text = cell.text_frame.text
             font_size, _ = _cell_font_size(col_index, text)
             frame = cell.text_frame
-            frame.word_wrap = True
+            _apply_table_cell_frame_style(
+                frame,
+                font_name=TABLE_FONT_NAME,
+                font_size=font_size,
+                col_index=col_index,
+            )
             for paragraph in frame.paragraphs:
-                paragraph.level = 0
-                paragraph.space_after = Pt(0)
-                paragraph.space_before = Pt(0)
                 _set_paragraph_font(
                     paragraph,
                     name=TABLE_FONT_NAME,
@@ -724,6 +840,7 @@ def _normalize_table_fonts(table) -> None:
                         size=font_size,
                         bold=False,
                     )
+    _normalize_table_cells_xml(table)
 
 
 def _find_column(
@@ -791,7 +908,7 @@ def _fill_cover_slide(slide, *, title: str, generated_at: datetime) -> None:
         return
 
     frame = title_shape.text_frame
-    frame.clear()
+    _reset_text_frame(frame)
     _apply_text_frame_style(
         frame,
         font_name=TITLE_FONT_NAME,
@@ -806,9 +923,16 @@ def _fill_cover_slide(slide, *, title: str, generated_at: datetime) -> None:
 
     date_paragraph = frame.add_paragraph()
     date_paragraph.alignment = PP_ALIGN.LEFT
+    date_paragraph.space_before = Pt(8)
     date_run = date_paragraph.add_run()
     date_run.text = generated_at.strftime("%d.%m.%Y")
-    _set_run_font(date_run, name=TABLE_FONT_NAME, size=TABLE_FONT_SIZE, bold=False)
+    _set_run_font(
+        date_run,
+        name=TABLE_FONT_NAME,
+        size=COVER_DATE_FONT_SIZE,
+        bold=False,
+    )
+    date_run.font.color.rgb = COVER_DATE_COLOR
 
     _normalize_text_frame_xml(
         frame,
@@ -836,6 +960,8 @@ def _fill_content_slide(
 
     col_count = len(table.columns)
     data_rows = len(rows)
+
+    _reset_table(table)
 
     for table_row in table.rows:
         for col_index in range(col_count):

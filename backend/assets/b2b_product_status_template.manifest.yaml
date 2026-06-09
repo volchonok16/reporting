@@ -19,8 +19,6 @@ typography:
         size_pt: 10
       - key: description
         size_pt: 10
-        dense_size_pt: 8
-        dense_min_chars: 40
       - key: why
         size_pt: 8
 

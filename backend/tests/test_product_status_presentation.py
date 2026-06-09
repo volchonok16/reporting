@@ -33,8 +33,8 @@ def test_cell_font_size_matches_template_columns() -> None:
     assert _cell_font_size(0, "июль") == (TABLE_FONT_SIZE, "1000")
     assert _cell_font_size(1, "Акция") == (TABLE_FONT_SIZE, "1000")
     long_text = "Запуск акции для абонентов программы Бизнес-окружение " * 2
-    assert _cell_font_size(2, long_text) == (TABLE_FONT_SIZE_DENSE, "800")
-    assert _cell_font_size(3, "") == (TABLE_FONT_SIZE, "1000")
+    assert _cell_font_size(2, long_text) == (TABLE_FONT_SIZE, "1000")
+    assert _cell_font_size(3, "") == (TABLE_FONT_SIZE_DENSE, "800")
     assert _cell_font_size(3, "Кратко") == (TABLE_FONT_SIZE_DENSE, "800")
     assert _cell_font_size(3, long_text) == (TABLE_FONT_SIZE_DENSE, "800")
 
@@ -402,8 +402,10 @@ def test_generate_presentation_table_cells_are_editable_xml(mock_load) -> None:
     with zipfile.ZipFile(io.BytesIO(content)) as archive:
         xml = archive.read("ppt/slides/slide2.xml").decode("utf-8")
 
+    table_xml = xml.split("<a:tbl>")[1]
     assert "graphicFrameLocks" not in xml
-    assert 'dirty="0"' not in xml.split("<a:tbl>")[1]
+    assert 'anchor="t"' in table_xml
+    assert "<a:buNone/>" in table_xml
     assert "<a:t>CORE</a:t>" in xml
     assert "<a:t>Строка</a:t>" in xml
     assert "<a:t>Вторая</a:t>" in xml
