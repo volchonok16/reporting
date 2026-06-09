@@ -20,7 +20,12 @@ from pptx.oxml.xmlchemy import OxmlElement
 from pptx.util import Pt
 
 from app.config import settings
-from app.product_status_rich_text import display_cell_text, split_highlight_segments
+from app.product_status_rich_text import (
+    CellStyle,
+    display_cell_text,
+    split_cell_wrapper,
+    split_style_segments,
+)
 from app.product_status_service import load_b2b_product_status
 from app.schemas import ProductStatusB2BOut, ProductStatusSheetOut
 
@@ -375,14 +380,26 @@ def _strip_table_style(table) -> None:
         tbl_pr.attrib.pop(attr, None)
 
 
-def _set_cell_fill_white(cell) -> None:
+def _set_cell_fill(cell, color_hex: str = "FFFFFF") -> None:
     tc_pr = cell._tc.get_or_add_tcPr()
     for node in list(tc_pr.findall(qn("a:solidFill"))):
         tc_pr.remove(node)
     for node in list(tc_pr.findall(qn("a:noFill"))):
         tc_pr.remove(node)
     fill = _oxml_child(tc_pr, "a:solidFill")
-    _oxml_child(fill, "a:srgbClr", val="FFFFFF")
+    _oxml_child(fill, "a:srgbClr", val=color_hex.upper())
+
+
+def _set_cell_outer_border(cell, color_hex: str) -> None:
+    tc_pr = cell._tc.get_or_add_tcPr()
+    for side in ("a:lnL", "a:lnR", "a:lnT", "a:lnB"):
+        tag = qn(side)
+        for existing in list(tc_pr.findall(tag)):
+            tc_pr.remove(existing)
+        line = _oxml_child(tc_pr, side, w=TABLE_BORDER_WIDTH, cap="flat", cmpd="sng", algn="ctr")
+        fill = _oxml_child(line, "a:solidFill")
+        _oxml_child(fill, "a:srgbClr", val=color_hex.upper())
+        _oxml_child(line, "a:prstDash", val="solid")
 
 
 def _set_cell_border(
@@ -405,7 +422,6 @@ def _set_cell_border(
 def _apply_table_grid(table) -> None:
     for row in table.rows:
         for cell in row.cells:
-            _set_cell_fill_white(cell)
             _set_cell_border(cell)
 
 
@@ -451,6 +467,19 @@ def _fill_date_slide(slide, generated_at: datetime) -> None:
         shape.text_frame.text = text.replace(DATE_PLACEHOLDER, formatted)
 
 
+def _hex_to_rgb(color_hex: str) -> RGBColor:
+    value = color_hex.upper().lstrip("#")
+    return RGBColor(int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16))
+
+
+def _set_run_strike(run, *, enabled: bool) -> None:
+    r_pr = run._r.get_or_add_rPr()
+    if enabled:
+        r_pr.set("strike", "sngStrike")
+    else:
+        r_pr.attrib.pop("strike", None)
+
+
 def _set_run_highlight(run, color_hex: str = DEFAULT_HIGHLIGHT_COLOR) -> None:
     r_pr = run._r.get_or_add_rPr()
     for child in list(r_pr):
@@ -465,8 +494,16 @@ def _set_run_highlight(run, color_hex: str = DEFAULT_HIGHLIGHT_COLOR) -> None:
     )
 
 
+def _apply_cell_container_style(cell, cell_style: CellStyle) -> None:
+    if cell_style.bg:
+        _set_cell_fill(cell, cell_style.bg)
+    if cell_style.border:
+        _set_cell_outer_border(cell, cell_style.border)
+
+
 def _fill_white_cell(cell, value: str, *, col_index: int, bold: bool = False) -> None:
-    sanitized = _sanitize_cell_text(value)
+    cell_style, inner = split_cell_wrapper(value)
+    sanitized = _sanitize_cell_text(inner)
     font_size, _ = _cell_font_size(col_index, sanitized)
     frame = cell.text_frame
     frame.clear()
@@ -483,17 +520,23 @@ def _fill_white_cell(cell, value: str, *, col_index: int, bold: bool = False) ->
         paragraph.alignment = PP_ALIGN.LEFT
         paragraph.space_after = Pt(0)
         paragraph.space_before = Pt(0)
-        for segment in split_highlight_segments(line):
+        for segment in split_style_segments(line):
             if not segment.text:
                 continue
             run = paragraph.add_run()
             run.text = segment.text
             run.font.name = TABLE_FONT_NAME
             run.font.size = font_size
-            run.font.bold = bold
-            run.font.color.rgb = TEXT_COLOR
-            if segment.color:
-                _set_run_highlight(run, segment.color)
+            run.font.bold = bold or segment.bold
+            run.font.italic = segment.italic
+            run.font.color.rgb = _hex_to_rgb(segment.fg) if segment.fg else TEXT_COLOR
+            _set_run_strike(run, enabled=segment.strike)
+            if segment.bg:
+                _set_run_highlight(run, segment.bg)
+
+    if not cell_style.bg:
+        _set_cell_fill(cell, "FFFFFF")
+    _apply_cell_container_style(cell, cell_style)
 
 
 def _apply_table_column_widths(table, total_width: int) -> None:

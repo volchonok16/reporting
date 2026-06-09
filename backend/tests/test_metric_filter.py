@@ -38,6 +38,31 @@ def test_metric_filter_launching_soon() -> None:
     )
 
 
+def test_metric_filter_completed() -> None:
+    task = _zni(
+        source_status="Closed",
+        extra_json={
+            "board_code": "digital_streams_b2b",
+            "customer_name": "Иванов Иван",
+            "closed_transitions": [{"at": "2026-05-01T10:00:00+00:00", "status": "Closed"}],
+        },
+    )
+    assert _matches_metric_filter(
+        task,
+        "completed",
+        errors_by_parent={},
+        date_from=date(2026, 4, 1),
+        date_to=date(2026, 6, 30),
+    )
+    assert not _matches_metric_filter(
+        _zni(source_status="Closed"),
+        "completed",
+        errors_by_parent={},
+        date_from=date(2026, 4, 1),
+        date_to=date(2026, 6, 30),
+    )
+
+
 def test_metric_filter_errors() -> None:
     parent = _zni()
     parent.id = 10

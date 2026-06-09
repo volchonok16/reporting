@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.boards import ALL_BOARDS_CODE, BOARDS, BoardConfig, board_by_code, is_all_boards
-from app.board_metrics import has_linked_errors, is_launched, is_launching_soon
+from app.board_metrics import has_linked_errors, is_completed, is_launched, is_launching_soon
 from app.config import settings
 from app.iteration_plan import (
     PLAN_QUARTER_TBD,
@@ -15,7 +15,7 @@ from app.iteration_plan import (
     quarter_label_from_key,
 )
 from app.models import Task
-from app.board_metrics import count_launched_rows, count_launching_soon
+from app.board_metrics import count_completed_rows, count_launched_rows, count_launching_soon
 from app.resource_reservation import ect_resource_reservation_label
 from app.zni_description import tfs_identity_display_name
 from app.schemas import (
@@ -205,6 +205,8 @@ def _matches_metric_filter(
         return is_launching_soon(row, today=today, horizon=horizon)
     if metric == "launched":
         return is_launched(row, date_from=date_from, date_to=date_to)
+    if metric == "completed":
+        return is_completed(row, date_from=date_from, date_to=date_to)
     if metric == "errors":
         return has_linked_errors(row, errors_by_parent)
     return True
@@ -221,6 +223,7 @@ def _compute_metrics(
         totalTasks=len(rows),
         launchingSoon=count_launching_soon(rows),
         launched=count_launched_rows(rows, date_from=date_from, date_to=date_to),
+        completed=count_completed_rows(rows, date_from=date_from, date_to=date_to),
         errorsCount=sum(1 for row in rows if has_linked_errors(row, errors_by_parent)),
     )
 
@@ -270,11 +273,12 @@ def load_change_requests(
         if error.parent_task_id:
             errors_by_parent.setdefault(error.parent_task_id, []).append(error)
 
+    apply_start_date_filter = metric != "completed"
     filtered = [
         row
         for row in rows
         if _matches_search(row, search or "")
-        and _in_date_range(row, date_from, date_to)
+        and (not apply_start_date_filter or _in_date_range(row, date_from, date_to))
         and _matches_status(row, status)
         and _matches_quarter(row, quarter)
         and _matches_metric_filter(

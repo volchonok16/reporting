@@ -76,8 +76,12 @@ def fetch_sheet_with_formatting(
         "fields": (
             "sheets(data/rowData/values("
             "formattedValue,effectiveValue,userEnteredValue,"
-            "userEnteredFormat.backgroundColor,effectiveFormat.backgroundColor,"
-            "textFormatRuns(format.backgroundColor)"
+            "userEnteredFormat.backgroundColor,userEnteredFormat.borders,"
+            "userEnteredFormat.textFormat,"
+            "effectiveFormat.backgroundColor,effectiveFormat.borders,"
+            "effectiveFormat.textFormat,"
+            "textFormatRuns(format.backgroundColor,format.foregroundColor,"
+            "format.bold,format.italic,format.strikethrough,format.underline)"
             "))"
         ),
         "key": api_key,

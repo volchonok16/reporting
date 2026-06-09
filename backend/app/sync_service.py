@@ -293,7 +293,7 @@ async def sync_board(
             touch_sync_progress(
                 db,
                 sync_run,
-                f"{board.display_name}: история пилот ({len(zni_payloads)} ЗНИ)…",
+                f"{board.display_name}: история пилот/closed ({len(zni_payloads)} ЗНИ)…",
             )
 
         for item in zni_payloads:
@@ -348,11 +348,15 @@ async def sync_board(
                     and existing.updated_at == updated
                     and isinstance(existing.extra_json, dict)
                     and isinstance(existing.extra_json.get("pilot_transitions"), list)
+                    and isinstance(existing.extra_json.get("closed_transitions"), list)
                 )
                 if cached and isinstance(existing.extra_json, dict):
                     extra_json["pilot_transitions"] = existing.extra_json["pilot_transitions"]
+                    extra_json["closed_transitions"] = existing.extra_json["closed_transitions"]
                 else:
                     extra_json["pilot_transitions"] = await client.extract_pilot_transitions(item["id"])
+                    await asyncio.sleep(settings.tfs_request_delay_seconds)
+                    extra_json["closed_transitions"] = await client.extract_closed_transitions(item["id"])
                     await asyncio.sleep(settings.tfs_request_delay_seconds)
 
             task_id = upsert_task(

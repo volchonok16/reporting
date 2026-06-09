@@ -1,6 +1,13 @@
 from datetime import date
 
-from app.board_metrics import count_launched_rows, count_launching_soon, is_launched, is_launching_soon
+from app.board_metrics import (
+    count_completed_rows,
+    count_launched_rows,
+    count_launching_soon,
+    is_completed,
+    is_launched,
+    is_launching_soon,
+)
 from app.models import Task
 
 
@@ -98,6 +105,42 @@ def test_b2b_product_core_uses_digital_launch_rules() -> None:
     )
     assert is_launching_soon(uat, today=today, horizon=today)
     assert is_launched(pilot, date_from=None, date_to=None)
+
+
+def test_digital_closed_with_customer_is_completed_in_quarter() -> None:
+    task = Task(
+        source_system_id=1,
+        project_id=1,
+        external_id="100",
+        title="Test",
+        task_type="change_request",
+        source_team="Digital Streams B2b",
+        source_status="Closed",
+        extra_json={
+            "board_code": "digital_streams_b2b",
+            "customer_name": "Петров Петр",
+            "closed_transitions": [{"at": "2026-05-01T10:00:00+00:00", "status": "Closed"}],
+        },
+    )
+    assert is_completed(task, date_from=date(2026, 4, 1), date_to=date(2026, 6, 30))
+    assert count_completed_rows([task], date_from=date(2026, 4, 1), date_to=date(2026, 6, 30)) == 1
+
+
+def test_digital_closed_without_customer_is_not_completed() -> None:
+    task = Task(
+        source_system_id=1,
+        project_id=1,
+        external_id="1251141",
+        title="Garbage",
+        task_type="change_request",
+        source_team="Digital Streams B2b",
+        source_status="Closed",
+        extra_json={
+            "board_code": "digital_streams_b2b",
+            "closed_transitions": [{"at": "2026-05-01T10:00:00+00:00", "status": "Closed"}],
+        },
+    )
+    assert not is_completed(task, date_from=date(2026, 4, 1), date_to=date(2026, 6, 30))
 
 
 def test_esb_analytics_uses_be_analytics_launch_rules() -> None:

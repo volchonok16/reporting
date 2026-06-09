@@ -48,8 +48,11 @@ def parse_tfs_datetime(value: Any) -> datetime | None:
         return datetime(value.year, value.month, value.day, tzinfo=UTC)
     if isinstance(value, str):
         text = value.strip()
-        if "T" in text and text.endswith("Z"):
-            return datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if "T" in text:
+            try:
+                return datetime.fromisoformat(text.replace("Z", "+00:00"))
+            except ValueError:
+                pass
         match = MS_DATE_RE.match(text)
         if match:
             return datetime.fromtimestamp(int(match.group("milliseconds")) / 1000, UTC)
@@ -593,6 +596,35 @@ class TfsClient:
                 continue
             new_value = str(state_change.get("newValue") or "").strip()
             if not new_value or new_value.lower() not in pilot_lower:
+                continue
+            revised = parse_tfs_datetime(update.get("revisedDate"))
+            if revised is None:
+                continue
+            transitions.append(
+                {
+                    "at": revised.isoformat(),
+                    "status": new_value,
+                }
+            )
+        return transitions
+
+    async def extract_closed_transitions(self, item_id: int) -> list[dict[str, str]]:
+        """Переходы workflow в статус Closed по истории updates TFS."""
+        if not settings.closed_state_list:
+            return []
+
+        closed_lower = {value.lower() for value in settings.closed_state_list}
+        transitions: list[dict[str, str]] = []
+        updates = await self.get_work_item_updates(item_id)
+        for update in updates:
+            fields = update.get("fields")
+            if not isinstance(fields, dict):
+                continue
+            state_change = fields.get("System.State")
+            if not isinstance(state_change, dict):
+                continue
+            new_value = str(state_change.get("newValue") or "").strip()
+            if not new_value or new_value.lower() not in closed_lower:
                 continue
             revised = parse_tfs_datetime(update.get("revisedDate"))
             if revised is None:

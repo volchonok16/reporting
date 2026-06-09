@@ -140,7 +140,7 @@ def dashboard(
     quarter: str | None = Query(default=None),
     metric: str | None = Query(
         default=None,
-        description="Фильтр таблицы: launching_soon, launched, errors",
+        description="Фильтр таблицы: launching_soon, launched, completed, errors",
     ),
 ) -> DashboardOut:
     return load_change_requests(

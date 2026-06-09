@@ -74,6 +74,7 @@ type DashboardData = {
     totalTasks: number
     launchingSoon: number
     launched: number
+    completed: number
     errorsCount: number
   }
   items: ChangeRequest[]
@@ -111,7 +112,7 @@ function tableColumnCount(allBoards: boolean): number {
   return allBoards ? 11 : 10
 }
 
-type MetricFilter = '' | 'launching_soon' | 'launched' | 'errors'
+type MetricFilter = '' | 'launching_soon' | 'launched' | 'completed' | 'errors'
 
 type DashboardProps = {
   onLogout: () => void
@@ -121,7 +122,20 @@ const METRIC_LABELS: Record<MetricFilter, string> = {
   '': 'Все задачи',
   launching_soon: 'Скоро запуск',
   launched: 'Запущено',
+  completed: 'Завершенные',
   errors: 'С ошибками',
+}
+
+function currentQuarterIsoRange(): { from: string; to: string } {
+  const now = new Date()
+  const year = now.getFullYear()
+  const quarterStartMonth = Math.floor(now.getMonth() / 3) * 3
+  const pad = (value: number) => String(value).padStart(2, '0')
+  const lastDay = new Date(year, quarterStartMonth + 3, 0)
+  return {
+    from: `${year}-${pad(quarterStartMonth + 1)}-01`,
+    to: `${year}-${pad(lastDay.getMonth() + 1)}-${pad(lastDay.getDate())}`,
+  }
 }
 
 const SORT_OPTIONS = [
@@ -139,8 +153,8 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const [boardCode, setBoardCode] = useState(ALL_BOARDS)
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('id_desc')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [dateFrom, setDateFrom] = useState(() => currentQuarterIsoRange().from)
+  const [dateTo, setDateTo] = useState(() => currentQuarterIsoRange().to)
   const [statusFilter, setStatusFilter] = useState('')
   const [quarterFilter, setQuarterFilter] = useState('')
   const [metricFilter, setMetricFilter] = useState<MetricFilter>('')
@@ -463,6 +477,14 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         >
           <span className="metric-label">Запущено</span>
           <strong className="metric-value">{data?.metrics.launched ?? '—'}</strong>
+        </button>
+        <button
+          type="button"
+          className={`metric-card metric-completed${metricFilter === 'completed' ? ' metric-card-active' : ''}`}
+          onClick={() => toggleMetricFilter('completed')}
+        >
+          <span className="metric-label">Завершенные</span>
+          <strong className="metric-value">{data?.metrics.completed ?? '—'}</strong>
         </button>
         <button
           type="button"

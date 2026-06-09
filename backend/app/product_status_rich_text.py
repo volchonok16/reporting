@@ -3,19 +3,36 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-HIGHLIGHT_MARKER_PATTERN = re.compile(
-    r"\$([^$]+)\$|\{\{([0-9A-Fa-f]{6}):([^}]*)\}\}",
+# Legacy + новый формат: [[bg:FFFF00;fg:FF0000;strike::текст]]
+STYLE_SEGMENT_PATTERN = re.compile(
+    r"\[\[((?:[^;\]]|;)+)::((?:[^\[]|\[(?!\[))*?)\]\]"
+    r"|\$([^$]+)\$"
+    r"|\{\{([0-9A-Fa-f]{6}):([^}]*)\}\}",
 )
+CELL_WRAPPER_PATTERN = re.compile(r"^<<cell:([^>]+)>>(.*)<<>>$", re.DOTALL)
 
 
 @dataclass(frozen=True)
-class HighlightSegment:
+class CellStyle:
+    bg: str | None = None
+    border: str | None = None
+
+
+@dataclass(frozen=True)
+class TextStyleSegment:
     text: str
-    color: str | None = None
+    bg: str | None = None
+    fg: str | None = None
+    strike: bool = False
+    bold: bool = False
+    italic: bool = False
+
+
+# Совместимость со старым API.
+HighlightSegment = TextStyleSegment
 
 
 def color_to_hex(color: dict | None) -> str | None:
-    """RGB Google Sheets (0..1) → RRGGBB; None если заливки нет или она белая."""
     if not color:
         return None
     if "red" not in color and "green" not in color and "blue" not in color:
@@ -50,58 +67,179 @@ def is_highlight_color(color: dict | None) -> bool:
     return color_to_hex(color) is not None
 
 
+def _escape_marker_text(text: str) -> str:
+    return (
+        text.replace("$", "")
+        .replace("{", "")
+        .replace("}", "")
+        .replace("[", "")
+        .replace("]", "")
+    )
+
+
+def _parse_style_attrs(raw: str) -> dict[str, str | bool]:
+    parsed: dict[str, str | bool] = {}
+    for chunk in raw.split(";"):
+        token = chunk.strip()
+        if not token:
+            continue
+        if token in {"strike", "s"}:
+            parsed["strike"] = True
+        elif token in {"bold", "b"}:
+            parsed["bold"] = True
+        elif token in {"italic", "i"}:
+            parsed["italic"] = True
+        elif ":" in token:
+            key, value = token.split(":", 1)
+            parsed[key.strip()] = value.strip().upper()
+    return parsed
+
+
+def _attrs_to_segment(text: str, attrs: dict[str, str | bool]) -> TextStyleSegment:
+    return TextStyleSegment(
+        text=text,
+        bg=str(attrs["bg"]).upper() if attrs.get("bg") else None,
+        fg=str(attrs["fg"]).upper() if attrs.get("fg") else None,
+        strike=bool(attrs.get("strike")),
+        bold=bool(attrs.get("bold")),
+        italic=bool(attrs.get("italic")),
+    )
+
+
+def encode_style_segment(
+    text: str,
+    *,
+    bg: str | None = None,
+    fg: str | None = None,
+    strike: bool = False,
+    bold: bool = False,
+    italic: bool = False,
+) -> str:
+    safe = _escape_marker_text(text)
+    if not safe:
+        return ""
+    if bg and not fg and not strike and not bold and not italic:
+        if bg.upper() == "FFFF00":
+            return f"${safe}$"
+        return f"{{{{{bg.upper()}:{safe}}}}}"
+    parts: list[str] = []
+    if bg:
+        parts.append(f"bg:{bg.upper()}")
+    if fg:
+        parts.append(f"fg:{fg.upper()}")
+    if strike:
+        parts.append("strike")
+    if bold:
+        parts.append("bold")
+    if italic:
+        parts.append("italic")
+    if not parts:
+        return safe
+    return f"[[{';'.join(parts)}::{safe}]]"
+
+
 def encode_highlight(text: str, color_hex: str) -> str:
-    safe = text.replace("$", "").replace("{", "").replace("}", "")
-    color = color_hex.upper()
-    if color == "FFFF00":
-        return f"${safe}$"
-    return f"{{{{{color}:{safe}}}}}"
+    return encode_style_segment(text, bg=color_hex)
+
+
+def wrap_cell_text(text: str, *, bg: str | None = None, border: str | None = None) -> str:
+    if not text:
+        return ""
+    attrs: list[str] = []
+    if bg:
+        attrs.append(f"bg:{bg.upper()}")
+    if border:
+        attrs.append(f"border:{border.upper()}")
+    if not attrs:
+        return text
+    return f"<<cell:{';'.join(attrs)}>>{text}<<>>"
+
+
+def split_cell_wrapper(text: str) -> tuple[CellStyle, str]:
+    match = CELL_WRAPPER_PATTERN.match(text or "")
+    if not match:
+        return CellStyle(), text
+    attrs = _parse_style_attrs(match.group(1))
+    return (
+        CellStyle(
+            bg=str(attrs["bg"]).upper() if attrs.get("bg") else None,
+            border=str(attrs["border"]).upper() if attrs.get("border") else None,
+        ),
+        match.group(2),
+    )
 
 
 def display_cell_text(text: str) -> str:
-    """Текст без маркеров подсветки — для отображения и оценки высоты."""
-    cleaned = (text or "").replace("\x0b", "\n").replace("\r\n", "\n").replace("\r", "\n")
+    _, inner = split_cell_wrapper(text)
+    cleaned = inner.replace("\x0b", "\n").replace("\r\n", "\n").replace("\r", "\n")
 
     def _strip(match: re.Match[str]) -> str:
         if match.group(1) is not None:
-            return match.group(1)
-        return match.group(3)
+            return match.group(2)
+        if match.group(3) is not None:
+            return match.group(3)
+        return match.group(5)
 
-    return HIGHLIGHT_MARKER_PATTERN.sub(_strip, cleaned)
+    return STYLE_SEGMENT_PATTERN.sub(_strip, cleaned)
 
 
-def split_highlight_segments(text: str) -> list[HighlightSegment]:
-    segments: list[HighlightSegment] = []
+def split_style_segments(text: str) -> list[TextStyleSegment]:
+    segments: list[TextStyleSegment] = []
     last = 0
-    for match in HIGHLIGHT_MARKER_PATTERN.finditer(text):
+    for match in STYLE_SEGMENT_PATTERN.finditer(text):
         start = match.start()
         if start > last:
-            segments.append(HighlightSegment(text=text[last:start], color=None))
+            segments.append(TextStyleSegment(text=text[last:start]))
         if match.group(1) is not None:
-            segments.append(HighlightSegment(text=match.group(1), color="FFFF00"))
+            attrs = _parse_style_attrs(match.group(1))
+            segments.append(_attrs_to_segment(match.group(2), attrs))
+        elif match.group(3) is not None:
+            segments.append(TextStyleSegment(text=match.group(3), bg="FFFF00"))
         else:
-            segments.append(
-                HighlightSegment(text=match.group(3), color=match.group(2).upper()),
-            )
+            segments.append(TextStyleSegment(text=match.group(5), bg=match.group(4).upper()))
         last = match.end()
     if last < len(text):
-        segments.append(HighlightSegment(text=text[last:], color=None))
+        segments.append(TextStyleSegment(text=text[last:]))
     if not segments:
-        segments.append(HighlightSegment(text=text, color=None))
+        segments.append(TextStyleSegment(text=text))
     return segments
+
+
+def split_highlight_segments(text: str) -> list[TextStyleSegment]:
+    _, inner = split_cell_wrapper(text)
+    return split_style_segments(inner)
 
 
 def wrap_highlighted_text(text: str, color_hex: str = "FFFF00") -> str:
     stripped = text.strip()
     if not stripped:
         return ""
-    if HIGHLIGHT_MARKER_PATTERN.search(stripped):
+    if STYLE_SEGMENT_PATTERN.search(stripped):
         return stripped
     return encode_highlight(stripped, color_hex)
 
 
-def _escape_marker_text(text: str) -> str:
-    return text.replace("$", "").replace("{", "").replace("}", "")
+def _format_has_style(fmt: dict) -> bool:
+    return bool(
+        color_to_hex(fmt.get("backgroundColor"))
+        or color_to_hex(fmt.get("foregroundColor"))
+        or fmt.get("strikethrough")
+        or fmt.get("bold")
+        or fmt.get("italic")
+    )
+
+
+def _segment_from_format(text: str, fmt: dict) -> str:
+    if not text:
+        return ""
+    return encode_style_segment(
+        _escape_marker_text(text),
+        bg=color_to_hex(fmt.get("backgroundColor")),
+        fg=color_to_hex(fmt.get("foregroundColor")),
+        strike=bool(fmt.get("strikethrough")),
+        bold=bool(fmt.get("bold")),
+        italic=bool(fmt.get("italic")),
+    )
 
 
 def apply_text_format_runs(text: str, runs: list[dict]) -> str:
@@ -121,14 +259,31 @@ def apply_text_format_runs(text: str, runs: list[dict]) -> str:
             continue
         segment = text[start:end]
         fmt = run.get("format") or {}
-        color_hex = color_to_hex(fmt.get("backgroundColor"))
-        if color_hex:
-            safe = _escape_marker_text(segment)
-            if safe:
-                parts.append(encode_highlight(safe, color_hex))
+        if _format_has_style(fmt):
+            encoded = _segment_from_format(segment, fmt)
+            if encoded:
+                parts.append(encoded)
         else:
             parts.append(segment)
     return "".join(parts) if parts else text
+
+
+def _cell_border_color(fmt: dict) -> str | None:
+    borders = fmt.get("borders") or {}
+    for side in ("top", "bottom", "left", "right"):
+        side_fmt = borders.get(side) or {}
+        style = str(side_fmt.get("style", "")).upper()
+        if style and style != "NONE":
+            color = color_to_hex(side_fmt.get("color"))
+            if color:
+                return color
+    return None
+
+
+def _cell_format_styles(fmt: dict) -> tuple[str | None, str | None]:
+    bg = color_to_hex(fmt.get("backgroundColor"))
+    border = _cell_border_color(fmt)
+    return bg, border
 
 
 def cell_text_with_highlights(cell: dict) -> str:
@@ -149,18 +304,37 @@ def cell_text_with_highlights(cell: dict) -> str:
 
     runs = cell.get("textFormatRuns") or []
     if runs:
-        highlighted = apply_text_format_runs(text, runs)
-        if highlighted != text:
-            return highlighted
+        styled = apply_text_format_runs(text, runs)
+    else:
+        styled = text
+        for fmt_key in ("effectiveFormat", "userEnteredFormat"):
+            fmt = cell.get(fmt_key) or {}
+            text_fmt = fmt.get("textFormat") or {}
+            if _format_has_style(text_fmt):
+                styled = _segment_from_format(text, text_fmt)
+                break
 
-    for fmt_key in ("userEnteredFormat", "effectiveFormat"):
+    cell_bg: str | None = None
+    cell_border: str | None = None
+    for fmt_key in ("effectiveFormat", "userEnteredFormat"):
         fmt = cell.get(fmt_key) or {}
-        color_hex = color_to_hex(fmt.get("backgroundColor"))
-        if color_hex:
-            return wrap_highlighted_text(text, color_hex)
+        bg, border = _cell_format_styles(fmt)
+        cell_bg = cell_bg or bg
+        cell_border = cell_border or border
+        if not runs and not STYLE_SEGMENT_PATTERN.search(styled):
+            bg_only, _ = _cell_format_styles(fmt)
+            if bg_only:
+                styled = wrap_highlighted_text(styled, bg_only)
 
-    return text
+    return wrap_cell_text(styled, bg=cell_bg, border=cell_border)
 
 
 def cell_highlight_colors(text: str) -> list[str]:
-    return [segment.color for segment in split_highlight_segments(text) if segment.color]
+    cell_style, inner = split_cell_wrapper(text)
+    colors: list[str] = []
+    if cell_style.bg:
+        colors.append(cell_style.bg)
+    for segment in split_style_segments(inner):
+        if segment.bg:
+            colors.append(segment.bg)
+    return colors

@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from app.boards import BOARDS, BoardConfig
 from app.config import settings
 from app.models import Task
+from app.completed_metrics import count_completed_rows, is_completed
 from app.pilot_metrics import pilot_entered_in_period
 
 _BOARDS_BY_CODE = {board.code: board for board in BOARDS}

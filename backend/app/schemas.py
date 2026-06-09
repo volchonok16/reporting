@@ -77,6 +77,7 @@ class DashboardMetricsOut(BaseModel):
     totalTasks: int
     launchingSoon: int
     launched: int
+    completed: int
     errorsCount: int
 
 
