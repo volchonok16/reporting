@@ -269,6 +269,8 @@ def load_change_requests(
     rows = list(db.scalars(zni_query))
     error_rows = list(db.scalars(error_query))
 
+    rows_with_customer = [row for row in rows if has_customer_name(row)]
+
     errors_by_parent: dict[int, list[Task]] = {}
     for error in error_rows:
         if error.parent_task_id:
@@ -277,9 +279,8 @@ def load_change_requests(
     apply_start_date_filter = metric != "completed"
     filtered = [
         row
-        for row in rows
+        for row in rows_with_customer
         if _matches_search(row, search or "")
-        and has_customer_name(row)
         and (not apply_start_date_filter or _in_date_range(row, date_from, date_to))
         and _matches_status(row, status)
         and _matches_quarter(row, quarter)
@@ -337,15 +338,15 @@ def load_change_requests(
         board=_board_out(board) if board and not all_boards else None,
         allBoards=all_boards,
         metrics=_compute_metrics(
-            rows,
+            rows_with_customer,
             errors_by_parent=errors_by_parent,
             date_from=date_from,
             date_to=date_to,
         ),
         items=items,
         totalShown=len(items),
-        availableStatuses=_collect_available_statuses(rows),
-        availableQuarters=_collect_available_quarters(rows),
+        availableStatuses=_collect_available_statuses(rows_with_customer),
+        availableQuarters=_collect_available_quarters(rows_with_customer),
     )
 
 

@@ -118,10 +118,10 @@ function businessGoalParagraphs(text: string): string[] {
   return paragraphs.length > 0 ? paragraphs : [text]
 }
 
-function BusinessGoalText({ text }: { text: string }) {
+function BusinessGoalText({ text, className }: { text: string; className?: string }) {
   const paragraphs = businessGoalParagraphs(text)
   return (
-    <div className="zni-detail-text">
+    <div className={className ?? 'zni-detail-text'}>
       {paragraphs.map((paragraph, index) => (
         <p key={index} className="zni-detail-paragraph">
           {paragraph}
@@ -141,7 +141,16 @@ function itemRowKey(item: ChangeRequest): string {
 }
 
 function tableColumnCount(allBoards: boolean): number {
-  return allBoards ? 9 : 8
+  return allBoards ? 7 : 6
+}
+
+function rowHasExpandDetails(item: ChangeRequest): boolean {
+  return Boolean(
+    item.title?.trim() ||
+      item.customerName?.trim() ||
+      item.boardColumn?.trim() ||
+      item.status?.trim(),
+  )
 }
 
 type MetricFilter = '' | 'launching_soon' | 'launched' | 'completed' | 'errors'
@@ -542,31 +551,27 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                 <col className="col-expand" />
                 <col className="col-id" />
                 {data?.allBoards && <col className="col-board" />}
-                <col className="col-title" />
-                <col className="col-customer" />
+                <col className="col-goal" />
                 <col className="col-date" />
                 <col className="col-quarter" />
                 <col className="col-reservation" />
-                <col className="col-status" />
               </colgroup>
               <thead>
                 <tr>
                   <th aria-label="Подробнее" />
                   <th>Номер ЗНИ</th>
                   {data?.allBoards && <th>Доска</th>}
-                  <th>ЗНИ</th>
-                  <th>Заказчик</th>
+                  <th>Цель и бизнес-смысл доработки</th>
                   <th>План. дата</th>
                   <th>План квартала</th>
                   <th title="Бронь ресурса ЕЦТ">Бронь ЕЦТ</th>
-                  <th>Статус</th>
                 </tr>
               </thead>
               <tbody>
                 {data?.items.flatMap((item) => {
                   const key = itemRowKey(item)
                   const expanded = expandedKeys.has(key)
-                  const hasDetails = Boolean(item.businessGoal?.trim())
+                  const hasDetails = rowHasExpandDetails(item)
                   const customerParts = customerNameParts(item.customerName)
                   const colCount = tableColumnCount(Boolean(data.allBoards))
                   const rows = [
@@ -577,7 +582,9 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                             type="button"
                             className="row-expand-btn"
                             aria-expanded={expanded}
-                            aria-label={expanded ? 'Скрыть цель доработки' : 'Показать цель доработки'}
+                            aria-label={
+                              expanded ? 'Скрыть ЗНИ, заказчика и статус' : 'Показать ЗНИ, заказчика и статус'
+                            }
                             onClick={() => toggleExpanded(key)}
                             onKeyDown={(event) => handleExpandKeyDown(event, key)}
                           >
@@ -597,16 +604,9 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                       {data.allBoards && (
                         <td className="cell-board">{boardNameLabel(item.boardName, item.boardCode)}</td>
                       )}
-                      <td className="cell-title" title={item.title}>
-                        {item.title}
-                      </td>
-                      <td className="cell-customer" title={item.customerName || undefined}>
-                        {customerParts.length > 0 ? (
-                          <span className="customer-name-stack">
-                            {customerParts.map((part, index) => (
-                              <span key={index} className="customer-name-line">{part}</span>
-                            ))}
-                          </span>
+                      <td className="cell-business-goal">
+                        {item.businessGoal?.trim() ? (
+                          <BusinessGoalText text={item.businessGoal} className="cell-business-goal-text" />
                         ) : (
                           '—'
                         )}
@@ -618,21 +618,40 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                       >
                         {formatEctReservation(item.ectResourceReservation)}
                       </td>
-                      <td className="cell-status">
-                        <span className="status-board">{item.boardColumn || item.status || '—'}</span>
-                        {item.boardColumn && item.status && item.boardColumn !== item.status && (
-                          <span className="status-workflow">{item.status}</span>
-                        )}
-                      </td>
                     </tr>,
                   ]
-                  if (expanded && item.businessGoal) {
+                  if (expanded && hasDetails) {
                     rows.push(
                       <tr key={`${key}-details`} className="zni-table-detail-row">
                         <td colSpan={colCount}>
-                          <div className="zni-detail-panel">
-                            <div className="zni-detail-label">Цель и бизнес-смысл доработки</div>
-                            <BusinessGoalText text={item.businessGoal} />
+                          <div className="zni-detail-panel zni-detail-panel-compact">
+                            <div className="zni-detail-field">
+                              <div className="zni-detail-label">ЗНИ</div>
+                              <div className="zni-detail-value zni-detail-title">{item.title}</div>
+                            </div>
+                            <div className="zni-detail-field">
+                              <div className="zni-detail-label">Заказчик</div>
+                              <div className="zni-detail-value">
+                                {customerParts.length > 0 ? (
+                                  <span className="customer-name-stack">
+                                    {customerParts.map((part, index) => (
+                                      <span key={index} className="customer-name-line">{part}</span>
+                                    ))}
+                                  </span>
+                                ) : (
+                                  '—'
+                                )}
+                              </div>
+                            </div>
+                            <div className="zni-detail-field">
+                              <div className="zni-detail-label">Статус</div>
+                              <div className="zni-detail-value cell-status">
+                                <span className="status-board">{item.boardColumn || item.status || '—'}</span>
+                                {item.boardColumn && item.status && item.boardColumn !== item.status && (
+                                  <span className="status-workflow">{item.status}</span>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </td>
                       </tr>,

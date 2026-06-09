@@ -398,14 +398,14 @@ body {
 
 .zni-table {
   width: 100%;
-  min-width: 1160px;
+  min-width: 920px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
 }
 
 .zni-table-all {
-  min-width: 1280px;
+  min-width: 1020px;
 }
 
 .zni-table col.col-expand {
@@ -417,31 +417,23 @@ body {
 }
 
 .zni-table col.col-board {
-  width: 108px;
-}
-
-.zni-table col.col-title {
-  width: 32%;
-}
-
-.zni-table col.col-customer {
-  width: 72px;
-}
-
-.zni-table col.col-date {
   width: 96px;
 }
 
-.zni-table col.col-quarter {
+.zni-table col.col-goal {
+  width: 42%;
+}
+
+.zni-table col.col-date {
   width: 88px;
 }
 
-.zni-table col.col-reservation {
-  width: 72px;
+.zni-table col.col-quarter {
+  width: 80px;
 }
 
-.zni-table col.col-status {
-  width: 120px;
+.zni-table col.col-reservation {
+  width: 64px;
 }
 
 .zni-table thead th {
@@ -567,6 +559,51 @@ body {
   word-break: break-word;
   hyphens: auto;
   color: #222;
+}
+
+.cell-business-goal {
+  max-width: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #333;
+}
+
+.cell-business-goal-text {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #333;
+}
+
+.cell-business-goal-text .zni-detail-paragraph + .zni-detail-paragraph {
+  margin-top: 0.5em;
+}
+
+.zni-detail-panel-compact {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(120px, 0.7fr) minmax(120px, 0.6fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.zni-detail-field {
+  min-width: 0;
+}
+
+.zni-detail-value {
+  font-size: 13px;
+  line-height: 1.45;
+  color: #222;
+}
+
+.zni-detail-title {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.zni-detail-panel-compact .customer-name-line {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
 }
 
 .cell-errors {
@@ -733,6 +770,11 @@ body {
 @media (max-width: 1000px) {
   .metrics {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .zni-detail-panel-compact {
+    grid-template-columns: 1fr;
+    gap: 12px;
   }
 }
 
