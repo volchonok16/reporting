@@ -141,16 +141,11 @@ function itemRowKey(item: ChangeRequest): string {
 }
 
 function tableColumnCount(allBoards: boolean): number {
-  return allBoards ? 7 : 6
+  return allBoards ? 8 : 7
 }
 
 function rowHasExpandDetails(item: ChangeRequest): boolean {
-  return Boolean(
-    item.title?.trim() ||
-      item.customerName?.trim() ||
-      item.boardColumn?.trim() ||
-      item.status?.trim(),
-  )
+  return Boolean(item.customerName?.trim() || item.boardColumn?.trim() || item.status?.trim())
 }
 
 type MetricFilter = '' | 'launching_soon' | 'launched' | 'completed' | 'errors'
@@ -551,6 +546,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                 <col className="col-expand" />
                 <col className="col-id" />
                 {data?.allBoards && <col className="col-board" />}
+                <col className="col-title" />
                 <col className="col-goal" />
                 <col className="col-date" />
                 <col className="col-quarter" />
@@ -561,6 +557,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                   <th aria-label="Подробнее" />
                   <th>Номер ЗНИ</th>
                   {data?.allBoards && <th>Доска</th>}
+                  <th>ЗНИ</th>
                   <th>Цель и бизнес-смысл доработки</th>
                   <th>План. дата</th>
                   <th>План квартала</th>
@@ -583,7 +580,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                             className="row-expand-btn"
                             aria-expanded={expanded}
                             aria-label={
-                              expanded ? 'Скрыть ЗНИ, заказчика и статус' : 'Показать ЗНИ, заказчика и статус'
+                              expanded ? 'Скрыть заказчика и статус' : 'Показать заказчика и статус'
                             }
                             onClick={() => toggleExpanded(key)}
                             onKeyDown={(event) => handleExpandKeyDown(event, key)}
@@ -604,6 +601,9 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                       {data.allBoards && (
                         <td className="cell-board">{boardNameLabel(item.boardName, item.boardCode)}</td>
                       )}
+                      <td className="cell-title" title={item.title}>
+                        {item.title}
+                      </td>
                       <td className="cell-business-goal">
                         {item.businessGoal?.trim() ? (
                           <BusinessGoalText text={item.businessGoal} className="cell-business-goal-text" />
@@ -625,10 +625,6 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                       <tr key={`${key}-details`} className="zni-table-detail-row">
                         <td colSpan={colCount}>
                           <div className="zni-detail-panel zni-detail-panel-compact">
-                            <div className="zni-detail-field">
-                              <div className="zni-detail-label">ЗНИ</div>
-                              <div className="zni-detail-value zni-detail-title">{item.title}</div>
-                            </div>
                             <div className="zni-detail-field">
                               <div className="zni-detail-label">Заказчик</div>
                               <div className="zni-detail-value">

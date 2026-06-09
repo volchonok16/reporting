@@ -398,14 +398,14 @@ body {
 
 .zni-table {
   width: 100%;
-  min-width: 920px;
+  min-width: 980px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
 }
 
 .zni-table-all {
-  min-width: 1020px;
+  min-width: 1080px;
 }
 
 .zni-table col.col-expand {
@@ -420,8 +420,12 @@ body {
   width: 96px;
 }
 
+.zni-table col.col-title {
+  width: 18%;
+}
+
 .zni-table col.col-goal {
-  width: 42%;
+  width: 32%;
 }
 
 .zni-table col.col-date {
@@ -580,7 +584,7 @@ body {
 
 .zni-detail-panel-compact {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(120px, 0.7fr) minmax(120px, 0.6fr);
+  grid-template-columns: minmax(140px, 0.8fr) minmax(140px, 0.7fr);
   gap: 16px;
   align-items: start;
 }
