@@ -64,6 +64,8 @@ ROW_PADDING_EMU = 50000
 CHAR_WIDTH_EMU = 76000
 HEIGHT_SAFETY_RATIO = 1.0
 LONG_CELL_CHARS = 180
+_HIGHLIGHT_PATTERN = re.compile(r"\$([^$]+)\$")
+HIGHLIGHT_COLOR_XML = "FFFF00"
 
 
 @dataclass(frozen=True)
@@ -386,13 +388,13 @@ def _column_chars_per_line(table) -> tuple[int, ...]:
 
 
 def _row_is_heavy(values: list[str]) -> bool:
-    return any(len(_sanitize_cell_text(value)) > LONG_CELL_CHARS for value in values[2:4])
+    return any(len(_display_cell_text(value)) > LONG_CELL_CHARS for value in values[2:4])
 
 
 def _estimate_row_height(values: list[str], col_chars_per_line: tuple[int, ...]) -> int:
     max_lines = 1
     for index, text in enumerate(values):
-        cleaned = _sanitize_cell_text(text)
+        cleaned = _display_cell_text(text)
         if not cleaned:
             continue
         chars_per_line = col_chars_per_line[index] if index < len(col_chars_per_line) else 40
@@ -526,6 +528,27 @@ def _sanitize_cell_text(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _display_cell_text(text: str) -> str:
+    """Текст без маркеров $...$ — для оценки высоты строки."""
+    cleaned = _sanitize_cell_text(text)
+    return _HIGHLIGHT_PATTERN.sub(r"\1", cleaned)
+
+
+def _split_highlight_segments(text: str) -> list[tuple[str, bool]]:
+    segments: list[tuple[str, bool]] = []
+    last = 0
+    for match in _HIGHLIGHT_PATTERN.finditer(text):
+        if match.start() > last:
+            segments.append((text[last : match.start()], False))
+        segments.append((match.group(1), True))
+        last = match.end()
+    if last < len(text):
+        segments.append((text[last:], False))
+    if not segments:
+        segments.append((text, False))
+    return segments
+
+
 def _set_xml_solid_black(rpr_element) -> None:
     for child in list(rpr_element):
         if child.tag == qn("a:solidFill"):
@@ -533,6 +556,20 @@ def _set_xml_solid_black(rpr_element) -> None:
     rpr_element.insert(
         0,
         parse_xml(f'<a:solidFill xmlns:a="{A_NS}"><a:srgbClr val="000000"/></a:solidFill>'),
+    )
+
+
+def _set_run_highlight(run) -> None:
+    r_pr = run._r.get_or_add_rPr()
+    for child in list(r_pr):
+        if child.tag == qn("a:highlight"):
+            r_pr.remove(child)
+    r_pr.insert(
+        0,
+        parse_xml(
+            f'<a:highlight xmlns:a="{A_NS}">'
+            f'<a:srgbClr val="{HIGHLIGHT_COLOR_XML}"/></a:highlight>'
+        ),
     )
 
 
@@ -764,15 +801,11 @@ def _replace_cell_text(cell, text: str, *, col_index: int) -> None:
     value = _sanitize_cell_text(text)
     font_size, font_sz_xml = _cell_font_size(col_index, value)
     _reset_table_cell(cell)
-    cell.text = value
     frame = cell.text_frame
-    _apply_table_cell_frame_style(
-        frame,
-        font_name=TABLE_FONT_NAME,
-        font_size=font_size,
-        col_index=col_index,
-    )
-    for paragraph in frame.paragraphs:
+    lines = value.split("\n") if value else []
+
+    for line_index, line in enumerate(lines or [""]):
+        paragraph = frame.paragraphs[0] if line_index == 0 else frame.add_paragraph()
         paragraph.alignment = PP_ALIGN.LEFT
         paragraph.space_after = Pt(0)
         paragraph.space_before = Pt(0)
@@ -784,8 +817,21 @@ def _replace_cell_text(cell, text: str, *, col_index: int) -> None:
             size=font_size,
             bold=False,
         )
-        for run in paragraph.runs:
+        for segment_text, highlighted in _split_highlight_segments(line):
+            if not segment_text:
+                continue
+            run = paragraph.add_run()
+            run.text = segment_text
             _set_run_font(run, name=TABLE_FONT_NAME, size=font_size, bold=False)
+            if highlighted:
+                _set_run_highlight(run)
+
+    _apply_table_cell_frame_style(
+        frame,
+        font_name=TABLE_FONT_NAME,
+        font_size=font_size,
+        col_index=col_index,
+    )
     _normalize_tx_body_element(
         frame._txBody,
         font_name=TABLE_FONT_NAME,
