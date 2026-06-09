@@ -43,7 +43,7 @@ export default function ProductStatusB2B() {
   const [data, setData] = useState<ProductStatusData | null>(null)
   const [sheets, setSheets] = useState<ProductStatusSheet[]>([])
   const [activeGid, setActiveGid] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [exportingPresentation, setExportingPresentation] = useState(false)
   const [exportingExcel, setExportingExcel] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -269,6 +269,8 @@ export default function ProductStatusB2B() {
                   ))}
                 </tbody>
               </table>
+            ) : loading ? (
+              <div className="table-empty">Загрузка…</div>
             ) : (
               <div className="table-empty">Нет данных в таблице.</div>
             )}
