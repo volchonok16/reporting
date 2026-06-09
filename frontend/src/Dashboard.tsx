@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type KeyboardEvent } from 'react'
 import { apiFetch, clearSessionId, getJson } from './api'
 
 const ALL_BOARDS = 'all'
@@ -61,6 +61,8 @@ type ChangeRequest = {
   plannedRelease?: string | null
   boardName?: string | null
   boardCode?: string | null
+  customerName?: string | null
+  businessGoal?: string | null
   ectResourceReservation?: boolean
   errors: LinkedError[]
 }
@@ -94,6 +96,14 @@ function formatPlannedDate(item: ChangeRequest): string {
 
 function formatEctReservation(value?: boolean): string {
   return value ? 'ДА' : 'НЕТ'
+}
+
+function itemRowKey(item: ChangeRequest): string {
+  return `${item.boardCode ?? item.boardName ?? ''}-${item.number}`
+}
+
+function tableColumnCount(allBoards: boolean): number {
+  return allBoards ? 11 : 10
 }
 
 type MetricFilter = '' | 'launching_soon' | 'launched' | 'errors'
@@ -135,6 +145,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const [exporting, setExporting] = useState(false)
   const [syncProgress, setSyncProgress] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set())
 
   useEffect(() => {
     void getJson<Board[]>('/api/boards')
@@ -171,6 +182,25 @@ export default function Dashboard({ onLogout }: DashboardProps) {
 
   const toggleMetricFilter = (value: MetricFilter) => {
     setMetricFilter((current) => (current === value ? '' : value))
+  }
+
+  const toggleExpanded = (key: string) => {
+    setExpandedKeys((current) => {
+      const next = new Set(current)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }
+
+  const handleExpandKeyDown = (event: KeyboardEvent<HTMLButtonElement>, key: string) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      toggleExpanded(key)
+    }
   }
 
   useEffect(() => {
@@ -450,69 +480,104 @@ export default function Dashboard({ onLogout }: DashboardProps) {
           <div className="table-scroll">
             <table className={`zni-table${data?.allBoards ? ' zni-table-all' : ''}`}>
               <colgroup>
+                <col className="col-expand" />
                 <col className="col-id" />
                 {data?.allBoards && <col className="col-board" />}
                 <col className="col-title" />
+                <col className="col-customer" />
                 <col className="col-date" />
                 <col className="col-date" />
                 <col className="col-date" />
                 <col className="col-quarter" />
-                <col className="col-release" />
                 <col className="col-reservation" />
                 <col className="col-status" />
               </colgroup>
               <thead>
                 <tr>
+                  <th aria-label="Подробнее" />
                   <th>Номер ЗНИ</th>
                   {data?.allBoards && <th>Доска</th>}
                   <th>ЗНИ</th>
+                  <th>Заказчик</th>
                   <th>Дата начала</th>
                   <th>Целевая дата</th>
                   <th>План. дата</th>
                   <th>План квартала</th>
-                  <th>План. релиз</th>
                   <th title="Бронь ресурса ЕЦТ">Бронь ЕЦТ</th>
                   <th>Статус</th>
                 </tr>
               </thead>
               <tbody>
-                {data?.items.map((item) => (
-                  <tr key={`${item.boardName ?? ''}-${item.number}`}>
-                    <td className="cell-number">
-                      {item.url ? (
-                        <a className="zni-link" href={item.url} target="_blank" rel="noreferrer">
-                          {item.number}
-                        </a>
-                      ) : (
-                        item.number
+                {data?.items.flatMap((item) => {
+                  const key = itemRowKey(item)
+                  const expanded = expandedKeys.has(key)
+                  const hasDetails = Boolean(item.businessGoal?.trim())
+                  const colCount = tableColumnCount(Boolean(data.allBoards))
+                  const rows = [
+                    <tr key={key} className={expanded ? 'zni-table-row-expanded' : undefined}>
+                      <td className="cell-expand">
+                        {hasDetails ? (
+                          <button
+                            type="button"
+                            className="row-expand-btn"
+                            aria-expanded={expanded}
+                            aria-label={expanded ? 'Скрыть цель доработки' : 'Показать цель доработки'}
+                            onClick={() => toggleExpanded(key)}
+                            onKeyDown={(event) => handleExpandKeyDown(event, key)}
+                          >
+                            {expanded ? '▼' : '▶'}
+                          </button>
+                        ) : null}
+                      </td>
+                      <td className="cell-number">
+                        {item.url ? (
+                          <a className="zni-link" href={item.url} target="_blank" rel="noreferrer">
+                            {item.number}
+                          </a>
+                        ) : (
+                          item.number
+                        )}
+                      </td>
+                      {data.allBoards && (
+                        <td className="cell-board">{boardNameLabel(item.boardName, item.boardCode)}</td>
                       )}
-                    </td>
-                    {data.allBoards && (
-                      <td className="cell-board">{boardNameLabel(item.boardName, item.boardCode)}</td>
-                    )}
-                    <td className="cell-title" title={item.title}>
-                      {item.title}
-                    </td>
-                    <td className="cell-date">{formatDate(item.startDate)}</td>
-                    <td className="cell-date">{formatDate(item.releaseDate)}</td>
-                    <td className="cell-date">{formatPlannedDate(item)}</td>
-                    <td className="cell-quarter">{item.planQuarter || '—'}</td>
-                    <td className="cell-release" title={item.plannedRelease || undefined}>
-                      {item.plannedRelease || '—'}
-                    </td>
-                    <td
-                      className={`cell-reservation${item.ectResourceReservation ? ' cell-reservation-yes' : ' cell-reservation-no'}`}
-                    >
-                      {formatEctReservation(item.ectResourceReservation)}
-                    </td>
-                    <td className="cell-status">
-                      <span className="status-board">{item.boardColumn || item.status || '—'}</span>
-                      {item.boardColumn && item.status && item.boardColumn !== item.status && (
-                        <span className="status-workflow">{item.status}</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                      <td className="cell-title" title={item.title}>
+                        {item.title}
+                      </td>
+                      <td className="cell-customer" title={item.customerName || undefined}>
+                        {item.customerName || '—'}
+                      </td>
+                      <td className="cell-date">{formatDate(item.startDate)}</td>
+                      <td className="cell-date">{formatDate(item.releaseDate)}</td>
+                      <td className="cell-date">{formatPlannedDate(item)}</td>
+                      <td className="cell-quarter">{item.planQuarter || '—'}</td>
+                      <td
+                        className={`cell-reservation${item.ectResourceReservation ? ' cell-reservation-yes' : ' cell-reservation-no'}`}
+                      >
+                        {formatEctReservation(item.ectResourceReservation)}
+                      </td>
+                      <td className="cell-status">
+                        <span className="status-board">{item.boardColumn || item.status || '—'}</span>
+                        {item.boardColumn && item.status && item.boardColumn !== item.status && (
+                          <span className="status-workflow">{item.status}</span>
+                        )}
+                      </td>
+                    </tr>,
+                  ]
+                  if (expanded && item.businessGoal) {
+                    rows.push(
+                      <tr key={`${key}-details`} className="zni-table-detail-row">
+                        <td colSpan={colCount}>
+                          <div className="zni-detail-panel">
+                            <div className="zni-detail-label">Цель и бизнес-смысл доработки</div>
+                            <div className="zni-detail-text">{item.businessGoal}</div>
+                          </div>
+                        </td>
+                      </tr>,
+                    )
+                  }
+                  return rows
+                })}
               </tbody>
             </table>
             {!loading && data?.items.length === 0 && (

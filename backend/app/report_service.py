@@ -52,6 +52,16 @@ def _ect_resource_reservation(task: Task) -> bool:
     return value is True
 
 
+def _customer_name(task: Task) -> str | None:
+    value = _extra(task).get("customer_name")
+    return str(value).strip() if value else None
+
+
+def _business_goal(task: Task) -> str | None:
+    value = _extra(task).get("business_goal")
+    return str(value).strip() if value else None
+
+
 def _board_column(task: Task) -> str | None:
     value = _extra(task).get("board_column")
     return str(value).strip() if value else None
@@ -299,6 +309,8 @@ def load_change_requests(
                 createdAt=row.created_at,
                 boardCode=str(board_code_value) if board_code_value else None,
                 boardName=row.source_team or _board_name_by_code(str(board_code_value) if board_code_value else None),
+                customerName=_customer_name(row),
+                businessGoal=_business_goal(row),
                 ectResourceReservation=_ect_resource_reservation(row),
                 errors=[
                     LinkedErrorOut(

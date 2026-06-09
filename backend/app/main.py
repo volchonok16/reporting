@@ -13,6 +13,7 @@ from app.config import settings
 from app.db import ensure_auth_session_table, get_db
 from app.models import SyncRun
 from app.product_status_service import load_b2b_product_status
+from app.product_status_excel import generate_b2b_product_status_excel
 from app.product_status_presentation import generate_b2b_product_status_presentation
 from app.report_service import export_csv, load_change_requests
 from app.schemas import (
@@ -166,6 +167,26 @@ def product_status_b2b_presentation() -> Response:
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/product-status/b2b/excel")
+def product_status_b2b_excel() -> Response:
+    content, filename = generate_b2b_product_status_excel(load_b2b_product_status())
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/api/product-status/b2b/excel")
+def product_status_b2b_excel_from_payload(payload: ProductStatusB2BOut) -> Response:
+    content, filename = generate_b2b_product_status_excel(payload)
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 

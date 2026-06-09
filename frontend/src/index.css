@@ -388,14 +388,18 @@ body {
 
 .zni-table {
   width: 100%;
-  min-width: 1180px;
+  min-width: 1160px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
 }
 
 .zni-table-all {
-  min-width: 1320px;
+  min-width: 1280px;
+}
+
+.zni-table col.col-expand {
+  width: 36px;
 }
 
 .zni-table col.col-id {
@@ -407,7 +411,11 @@ body {
 }
 
 .zni-table col.col-title {
-  width: 34%;
+  width: 28%;
+}
+
+.zni-table col.col-customer {
+  width: 132px;
 }
 
 .zni-table col.col-date {
@@ -416,10 +424,6 @@ body {
 
 .zni-table col.col-quarter {
   width: 88px;
-}
-
-.zni-table col.col-release {
-  width: 128px;
 }
 
 .zni-table col.col-reservation {
@@ -459,8 +463,71 @@ body {
   background: #f9fafb;
 }
 
+.zni-table tbody tr.zni-table-row-expanded td {
+  background: #f5f8fc;
+}
+
+.zni-table tbody tr.zni-table-detail-row td {
+  padding: 0 12px 12px;
+  background: #f5f8fc;
+  border-bottom: 1px solid #e5e7eb;
+}
+
 .zni-table tbody tr:last-child td {
   border-bottom: none;
+}
+
+.cell-expand {
+  text-align: center;
+  vertical-align: top;
+  padding-top: 12px;
+}
+
+.row-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: #555;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.row-expand-btn:hover {
+  background: var(--t2-lime-soft);
+  border-color: var(--t2-lime-border);
+  color: #222;
+}
+
+.zni-detail-panel {
+  margin: 0 0 4px 36px;
+  padding: 12px 14px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.zni-detail-label {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #1d4ed8;
+}
+
+.zni-detail-text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: #333;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .table-meta {
@@ -521,6 +588,80 @@ body {
   word-break: break-word;
 }
 
+.cell-customer {
+  font-size: 13px;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cell-expand {
+  padding: 10px 4px;
+  text-align: center;
+  vertical-align: top;
+}
+
+.row-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: #555;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.row-expand-btn:hover {
+  background: #f3f5f7;
+  color: #222;
+}
+
+.row-expand-btn:focus-visible {
+  outline: 2px solid #7eb8ff;
+  outline-offset: 1px;
+}
+
+.zni-table-row-expanded td {
+  background: #f6f8fa;
+}
+
+.zni-table-detail-row td {
+  padding: 0 12px 12px;
+  border-bottom: 1px solid #eee;
+  background: #f6f8fa;
+}
+
+.zni-detail-panel {
+  margin: 0 0 4px 36px;
+  padding: 12px 14px;
+  border: 1px solid #e2e6ea;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.zni-detail-label {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+}
+
+.zni-detail-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #222;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .cell-date {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
@@ -532,13 +673,6 @@ body {
   font-size: 13px;
   color: #444;
   white-space: nowrap;
-}
-
-.cell-release {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #444;
 }
 
 .cell-reservation {
@@ -712,6 +846,40 @@ body {
 .product-status-multiline {
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.product-status-cell-input {
+  display: block;
+  width: 100%;
+  min-height: 2.4em;
+  margin: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  resize: vertical;
+  white-space: pre-wrap;
+  word-break: break-word;
+  field-sizing: content;
+}
+
+.product-status-cell-input:hover {
+  border-color: #d8dee8;
+  background: #fafbfc;
+}
+
+.product-status-cell-input:focus {
+  outline: none;
+  border-color: #9db7e8;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(29, 95, 191, 0.12);
+}
+
+.product-status-table td.cell-project .product-status-cell-input {
+  font-weight: 600;
 }
 
 .cell-project {

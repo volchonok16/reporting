@@ -15,6 +15,7 @@ from app.iteration_plan import parse_iteration_plan
 from app.release_fields import work_item_planned_release
 from app.linked_errors import is_error_work_item_type
 from app.resource_reservation import compute_ect_resource_reservation
+from app.zni_description import extract_business_goal_from_description, tfs_identity_display_name
 from app.models import Project, SourceSystem, SyncRun, Task, Team
 from app.tfs_client import TfsClient, date_from_field_list, parse_tfs_datetime
 
@@ -326,6 +327,14 @@ async def sync_board(
             planned_release = work_item_planned_release(fields)
             if planned_release:
                 extra_json["planned_release"] = planned_release
+
+            customer_name = tfs_identity_display_name(fields.get("Logrocon.PO"))
+            if customer_name:
+                extra_json["customer_name"] = customer_name
+
+            business_goal = extract_business_goal_from_description(fields.get("System.Description"))
+            if business_goal:
+                extra_json["business_goal"] = business_goal
 
             if settings.tfs_fetch_pilot_history:
                 existing = db.scalar(

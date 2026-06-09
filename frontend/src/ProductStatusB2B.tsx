@@ -16,15 +16,35 @@ type ProductStatusData = {
   sheets: ProductStatusSheet[]
 }
 
-function cellText(value: string | undefined): string {
-  return (value ?? '').trim() || '—'
+function cloneSheets(sheets: ProductStatusSheet[]): ProductStatusSheet[] {
+  return sheets.map((sheet) => ({
+    ...sheet,
+    columns: [...sheet.columns],
+    rows: sheet.rows.map((row) => ({ ...row })),
+  }))
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+function filenameFromDisposition(disposition: string, fallback: string): string {
+  const match = disposition.match(/filename="([^"]+)"/)
+  return match?.[1] ?? fallback
 }
 
 export default function ProductStatusB2B() {
   const [data, setData] = useState<ProductStatusData | null>(null)
+  const [sheets, setSheets] = useState<ProductStatusSheet[]>([])
   const [activeGid, setActiveGid] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [exporting, setExporting] = useState(false)
+  const [exportingPresentation, setExportingPresentation] = useState(false)
+  const [exportingExcel, setExportingExcel] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
@@ -33,6 +53,7 @@ export default function ProductStatusB2B() {
     try {
       const payload = await getJson<ProductStatusData>('/api/product-status/b2b')
       setData(payload)
+      setSheets(cloneSheets(payload.sheets))
       setActiveGid((current) => {
         if (current && payload.sheets.some((sheet) => sheet.gid === current)) {
           return current
@@ -47,7 +68,7 @@ export default function ProductStatusB2B() {
   }, [])
 
   const handleExportPresentation = useCallback(async () => {
-    setExporting(true)
+    setExportingPresentation(true)
     setError(null)
     try {
       const response = await apiFetch('/api/product-status/b2b/presentation')
@@ -55,20 +76,62 @@ export default function ProductStatusB2B() {
         throw new Error(await readApiError(response))
       }
       const blob = await response.blob()
-      const disposition = response.headers.get('Content-Disposition') ?? ''
-      const match = disposition.match(/filename="([^"]+)"/)
-      const filename = match?.[1] ?? 'status-produkta-b2b.pptx'
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = filename
-      link.click()
-      URL.revokeObjectURL(url)
+      downloadBlob(
+        blob,
+        filenameFromDisposition(response.headers.get('Content-Disposition') ?? '', 'status-produkta-b2b.pptx'),
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка выгрузки презентации')
     } finally {
-      setExporting(false)
+      setExportingPresentation(false)
     }
+  }, [])
+
+  const handleExportExcel = useCallback(async () => {
+    if (sheets.length === 0) {
+      return
+    }
+    setExportingExcel(true)
+    setError(null)
+    try {
+      const payload: ProductStatusData = {
+        title: data?.title ?? 'Статус продукта B2B',
+        sourceUrl: data?.sourceUrl,
+        presentationReferenceUrl: data?.presentationReferenceUrl,
+        sheets,
+      }
+      const response = await apiFetch('/api/product-status/b2b/excel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!response.ok) {
+        throw new Error(await readApiError(response))
+      }
+      const blob = await response.blob()
+      downloadBlob(
+        blob,
+        filenameFromDisposition(response.headers.get('Content-Disposition') ?? '', 'status-produkta-b2b.xlsx'),
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка выгрузки Excel')
+    } finally {
+      setExportingExcel(false)
+    }
+  }, [data, sheets])
+
+  const updateCell = useCallback((gid: string, rowIndex: number, column: string, value: string) => {
+    setSheets((current) =>
+      current.map((sheet) => {
+        if (sheet.gid !== gid) {
+          return sheet
+        }
+        const rows = sheet.rows.map((row, index) =>
+          index === rowIndex ? { ...row, [column]: value } : row,
+        )
+        return { ...sheet, rows }
+      }),
+    )
   }, [])
 
   useEffect(() => {
@@ -76,9 +139,11 @@ export default function ProductStatusB2B() {
   }, [loadData])
 
   const activeSheet = useMemo(
-    () => data?.sheets.find((sheet) => sheet.gid === activeGid) ?? data?.sheets[0] ?? null,
-    [activeGid, data],
+    () => sheets.find((sheet) => sheet.gid === activeGid) ?? sheets[0] ?? null,
+    [activeGid, sheets],
   )
+
+  const exporting = exportingPresentation || exportingExcel
 
   return (
     <div className="product-status">
@@ -86,7 +151,7 @@ export default function ProductStatusB2B() {
         <div className="product-status-toolbar-left">
           <h1 className="product-status-title">{data?.title ?? 'Статус продукта B2B'}</h1>
           <p className="product-status-subtitle">
-            Данные из Google Sheets
+            Данные из Google Sheets · ячейки можно править, изменения попадут в Excel
             {data?.sourceUrl ? (
               <>
                 {' · '}
@@ -114,10 +179,18 @@ export default function ProductStatusB2B() {
           <button
             type="button"
             className="btn-secondary"
-            onClick={() => void handleExportPresentation()}
-            disabled={loading || exporting || (data?.sheets.length ?? 0) === 0}
+            onClick={() => void handleExportExcel()}
+            disabled={loading || exporting || sheets.length === 0}
           >
-            {exporting ? 'Формирование…' : 'Скачать презентацию'}
+            {exportingExcel ? 'Формирование…' : 'Скачать Excel'}
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => void handleExportPresentation()}
+            disabled={loading || exporting || sheets.length === 0}
+          >
+            {exportingPresentation ? 'Формирование…' : 'Скачать презентацию'}
           </button>
           <button type="button" className="btn-secondary" onClick={() => void loadData()} disabled={loading}>
             {loading ? 'Загрузка…' : 'Обновить'}
@@ -125,9 +198,9 @@ export default function ProductStatusB2B() {
         </div>
       </header>
 
-      {(data?.sheets.length ?? 0) > 0 && (
+      {sheets.length > 0 && (
         <nav className="product-status-sheet-tabs" aria-label="Листы Google Sheets">
-          {data?.sheets.map((sheet) => (
+          {sheets.map((sheet) => (
             <button
               key={sheet.gid}
               type="button"
@@ -149,7 +222,7 @@ export default function ProductStatusB2B() {
         <p className="table-meta">
           {activeSheet ? (
             <>
-              Лист «{activeSheet.name}» · показано строк {activeSheet.totalShown}
+              Лист «{activeSheet.name}» · строк {activeSheet.rows.length}
             </>
           ) : (
             <>Показано строк 0</>
@@ -174,16 +247,24 @@ export default function ProductStatusB2B() {
                   </tr>
                 </thead>
                 <tbody>
-                  {activeSheet.rows.map((row, index) => (
-                    <tr key={`${activeSheet.gid}-${index}`}>
+                  {activeSheet.rows.map((row, rowIndex) => (
+                    <tr key={`${activeSheet.gid}-${rowIndex}`}>
                       {activeSheet.columns.map((column, columnIndex) => (
                         <td
-                          key={`${index}-${column}`}
+                          key={`${rowIndex}-${column}`}
                           className={
                             columnIndex === 1 ? 'cell-project product-status-multiline' : 'product-status-multiline'
                           }
                         >
-                          {cellText(row[column])}
+                          <textarea
+                            className="product-status-cell-input"
+                            value={row[column] ?? ''}
+                            rows={1}
+                            aria-label={column}
+                            onChange={(event) =>
+                              updateCell(activeSheet.gid, rowIndex, column, event.target.value)
+                            }
+                          />
                         </td>
                       ))}
                     </tr>

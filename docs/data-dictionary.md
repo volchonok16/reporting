@@ -62,6 +62,8 @@
 | planned_status | `tbd` / `date` | `tbd` — дата в плане неизвестна |
 | plan_quarter | из planned_date или `TBD` | Ключ квартала (`2026-Q3` или `TBD`) |
 | planned_release | Logrocon.FoundinRelease / Logrocon.Release | Плановый релиз (`2026.06.02.0-R` или имя релиза) |
+| customer_name | Logrocon.PO | Заказчик ЗНИ (ФИО) |
+| business_goal | System.Description | Текст от «Цель и бизнес-смысл доработки*» до «Ценность доработки/Ожидаемый эффект*» |
 | triage | Microsoft.VSTS.Common.Triage | Triage ЗНИ (для метрики «Скоро запуск» на BE Analytics) |
 | pilot_transitions | TFS updates | Переходы в «Пилот»: `[{at, status}]` |
 | ect_resource_reservation | WIQL WorkItemLinks (Related) | `true` / `false`: у ЗНИ есть Related на элемент «Бронь ресурсов» (колонка «Бронь ресурса ЕЦТ», `ДА` / `НЕТ`) |

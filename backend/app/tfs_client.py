@@ -302,6 +302,8 @@ class TfsClient:
                 "System.BoardColumn",
                 "System.IterationPath",
                 "System.Tags",
+                "System.Description",
+                "Logrocon.PO",
                 "Logrocon.FoundinRelease",
                 "Logrocon.Release",
                 "Microsoft.VSTS.Scheduling.Plannedreleasedate",
