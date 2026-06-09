@@ -39,4 +39,4 @@ def test_extract_business_goal_without_end_section() -> None:
         "<b>Детальные требования к изменению*</b><br><div>Требования.</div>"
     )
     result = extract_business_goal_from_description(html)
-    assert result == "Только цель.\n\nДетальные требования к изменению\nТребования."
+    assert result == "Только цель.\n\nДетальные требования к изменению\n\nТребования."

@@ -48,8 +48,12 @@ def _normalize_header(header: str) -> str:
 def _html_to_text(fragment: str) -> str:
     if not fragment:
         return ""
-    text = re.sub(r"<br\s*/?>", "\n", fragment, flags=re.IGNORECASE)
-    text = re.sub(r"</div>", "\n", text, flags=re.IGNORECASE)
+    text = fragment
+    text = re.sub(r"(?:<br\s*/?>\s*){2,}", "\n\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"</p>", "\n\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"</div>", "\n\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"</li>", "\n", text, flags=re.IGNORECASE)
     text = re.sub(r"<[^>]+>", "", text)
     text = unescape(text)
     text = text.replace("\xa0", " ")
@@ -96,7 +100,7 @@ def extract_business_goal_from_description(html: str | None) -> str | None:
             if _START_SECTION_RE.match(normalized):
                 blocks.append(body)
             else:
-                blocks.append(f"{clean_header}\n{body}")
+                blocks.append(f"{clean_header}\n\n{body}")
 
     if not blocks:
         return None

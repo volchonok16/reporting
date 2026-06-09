@@ -95,8 +95,36 @@ function formatPlannedDate(item: ChangeRequest): string {
   return formatDate(item.plannedDate)
 }
 
-function formatEctReservation(value?: boolean): string {
-  return value ? 'ДА' : 'НЕТ'
+function businessGoalParagraphs(text: string): string[] {
+  const paragraphs: string[] = []
+  let current: string[] = []
+  for (const line of text.split('\n')) {
+    if (line.trim() === '') {
+      if (current.length > 0) {
+        paragraphs.push(current.join('\n'))
+        current = []
+      }
+    } else {
+      current.push(line)
+    }
+  }
+  if (current.length > 0) {
+    paragraphs.push(current.join('\n'))
+  }
+  return paragraphs.length > 0 ? paragraphs : [text]
+}
+
+function BusinessGoalText({ text }: { text: string }) {
+  const paragraphs = businessGoalParagraphs(text)
+  return (
+    <div className="zni-detail-text">
+      {paragraphs.map((paragraph, index) => (
+        <p key={index} className="zni-detail-paragraph">
+          {paragraph}
+        </p>
+      ))}
+    </div>
+  )
 }
 
 function customerNameParts(name?: string | null): string[] {
@@ -109,7 +137,7 @@ function itemRowKey(item: ChangeRequest): string {
 }
 
 function tableColumnCount(allBoards: boolean): number {
-  return allBoards ? 11 : 10
+  return allBoards ? 9 : 8
 }
 
 type MetricFilter = '' | 'launching_soon' | 'launched' | 'completed' | 'errors'
@@ -513,8 +541,6 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                 <col className="col-title" />
                 <col className="col-customer" />
                 <col className="col-date" />
-                <col className="col-date" />
-                <col className="col-date" />
                 <col className="col-quarter" />
                 <col className="col-reservation" />
                 <col className="col-status" />
@@ -526,8 +552,6 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                   {data?.allBoards && <th>Доска</th>}
                   <th>ЗНИ</th>
                   <th>Заказчик</th>
-                  <th>Дата начала</th>
-                  <th>Целевая дата</th>
                   <th>План. дата</th>
                   <th>План квартала</th>
                   <th title="Бронь ресурса ЕЦТ">Бронь ЕЦТ</th>
@@ -583,8 +607,6 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                           '—'
                         )}
                       </td>
-                      <td className="cell-date">{formatDate(item.startDate)}</td>
-                      <td className="cell-date">{formatDate(item.releaseDate)}</td>
                       <td className="cell-date">{formatPlannedDate(item)}</td>
                       <td className="cell-quarter">{item.planQuarter || '—'}</td>
                       <td
@@ -606,7 +628,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                         <td colSpan={colCount}>
                           <div className="zni-detail-panel">
                             <div className="zni-detail-label">Цель и бизнес-смысл доработки</div>
-                            <div className="zni-detail-text">{item.businessGoal}</div>
+                            <BusinessGoalText text={item.businessGoal} />
                           </div>
                         </td>
                       </tr>,

@@ -536,8 +536,17 @@ body {
   font-size: 13px;
   line-height: 1.55;
   color: #333;
+}
+
+.zni-detail-paragraph {
+  margin: 0;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.zni-detail-paragraph + .zni-detail-paragraph {
+  margin-top: 0.75em;
 }
 
 .table-meta {
@@ -673,15 +682,6 @@ body {
   font-size: 12px;
   font-weight: 600;
   color: #555;
-}
-
-.zni-detail-text {
-  font-size: 13px;
-  line-height: 1.5;
-  color: #222;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
 }
 
 .cell-date {
