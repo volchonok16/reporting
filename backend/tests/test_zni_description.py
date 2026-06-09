@@ -136,3 +136,35 @@ def test_extract_business_goal_self_employed_page_case() -> None:
     assert "удаление страницы" in result_html
     assert "2026г" in result_html
     assert "снижение нагрузки" not in result_html
+
+
+def test_extract_business_goal_cybersecurity_lk_b2b_case() -> None:
+    plain = (
+        "Текущая реализация*\nНет\n\n"
+        "Цель и бизнес-смысл доработки* \n"
+        "Предоставить возможность подключить услугу в рамках ЛК B2B\n\n"
+        "Наличие фиксированной даты запуска:\n06.05.2026 0:00\n\n"
+        "Детальные требования к изменению*\nНеобходимо создать карточку услуги"
+    )
+    result = extract_business_goal_from_description(plain)
+    assert result == "Предоставить возможность подключить услугу в рамках ЛК B2B"
+
+    html = (
+        "<div><b>Текущая реализация*</b></div><div>Нет</div>"
+        "<div><b>Цель и бизнес-смысл доработки*</b></div><div><br></div>"
+        "<div>Предоставить возможность подключить услугу в рамках ЛК B2B</div>"
+        "<div><b>Наличие фиксированной даты запуска:</b></div><div>06.05.2026 0:00</div>"
+        "<div><b>Детальные требования к изменению*</b></div><div>Необходимо создать карточку</div>"
+    )
+    result_html = extract_business_goal_from_description(html)
+    assert result_html == "Предоставить возможность подключить услугу в рамках ЛК B2B"
+
+    html_span = (
+        '<span style="font-weight: bold;">Цель и бизнес-смысл доработки*</span><br><br>'
+        "Предоставить возможность подключить услугу в рамках ЛК B2B<br><br>"
+        "<b>Наличие фиксированной даты запуска:</b><br>06.05.2026 0:00"
+    )
+    assert (
+        extract_business_goal_from_description(html_span)
+        == "Предоставить возможность подключить услугу в рамках ЛК B2B"
+    )

@@ -24,6 +24,11 @@ _GOAL_INLINE_AFTER_HEADER_RE = re.compile(
     r"^цель\s+и\s+бизнес[-\s]*смысл\s+доработки\s*\*?\s*(.*)$",
     re.IGNORECASE | re.DOTALL,
 )
+_TEMPLATE_FIELD_STOP = (
+    r"наличие\s+фиксированной\s+даты\s+запуска"
+    r"|логирование\s+и\s+отчетность"
+    r"|область\s+изменений"
+)
 # Следующие секции шаблона ЗНИ — иногда без <b>, только текст после <br>/<div>.
 _FOLLOWING_SECTION_RE = re.compile(
     r"(?:"
@@ -31,6 +36,7 @@ _FOLLOWING_SECTION_RE = re.compile(
     r"детальные\s+требования\s+к\s+изменению"
     r"|ценность\s+доработки"
     r"|use-cases\s*\("
+    rf"|{_TEMPLATE_FIELD_STOP}"
     r")"
     r"|(?:^|[\n\r]|(?:<br\s*/?>\s*)+|(?:</div>\s*)+|<div[^>]*>\s*)+"
     r"(?:<[^>]+>\s*)*"
@@ -38,6 +44,7 @@ _FOLLOWING_SECTION_RE = re.compile(
     r"детальные\s+требования\s+к\s+изменению"
     r"|ценность\s+доработки(?:/ожидаемый\s+эффект)?"
     r"|use-cases\s*\("
+    rf"|{_TEMPLATE_FIELD_STOP}"
     r")"
     r")",
     re.IGNORECASE | re.DOTALL,
@@ -48,11 +55,13 @@ _FOLLOWING_SECTION_TEXT_RE = re.compile(
     r"детальные\s+требования\s+к\s+изменению"
     r"|ценность\s+доработки(?:/ожидаемый\s+эффект)?"
     r"|use-cases\s*\("
+    rf"|{_TEMPLATE_FIELD_STOP}"
     r")"
     r"|\s+(?:"
     r"детальные\s+требования\s+к\s+изменению\s*\*"
     r"|ценность\s+доработки(?:/ожидаемый\s+эффект)?\s*\*"
     r"|use-cases\s*\("
+    rf"|{_TEMPLATE_FIELD_STOP}\s*:?"
     r"))",
     re.IGNORECASE,
 )
@@ -78,6 +87,31 @@ def tfs_identity_display_name(value: Any) -> str | None:
     if "<" in text:
         text = text.split("<", 1)[0].strip()
     return text or None
+
+
+def _normalize_description_html(html: str) -> str:
+    text = html.replace("\xa0", " ").replace("\uff0a", "*")
+    text = re.sub(
+        r"<span([^>]*font-weight\s*:\s*(?:bold|700)[^>]*)>(.*?)</span>",
+        r"<strong>\2</strong>",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    return text
+
+
+def _strip_leading_empty_html(fragment: str) -> str:
+    text = fragment
+    empty_prefix = re.compile(
+        r"^\s*(?:<br\s*/?>\s*|<div[^>]*>\s*(?:<br\s*/?>\s*|&nbsp;|\s)*</div>\s*|</div>\s*)+",
+        re.IGNORECASE,
+    )
+    while True:
+        stripped = empty_prefix.sub("", text, count=1)
+        if stripped == text:
+            break
+        text = stripped
+    return text
 
 
 def _normalize_header(header: str) -> str:
@@ -132,7 +166,7 @@ def _combine_goal_parts(header: str, body: str) -> str:
     inline = _goal_inline_from_header(header)
     if inline:
         parts.append(inline)
-    body_text = body.strip()
+    body_text = _strip_leading_empty_html(body).strip()
     if body_text:
         parts.append(body_text)
     return "\n\n".join(parts)
@@ -161,17 +195,22 @@ def extract_business_goal_from_description(html: str | None) -> str | None:
     if not html or not str(html).strip():
         return None
 
-    content = str(html)
+    content = _normalize_description_html(str(html))
 
     for match in _SECTION_HEADER_RE.finditer(content):
         header = unescape(re.sub(r"<[^>]+>", "", match.group(1))).strip()
-        if _START_SECTION_RE.match(_normalize_header(header)):
-            combined = _combine_goal_parts(header, match.group(2))
-            if combined:
-                return _finalize_goal_text(combined)
-            return None
+        if not _START_SECTION_RE.match(_normalize_header(header)):
+            continue
+        combined = _combine_goal_parts(header, match.group(2))
+        if not combined.strip():
+            continue
+        result = _finalize_goal_text(combined)
+        if result:
+            return result
 
     for match in _PLAIN_GOAL_HEADER_RE.finditer(content):
-        return _finalize_goal_text(content[match.end() :])
+        result = _finalize_goal_text(content[match.end() :])
+        if result:
+            return result
 
     return None
