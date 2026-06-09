@@ -10,6 +10,7 @@
   --surface: #fff;
   --border: #e2e5ea;
   --text-muted: #5c6570;
+  --page-gutter: 12px;
 }
 
 * {
@@ -156,9 +157,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 10px 24px 0;
+  padding: 10px var(--page-gutter) 0;
 }
 
 .workbook-tab {
@@ -198,9 +197,10 @@ body {
 }
 
 .app {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 20px 24px 32px;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 12px var(--page-gutter) 20px;
 }
 
 .toolbar {
@@ -411,7 +411,7 @@ body {
 }
 
 .zni-table col.col-title {
-  width: 28%;
+  width: 32%;
 }
 
 .zni-table col.col-customer {
