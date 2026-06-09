@@ -431,11 +431,13 @@ def _set_run_font(
     name: str,
     size: Pt,
     bold: bool = False,
+    use_rgb_color: bool = True,
 ) -> None:
     run.font.name = name
     run.font.size = size
     run.font.bold = bold
-    run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
+    if use_rgb_color:
+        run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
 
 def _set_paragraph_font(
@@ -485,9 +487,14 @@ def _apply_table_cell_frame_style(
         paragraph.space_before = Pt(0)
         paragraph.level = 0
         paragraph.line_spacing = line_spacing
-        _set_paragraph_font(paragraph, name=font_name, size=font_size, bold=False)
         for run in paragraph.runs:
-            _set_run_font(run, name=font_name, size=font_size, bold=False)
+            _set_run_font(
+                run,
+                name=font_name,
+                size=font_size,
+                bold=False,
+                use_rgb_color=False,
+            )
 
 
 def _apply_text_frame_style(
@@ -559,6 +566,25 @@ def _set_xml_solid_black(rpr_element) -> None:
     )
 
 
+def _set_xml_theme_text(rpr_element) -> None:
+    for child in list(rpr_element):
+        if child.tag == qn("a:solidFill"):
+            rpr_element.remove(child)
+    rpr_element.insert(
+        0,
+        parse_xml(f'<a:solidFill xmlns:a="{A_NS}"><a:schemeClr val="tx1"/></a:solidFill>'),
+    )
+
+
+def _reset_paragraph_default_run_props(tx_body) -> None:
+    if tx_body is None:
+        return
+    for paragraph_props in tx_body.findall(".//" + qn("a:pPr")):
+        for default_props in list(paragraph_props.findall(qn("a:defRPr"))):
+            paragraph_props.remove(default_props)
+        paragraph_props.append(parse_xml(f'<a:defRPr xmlns:a="{A_NS}"/>'))
+
+
 def _set_run_highlight(run) -> None:
     r_pr = run._r.get_or_add_rPr()
     for child in list(r_pr):
@@ -621,7 +647,7 @@ def _reset_cell_tx_body(tc) -> None:
             f'<a:bodyPr wrap="square" anchor="t" lIns="38100" rIns="38100" '
             f'tIns="38100" bIns="38100"/>'
             f"<a:lstStyle/>"
-            f'<a:p><a:pPr algn="l" lvl="0"><a:buNone/></a:pPr>'
+            f'<a:p><a:pPr algn="l" lvl="0"><a:buNone/><a:defRPr/></a:pPr>'
             f'<a:endParaRPr lang="ru-RU"/></a:p>'
             f"</a:txBody>"
         )
@@ -678,14 +704,16 @@ def _normalize_tx_body_element(
             for spacing_node in paragraph_props.findall(qn(f"a:{spacing_tag}")):
                 paragraph_props.remove(spacing_node)
 
-    for prop_tag in ("a:rPr", "a:endParaRPr", "a:defRPr"):
+    for prop_tag in ("a:rPr", "a:endParaRPr"):
         for props in tx_body.findall(".//" + qn(prop_tag)):
             props.set("sz", font_sz)
             props.set("dirty", "0")
             props.attrib.pop("b", None)
             props.attrib.pop("i", None)
             _set_xml_latin_typeface(props, font_name)
-            _set_xml_solid_black(props)
+            _set_xml_theme_text(props)
+
+    _reset_paragraph_default_run_props(tx_body)
 
 
 def _normalize_table_cells_xml(table) -> None:
@@ -817,7 +845,13 @@ def _fill_cell_highlighted_text(
                 continue
             run = paragraph.add_run()
             run.text = segment_text
-            _set_run_font(run, name=TABLE_FONT_NAME, size=font_size, bold=False)
+            _set_run_font(
+                run,
+                name=TABLE_FONT_NAME,
+                size=font_size,
+                bold=False,
+                use_rgb_color=False,
+            )
             if highlighted:
                 _set_run_highlight(run)
 
@@ -851,14 +885,14 @@ def _replace_cell_text(cell, text: str, *, col_index: int) -> None:
         paragraph.space_before = Pt(0)
         paragraph.level = 0
         paragraph.line_spacing = _cell_line_spacing(col_index)
-        _set_paragraph_font(
-            paragraph,
-            name=TABLE_FONT_NAME,
-            size=font_size,
-            bold=False,
-        )
         for run in paragraph.runs:
-            _set_run_font(run, name=TABLE_FONT_NAME, size=font_size, bold=False)
+            _set_run_font(
+                run,
+                name=TABLE_FONT_NAME,
+                size=font_size,
+                bold=False,
+                use_rgb_color=False,
+            )
     _normalize_tx_body_element(
         frame._txBody,
         font_name=TABLE_FONT_NAME,
@@ -900,18 +934,13 @@ def _normalize_table_fonts(table) -> None:
                 col_index=col_index,
             )
             for paragraph in frame.paragraphs:
-                _set_paragraph_font(
-                    paragraph,
-                    name=TABLE_FONT_NAME,
-                    size=font_size,
-                    bold=False,
-                )
                 for run in paragraph.runs:
                     _set_run_font(
                         run,
                         name=TABLE_FONT_NAME,
                         size=font_size,
                         bold=False,
+                        use_rgb_color=False,
                     )
     _normalize_table_cells_xml(table)
 
