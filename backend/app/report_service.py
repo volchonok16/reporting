@@ -154,10 +154,13 @@ def _board_name_by_code(code: str | None) -> str | None:
 
 
 def _collect_available_quarters(rows: list[Task]) -> list[QuarterOptionOut]:
+    current_year = date.today().year
     keys: set[str] = set()
     for row in rows:
         _, quarter_key, _, _ = _task_plan_meta(row)
-        if quarter_key:
+        if not quarter_key or quarter_key == PLAN_QUARTER_TBD:
+            continue
+        if quarter_key.startswith(f"{current_year}-Q"):
             keys.add(quarter_key)
     return [
         QuarterOptionOut(key=key, label=quarter_label_from_key(key))

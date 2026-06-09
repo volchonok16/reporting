@@ -462,7 +462,9 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             <span>План квартала</span>
             <select value={quarterFilter} onChange={(e) => setQuarterFilter(e.target.value)}>
               <option value="">Все кварталы</option>
-              {(data?.availableQuarters ?? []).map((quarter) => (
+              {(data?.availableQuarters ?? [])
+                .filter((quarter) => quarter.key !== 'TBD')
+                .map((quarter) => (
                 <option key={quarter.key} value={quarter.key}>
                   {quarter.label}
                 </option>
