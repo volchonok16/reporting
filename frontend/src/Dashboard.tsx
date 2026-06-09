@@ -95,6 +95,10 @@ function formatPlannedDate(item: ChangeRequest): string {
   return formatDate(item.plannedDate)
 }
 
+function formatEctReservation(value?: boolean): string {
+  return value ? 'ДА' : 'НЕТ'
+}
+
 function businessGoalParagraphs(text: string): string[] {
   const paragraphs: string[] = []
   let current: string[] = []
