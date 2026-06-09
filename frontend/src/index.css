@@ -643,14 +643,70 @@ body {
   color: #666;
 }
 
-.product-status-head,
-.product-status-row {
-  min-width: 720px;
+.product-status-table {
+  width: 100%;
+  min-width: 960px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
 }
 
-.product-status-cell {
-  font-size: 13px;
+.product-status-table col.col-launch {
+  width: 96px;
+}
+
+.product-status-table col.col-project {
+  width: 140px;
+}
+
+.product-status-table col.col-description {
+  width: 42%;
+}
+
+.product-status-table col.col-why {
+  width: 28%;
+}
+
+.product-status-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 10px 12px;
+  background: #f3f5f7;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+  color: #444;
+  text-align: left;
+  line-height: 1.35;
+  white-space: normal;
+  vertical-align: bottom;
+  box-shadow: 0 1px 0 var(--border);
+}
+
+.product-status-table tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #eee;
+  vertical-align: top;
   line-height: 1.45;
+}
+
+.product-status-table tbody td:nth-child(1),
+.product-status-table tbody td:nth-child(2),
+.product-status-table tbody td:nth-child(3) {
+  font-size: 10pt;
+}
+
+.product-status-table tbody td:nth-child(4) {
+  font-size: 8pt;
+}
+
+.product-status-table tbody tr:hover td {
+  background: #f9fafb;
+}
+
+.product-status-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .product-status-multiline {

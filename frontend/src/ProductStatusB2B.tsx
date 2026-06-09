@@ -159,43 +159,42 @@ export default function ProductStatusB2B() {
         <div className="table">
           <div className="table-scroll">
             {activeSheet && activeSheet.columns.length > 0 ? (
-              <>
-                <div
-                  className="table-head product-status-head"
-                  style={{
-                    gridTemplateColumns: `repeat(${activeSheet.columns.length}, minmax(120px, 1fr))`,
-                  }}
-                >
-                  {activeSheet.columns.map((column) => (
-                    <div key={column}>{column}</div>
-                  ))}
-                </div>
-                <div className="table-body">
+              <table className="product-status-table">
+                <colgroup>
+                  <col className="col-launch" />
+                  <col className="col-project" />
+                  <col className="col-description" />
+                  <col className="col-why" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    {activeSheet.columns.map((column) => (
+                      <th key={column}>{column}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
                   {activeSheet.rows.map((row, index) => (
-                    <div
-                      className="table-row product-status-row"
-                      key={`${activeSheet.gid}-${index}`}
-                      style={{
-                        gridTemplateColumns: `repeat(${activeSheet.columns.length}, minmax(120px, 1fr))`,
-                      }}
-                    >
-                      {activeSheet.columns.map((column) => (
-                        <div
+                    <tr key={`${activeSheet.gid}-${index}`}>
+                      {activeSheet.columns.map((column, columnIndex) => (
+                        <td
                           key={`${index}-${column}`}
-                          className="product-status-cell product-status-multiline"
+                          className={
+                            columnIndex === 1 ? 'cell-project product-status-multiline' : 'product-status-multiline'
+                          }
                         >
                           {cellText(row[column])}
-                        </div>
+                        </td>
                       ))}
-                    </div>
+                    </tr>
                   ))}
-                  {!loading && activeSheet.rows.length === 0 && (
-                    <div className="table-empty">На этом листе нет данных.</div>
-                  )}
-                </div>
-              </>
+                </tbody>
+              </table>
             ) : (
               <div className="table-empty">Нет данных в таблице.</div>
+            )}
+            {activeSheet && !loading && activeSheet.rows.length === 0 && (
+              <div className="table-empty">На этом листе нет данных.</div>
             )}
           </div>
         </div>
