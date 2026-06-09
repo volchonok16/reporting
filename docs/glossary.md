@@ -595,7 +595,7 @@
 | **Всего задач** | `task_type = change_request`, фильтр по доске (`extra_json.area_path` / `team_id`) |
 | **Скоро запуск** | Digital Streams B2b и B2B Product: статус `UAT`; BE Analytics / ESB: `UAT Prod`, `Implementation Prod` или Triage `в Работе` (`extra_json.triage`) |
 | **Запущено** | Digital Streams B2b и B2B Product: статус `Pilot` / `Пилот`; BE Analytics / ESB: статус `Closed` |
-| **Завершенные** | ЗНИ в статусе `Closed`, переведённые в периоде «Дата начала»–«Дата конца» (по умолчанию текущий квартал; без дат — текущий год); учитываются только ЗНИ с заполненным `extra_json.customer_name` (`Logrocon.PO`); история переходов — `extra_json.closed_transitions` |
+| **Завершенные** | ЗНИ в статусе `Closed`, переведённые в периоде «Дата начала»–«Дата конца» (по умолчанию текущий квартал, можно изменить; без дат — текущий год); учитываются только ЗНИ с заполненным `extra_json.customer_name` (`Logrocon.PO`); история переходов — `extra_json.closed_transitions` |
 | **С ошибками** | ЗНИ с хотя бы одной привязанной ошибкой (`parent_task_id` у `task_type = error`) |
 
 Клик по карточке метрики фильтрует таблицу (`metric=launching_soon|launched|completed|errors`); повторный клик снимает фильтр.
