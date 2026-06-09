@@ -81,3 +81,32 @@ def test_extract_business_goal_stops_at_requirements_in_div() -> None:
     )
     result = extract_business_goal_from_description(html)
     assert result == "Запуск решения."
+
+
+def test_extract_business_goal_plain_div_header() -> None:
+    html = (
+        "<div>Текущая реализация*</div><div>Отсутствует</div>"
+        "<div>Цель и бизнес-смысл доработки*</div>"
+        "<div>Предоставить возможность подключить услугу в рамках ЛК B2B</div>"
+        "<div>Детальные требования к изменению*</div><div>API</div>"
+    )
+    result = extract_business_goal_from_description(html)
+    assert result == "Предоставить возможность подключить услугу в рамках ЛК B2B"
+
+
+def test_extract_business_goal_strong_header() -> None:
+    html = (
+        "<strong>Цель и бизнес-смысл доработки*</strong><br>"
+        "<div>Предоставить возможность подключить услугу в рамках ЛК B2B</div>"
+    )
+    result = extract_business_goal_from_description(html)
+    assert result == "Предоставить возможность подключить услугу в рамках ЛК B2B"
+
+
+def test_extract_business_goal_inline_in_div() -> None:
+    html = (
+        "<div>Цель и бизнес-смысл доработки* "
+        "Предоставить возможность подключить услугу в рамках ЛК B2B</div>"
+    )
+    result = extract_business_goal_from_description(html)
+    assert result == "Предоставить возможность подключить услугу в рамках ЛК B2B"

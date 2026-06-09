@@ -7,17 +7,23 @@ from html import unescape
 from typing import Any
 
 _SECTION_HEADER_RE = re.compile(
-    r"<b>\s*(.*?)\s*</b>(.*?)(?=<b>|$)",
+    r"<(?:b|strong)(?:\s[^>]*)?>\s*(.*?)\s*</(?:b|strong)>"
+    r"(.*?)(?=<(?:b|strong)(?:\s[^>]*)?>|$)",
     re.IGNORECASE | re.DOTALL,
 )
 _START_SECTION_RE = re.compile(
     r"^цель\s+и\s+бизнес[-\s]*смысл\s+доработки",
     re.IGNORECASE,
 )
+_PLAIN_GOAL_HEADER_RE = re.compile(
+    r"(?:^|>|\n|<br\s*/?>)\s*(?:<[^>]+>\s*)*"
+    r"цель\s+и\s+бизнес[-\s]*смысл\s+доработки\s*\*?",
+    re.IGNORECASE,
+)
 # Следующие секции шаблона ЗНИ — иногда без <b>, только текст после <br>/<div>.
 _FOLLOWING_SECTION_RE = re.compile(
     r"(?:"
-    r"<(?:b|strong)[^>]*>\s*(?:"
+    r"<(?:b|strong)(?:\s[^>]*)?>\s*(?:"
     r"детальные\s+требования\s+к\s+изменению"
     r"|ценность\s+доработки"
     r"|use-cases\s*\("
@@ -105,6 +111,12 @@ def _strip_following_sections_text(text: str) -> str:
     return text.strip()
 
 
+def _finalize_goal_text(raw_body: str) -> str | None:
+    raw_body = _strip_following_sections_html(raw_body)
+    text = _strip_following_sections_text(_html_to_text(raw_body))
+    return text or None
+
+
 def parse_description_sections(html: str) -> list[tuple[str, str]]:
     sections: list[tuple[str, str]] = []
     for match in _SECTION_HEADER_RE.finditer(html):
@@ -122,11 +134,14 @@ def extract_business_goal_from_description(html: str | None) -> str | None:
     if not html or not str(html).strip():
         return None
 
-    for match in _SECTION_HEADER_RE.finditer(str(html)):
+    content = str(html)
+
+    for match in _SECTION_HEADER_RE.finditer(content):
         header = unescape(re.sub(r"<[^>]+>", "", match.group(1))).strip()
-        if not _START_SECTION_RE.match(_normalize_header(header)):
-            continue
-        raw_body = _strip_following_sections_html(match.group(2))
-        text = _strip_following_sections_text(_html_to_text(raw_body))
-        return text or None
+        if _START_SECTION_RE.match(_normalize_header(header)):
+            return _finalize_goal_text(match.group(2))
+
+    for match in _PLAIN_GOAL_HEADER_RE.finditer(content):
+        return _finalize_goal_text(content[match.end() :])
+
     return None
