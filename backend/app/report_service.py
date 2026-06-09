@@ -15,7 +15,6 @@ from app.iteration_plan import (
     quarter_label_from_key,
 )
 from app.models import Task
-from app.board_metrics import count_completed_rows, count_launched_rows, count_launching_soon
 from app.completed_metrics import has_customer_name
 from app.resource_reservation import ect_resource_reservation_label
 from app.zni_description import tfs_identity_display_name
@@ -213,6 +212,28 @@ def _matches_metric_filter(
     return True
 
 
+def _matches_dashboard_row(
+    row: Task,
+    metric: str | None,
+    *,
+    errors_by_parent: dict[int, list[Task]],
+    date_from: date | None,
+    date_to: date | None,
+) -> bool:
+    apply_start_date_filter = metric != "completed"
+    if apply_start_date_filter and not _in_date_range(row, date_from, date_to):
+        return False
+    if not metric:
+        return True
+    return _matches_metric_filter(
+        row,
+        metric,
+        errors_by_parent=errors_by_parent,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
 def _compute_metrics(
     rows: list[Task],
     *,
@@ -221,11 +242,51 @@ def _compute_metrics(
     date_to: date | None,
 ) -> DashboardMetricsOut:
     return DashboardMetricsOut(
-        totalTasks=len(rows),
-        launchingSoon=count_launching_soon(rows),
-        launched=count_launched_rows(rows, date_from=date_from, date_to=date_to),
-        completed=count_completed_rows(rows, date_from=date_from, date_to=date_to),
-        errorsCount=sum(1 for row in rows if has_linked_errors(row, errors_by_parent)),
+        totalTasks=sum(1 for row in rows if _in_date_range(row, date_from, date_to)),
+        launchingSoon=sum(
+            1
+            for row in rows
+            if _matches_dashboard_row(
+                row,
+                "launching_soon",
+                errors_by_parent=errors_by_parent,
+                date_from=date_from,
+                date_to=date_to,
+            )
+        ),
+        launched=sum(
+            1
+            for row in rows
+            if _matches_dashboard_row(
+                row,
+                "launched",
+                errors_by_parent=errors_by_parent,
+                date_from=date_from,
+                date_to=date_to,
+            )
+        ),
+        completed=sum(
+            1
+            for row in rows
+            if _matches_dashboard_row(
+                row,
+                "completed",
+                errors_by_parent=errors_by_parent,
+                date_from=date_from,
+                date_to=date_to,
+            )
+        ),
+        errorsCount=sum(
+            1
+            for row in rows
+            if _matches_dashboard_row(
+                row,
+                "errors",
+                errors_by_parent=errors_by_parent,
+                date_from=date_from,
+                date_to=date_to,
+            )
+        ),
     )
 
 
@@ -276,20 +337,22 @@ def load_change_requests(
         if error.parent_task_id:
             errors_by_parent.setdefault(error.parent_task_id, []).append(error)
 
-    apply_start_date_filter = metric != "completed"
     filtered = [
         row
         for row in rows_with_customer
         if _matches_search(row, search or "")
-        and (not apply_start_date_filter or _in_date_range(row, date_from, date_to))
         and _matches_status(row, status)
         and _matches_quarter(row, quarter)
-        and _matches_metric_filter(
-            row,
-            metric,
-            errors_by_parent=errors_by_parent,
-            date_from=date_from,
-            date_to=date_to,
+        and (
+            _matches_dashboard_row(
+                row,
+                metric,
+                errors_by_parent=errors_by_parent,
+                date_from=date_from,
+                date_to=date_to,
+            )
+            if metric
+            else _in_date_range(row, date_from, date_to)
         )
     ]
 
