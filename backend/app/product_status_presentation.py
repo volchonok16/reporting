@@ -797,15 +797,55 @@ def _resize_table_shape(table_shape, table, *, max_height: int | None = None) ->
     table_shape.height = total_height
 
 
+def _fill_cell_highlighted_text(
+    frame,
+    value: str,
+    *,
+    col_index: int,
+    font_size: Pt,
+) -> None:
+    lines = value.split("\n") if value else []
+    for line_index, line in enumerate(lines or [""]):
+        paragraph = frame.paragraphs[0] if line_index == 0 else frame.add_paragraph()
+        paragraph.alignment = PP_ALIGN.LEFT
+        paragraph.space_after = Pt(0)
+        paragraph.space_before = Pt(0)
+        paragraph.level = 0
+        paragraph.line_spacing = _cell_line_spacing(col_index)
+        for segment_text, highlighted in _split_highlight_segments(line):
+            if not segment_text:
+                continue
+            run = paragraph.add_run()
+            run.text = segment_text
+            _set_run_font(run, name=TABLE_FONT_NAME, size=font_size, bold=False)
+            if highlighted:
+                _set_run_highlight(run)
+
+
 def _replace_cell_text(cell, text: str, *, col_index: int) -> None:
     value = _sanitize_cell_text(text)
+    display = _display_cell_text(value)
     font_size, font_sz_xml = _cell_font_size(col_index, value)
     _reset_table_cell(cell)
     frame = cell.text_frame
-    lines = value.split("\n") if value else []
 
-    for line_index, line in enumerate(lines or [""]):
-        paragraph = frame.paragraphs[0] if line_index == 0 else frame.add_paragraph()
+    if "$" in value:
+        _fill_cell_highlighted_text(
+            frame,
+            value,
+            col_index=col_index,
+            font_size=font_size,
+        )
+    else:
+        cell.text = display
+
+    _apply_table_cell_frame_style(
+        frame,
+        font_name=TABLE_FONT_NAME,
+        font_size=font_size,
+        col_index=col_index,
+    )
+    for paragraph in frame.paragraphs:
         paragraph.alignment = PP_ALIGN.LEFT
         paragraph.space_after = Pt(0)
         paragraph.space_before = Pt(0)
@@ -817,21 +857,8 @@ def _replace_cell_text(cell, text: str, *, col_index: int) -> None:
             size=font_size,
             bold=False,
         )
-        for segment_text, highlighted in _split_highlight_segments(line):
-            if not segment_text:
-                continue
-            run = paragraph.add_run()
-            run.text = segment_text
+        for run in paragraph.runs:
             _set_run_font(run, name=TABLE_FONT_NAME, size=font_size, bold=False)
-            if highlighted:
-                _set_run_highlight(run)
-
-    _apply_table_cell_frame_style(
-        frame,
-        font_name=TABLE_FONT_NAME,
-        font_size=font_size,
-        col_index=col_index,
-    )
     _normalize_tx_body_element(
         frame._txBody,
         font_name=TABLE_FONT_NAME,

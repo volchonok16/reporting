@@ -412,6 +412,38 @@ def test_generate_presentation_table_cells_are_editable_xml(mock_load) -> None:
 
 
 @patch("app.product_status_presentation.load_b2b_product_status")
+def test_generate_presentation_table_cells_contain_text_xml(mock_load) -> None:
+    mock_load.return_value = ProductStatusB2BOut(
+        title="Статус продукта B2B",
+        sheets=[
+            ProductStatusSheetOut(
+                gid="0",
+                name="Продуктовый офис: CORE",
+                columns=["Дата запуска", "Проект", "Описание проекта", "Зачем и для чего делаем"],
+                rows=[
+                    {
+                        "Дата запуска": "09.06",
+                        "Проект": "Ремонт",
+                        "Описание проекта": "Убираем $300 рублевые офферы$",
+                        "Зачем и для чего делаем": "В работе",
+                    }
+                ],
+                totalShown=1,
+            )
+        ],
+    )
+
+    content, _ = generate_b2b_product_status_presentation()
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        xml = archive.read("ppt/slides/slide2.xml").decode("utf-8")
+
+    assert "<a:t>Ремонт</a:t>" in xml
+    assert "<a:t>300 рублевые офферы</a:t>" in xml
+    assert "<a:highlight>" in xml
+    assert "$" not in xml
+
+
+@patch("app.product_status_presentation.load_b2b_product_status")
 def test_generate_presentation_uses_column_font_sizes(mock_load) -> None:
     long_text = "Длинный текст " * 30
     mock_load.return_value = ProductStatusB2BOut(
