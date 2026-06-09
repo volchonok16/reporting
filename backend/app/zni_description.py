@@ -18,10 +18,22 @@ _START_SECTION_RE = re.compile(
 
 
 def tfs_identity_display_name(value: Any) -> str | None:
-    """ФИО из значения TFS вида `Иванов Иван <T2RU\\user>`."""
+    """ФИО из identity ref TFS: dict с displayName или строка `Иванов Иван <T2RU\\user>`."""
     if value in (None, ""):
         return None
+    if isinstance(value, dict):
+        for key in ("displayName", "DisplayName", "name"):
+            candidate = value.get(key)
+            if candidate not in (None, ""):
+                return str(candidate).strip() or None
+        return None
+
     text = str(value).strip()
+    if text.startswith("{") and "displayName" in text:
+        match = re.search(r"""['"]displayName['"]\s*:\s*['"]([^'"]+)['"]""", text)
+        if match:
+            return match.group(1).strip() or None
+
     if "<" in text:
         text = text.split("<", 1)[0].strip()
     return text or None

@@ -98,6 +98,11 @@ function formatEctReservation(value?: boolean): string {
   return value ? 'ДА' : 'НЕТ'
 }
 
+function customerNameParts(name?: string | null): string[] {
+  if (!name?.trim()) return []
+  return name.trim().split(/\s+/).slice(0, 3)
+}
+
 function itemRowKey(item: ChangeRequest): string {
   return `${item.boardCode ?? item.boardName ?? ''}-${item.number}`
 }
@@ -512,6 +517,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                   const key = itemRowKey(item)
                   const expanded = expandedKeys.has(key)
                   const hasDetails = Boolean(item.businessGoal?.trim())
+                  const customerParts = customerNameParts(item.customerName)
                   const colCount = tableColumnCount(Boolean(data.allBoards))
                   const rows = [
                     <tr key={key} className={expanded ? 'zni-table-row-expanded' : undefined}>
@@ -545,7 +551,15 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                         {item.title}
                       </td>
                       <td className="cell-customer" title={item.customerName || undefined}>
-                        {item.customerName || '—'}
+                        {customerParts.length > 0 ? (
+                          <span className="customer-name-stack">
+                            {customerParts.map((part, index) => (
+                              <span key={index} className="customer-name-line">{part}</span>
+                            ))}
+                          </span>
+                        ) : (
+                          '—'
+                        )}
                       </td>
                       <td className="cell-date">{formatDate(item.startDate)}</td>
                       <td className="cell-date">{formatDate(item.releaseDate)}</td>

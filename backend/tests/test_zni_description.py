@@ -9,6 +9,12 @@ def test_tfs_identity_display_name() -> None:
         tfs_identity_display_name("Синицына Анастасия Ашурбеговна <T2RU\\anastasia.sinitsyna>")
         == "Синицына Анастасия Ашурбеговна"
     )
+    assert tfs_identity_display_name(
+        {"displayName": "Гагарин Георгий Геннадьевич", "uniqueName": "T2RU\\user"}
+    ) == "Гагарин Георгий Геннадьевич"
+    assert tfs_identity_display_name(
+        "{'displayName': 'Гагарин Георгий Геннадьевич', 'url': 'https://tfs.t2.ru'}"
+    ) == "Гагарин Георгий Геннадьевич"
     assert tfs_identity_display_name(None) is None
 
 

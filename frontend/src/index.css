@@ -415,7 +415,7 @@ body {
 }
 
 .zni-table col.col-customer {
-  width: 132px;
+  width: 72px;
 }
 
 .zni-table col.col-date {
@@ -589,8 +589,20 @@ body {
 }
 
 .cell-customer {
-  font-size: 13px;
+  font-size: 11px;
+  line-height: 1.2;
   color: #333;
+  vertical-align: top;
+}
+
+.customer-name-stack {
+  display: grid;
+  gap: 1px;
+  max-width: 100%;
+}
+
+.customer-name-line {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

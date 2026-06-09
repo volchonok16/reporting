@@ -17,6 +17,7 @@ from app.iteration_plan import (
 from app.models import Task
 from app.board_metrics import count_launched_rows, count_launching_soon
 from app.resource_reservation import ect_resource_reservation_label
+from app.zni_description import tfs_identity_display_name
 from app.schemas import (
     BoardOut,
     ChangeRequestOut,
@@ -54,7 +55,9 @@ def _ect_resource_reservation(task: Task) -> bool:
 
 def _customer_name(task: Task) -> str | None:
     value = _extra(task).get("customer_name")
-    return str(value).strip() if value else None
+    if not value:
+        return None
+    return tfs_identity_display_name(value)
 
 
 def _business_goal(task: Task) -> str | None:
