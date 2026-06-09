@@ -151,20 +151,15 @@ export default function ProductStatusB2B() {
       <header className="product-status-toolbar">
         <div className="product-status-toolbar-left">
           <h1 className="product-status-title">{data?.title ?? 'Статус продукта B2B'}</h1>
-          <p className="product-status-subtitle">
-            Данные из Google Sheets · ячейки можно править · жёлтая заливка из таблицы при
-            GOOGLE_SHEETS_API_KEY
-            {data?.sourceUrl ? (
-              <>
-                {' · '}
+          {(data?.sourceUrl || data?.presentationReferenceUrl) && (
+            <p className="product-status-subtitle">
+              {data?.sourceUrl ? (
                 <a className="zni-link" href={data.sourceUrl} target="_blank" rel="noreferrer">
                   Открыть таблицу
                 </a>
-              </>
-            ) : null}
-            {data?.presentationReferenceUrl ? (
-              <>
-                {' · '}
+              ) : null}
+              {data?.sourceUrl && data?.presentationReferenceUrl ? ' · ' : null}
+              {data?.presentationReferenceUrl ? (
                 <a
                   className="zni-link"
                   href={data.presentationReferenceUrl}
@@ -173,9 +168,9 @@ export default function ProductStatusB2B() {
                 >
                   Эталон в Google Slides
                 </a>
-              </>
-            ) : null}
-          </p>
+              ) : null}
+            </p>
+          )}
         </div>
         <div className="product-status-toolbar-actions">
           <button

@@ -409,9 +409,8 @@ def test_generate_presentation_table_cells_are_editable_xml(mock_load) -> None:
     assert "<a:t>CORE</a:t>" in xml
     assert "<a:t>Строка</a:t>" in xml
     assert "<a:t>Вторая</a:t>" in xml
-    assert '<a:schemeClr val="tx1"/>' in table_xml
+    assert '<a:srgbClr val="000000"/>' in table_xml
     assert "<a:defRPr/>" in table_xml
-    assert '<a:srgbClr val="000000"/>' not in table_xml
 
 
 @patch("app.product_status_presentation.load_b2b_product_status")

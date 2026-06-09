@@ -555,6 +555,17 @@ def _set_xml_theme_text(rpr_element) -> None:
     )
 
 
+def _set_xml_solid_black_text(rpr_element) -> None:
+    """Явный чёрный в run — PowerPoint стабильнее, чем schemeClr в ячейках таблицы."""
+    for child in list(rpr_element):
+        if child.tag == qn("a:solidFill"):
+            rpr_element.remove(child)
+    rpr_element.insert(
+        0,
+        parse_xml(f'<a:solidFill xmlns:a="{A_NS}"><a:srgbClr val="000000"/></a:solidFill>'),
+    )
+
+
 def _reset_paragraph_default_run_props(tx_body) -> None:
     if tx_body is None:
         return
@@ -581,10 +592,14 @@ def _set_run_highlight(run) -> None:
 def _set_xml_latin_typeface(rpr_element, font_name: str) -> None:
     latin = rpr_element.find(qn("a:latin"))
     if latin is None:
-        latin = parse_xml(f'<a:latin xmlns:a="{A_NS}" typeface="{font_name}"/>')
+        latin = parse_xml(
+            f'<a:latin xmlns:a="{A_NS}" typeface="{font_name}" pitchFamily="2" charset="0"/>'
+        )
         rpr_element.append(latin)
     else:
         latin.set("typeface", font_name)
+        latin.set("pitchFamily", "2")
+        latin.set("charset", "0")
 
 
 def _reset_cell_tc_pr(tc) -> None:
@@ -662,6 +677,7 @@ def _normalize_tx_body_element(
     font_name: str,
     font_sz: str,
     align: str = "l",
+    table_cell_text: bool = False,
 ) -> None:
     if tx_body is None:
         return
@@ -683,14 +699,17 @@ def _normalize_tx_body_element(
             for spacing_node in paragraph_props.findall(qn(f"a:{spacing_tag}")):
                 paragraph_props.remove(spacing_node)
 
+    set_text_color = _set_xml_solid_black_text if table_cell_text else _set_xml_theme_text
+
     for prop_tag in ("a:rPr", "a:endParaRPr"):
         for props in tx_body.findall(".//" + qn(prop_tag)):
             props.set("sz", font_sz)
             props.set("dirty", "0")
+            props.set("lang", "ru-RU")
             props.attrib.pop("b", None)
             props.attrib.pop("i", None)
             _set_xml_latin_typeface(props, font_name)
-            _set_xml_theme_text(props)
+            set_text_color(props)
 
     _reset_paragraph_default_run_props(tx_body)
 
@@ -705,6 +724,7 @@ def _normalize_table_cells_xml(table) -> None:
                     tx_body,
                     font_name=TABLE_FONT_NAME,
                     font_sz=font_sz_xml,
+                    table_cell_text=True,
                 )
 
 
@@ -876,6 +896,7 @@ def _replace_cell_text(cell, text: str, *, col_index: int) -> None:
         frame._txBody,
         font_name=TABLE_FONT_NAME,
         font_sz=font_sz_xml,
+        table_cell_text=True,
     )
 
 
