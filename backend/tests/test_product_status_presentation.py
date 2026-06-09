@@ -239,7 +239,8 @@ def test_generate_presentation_table_cells_contain_text_xml(mock_load) -> None:
     assert "<a:t>300 рублевые офферы</a:t>" in xml
     assert "<a:highlight>" in xml
     assert 'srgbClr val="FFFFFF"' in xml
-    assert 'srgbClr val="C0C0C0"' in xml
+    assert 'srgbClr val="7F7F7F"' in xml
+    assert "tableStyleId" not in xml.split("<a:tbl>")[1].split("</a:tbl>")[0]
     assert title == "Продуктовый офис: CORE"
 
 

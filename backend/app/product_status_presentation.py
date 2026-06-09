@@ -40,8 +40,8 @@ TITLE_FONT_SIZE = Pt(28)
 TITLE_COLOR = RGBColor(0x00, 0x00, 0x00)
 TEXT_COLOR = RGBColor(0x00, 0x00, 0x00)
 WHITE_FILL = RGBColor(0xFF, 0xFF, 0xFF)
-TABLE_BORDER_COLOR = "C0C0C0"
-TABLE_BORDER_WIDTH = "9525"
+TABLE_BORDER_COLOR = "7F7F7F"
+TABLE_BORDER_WIDTH = "12700"
 HIGHLIGHT_COLOR_XML = "FFFF00"
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
@@ -364,6 +364,27 @@ def _oxml_child(parent, tag: str, **attrs) -> OxmlElement:
     return element
 
 
+def _strip_table_style(table) -> None:
+    """Убираем встроенный tableStyle — иначе PowerPoint игнорирует границы ячеек."""
+    tbl_pr = table._tbl.find(qn("a:tblPr"))
+    if tbl_pr is None:
+        return
+    for node in list(tbl_pr.findall(qn("a:tableStyleId"))):
+        tbl_pr.remove(node)
+    for attr in ("firstRow", "bandRow", "lastRow", "firstCol", "lastCol", "bandCol"):
+        tbl_pr.attrib.pop(attr, None)
+
+
+def _set_cell_fill_white(cell) -> None:
+    tc_pr = cell._tc.get_or_add_tcPr()
+    for node in list(tc_pr.findall(qn("a:solidFill"))):
+        tc_pr.remove(node)
+    for node in list(tc_pr.findall(qn("a:noFill"))):
+        tc_pr.remove(node)
+    fill = _oxml_child(tc_pr, "a:solidFill")
+    _oxml_child(fill, "a:srgbClr", val="FFFFFF")
+
+
 def _set_cell_border(
     cell,
     *,
@@ -384,6 +405,7 @@ def _set_cell_border(
 def _apply_table_grid(table) -> None:
     for row in table.rows:
         for cell in row.cells:
+            _set_cell_fill_white(cell)
             _set_cell_border(cell)
 
 
@@ -454,9 +476,6 @@ def _fill_white_cell(cell, value: str, *, col_index: int, bold: bool = False) ->
     frame.margin_right = Pt(3)
     frame.margin_top = Pt(3)
     frame.margin_bottom = Pt(3)
-
-    cell.fill.solid()
-    cell.fill.fore_color.rgb = WHITE_FILL
 
     lines = sanitized.split("\n") if sanitized else [""]
     for line_index, line in enumerate(lines):
@@ -540,6 +559,7 @@ def _fill_content_slide(
         body_shape.height,
     )
     table = table_shape.table
+    _strip_table_style(table)
     _apply_table_column_widths(table, body_shape.width)
 
     for col_index, header in enumerate(mapped_headers):
