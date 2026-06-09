@@ -21,6 +21,7 @@ from pptx.oxml.ns import qn
 from pptx.util import Pt
 
 from app.config import settings
+from app.product_status_rich_text import display_cell_text, split_highlight_segments
 from app.product_status_service import load_b2b_product_status
 from app.schemas import ProductStatusB2BOut, ProductStatusSheetOut
 
@@ -64,7 +65,6 @@ ROW_PADDING_EMU = 50000
 CHAR_WIDTH_EMU = 76000
 HEIGHT_SAFETY_RATIO = 1.0
 LONG_CELL_CHARS = 180
-_HIGHLIGHT_PATTERN = re.compile(r"\$([^$]+)\$")
 HIGHLIGHT_COLOR_XML = "FFFF00"
 
 
@@ -388,13 +388,13 @@ def _column_chars_per_line(table) -> tuple[int, ...]:
 
 
 def _row_is_heavy(values: list[str]) -> bool:
-    return any(len(_display_cell_text(value)) > LONG_CELL_CHARS for value in values[2:4])
+    return any(len(display_cell_text(value)) > LONG_CELL_CHARS for value in values[2:4])
 
 
 def _estimate_row_height(values: list[str], col_chars_per_line: tuple[int, ...]) -> int:
     max_lines = 1
     for index, text in enumerate(values):
-        cleaned = _display_cell_text(text)
+        cleaned = display_cell_text(text)
         if not cleaned:
             continue
         chars_per_line = col_chars_per_line[index] if index < len(col_chars_per_line) else 40
@@ -533,27 +533,6 @@ def _sanitize_cell_text(text: str) -> str:
     cleaned = (text or "").replace("\x0b", "\n").replace("\r\n", "\n").replace("\r", "\n")
     lines = [_clean_line_text(line) for line in cleaned.split("\n")]
     return "\n".join(lines).strip()
-
-
-def _display_cell_text(text: str) -> str:
-    """Текст без маркеров $...$ — для оценки высоты строки."""
-    cleaned = _sanitize_cell_text(text)
-    return _HIGHLIGHT_PATTERN.sub(r"\1", cleaned)
-
-
-def _split_highlight_segments(text: str) -> list[tuple[str, bool]]:
-    segments: list[tuple[str, bool]] = []
-    last = 0
-    for match in _HIGHLIGHT_PATTERN.finditer(text):
-        if match.start() > last:
-            segments.append((text[last : match.start()], False))
-        segments.append((match.group(1), True))
-        last = match.end()
-    if last < len(text):
-        segments.append((text[last:], False))
-    if not segments:
-        segments.append((text, False))
-    return segments
 
 
 def _set_xml_solid_black(rpr_element) -> None:
@@ -840,7 +819,7 @@ def _fill_cell_highlighted_text(
         paragraph.space_before = Pt(0)
         paragraph.level = 0
         paragraph.line_spacing = _cell_line_spacing(col_index)
-        for segment_text, highlighted in _split_highlight_segments(line):
+        for segment_text, highlighted in split_highlight_segments(line):
             if not segment_text:
                 continue
             run = paragraph.add_run()
@@ -858,7 +837,7 @@ def _fill_cell_highlighted_text(
 
 def _replace_cell_text(cell, text: str, *, col_index: int) -> None:
     value = _sanitize_cell_text(text)
-    display = _display_cell_text(value)
+    display = display_cell_text(value)
     font_size, font_sz_xml = _cell_font_size(col_index, value)
     _reset_table_cell(cell)
     frame = cell.text_frame

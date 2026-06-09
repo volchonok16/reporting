@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getJson, apiFetch, readApiError } from './api'
+import ProductStatusCell from './ProductStatusCell'
 
 type ProductStatusSheet = {
   gid: string
@@ -151,7 +152,8 @@ export default function ProductStatusB2B() {
         <div className="product-status-toolbar-left">
           <h1 className="product-status-title">{data?.title ?? 'Статус продукта B2B'}</h1>
           <p className="product-status-subtitle">
-            Данные из Google Sheets · ячейки можно править, изменения попадут в Excel
+            Данные из Google Sheets · ячейки можно править · жёлтая заливка из таблицы при
+            GOOGLE_SHEETS_API_KEY
             {data?.sourceUrl ? (
               <>
                 {' · '}
@@ -256,13 +258,14 @@ export default function ProductStatusB2B() {
                             columnIndex === 1 ? 'cell-project product-status-multiline' : 'product-status-multiline'
                           }
                         >
-                          <textarea
-                            className="product-status-cell-input"
+                          <ProductStatusCell
+                            className={`product-status-cell-input${
+                              columnIndex === 1 ? ' product-status-cell-project' : ''
+                            }`}
                             value={row[column] ?? ''}
-                            rows={1}
-                            aria-label={column}
-                            onChange={(event) =>
-                              updateCell(activeSheet.gid, rowIndex, column, event.target.value)
+                            ariaLabel={column}
+                            onChange={(nextValue) =>
+                              updateCell(activeSheet.gid, rowIndex, column, nextValue)
                             }
                           />
                         </td>

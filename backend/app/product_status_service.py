@@ -10,6 +10,7 @@ import httpx
 from fastapi import HTTPException
 
 from app.config import settings
+from app.product_status_sheets_api import fetch_sheet_with_formatting
 from app.schemas import ProductStatusB2BOut, ProductStatusSheetOut
 
 logger = logging.getLogger(__name__)
@@ -213,22 +214,38 @@ def load_b2b_product_status() -> ProductStatusB2BOut:
             sheet_tabs = resolve_sheet_tabs(client=client)
             sheets: list[ProductStatusSheetOut] = []
 
+            api_key = settings.google_sheets_api_key.strip()
+
             for tab in sheet_tabs:
                 gid = tab["gid"]
                 name = tab["name"]
-                url = _csv_export_url(spreadsheet_id, gid)
-                try:
-                    response = client.get(url)
-                    response.raise_for_status()
-                except httpx.HTTPError:
-                    logger.warning(
-                        "product_status_sheet_fetch_failed gid=%s name=%s",
-                        gid,
-                        name,
-                    )
-                    continue
+                columns: list[str] = []
+                rows: list[dict[str, str]] = []
 
-                columns, rows = parse_sheet_csv(response.text)
+                if api_key:
+                    formatted = fetch_sheet_with_formatting(
+                        spreadsheet_id=spreadsheet_id,
+                        sheet_name=name,
+                        api_key=api_key,
+                        client=client,
+                    )
+                    if formatted:
+                        columns, rows = formatted
+
+                if not columns:
+                    url = _csv_export_url(spreadsheet_id, gid)
+                    try:
+                        response = client.get(url)
+                        response.raise_for_status()
+                    except httpx.HTTPError:
+                        logger.warning(
+                            "product_status_sheet_fetch_failed gid=%s name=%s",
+                            gid,
+                            name,
+                        )
+                        continue
+                    columns, rows = parse_sheet_csv(response.text)
+
                 if not columns:
                     continue
 

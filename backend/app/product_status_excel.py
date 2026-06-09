@@ -10,12 +10,14 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
+from app.product_status_rich_text import display_cell_text, split_highlight_segments
 from app.schemas import ProductStatusB2BOut, ProductStatusSheetOut
 
 MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 _HEADER_FILL = PatternFill(fill_type="solid", fgColor="CCCCCC")
 _HEADER_FONT = Font(bold=True)
 _CELL_ALIGNMENT = Alignment(wrap_text=True, vertical="top")
+_HIGHLIGHT_FILL = PatternFill(fill_type="solid", fgColor="FFFF00")
 _INVALID_SHEET_CHARS = re.compile(r"[\:\\/?*\[\]]+")
 _MAX_SHEET_NAME_LEN = 31
 
@@ -63,9 +65,11 @@ def _write_sheet(worksheet: Worksheet, sheet: ProductStatusSheetOut) -> None:
     for row_index, row in enumerate(sheet.rows, start=2):
         for col_index, column_name in enumerate(columns, start=1):
             raw = row.get(column_name, "") if column_name else ""
-            value = raw.strip()
+            value = display_cell_text(raw).strip()
             cell = worksheet.cell(row=row_index, column=col_index, value=value or None)
             cell.alignment = _CELL_ALIGNMENT
+            if any(highlighted for _, highlighted in split_highlight_segments(raw)):
+                cell.fill = _HIGHLIGHT_FILL
 
     _autosize_columns(
         worksheet,

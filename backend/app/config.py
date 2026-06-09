@@ -120,6 +120,14 @@ class Settings(BaseSettings):
         alias="B2B_PRODUCT_STATUS_PRESENTATION_REFERENCE_URL",
         description="Эталонная Google Slides-презентация (для ссылки в UI).",
     )
+    google_sheets_api_key: str = Field(
+        default="",
+        alias="GOOGLE_SHEETS_API_KEY",
+        description=(
+            "API-ключ Google Sheets для чтения жёлтой заливки ячеек. "
+            "Пусто — только CSV без стилей."
+        ),
+    )
 
     @computed_field
     @property

@@ -865,17 +865,26 @@ body {
   width: 100%;
   min-height: 2.4em;
   margin: 0;
-  padding: 0;
+  padding: 2px 0;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
   color: inherit;
   font: inherit;
   line-height: inherit;
-  resize: vertical;
   white-space: pre-wrap;
   word-break: break-word;
-  field-sizing: content;
+  outline: none;
+}
+
+.product-status-highlight {
+  background: #ffff00;
+  color: inherit;
+  border-radius: 2px;
+}
+
+.product-status-cell-project {
+  font-weight: 600;
 }
 
 .product-status-cell-input:hover {
@@ -888,10 +897,6 @@ body {
   border-color: #9db7e8;
   background: #fff;
   box-shadow: 0 0 0 2px rgba(29, 95, 191, 0.12);
-}
-
-.product-status-table td.cell-project .product-status-cell-input {
-  font-weight: 600;
 }
 
 .cell-project {

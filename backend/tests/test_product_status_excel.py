@@ -61,3 +61,24 @@ def test_generate_excel_workbook_contains_sheets_and_values() -> None:
     assert core["A1"].value == "Дата запуска"
     assert core["B2"].value == "Ремонт"
     assert core["C2"].value == "Тест"
+
+
+def test_generate_excel_applies_yellow_fill_for_highlighted_cells() -> None:
+    data = ProductStatusB2BOut(
+        title="Статус продукта B2B",
+        sheets=[
+            ProductStatusSheetOut(
+                gid="0",
+                name="CORE",
+                columns=["Описание"],
+                rows=[{"Описание": "Убираем $300 рублевые$ офферы"}],
+                totalShown=1,
+            )
+        ],
+    )
+
+    content, _ = generate_b2b_product_status_excel(data)
+    workbook = load_workbook(io.BytesIO(content))
+    cell = workbook["CORE"]["A2"]
+    assert cell.value == "Убираем 300 рублевые офферы"
+    assert cell.fill.fgColor.rgb in {"00FFFF00", "FFFF00"}
