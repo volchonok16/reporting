@@ -855,23 +855,9 @@ def _fill_cell_highlighted_text(
                 _set_run_highlight(run)
 
 
-def _replace_cell_text(cell, text: str, *, col_index: int) -> None:
-    value = _sanitize_cell_text(text)
-    display = display_cell_text(value)
-    font_size, font_sz_xml = _cell_font_size(col_index, value)
-    _reset_table_cell(cell)
+def _apply_cell_run_fonts(cell, *, col_index: int, value: str) -> None:
+    font_size, _ = _cell_font_size(col_index, value)
     frame = cell.text_frame
-
-    if "$" in value:
-        _fill_cell_highlighted_text(
-            frame,
-            value,
-            col_index=col_index,
-            font_size=font_size,
-        )
-    else:
-        cell.text = display
-
     _apply_table_cell_frame_style(
         frame,
         font_name=TABLE_FONT_NAME,
@@ -892,12 +878,28 @@ def _replace_cell_text(cell, text: str, *, col_index: int) -> None:
                 bold=False,
                 use_rgb_color=False,
             )
-    _normalize_tx_body_element(
-        frame._txBody,
-        font_name=TABLE_FONT_NAME,
-        font_sz=font_sz_xml,
-        table_cell_text=True,
-    )
+
+
+def _replace_cell_text(cell, text: str, *, col_index: int) -> None:
+    """Меняет только текст, сохраняя txBody/tcPr шаблона — иначе PowerPoint не рисует ячейки."""
+    value = _sanitize_cell_text(text)
+    display = display_cell_text(value)
+    font_size, _ = _cell_font_size(col_index, value)
+    frame = cell.text_frame
+
+    if "$" in value:
+        frame.clear()
+        frame.word_wrap = True
+        _fill_cell_highlighted_text(
+            frame,
+            value,
+            col_index=col_index,
+            font_size=font_size,
+        )
+    else:
+        cell.text = display
+
+    _apply_cell_run_fonts(cell, col_index=col_index, value=value)
 
 
 def _replace_title(title_shape, sheet_name: str) -> None:
@@ -921,28 +923,9 @@ def _replace_title(title_shape, sheet_name: str) -> None:
 
 
 def _normalize_table_fonts(table) -> None:
-    """Принудительно выравнивает шрифт во всех ячейках после сброса стилей шаблона."""
     for row in table.rows:
         for col_index, cell in enumerate(row.cells):
-            text = cell.text_frame.text
-            font_size, _ = _cell_font_size(col_index, text)
-            frame = cell.text_frame
-            _apply_table_cell_frame_style(
-                frame,
-                font_name=TABLE_FONT_NAME,
-                font_size=font_size,
-                col_index=col_index,
-            )
-            for paragraph in frame.paragraphs:
-                for run in paragraph.runs:
-                    _set_run_font(
-                        run,
-                        name=TABLE_FONT_NAME,
-                        size=font_size,
-                        bold=False,
-                        use_rgb_color=False,
-                    )
-    _normalize_table_cells_xml(table)
+            _apply_cell_run_fonts(cell, col_index=col_index, value=cell.text_frame.text)
 
 
 def _find_column(
@@ -1062,12 +1045,6 @@ def _fill_content_slide(
 
     col_count = len(table.columns)
     data_rows = len(rows)
-
-    _reset_table(table)
-
-    for table_row in table.rows:
-        for col_index in range(col_count):
-            _replace_cell_text(table_row.cells[col_index], "", col_index=col_index)
 
     for row_index in range(min(len(table.rows), data_rows)):
         values = _row_values(rows[row_index], columns, col_count)
