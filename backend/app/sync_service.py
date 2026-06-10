@@ -17,6 +17,7 @@ from app.linked_errors import is_error_work_item_type
 from app.resource_reservation import compute_ect_resource_reservation
 from app.completed_metrics import effective_closed_date, effective_closed_date_from_fields
 from app.zni_description import extract_business_goal_from_description, tfs_identity_display_name
+from app.zni_title_filters import is_excluded_zni_title
 from app.models import Project, SourceSystem, SyncRun, Task, Team
 from app.tfs_client import TfsClient, date_from_field_list, parse_tfs_datetime
 
@@ -68,6 +69,10 @@ def is_excluded_sync_state(fields: dict[str, Any], excluded_states: tuple[str, .
         return False
     state = str(fields.get("System.State") or "").strip().casefold()
     return state in {value.casefold() for value in excluded_states}
+
+
+def is_excluded_sync_title(fields: dict[str, Any]) -> bool:
+    return is_excluded_zni_title(str(fields.get("System.Title") or ""))
 
 
 def should_skip_closed_zni(fields: dict[str, Any]) -> bool:
@@ -335,6 +340,7 @@ async def sync_board(
             if has_required_tags(item.get("fields") or {}, board.sync_tags)
             and not has_excluded_tags(item.get("fields") or {}, board.exclude_sync_tags)
             and not is_excluded_sync_state(item.get("fields") or {}, board.exclude_sync_states)
+            and not is_excluded_sync_title(item.get("fields") or {})
             and not should_skip_closed_zni(item.get("fields") or {})
         ]
         skipped = len(zni_payloads_raw) - len(zni_payloads)
@@ -373,19 +379,18 @@ async def sync_board(
             }
             if triage not in (None, ""):
                 extra_json["triage"] = str(triage).strip()
-            if iteration_plan.is_tbd:
+            target_date = effective_release_date(fields)
+            if target_date:
+                extra_json["planned_status"] = "date"
+                extra_json["planned_date"] = target_date.isoformat()
+                extra_json["plan_quarter"] = quarter_key_from_date(target_date)
+            elif iteration_plan.is_tbd:
                 extra_json["planned_status"] = "tbd"
                 extra_json["plan_quarter"] = iteration_plan.quarter_key
             elif iteration_plan.planned_date:
                 extra_json["planned_status"] = "date"
                 extra_json["planned_date"] = iteration_plan.planned_date.isoformat()
                 extra_json["plan_quarter"] = iteration_plan.quarter_key
-            else:
-                target_date = effective_release_date(fields)
-                if target_date:
-                    extra_json["planned_status"] = "date"
-                    extra_json["planned_date"] = target_date.isoformat()
-                    extra_json["plan_quarter"] = quarter_key_from_date(target_date)
 
             planned_release = work_item_planned_release(fields)
             if planned_release:

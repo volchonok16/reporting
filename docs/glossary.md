@@ -631,6 +631,7 @@
 |----------|----------|
 | `POST /api/auth/login` | `{ pat, base_url?, project? }` → `{ sessionId }` |
 | `GET /api/dashboard?board=` | Метрики + список ЗНИ |
+| `PATCH /api/tasks/{task_id}/planned-date` | План. дата → TFS `Microsoft.VSTS.Scheduling.TargetDate`; body `{ plannedDate: "YYYY-MM-DD" \| null }` |
 | `POST /api/sync` | Синхронизация; body `{ board }` |
 | `GET /api/sync/status` | Статус и прогресс |
 | `GET /api/export/csv?board=` | CSV: ЗНИ + ошибки |

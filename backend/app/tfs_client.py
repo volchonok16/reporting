@@ -14,11 +14,36 @@ from app.config import settings
 from app.http_auth import build_http_auth
 from app.json_utils import as_list, as_work_item_list
 from app.tfs_auth import TfsAuth
+from app.zni_title_filters import ZNI_TITLE_EXCLUDE_PATTERNS
 
 logger = logging.getLogger(__name__)
 
 # Лимит Azure DevOps / TFS на workItemsBatch
 WIT_BATCH_MAX_IDS = 200
+
+DEFAULT_TARGET_DATE_FIELD = "Microsoft.VSTS.Scheduling.TargetDate"
+
+
+def primary_target_date_field() -> str:
+    fields = settings.target_date_field_list
+    return fields[0] if fields else DEFAULT_TARGET_DATE_FIELD
+
+
+def format_tfs_target_date_value(value: date) -> str:
+    return value.isoformat()
+
+
+def build_target_date_patch(target_date: date | None) -> list[dict[str, str]]:
+    field_path = f"/fields/{primary_target_date_field()}"
+    if target_date is None:
+        return [{"op": "remove", "path": field_path}]
+    return [
+        {
+            "op": "add",
+            "path": field_path,
+            "value": format_tfs_target_date_value(target_date),
+        }
+    ]
 
 MS_DATE_RE = re.compile(r"^/Date\((?P<milliseconds>-?\d+)(?:[+-]\d+)?\)/$")
 TFS_CALENDAR_TZ = ZoneInfo("Europe/Moscow")
@@ -130,6 +155,20 @@ def wiql_exclude_states_clause(
     return " AND (" + " AND ".join(parts) + ")"
 
 
+def wiql_exclude_title_patterns_clause(
+    patterns: Iterable[str] | None,
+    *,
+    field: str = "[System.Title]",
+) -> str:
+    values = [pattern.strip() for pattern in (patterns or []) if pattern and pattern.strip()]
+    if not values:
+        return ""
+    parts = [f"{field} NOT CONTAINS {wiql_quote(pattern)}" for pattern in values]
+    if len(parts) == 1:
+        return f" AND {parts[0]}"
+    return " AND (" + " AND ".join(parts) + ")"
+
+
 def wiql_date(value: date) -> str:
     return wiql_quote(value.isoformat())
 
@@ -233,6 +272,7 @@ class TfsClient:
         tags: Iterable[str] | None = None,
         exclude_tags: Iterable[str] | None = None,
         exclude_states: Iterable[str] | None = None,
+        exclude_title_patterns: Iterable[str] | None = ZNI_TITLE_EXCLUDE_PATTERNS,
         limit_results: bool = True,
     ) -> list[int]:
         types = ", ".join(wiql_quote(item) for item in settings.change_type_list)
@@ -248,6 +288,7 @@ class TfsClient:
         tags_clause = wiql_tags_clause(tags)
         exclude_tags_clause = wiql_exclude_tags_clause(exclude_tags)
         exclude_states_clause = wiql_exclude_states_clause(exclude_states)
+        exclude_title_clause = wiql_exclude_title_patterns_clause(exclude_title_patterns)
 
         closed_exclude_clause = ""
         if settings.closed_state_list and settings.tfs_exclude_closed_older_than_days > 0:
@@ -262,13 +303,13 @@ class TfsClient:
             (
                 f"SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = {project} "
                 f"AND [System.WorkItemType] IN ({types}){state_clause}{area_clause}{tags_clause}"
-                f"{exclude_tags_clause}{exclude_states_clause}{closed_exclude_clause} "
+                f"{exclude_tags_clause}{exclude_states_clause}{exclude_title_clause}{closed_exclude_clause} "
                 f"ORDER BY [System.ChangedDate] DESC"
             ),
             (
                 f"SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = {project} "
                 f"AND [System.WorkItemType] IN ({types}){area_clause}{tags_clause}"
-                f"{exclude_tags_clause}{exclude_states_clause}{closed_exclude_clause} "
+                f"{exclude_tags_clause}{exclude_states_clause}{exclude_title_clause}{closed_exclude_clause} "
                 f"ORDER BY [System.ChangedDate] DESC"
             ),
         ]
@@ -584,6 +625,43 @@ class TfsClient:
                 await asyncio.sleep(settings.tfs_request_delay_seconds)
 
         return result
+
+    async def patch_work_item(self, item_id: int, operations: list[dict[str, str]]) -> dict[str, Any]:
+        path = f"/{self.project}/_apis/wit/workitems/{item_id}"
+        last_response: httpx.Response | None = None
+        for api_version in _api_version_candidates():
+            for attempt in range(1, 4):
+                try:
+                    response = await self.client.patch(
+                        path,
+                        params={"api-version": api_version},
+                        json=operations,
+                        headers={"Content-Type": "application/json-patch+json"},
+                    )
+                except (httpx.TimeoutException, httpx.RequestError) as exc:
+                    logger.warning(
+                        "tfs_patch_retry id=%s attempt=%s error=%s",
+                        item_id,
+                        attempt,
+                        exc,
+                    )
+                    if attempt >= 3:
+                        raise
+                    await asyncio.sleep(min(1.0 * attempt, 3.0))
+                    continue
+                last_response = response
+                if response.status_code == 200:
+                    body = response.json()
+                    return body if isinstance(body, dict) else {}
+                if response.status_code in {400, 404}:
+                    break
+                response.raise_for_status()
+        if last_response is not None and last_response.status_code != 200:
+            last_response.raise_for_status()
+        raise httpx.HTTPError(f"PATCH work item {item_id} failed")
+
+    async def update_target_date(self, item_id: int, target_date: date | None) -> dict[str, Any]:
+        return await self.patch_work_item(item_id, build_target_date_patch(target_date))
 
     async def get_work_item_updates(self, item_id: int) -> list[dict[str, Any]]:
         last_response: httpx.Response | None = None

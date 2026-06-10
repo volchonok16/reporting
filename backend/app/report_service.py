@@ -33,6 +33,7 @@ from app.tag_filters import (
     tag_filter_supported_for_board,
     task_matches_tag_groups,
 )
+from app.zni_title_filters import is_excluded_zni_title
 
 
 def _board_out(board: BoardConfig) -> BoardOut:
@@ -488,6 +489,8 @@ def _boards_for_export(board_code: str | None) -> list[BoardConfig]:
 
 def _write_export_rows(writer: csv.writer, items: list[ChangeRequestOut]) -> None:
     for item in items:
+        if is_excluded_zni_title(item.title):
+            continue
         errors_text = "; ".join(f"{e.id}: {e.title}" for e in item.errors)
         writer.writerow(
             [
