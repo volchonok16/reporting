@@ -431,19 +431,16 @@ async def sync_board(
             error_id: zni_id for error_id, zni_id in error_child_map.items() if zni_id in zni_id_set
         }
 
-        synced_error_ids: set[str] = set()
-        error_ids = sorted(error_child_map.keys())
-        if not error_ids:
-            synced_external_ids = {str(item["id"]) for item in zni_payloads}
-            prune_stale_board_tasks(
-                db,
-                board=board,
-                source_system_id=source_system_id,
-                synced_external_ids=synced_external_ids,
-            )
-            return fetched, upserted
+        board_error_ids = await client.get_error_ids_for_area(
+            board.area_path,
+            tags=board.error_sync_tags or None,
+            exclude_tags=board.exclude_sync_tags or None,
+        )
 
-        if sync_run:
+        synced_error_ids: set[str] = set()
+        error_ids = sorted(set(error_child_map.keys()) | set(board_error_ids))
+
+        if error_ids and sync_run:
             touch_sync_progress(db, sync_run, f"{board.display_name}: загрузка {len(error_ids)} ошибок…")
 
         commit_chunk = min(settings.tfs_linked_batch_size, settings.tfs_batch_size)

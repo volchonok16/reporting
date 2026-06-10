@@ -317,6 +317,31 @@ class TfsClient:
             ]
         )
 
+    async def get_error_ids_for_area(
+        self,
+        *,
+        area_path: str,
+        tags: Iterable[str] | None = None,
+        exclude_tags: Iterable[str] | None = None,
+        limit_results: bool = True,
+    ) -> list[int]:
+        error_types = ", ".join(wiql_quote(item) for item in settings.error_type_list)
+        project = wiql_quote(self.project)
+        area_clause = f" AND [System.AreaPath] UNDER {wiql_quote(area_path)}"
+        tags_clause = wiql_tags_clause(tags)
+        exclude_tags_clause = wiql_exclude_tags_clause(exclude_tags)
+        query = (
+            f"SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = {project} "
+            f"AND [System.WorkItemType] IN ({error_types}){area_clause}{tags_clause}"
+            f"{exclude_tags_clause} "
+            f"ORDER BY [System.ChangedDate] DESC"
+        )
+        payload = await self.run_wiql(query)
+        ids = [item["id"] for item in as_list(payload.get("workItems")) if isinstance(item, dict)]
+        if limit_results and len(ids) > settings.tfs_wiql_max_results:
+            return ids[: settings.tfs_wiql_max_results]
+        return ids
+
     async def get_error_links_for_area(
         self,
         area_path: str,

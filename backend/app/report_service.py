@@ -146,7 +146,7 @@ def _uses_start_date_period(metric: str | None) -> bool:
     """Период «Дата начала»–«Дата конца» по start_date / created_at."""
     if not metric:
         return True
-    return metric not in {"launching_soon", "launched", "completed"}
+    return metric not in {"launching_soon", "launched", "completed", "errors"}
 
 
 def _planned_date_upcoming_sort_key(task: Task, *, today: date | None = None) -> tuple[int, date, int]:
@@ -270,12 +270,13 @@ def _matches_dashboard_row(
 def _compute_metrics(
     rows: list[Task],
     *,
+    error_rows: list[Task],
     errors_by_parent: dict[int, list[Task]],
     date_from: date | None,
     date_to: date | None,
 ) -> DashboardMetricsOut:
     return DashboardMetricsOut(
-        totalTasks=sum(1 for row in rows if _in_date_range(row, date_from, date_to)),
+        totalTasks=len(rows),
         launchingSoon=sum(
             1
             for row in rows
@@ -309,17 +310,7 @@ def _compute_metrics(
                 date_to=date_to,
             )
         ),
-        errorsCount=sum(
-            1
-            for row in rows
-            if _matches_dashboard_row(
-                row,
-                "errors",
-                errors_by_parent=errors_by_parent,
-                date_from=date_from,
-                date_to=date_to,
-            )
-        ),
+        errorsCount=len(error_rows),
     )
 
 
@@ -434,6 +425,7 @@ def load_change_requests(
         allBoards=all_boards,
         metrics=_compute_metrics(
             rows_with_customer,
+            error_rows=error_rows,
             errors_by_parent=errors_by_parent,
             date_from=date_from,
             date_to=date_to,

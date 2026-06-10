@@ -28,10 +28,16 @@ def test_launching_soon_ignores_start_date_range() -> None:
     date_from = date(2026, 1, 1)
     date_to = date(2026, 12, 31)
 
-    metrics = _compute_metrics(rows, errors_by_parent={}, date_from=date_from, date_to=date_to)
+    metrics = _compute_metrics(
+        rows,
+        error_rows=[],
+        errors_by_parent={},
+        date_from=date_from,
+        date_to=date_to,
+    )
 
     assert metrics.launchingSoon == 2
-    assert metrics.totalTasks == 1
+    assert metrics.totalTasks == 2
 
 
 def test_total_tasks_and_default_table_use_start_date_range() -> None:
@@ -47,5 +53,35 @@ def test_total_tasks_and_default_table_use_start_date_range() -> None:
         recent, "", errors_by_parent={}, date_from=date_from, date_to=date_to
     )
 
-    metrics = _compute_metrics([old, recent], errors_by_parent={}, date_from=date_from, date_to=date_to)
-    assert metrics.totalTasks == 1
+    metrics = _compute_metrics(
+        [old, recent],
+        error_rows=[],
+        errors_by_parent={},
+        date_from=date_from,
+        date_to=date_to,
+    )
+    assert metrics.totalTasks == 2
+
+
+def test_errors_count_includes_all_board_errors_without_start_date_filter() -> None:
+    zni = _zni(start_date=date(2020, 1, 1), external_id="1")
+    error = Task(
+        source_system_id=1,
+        project_id=1,
+        external_id="99",
+        title="Err",
+        task_type="error",
+        source_team="Digital Streams B2b",
+        start_date=date(2020, 1, 1),
+    )
+    date_from = date(2026, 1, 1)
+    date_to = date(2026, 12, 31)
+
+    metrics = _compute_metrics(
+        [zni],
+        error_rows=[error],
+        errors_by_parent={},
+        date_from=date_from,
+        date_to=date_to,
+    )
+    assert metrics.errorsCount == 1
