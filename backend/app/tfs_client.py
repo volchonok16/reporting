@@ -21,6 +21,15 @@ logger = logging.getLogger(__name__)
 # Лимит Azure DevOps / TFS на workItemsBatch
 WIT_BATCH_MAX_IDS = 200
 
+BUSINESS_VALUE_FIELD = "Microsoft.VSTS.Common.BusinessValue"
+
+
+def build_business_value_patch(value: int | None) -> list[dict[str, Any]]:
+    path = f"/fields/{BUSINESS_VALUE_FIELD}"
+    if value is None:
+        return [{"op": "remove", "path": path}]
+    return [{"op": "add", "path": path, "value": value}]
+
 MS_DATE_RE = re.compile(r"^/Date\((?P<milliseconds>-?\d+)(?:[+-]\d+)?\)/$")
 TFS_CALENDAR_TZ = ZoneInfo("Europe/Moscow")
 
@@ -681,6 +690,26 @@ class TfsClient:
                 }
             )
         return transitions
+
+    async def patch_work_item(self, item_id: int, patch: list[dict[str, Any]]) -> dict[str, Any]:
+        last_response: httpx.Response | None = None
+        for api_version in _api_version_candidates():
+            response = await self.client.patch(
+                f"/{self.project}/_apis/wit/workitems/{item_id}",
+                params={"api-version": api_version},
+                headers={"Content-Type": "application/json-patch+json"},
+                json=patch,
+            )
+            last_response = response
+            if response.status_code == 200:
+                body = response.json()
+                return body if isinstance(body, dict) else {}
+            if response.status_code == 400 and "out of range" in response.text.lower():
+                continue
+            response.raise_for_status()
+        if last_response is not None:
+            last_response.raise_for_status()
+        raise httpx.HTTPError(f"Patch failed without response for work item {item_id}")
 
     async def enrich_scheduling_fields(
         self,

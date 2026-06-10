@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.boards import ALL_BOARDS_CODE, BOARDS, BoardConfig, board_by_code, is_all_boards
-from app.board_metrics import has_linked_errors, is_completed, is_launched, is_launching_soon
+from app.board_metrics import active_errors, has_linked_errors, is_completed, is_launched, is_launching_soon
 from app.config import settings
 from app.iteration_plan import (
     PLAN_QUARTER_TBD,
@@ -180,6 +180,17 @@ def _matches_quarter(task: Task, quarter: str | None) -> bool:
     return quarter_key == quarter
 
 
+def _matches_ect_reservation(task: Task, ect_reservation: str | None) -> bool:
+    if not ect_reservation:
+        return True
+    has = _ect_resource_reservation(task)
+    if ect_reservation == "yes":
+        return has
+    if ect_reservation == "no":
+        return not has
+    return True
+
+
 def _matches_status(task: Task, status: str | None) -> bool:
     if not status:
         return True
@@ -234,7 +245,13 @@ def _planned_date_upcoming_sort_key(task: Task, *, today: date | None = None) ->
     return (0, planned, number_key)
 
 
+def _title_sort_key(task: Task) -> str:
+    return task.title.casefold()
+
+
 def _sort_key(task: Task, sort: str):
+    if sort == "title":
+        return _title_sort_key(task)
     if sort == "release_date":
         return task.release_date or date.min
     if sort == "planned_date":
@@ -388,6 +405,7 @@ def load_change_requests(
     date_to: date | None = None,
     status: str | None = None,
     quarter: str | None = None,
+    ect_reservation: str | None = None,
     metric: str | None = None,
     tag_groups: list[str] | None = None,
 ) -> DashboardOut:
@@ -422,7 +440,7 @@ def load_change_requests(
         )
 
     rows = list(db.scalars(zni_query))
-    error_rows = list(db.scalars(error_query))
+    error_rows = active_errors(list(db.scalars(error_query)))
 
     rows_with_customer = [row for row in rows if has_customer_name(row)]
 
@@ -437,6 +455,7 @@ def load_change_requests(
         if _matches_search(row, search or "")
         and _matches_status(row, status)
         and _matches_quarter(row, quarter)
+        and _matches_ect_reservation(row, ect_reservation)
         and _matches_dashboard_row(
             row,
             metric,
@@ -482,6 +501,7 @@ def load_change_requests(
                 boardName=row.source_team or _board_name_by_code(str(board_code_value) if board_code_value else None),
                 customerName=_customer_name(row),
                 businessGoal=_business_goal(row),
+                businessValue=_business_value(row),
                 ectResourceReservation=_ect_resource_reservation(row),
                 errors=[
                     LinkedErrorOut(

@@ -76,6 +76,7 @@ class ChangeRequestOut(BaseModel):
     boardName: str | None = None
     customerName: str | None = None
     businessGoal: str | None = None
+    businessValue: int | None = None
     ectResourceReservation: bool = False
     errors: list[LinkedErrorOut] = Field(default_factory=list)
 
@@ -112,6 +113,14 @@ class ProductStatusB2BOut(BaseModel):
     sourceUrl: str | None = None
     presentationReferenceUrl: str | None = None
     sheets: list[ProductStatusSheetOut]
+
+
+class BusinessValueUpdateIn(BaseModel):
+    value: int | None = Field(
+        default=None,
+        ge=1,
+        description="Целое число; null — очистить поле в TFS",
+    )
 
 
 class SyncRunOut(BaseModel):

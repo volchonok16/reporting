@@ -84,3 +84,27 @@ def test_metric_filter_errors() -> None:
         date_from=None,
         date_to=None,
     )
+
+
+def test_metric_filter_ignores_closed_errors() -> None:
+    parent = _zni()
+    parent.id = 10
+    closed_error = Task(
+        source_system_id=1,
+        project_id=1,
+        external_id="99",
+        title="Closed err",
+        task_type="error",
+        source_status="Closed",
+        source_team="Digital Streams B2b",
+        parent_task_id=10,
+    )
+    errors_by_parent = {10: [closed_error]}
+    assert not has_linked_errors(parent, errors_by_parent)
+    assert not _matches_metric_filter(
+        parent,
+        "errors",
+        errors_by_parent=errors_by_parent,
+        date_from=None,
+        date_to=None,
+    )

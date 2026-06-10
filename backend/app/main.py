@@ -16,10 +16,13 @@ from app.product_status_service import load_b2b_product_status
 from app.product_status_excel import generate_b2b_product_status_excel
 from app.product_status_presentation import generate_b2b_product_status_presentation
 from app.report_service import export_csv, load_change_requests
+from app.business_value_service import update_business_value
 from app.schemas import (
     AuthDefaultsOut,
     AuthLoginOut,
     BoardOut,
+    BusinessValueUpdateIn,
+    ChangeRequestOut,
     DashboardOut,
     ProductStatusB2BOut,
     SyncRunOut,
@@ -138,6 +141,10 @@ def dashboard(
     date_to: date | None = Query(default=None),
     status: str | None = Query(default=None),
     quarter: str | None = Query(default=None),
+    ect_reservation: str | None = Query(
+        default=None,
+        description="Фильтр брони ЕЦТ: yes или no",
+    ),
     metric: str | None = Query(
         default=None,
         description="Фильтр таблицы: launching_soon, launched, completed, errors",
@@ -156,9 +163,34 @@ def dashboard(
         date_to=date_to,
         status=status,
         quarter=quarter,
+        ect_reservation=ect_reservation,
         metric=metric,
         tag_groups=tag_group,
     )
+
+
+@app.patch("/api/tasks/{external_id}/business-value", response_model=ChangeRequestOut)
+async def patch_business_value(
+    external_id: str,
+    payload: BusinessValueUpdateIn,
+    db: Session = Depends(get_db),
+    pat: str = Depends(require_pat),
+) -> ChangeRequestOut:
+    try:
+        await update_business_value(
+            db,
+            pat=pat,
+            external_id=external_id,
+            value=payload.value,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    dashboard = load_change_requests(db, board_code=ALL_BOARDS_CODE, search=external_id)
+    item = next((row for row in dashboard.items if row.number == external_id), None)
+    if item is None:
+        raise HTTPException(status_code=404, detail="ЗНИ не найден после обновления")
+    return item
 
 
 @app.get("/api/product-status/b2b", response_model=ProductStatusB2BOut)

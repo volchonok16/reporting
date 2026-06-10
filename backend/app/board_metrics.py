@@ -99,5 +99,19 @@ def count_launched_rows(
     return sum(1 for row in rows if is_launched(row, date_from=date_from, date_to=date_to))
 
 
+def _closed_states_lower() -> set[str]:
+    return {value.lower() for value in settings.closed_state_list}
+
+
+def is_closed_error(task: Task) -> bool:
+    """Ошибка в финальном workflow-статусе (по умолчанию Closed) — не учитываем в метрике и выгрузке."""
+    status = (task.source_status or "").strip().casefold()
+    return bool(status and status in _closed_states_lower())
+
+
+def active_errors(errors: list[Task]) -> list[Task]:
+    return [error for error in errors if not is_closed_error(error)]
+
+
 def has_linked_errors(task: Task, errors_by_parent: dict[int, list[Task]]) -> bool:
-    return bool(errors_by_parent.get(task.id))
+    return bool(active_errors(errors_by_parent.get(task.id, [])))

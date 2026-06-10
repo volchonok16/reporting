@@ -526,6 +526,132 @@ body {
   width: 64px;
 }
 
+.zni-table col.col-business-value {
+  width: 88px;
+}
+
+.zni-table thead th.th-active {
+  background: #e8f0fe;
+  color: #1d4ed8;
+}
+
+.th-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 4px;
+  min-height: 2.5em;
+}
+
+.th-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.th-menu > summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: #666;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.th-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.th-menu[open] > summary,
+.th-menu > summary:hover {
+  background: var(--t2-lime-soft);
+  border-color: var(--t2-lime-border);
+  color: #222;
+}
+
+.th-menu-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 5;
+  min-width: 220px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.th-menu-section + .th-menu-section {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #eee;
+}
+
+.th-menu-heading {
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #888;
+}
+
+.th-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #222;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.th-menu-item:hover {
+  background: #f3f4f6;
+}
+
+.th-menu-item.is-selected {
+  background: #e8f0fe;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.business-value-input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.business-value-input:focus {
+  outline: none;
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.business-value-input:disabled {
+  background: #f9fafb;
+  color: #666;
+}
+
+.cell-business-value {
+  font-variant-numeric: tabular-nums;
+}
+
 .zni-table thead th {
   position: sticky;
   top: 0;

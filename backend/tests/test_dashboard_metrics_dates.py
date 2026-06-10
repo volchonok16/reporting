@@ -1,5 +1,6 @@
 from datetime import date
 
+from app.board_metrics import active_errors
 from app.models import Task
 from app.report_service import _compute_metrics, _matches_dashboard_row
 
@@ -83,5 +84,37 @@ def test_errors_count_includes_all_board_errors_without_start_date_filter() -> N
         errors_by_parent={},
         date_from=date_from,
         date_to=date_to,
+    )
+    assert metrics.errorsCount == 1
+
+
+def test_errors_count_ignores_closed_errors() -> None:
+    zni = _zni(start_date=date(2020, 1, 1), external_id="1")
+    open_error = Task(
+        source_system_id=1,
+        project_id=1,
+        external_id="99",
+        title="Open",
+        task_type="error",
+        source_status="Active",
+        source_team="Digital Streams B2b",
+    )
+    closed_error = Task(
+        source_system_id=1,
+        project_id=1,
+        external_id="100",
+        title="Closed",
+        task_type="error",
+        source_status="Closed",
+        source_team="Digital Streams B2b",
+    )
+    error_rows = active_errors([open_error, closed_error])
+
+    metrics = _compute_metrics(
+        [zni],
+        error_rows=error_rows,
+        errors_by_parent={},
+        date_from=None,
+        date_to=None,
     )
     assert metrics.errorsCount == 1

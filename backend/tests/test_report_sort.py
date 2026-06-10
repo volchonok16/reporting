@@ -75,3 +75,18 @@ def test_business_value_desc_sort_empty_then_largest() -> None:
     ]
     tasks.sort(key=_business_value_desc_sort_key)
     assert [t.external_id for t in tasks] == ["empty", "35", "10", "1"]
+
+
+def test_title_asc_sort() -> None:
+    tasks = [
+        _task("1", business_value=None),
+        _task("2", business_value=None),
+        _task("3", business_value=None),
+    ]
+    tasks[0].title = "Яблоко"
+    tasks[1].title = "Абрикос"
+    tasks[2].title = "Банан"
+    from app.report_service import _sort_key
+
+    tasks.sort(key=lambda t: _sort_key(t, "title"))
+    assert [t.title for t in tasks] == ["Абрикос", "Банан", "Яблоко"]

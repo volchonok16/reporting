@@ -424,7 +424,7 @@
 | `Logrocon.Release` | `extra_json.planned_release` | Привязанный релиз (имя, напр. `Bercut InVoice 4.7.90.0 (1034184)`) |
 | `Logrocon.PO` | `extra_json.customer_name` | Заказчик ЗНИ (ФИО из поля TFS) |
 | `System.Description` | `extra_json.business_goal` | Текст секции «Цель и бизнес-смысл доработки*» (до следующего заголовка `<b>…</b>`) |
-| `Microsoft.VSTS.Common.BusinessValue` | `extra_json.business_value` | Ценность для бизнеса (целое число; сортировка в дашборде) |
+| `Microsoft.VSTS.Common.BusinessValue` | `extra_json.business_value` | Ценность для бизнеса (целое число; колонка дашборда, редактирование через `PATCH /api/tasks/{id}/business-value`) |
 | Related → «Бронь ресурсов» | `extra_json.ect_resource_reservation` | `true` / `false`: у ЗНИ есть Related на элемент типа «Бронь ресурсов» (колонка «Бронь ресурса ЕЦТ») |
 
 **Планируемая дата** — из листа `System.IterationPath`: `2026.08.11.0-R` → `2026-08-11`; если в пути есть **TBD** — в UI выводится `TBD`; если дата из итерации не определена — подставляется **Целевая дата** (`Microsoft.VSTS.Scheduling.TargetDate`, поле `task.release_date`, напр. ЗНИ 1071033 → `03.12.2025`). **План квартала** — `Q3 2026` или `TBD`; фильтр `quarter` в API (`TBD`, `2026-Q3`, …). В выпадающем списке фильтра — только кварталы **текущего года** плюс отдельные пункты TBD и «Без квартала». **Плановый релиз** — из `Logrocon.FoundinRelease` или `Logrocon.Release`, если поле проставлено или релиз привязан; колонка «План. релиз» в дашборде и CSV. **Бронь ресурса ЕЦТ** — `ДА` / `НЕТ`: прямая Related-связь ЗНИ с элементом «Бронь ресурсов» (`TFS_RESOURCE_RESERVATION_TYPE_VALUES`, по умолчанию `Бронь ресурсов`).
@@ -606,9 +606,9 @@
 | **Скоро запуск** | Digital Streams B2b и B2B Product: статус `UAT`; BE Analytics / ESB: `UAT Prod`, `Implementation Prod` или Triage `в Работе` (`extra_json.triage`) |
 | **Запущено** | Digital Streams B2b и B2B Product: статус `Pilot` / `Пилот`; BE Analytics / ESB: статус `Closed` |
 | **Завершенные** | ЗНИ в статусе `Closed`, переведённые в периоде «Дата начала»–«Дата конца» (по умолчанию текущий квартал, можно изменить; без дат — текущий год); учитываются только ЗНИ с заполненным `extra_json.customer_name` (`Logrocon.PO`); история переходов — `extra_json.closed_transitions` |
-| **С ошибками** | ЗНИ с хотя бы одной привязанной ошибкой (`parent_task_id` у `task_type = error`) |
+| **Ошибки** | ЗНИ с хотя бы одной привязанной ошибкой (`parent_task_id` у `task_type = error`), кроме ошибок в статусе Closed (`TFS_CLOSED_STATE_VALUES`) |
 
-Клик по карточке метрики фильтрует таблицу (`metric=launching_soon|launched|completed|errors`); повторный клик снимает фильтр. Период «Дата начала»–«Дата конца» по `start_date` / `created_at` применяется к **«Всего задач»**, общему списку и **«С ошибками»**. **«Скоро запуск»** — только колонка UAT (без фильтра по дате начала). **«Запущено»** — переход в Pilot за период. **«Завершенные»** — переход в Closed за период.
+Клик по карточке метрики фильтрует таблицу (`metric=launching_soon|launched|completed|errors`); повторный клик снимает фильтр. Период «Дата начала»–«Дата конца» по `start_date` / `created_at` применяется к **«Всего задач»**, общему списку и **«Ошибки»**. **«Скоро запуск»** — только колонка UAT (без фильтра по дате начала). **«Запущено»** — переход в Pilot за период. **«Завершенные»** — переход в Closed за период. Закрытые ошибки не попадают в счётчик, фильтр и колонку «Ошибки» CSV-выгрузки.
 
 ### Синхронизация TFS (оптимизация)
 

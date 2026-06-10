@@ -63,7 +63,7 @@
 | Всего задач | `task` где `task_type = change_request` | По выбранной доске |
 | Скоро запуск | Digital и B2B Product (*): `UAT`; BE Analytics / ESB: `UAT Prod`, `Implementation Prod` или Triage `в Работе` | `System.State` / `Triage` |
 | Запущено | Digital и B2B Product (*): `Pilot`; BE Analytics / ESB: `Closed` | workflow |
-| С ошибками | ЗНИ с привязанными `error` | Клик по карточке — фильтр таблицы |
+| Ошибки | ЗНИ с привязанными `error` (без Closed) | Клик по карточке — фильтр таблицы |
 
 ### REST API (основное)
 

@@ -71,6 +71,7 @@ type ChangeRequest = {
   boardCode?: string | null
   customerName?: string | null
   businessGoal?: string | null
+  businessValue?: number | null
   ectResourceReservation?: boolean
   errors: LinkedError[]
 }
@@ -150,7 +151,129 @@ function itemRowKey(item: ChangeRequest): string {
 }
 
 function tableColumnCount(allBoards: boolean): number {
-  return allBoards ? 8 : 7
+  return allBoards ? 9 : 8
+}
+
+type ColumnMenuOption = {
+  value: string
+  label: string
+}
+
+type ColumnHeaderProps = {
+  label: string
+  sortOptions?: ColumnMenuOption[]
+  sort?: string
+  onSortChange?: (value: string) => void
+  filterOptions?: ColumnMenuOption[]
+  filterValue?: string
+  onFilterChange?: (value: string) => void
+}
+
+function ColumnHeader({
+  label,
+  sortOptions,
+  sort,
+  onSortChange,
+  filterOptions,
+  filterValue,
+  onFilterChange,
+}: ColumnHeaderProps) {
+  const hasMenu = Boolean(sortOptions?.length || filterOptions?.length)
+  const sortActive = Boolean(sortOptions?.some((option) => option.value === sort))
+  const filterActive = Boolean(filterValue)
+  const isActive = sortActive || filterActive
+
+  return (
+    <th className={isActive ? 'th-active' : undefined}>
+      <div className="th-header">
+        <span>{label}</span>
+        {hasMenu ? (
+          <details className="th-menu">
+            <summary title={`${label}: сортировка и фильтр`} aria-label={`${label}: меню`}>
+              ▾
+            </summary>
+            <div className="th-menu-panel">
+              {sortOptions?.length ? (
+                <div className="th-menu-section">
+                  <div className="th-menu-heading">Сортировка</div>
+                  {sortOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`th-menu-item${sort === option.value ? ' is-selected' : ''}`}
+                      onClick={() => onSortChange?.(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {filterOptions?.length ? (
+                <div className="th-menu-section">
+                  <div className="th-menu-heading">Фильтр</div>
+                  {filterOptions.map((option) => (
+                    <button
+                      key={option.value || '__all__'}
+                      type="button"
+                      className={`th-menu-item${filterValue === option.value ? ' is-selected' : ''}`}
+                      onClick={() => onFilterChange?.(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </details>
+        ) : null}
+      </div>
+    </th>
+  )
+}
+
+type BusinessValueEditorProps = {
+  item: ChangeRequest
+  disabled: boolean
+  saving: boolean
+  onSave: (item: ChangeRequest, value: string) => void
+}
+
+function businessValueInputValue(item: ChangeRequest): string {
+  return item.businessValue != null ? String(item.businessValue) : ''
+}
+
+function BusinessValueEditor({ item, disabled, saving, onSave }: BusinessValueEditorProps) {
+  const [draft, setDraft] = useState(businessValueInputValue(item))
+
+  useEffect(() => {
+    setDraft(businessValueInputValue(item))
+  }, [item.number, item.businessValue])
+
+  const commit = () => {
+    const current = businessValueInputValue(item)
+    if (draft === current) return
+    onSave(item, draft)
+  }
+
+  return (
+    <input
+      type="number"
+      min={1}
+      step={1}
+      className="business-value-input"
+      value={draft}
+      disabled={disabled || saving}
+      placeholder="—"
+      title="Ценность для бизнеса (Microsoft.VSTS.Common.BusinessValue в TFS)"
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === 'Enter') {
+          event.currentTarget.blur()
+        }
+      }}
+    />
+  )
 }
 
 function rowHasExpandDetails(item: ChangeRequest): boolean {
@@ -168,7 +291,7 @@ const METRIC_LABELS: Record<MetricFilter, string> = {
   launching_soon: 'Скоро запуск',
   launched: 'Запущено',
   completed: 'Завершенные',
-  errors: 'С ошибками',
+  errors: 'Ошибки',
 }
 
 function currentQuarterIsoRange(): { from: string; to: string } {
@@ -183,11 +306,16 @@ function currentQuarterIsoRange(): { from: string; to: string } {
   }
 }
 
-const SORT_OPTIONS = [
-  { value: 'planned_date_upcoming', label: 'План. дата (ближайшие)' },
-  { value: 'start_date_desc', label: 'Дата начала (убыв.)' },
-  { value: 'business_value_asc', label: 'Ценность для бизнеса (возр.)' },
-  { value: 'business_value_desc', label: 'Ценность для бизнеса (убыв.)' },
+const QUARTER_FILTER_OPTIONS: ColumnMenuOption[] = [
+  { value: '', label: 'Все кварталы' },
+  { value: 'TBD', label: 'TBD' },
+  { value: '__none__', label: 'Без квартала' },
+]
+
+const ECT_FILTER_OPTIONS: ColumnMenuOption[] = [
+  { value: '', label: 'Все' },
+  { value: 'yes', label: 'С бронью' },
+  { value: 'no', label: 'Без брони' },
 ]
 
 export default function Dashboard({ onLogout }: DashboardProps) {
@@ -199,12 +327,14 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const [dateTo, setDateTo] = useState(() => currentQuarterIsoRange().to)
   const [statusFilter, setStatusFilter] = useState('')
   const [quarterFilter, setQuarterFilter] = useState('')
+  const [ectReservationFilter, setEctReservationFilter] = useState('')
   const [tagGroupFilter, setTagGroupFilter] = useState<string[]>([])
   const [metricFilter, setMetricFilter] = useState<MetricFilter>('')
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [savingBusinessValueId, setSavingBusinessValueId] = useState<string | null>(null)
   const [syncProgress, setSyncProgress] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set())
@@ -218,6 +348,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   useEffect(() => {
     setStatusFilter('')
     setQuarterFilter('')
+    setEctReservationFilter('')
     setTagGroupFilter([])
     setMetricFilter('')
   }, [boardCode])
@@ -232,6 +363,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     if (dateTo) params.set('date_to', dateTo)
     if (statusFilter) params.set('status', statusFilter)
     if (quarterFilter) params.set('quarter', quarterFilter)
+    if (ectReservationFilter) params.set('ect_reservation', ectReservationFilter)
     if (boardCode === DIGITAL_BOARD) {
       for (const group of tagGroupFilter) {
         params.append('tag_group', group)
@@ -246,7 +378,18 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     } finally {
       setLoading(false)
     }
-  }, [boardCode, search, sort, dateFrom, dateTo, statusFilter, quarterFilter, tagGroupFilter, metricFilter])
+  }, [
+    boardCode,
+    search,
+    sort,
+    dateFrom,
+    dateTo,
+    statusFilter,
+    quarterFilter,
+    ectReservationFilter,
+    tagGroupFilter,
+    metricFilter,
+  ])
 
   const toggleTagGroupFilter = (key: string) => {
     setTagGroupFilter((current) =>
@@ -412,6 +555,51 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     }
   }
 
+  const quarterFilterOptions = (): ColumnMenuOption[] => {
+    const quarters = (data?.availableQuarters ?? [])
+      .filter((quarter) => quarter.key !== 'TBD')
+      .map((quarter) => ({ value: quarter.key, label: quarter.label }))
+    return [...QUARTER_FILTER_OPTIONS.slice(0, 1), ...quarters, ...QUARTER_FILTER_OPTIONS.slice(1)]
+  }
+
+  const saveBusinessValue = async (item: ChangeRequest, rawValue: string) => {
+    const trimmed = rawValue.trim()
+    const parsed = trimmed === '' ? null : Number.parseInt(trimmed, 10)
+    if (trimmed !== '' && (!Number.isFinite(parsed) || parsed! < 1)) {
+      setError('Ценность для бизнеса — целое число от 1')
+      return
+    }
+    if (parsed === item.businessValue) return
+
+    setSavingBusinessValueId(item.number)
+    setError(null)
+    try {
+      const response = await apiFetch(`/api/tasks/${encodeURIComponent(item.number)}/business-value`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: parsed }),
+      })
+      if (!response.ok) {
+        const text = await response.text()
+        throw new Error(text || 'Не удалось сохранить ценность для бизнеса')
+      }
+      const updated = (await response.json()) as ChangeRequest
+      setData((current) => {
+        if (!current) return current
+        return {
+          ...current,
+          items: current.items.map((row) =>
+            row.number === updated.number ? { ...row, businessValue: updated.businessValue } : row,
+          ),
+        }
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка сохранения')
+    } finally {
+      setSavingBusinessValueId(null)
+    }
+  }
+
   const handleLogout = async () => {
     await apiFetch('/api/auth/logout', { method: 'POST' })
     clearSessionId()
@@ -450,17 +638,6 @@ export default function Dashboard({ onLogout }: DashboardProps) {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-          </label>
-
-          <label className="select-wrap">
-            <span>Сортировка</span>
-            <select value={sort} onChange={(e) => setSort(e.target.value)}>
-              {SORT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
           </label>
 
           <label className="date-wrap">
@@ -509,21 +686,6 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             </div>
           )}
 
-          <label className="select-wrap">
-            <span>План квартала</span>
-            <select value={quarterFilter} onChange={(e) => setQuarterFilter(e.target.value)}>
-              <option value="">Все кварталы</option>
-              {(data?.availableQuarters ?? [])
-                .filter((quarter) => quarter.key !== 'TBD')
-                .map((quarter) => (
-                <option key={quarter.key} value={quarter.key}>
-                  {quarter.label}
-                </option>
-              ))}
-              <option value="TBD">TBD</option>
-              <option value="__none__">Без квартала</option>
-            </select>
-          </label>
         </div>
 
         <div className="toolbar-right">
@@ -580,7 +742,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
           className={`metric-card metric-errors${metricFilter === 'errors' ? ' metric-card-active' : ''}`}
           onClick={() => toggleMetricFilter('errors')}
         >
-          <span className="metric-label">С ошибками</span>
+          <span className="metric-label">Ошибки</span>
           <strong className="metric-value">{data?.metrics.errorsCount ?? '—'}</strong>
         </button>
       </section>
@@ -604,6 +766,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                 {data?.allBoards && <col className="col-board" />}
                 <col className="col-title" />
                 <col className="col-goal" />
+                <col className="col-business-value" />
                 <col className="col-date" />
                 <col className="col-quarter" />
                 <col className="col-reservation" />
@@ -611,13 +774,57 @@ export default function Dashboard({ onLogout }: DashboardProps) {
               <thead>
                 <tr>
                   <th aria-label="Подробнее" />
-                  <th>Номер ЗНИ</th>
+                  <ColumnHeader
+                    label="Номер ЗНИ"
+                    sort={sort}
+                    onSortChange={setSort}
+                    sortOptions={[
+                      { value: 'id_desc', label: 'От большего к меньшему' },
+                      { value: 'id_asc', label: 'От меньшего к большему' },
+                    ]}
+                  />
                   {data?.allBoards && <th>Доска</th>}
-                  <th>ЗНИ</th>
+                  <ColumnHeader
+                    label="ЗНИ"
+                    sort={sort}
+                    onSortChange={setSort}
+                    sortOptions={[
+                      { value: 'title_asc', label: 'А → Я' },
+                      { value: 'title_desc', label: 'Я → А' },
+                    ]}
+                  />
                   <th>Цель и бизнес-смысл доработки</th>
-                  <th>План. дата</th>
-                  <th>План квартала</th>
-                  <th title="Бронь ресурса ЕЦТ">Бронь ЕЦТ</th>
+                  <ColumnHeader
+                    label="Ценность для бизнеса"
+                    sort={sort}
+                    onSortChange={setSort}
+                    sortOptions={[
+                      { value: 'business_value_asc', label: '1 → больше, пустые в конце' },
+                      { value: 'business_value_desc', label: 'Пустые в начале, больше → меньше' },
+                    ]}
+                  />
+                  <ColumnHeader
+                    label="План. дата"
+                    sort={sort}
+                    onSortChange={setSort}
+                    sortOptions={[
+                      { value: 'planned_date_upcoming', label: 'Ближайшие' },
+                      { value: 'planned_date_asc', label: 'По возрастанию' },
+                      { value: 'planned_date_desc', label: 'По убыванию' },
+                    ]}
+                  />
+                  <ColumnHeader
+                    label="План квартала"
+                    filterOptions={quarterFilterOptions()}
+                    filterValue={quarterFilter}
+                    onFilterChange={setQuarterFilter}
+                  />
+                  <ColumnHeader
+                    label="Бронь ЕЦТ"
+                    filterOptions={ECT_FILTER_OPTIONS}
+                    filterValue={ectReservationFilter}
+                    onFilterChange={setEctReservationFilter}
+                  />
                 </tr>
               </thead>
               <tbody>
@@ -666,6 +873,14 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                         ) : (
                           '—'
                         )}
+                      </td>
+                      <td className="cell-business-value">
+                        <BusinessValueEditor
+                          item={item}
+                          disabled={syncing || exporting}
+                          saving={savingBusinessValueId === item.number}
+                          onSave={saveBusinessValue}
+                        />
                       </td>
                       <td className="cell-date">{formatPlannedDate(item)}</td>
                       <td className="cell-quarter">{item.planQuarter || '—'}</td>
