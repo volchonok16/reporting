@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 source "$(dirname "$0")/resolve-compose.sh" prod-tunnel
 
 echo "==> PostgreSQL на 127.0.0.1:5432 (только для SSH-туннеля)"
-"${COMPOSE[@]}" up -d postgres
+bash "$(dirname "$0")/compose-up.sh" prod-tunnel postgres
 
 if command -v ss >/dev/null 2>&1; then
   ss -tlnp | grep 5432 || true
