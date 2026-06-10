@@ -14,13 +14,13 @@ class TagFilterGroup:
 TAG_FILTER_GROUPS: tuple[TagFilterGroup, ...] = (
     TagFilterGroup(
         key="newlk",
-        label="newlk",
+        label="ЛК b2b",
         root_tags=("LK_B2B",),
         subsection_prefixes=("lk_",),
     ),
     TagFilterGroup(
         key="site",
-        label="site",
+        label="Сайт",
         root_tags=("site_b2b",),
         subsection_prefixes=("site_",),
     ),

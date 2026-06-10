@@ -253,7 +253,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   }
 
   const tagGroupFilterLabel = (): string => {
-    if (!tagGroupFilter.length) return 'Все теги'
+    if (!tagGroupFilter.length) return 'Все области'
     const groups = data?.availableTagGroups ?? []
     return tagGroupFilter
       .map((key) => groups.find((group) => group.key === key)?.label ?? key)
@@ -485,16 +485,12 @@ export default function Dashboard({ onLogout }: DashboardProps) {
 
           {boardCode === DIGITAL_BOARD && (
             <div className="tag-group-filter">
-              <span className="tag-group-filter-label">Теги</span>
+              <span className="tag-group-filter-label">Область</span>
               <details className="tag-group-filter-details">
                 <summary>{tagGroupFilterLabel()}</summary>
-                <div className="tag-group-filter-menu" role="group" aria-label="Фильтр по тегам">
+                <div className="tag-group-filter-menu" role="group" aria-label="Фильтр по области">
                   {(data?.availableTagGroups ?? []).map((group) => {
                     const active = tagGroupFilter.includes(group.key)
-                    const subsectionHint = [
-                      ...group.tags,
-                      ...group.subsectionPrefixes.map((prefix) => `${prefix}*`),
-                    ].join(', ')
                     return (
                       <label key={group.key} className={`tag-group-filter-option${active ? ' is-active' : ''}`}>
                         <input
@@ -503,7 +499,6 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                           onChange={() => toggleTagGroupFilter(group.key)}
                         />
                         <span className="tag-group-filter-option-label">{group.label}</span>
-                        <span className="tag-group-filter-option-hint">{subsectionHint}</span>
                       </label>
                     )
                   })}
@@ -593,7 +588,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
           Показано строк {data?.totalShown ?? 0}
           {metricFilter ? ` · фильтр: ${METRIC_LABELS[metricFilter]}` : ''}
           {boardCode === DIGITAL_BOARD && tagGroupFilter.length
-            ? ` · теги: ${tagGroupFilterLabel()}`
+            ? ` · область: ${tagGroupFilterLabel()}`
             : ''}
           {boardLabel ? ` · ${boardLabel}` : ''}
           {loading ? ' · загрузка…' : ''}

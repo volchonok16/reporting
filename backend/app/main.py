@@ -144,7 +144,7 @@ def dashboard(
     ),
     tag_group: list[str] = Query(
         default=[],
-        description="Фильтр по группам тегов: newlk (LK_B2B и lk_*), site (site_b2b и site_*)",
+        description="Фильтр области (только Digital): newlk — ЛК b2b, site — Сайт",
     ),
 ) -> DashboardOut:
     return load_change_requests(
