@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { apiFetch, clearSessionId, getJson } from './api'
+import { loadDashboardUiState, saveDashboardUiState } from './uiState'
 
 const ALL_BOARDS = 'all'
 const DIGITAL_BOARD = 'digital_streams_b2b'
@@ -188,10 +189,10 @@ function ColumnHeader({
       <div className="th-header">
         <span>{label}</span>
         {hasMenu ? (
-          <details className="th-menu">
-            <summary title={`${label}: сортировка и фильтр`} aria-label={`${label}: меню`}>
+          <div className="th-menu">
+            <span className="th-menu-trigger" title={`${label}: сортировка и фильтр`} aria-label={`${label}: меню`}>
               ▾
-            </summary>
+            </span>
             <div className="th-menu-panel">
               {sortOptions?.length ? (
                 <div className="th-menu-section">
@@ -224,7 +225,7 @@ function ColumnHeader({
                 </div>
               ) : null}
             </div>
-          </details>
+          </div>
         ) : null}
       </div>
     </th>
@@ -318,18 +319,27 @@ const ECT_FILTER_OPTIONS: ColumnMenuOption[] = [
   { value: 'no', label: 'Без брони' },
 ]
 
+function isMetricFilter(value: string | undefined): value is MetricFilter {
+  return value === '' || value === 'launching_soon' || value === 'launched' || value === 'completed' || value === 'errors'
+}
+
 export default function Dashboard({ onLogout }: DashboardProps) {
+  const savedUi = loadDashboardUiState()
+  const defaultQuarter = currentQuarterIsoRange()
   const [boards, setBoards] = useState<Board[]>([])
-  const [boardCode, setBoardCode] = useState(ALL_BOARDS)
-  const [search, setSearch] = useState('')
-  const [sort, setSort] = useState('planned_date_upcoming')
-  const [dateFrom, setDateFrom] = useState(() => currentQuarterIsoRange().from)
-  const [dateTo, setDateTo] = useState(() => currentQuarterIsoRange().to)
-  const [statusFilter, setStatusFilter] = useState('')
-  const [quarterFilter, setQuarterFilter] = useState('')
-  const [ectReservationFilter, setEctReservationFilter] = useState('')
-  const [tagGroupFilter, setTagGroupFilter] = useState<string[]>([])
-  const [metricFilter, setMetricFilter] = useState<MetricFilter>('')
+  const [boardCode, setBoardCode] = useState(savedUi.boardCode ?? ALL_BOARDS)
+  const [search, setSearch] = useState(savedUi.search ?? '')
+  const [sort, setSort] = useState(savedUi.sort ?? 'planned_date_upcoming')
+  const [dateFrom, setDateFrom] = useState(savedUi.dateFrom ?? defaultQuarter.from)
+  const [dateTo, setDateTo] = useState(savedUi.dateTo ?? defaultQuarter.to)
+  const [statusFilter, setStatusFilter] = useState(savedUi.statusFilter ?? '')
+  const [quarterFilter, setQuarterFilter] = useState(savedUi.quarterFilter ?? '')
+  const [ectReservationFilter, setEctReservationFilter] = useState(savedUi.ectReservationFilter ?? '')
+  const [tagGroupFilter, setTagGroupFilter] = useState<string[]>(savedUi.tagGroupFilter ?? [])
+  const [metricFilter, setMetricFilter] = useState<MetricFilter>(
+    isMetricFilter(savedUi.metricFilter) ? savedUi.metricFilter : '',
+  )
+  const prevBoardCodeRef = useRef<string | null>(null)
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -346,12 +356,41 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   }, [])
 
   useEffect(() => {
-    setStatusFilter('')
-    setQuarterFilter('')
-    setEctReservationFilter('')
-    setTagGroupFilter([])
-    setMetricFilter('')
+    if (prevBoardCodeRef.current !== null && prevBoardCodeRef.current !== boardCode) {
+      setStatusFilter('')
+      setQuarterFilter('')
+      setEctReservationFilter('')
+      setTagGroupFilter([])
+      setMetricFilter('')
+    }
+    prevBoardCodeRef.current = boardCode
   }, [boardCode])
+
+  useEffect(() => {
+    saveDashboardUiState({
+      boardCode,
+      search,
+      sort,
+      dateFrom,
+      dateTo,
+      statusFilter,
+      quarterFilter,
+      ectReservationFilter,
+      tagGroupFilter,
+      metricFilter,
+    })
+  }, [
+    boardCode,
+    search,
+    sort,
+    dateFrom,
+    dateTo,
+    statusFilter,
+    quarterFilter,
+    ectReservationFilter,
+    tagGroupFilter,
+    metricFilter,
+  ])
 
   const loadDashboard = useCallback(async () => {
     if (!boardCode) return
@@ -665,8 +704,8 @@ export default function Dashboard({ onLogout }: DashboardProps) {
           {boardCode === DIGITAL_BOARD && (
             <div className="tag-group-filter">
               <span className="tag-group-filter-label">Область</span>
-              <details className="tag-group-filter-details">
-                <summary>{tagGroupFilterLabel()}</summary>
+              <div className="tag-group-filter-dropdown">
+                <div className="tag-group-filter-trigger">{tagGroupFilterLabel()}</div>
                 <div className="tag-group-filter-menu" role="group" aria-label="Фильтр по области">
                   {(data?.availableTagGroups ?? []).map((group) => {
                     const active = tagGroupFilter.includes(group.key)
@@ -682,7 +721,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                     )
                   })}
                 </div>
-              </details>
+              </div>
             </div>
           )}
 

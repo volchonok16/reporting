@@ -1,9 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { apiFetch, clearSessionId } from './api'
 import Dashboard from './Dashboard'
 import ProductStatusB2B from './ProductStatusB2B'
-
-type SheetId = 'zni' | 'product-status-b2b'
+import { loadActiveSheet, saveActiveSheet, type SheetId } from './uiState'
 
 type SheetTab = {
   id: SheetId
@@ -20,7 +19,11 @@ type WorkbookAppProps = {
 }
 
 export default function WorkbookApp({ onLogout }: WorkbookAppProps) {
-  const [activeSheet, setActiveSheet] = useState<SheetId>('zni')
+  const [activeSheet, setActiveSheet] = useState<SheetId>(() => loadActiveSheet())
+
+  useEffect(() => {
+    saveActiveSheet(activeSheet)
+  }, [activeSheet])
 
   const handleLogout = async () => {
     await apiFetch('/api/auth/logout', { method: 'POST' })

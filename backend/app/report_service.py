@@ -391,7 +391,17 @@ def _compute_metrics(
                 date_to=date_to,
             )
         ),
-        errorsCount=len(error_rows),
+        errorsCount=sum(
+            1
+            for row in rows
+            if _matches_dashboard_row(
+                row,
+                "errors",
+                errors_by_parent=errors_by_parent,
+                date_from=date_from,
+                date_to=date_to,
+            )
+        ),
     )
 
 

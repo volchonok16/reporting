@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getJson, apiFetch, readApiError } from './api'
+import { loadProductStatusB2bGid, saveProductStatusB2bGid } from './uiState'
 import ProductStatusCell from './ProductStatusCell'
 
 type ProductStatusSheet = {
@@ -56,6 +57,10 @@ export default function ProductStatusB2B() {
       setData(payload)
       setSheets(cloneSheets(payload.sheets))
       setActiveGid((current) => {
+        const savedGid = loadProductStatusB2bGid()
+        if (savedGid && payload.sheets.some((sheet) => sheet.gid === savedGid)) {
+          return savedGid
+        }
         if (current && payload.sheets.some((sheet) => sheet.gid === current)) {
           return current
         }
@@ -138,6 +143,12 @@ export default function ProductStatusB2B() {
   useEffect(() => {
     void loadData()
   }, [loadData])
+
+  useEffect(() => {
+    if (activeGid) {
+      saveProductStatusB2bGid(activeGid)
+    }
+  }, [activeGid])
 
   const activeSheet = useMemo(
     () => sheets.find((sheet) => sheet.gid === activeGid) ?? sheets[0] ?? null,

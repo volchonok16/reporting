@@ -255,29 +255,25 @@ body {
   color: inherit;
 }
 
-.tag-group-filter-details {
+.tag-group-filter-dropdown {
   position: relative;
 }
 
-.tag-group-filter-details > summary {
+.tag-group-filter-trigger {
   position: relative;
-  list-style: none;
   min-width: 140px;
   padding: 8px 28px 8px 10px;
   border: 1px solid #d0d0d0;
   border-radius: 8px;
   background: #fff;
-  cursor: pointer;
+  cursor: default;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  user-select: none;
 }
 
-.tag-group-filter-details > summary::-webkit-details-marker {
-  display: none;
-}
-
-.tag-group-filter-details > summary::after {
+.tag-group-filter-trigger::after {
   content: '▾';
   position: absolute;
   right: 10px;
@@ -287,7 +283,13 @@ body {
   pointer-events: none;
 }
 
+.tag-group-filter-dropdown:hover .tag-group-filter-trigger {
+  border-color: var(--t2-lime-border);
+  background: var(--t2-lime-soft);
+}
+
 .tag-group-filter-menu {
+  display: none;
   position: absolute;
   z-index: 20;
   top: calc(100% + 4px);
@@ -298,6 +300,19 @@ body {
   border-radius: 10px;
   background: #fff;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.tag-group-filter-menu::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -4px;
+  height: 4px;
+}
+
+.tag-group-filter-dropdown:hover .tag-group-filter-menu {
+  display: block;
 }
 
 .tag-group-filter-option {
@@ -548,8 +563,7 @@ body {
   flex: 0 0 auto;
 }
 
-.th-menu > summary {
-  list-style: none;
+.th-menu-trigger {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -561,21 +575,18 @@ body {
   color: #666;
   font-size: 11px;
   line-height: 1;
-  cursor: pointer;
+  cursor: default;
+  user-select: none;
 }
 
-.th-menu > summary::-webkit-details-marker {
-  display: none;
-}
-
-.th-menu[open] > summary,
-.th-menu > summary:hover {
+.th-menu:hover .th-menu-trigger {
   background: var(--t2-lime-soft);
   border-color: var(--t2-lime-border);
   color: #222;
 }
 
 .th-menu-panel {
+  display: none;
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
@@ -586,6 +597,19 @@ body {
   border-radius: 10px;
   background: #fff;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.th-menu-panel::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -4px;
+  height: 4px;
+}
+
+.th-menu:hover .th-menu-panel {
+  display: block;
 }
 
 .th-menu-section + .th-menu-section {

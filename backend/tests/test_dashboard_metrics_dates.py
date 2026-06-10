@@ -64,7 +64,41 @@ def test_total_tasks_and_default_table_use_start_date_range() -> None:
     assert metrics.totalTasks == 2
 
 
-def test_errors_count_includes_all_board_errors_without_start_date_filter() -> None:
+def test_errors_count_matches_zni_with_linked_errors_without_start_date_filter() -> None:
+    zni = _zni(start_date=date(2020, 1, 1), external_id="1")
+    zni.id = 10
+    error = Task(
+        source_system_id=1,
+        project_id=1,
+        external_id="99",
+        title="Err",
+        task_type="error",
+        source_team="Digital Streams B2b",
+        start_date=date(2020, 1, 1),
+        parent_task_id=10,
+    )
+    date_from = date(2026, 1, 1)
+    date_to = date(2026, 12, 31)
+    errors_by_parent = {10: [error]}
+
+    metrics = _compute_metrics(
+        [zni],
+        error_rows=[error],
+        errors_by_parent=errors_by_parent,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    assert metrics.errorsCount == 1
+    assert _matches_dashboard_row(
+        zni,
+        "errors",
+        errors_by_parent=errors_by_parent,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
+def test_errors_count_ignores_unlinked_errors() -> None:
     zni = _zni(start_date=date(2020, 1, 1), external_id="1")
     error = Task(
         source_system_id=1,
@@ -75,21 +109,20 @@ def test_errors_count_includes_all_board_errors_without_start_date_filter() -> N
         source_team="Digital Streams B2b",
         start_date=date(2020, 1, 1),
     )
-    date_from = date(2026, 1, 1)
-    date_to = date(2026, 12, 31)
 
     metrics = _compute_metrics(
         [zni],
         error_rows=[error],
         errors_by_parent={},
-        date_from=date_from,
-        date_to=date_to,
+        date_from=None,
+        date_to=None,
     )
-    assert metrics.errorsCount == 1
+    assert metrics.errorsCount == 0
 
 
 def test_errors_count_ignores_closed_errors() -> None:
     zni = _zni(start_date=date(2020, 1, 1), external_id="1")
+    zni.id = 10
     open_error = Task(
         source_system_id=1,
         project_id=1,
@@ -98,6 +131,7 @@ def test_errors_count_ignores_closed_errors() -> None:
         task_type="error",
         source_status="Active",
         source_team="Digital Streams B2b",
+        parent_task_id=10,
     )
     closed_error = Task(
         source_system_id=1,
@@ -107,13 +141,15 @@ def test_errors_count_ignores_closed_errors() -> None:
         task_type="error",
         source_status="Closed",
         source_team="Digital Streams B2b",
+        parent_task_id=10,
     )
     error_rows = active_errors([open_error, closed_error])
+    errors_by_parent = {10: error_rows}
 
     metrics = _compute_metrics(
         [zni],
         error_rows=error_rows,
-        errors_by_parent={},
+        errors_by_parent=errors_by_parent,
         date_from=None,
         date_to=None,
     )
