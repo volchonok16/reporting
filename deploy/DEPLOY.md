@@ -19,11 +19,34 @@ COMPOSE_CMD=docker-compose
 
 ### Только Docker (без nginx) — вручную
 
+**Обычное обновление на сервере** (git pull + пересборка + туннель PostgreSQL для DBeaver):
+
 ```bash
 cd /var/database/reporting
-bash scripts/compose-up.sh prod --build
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml ps
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml logs -f backend
+bash scripts/deploy-prod.sh
+```
+
+Эквивалент одной строкой:
+
+```bash
+git pull && bash scripts/compose-up.sh prod --build --tunnel
+```
+
+Флаг `--tunnel` подключает `docker-compose.db-tunnel.yml` (проброс `127.0.0.1:5432` на хост).
+
+Без git pull / без пересборки:
+
+```bash
+bash scripts/deploy-prod.sh --no-pull
+bash scripts/compose-up.sh prod --tunnel          # только перезапуск
+bash scripts/compose-up.sh prod --tunnel postgres # только postgres (как db-tunnel.sh)
+```
+
+Логи:
+
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.db-tunnel.yml ps
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.db-tunnel.yml logs -f backend
 ```
 
 ### Ошибки docker-compose 1.29 (`ContainerConfig`, `KeyError: 'id'`)

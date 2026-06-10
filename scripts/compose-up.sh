@@ -8,13 +8,24 @@ MODE="${1:-prod}"
 shift || true
 
 BUILD=0
+TUNNEL=0
 SERVICES=()
 for arg in "$@"; do
   case "$arg" in
     --build) BUILD=1 ;;
+    --tunnel) TUNNEL=1 ;;
     *) SERVICES+=("$arg") ;;
   esac
 done
+
+if [[ "$TUNNEL" -eq 1 ]]; then
+  case "$MODE" in
+    prod|prod-tunnel) MODE="prod-tunnel" ;;
+    *)
+      echo "Предупреждение: --tunnel поддерживается только с prod (игнорируется для mode=$MODE)" >&2
+      ;;
+  esac
+fi
 
 # shellcheck source=resolve-compose.sh
 source "$(dirname "$0")/resolve-compose.sh" "$MODE"
