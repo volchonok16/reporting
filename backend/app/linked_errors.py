@@ -29,6 +29,20 @@ def relation_type(relation: dict[str, Any]) -> str:
     return str(as_dict(relation.get("attributes")).get("name") or "unknown")
 
 
+def is_parent_link(relation: dict[str, Any]) -> bool:
+    link = relation_type(relation).lower()
+    name = str(as_dict(relation.get("attributes")).get("name") or "").lower()
+    if link in {
+        "parent",
+        "hierarchy-reverse",
+        "system.linktypes.hierarchy-reverse",
+    } or name in {"parent", "hierarchy-reverse", "system.linktypes.hierarchy-reverse"}:
+        return True
+    if relation.get("LinkType") == 1 or link == "1":
+        return True
+    return False
+
+
 def is_child_link(relation: dict[str, Any]) -> bool:
     link = relation_type(relation).lower()
     name = str(as_dict(relation.get("attributes")).get("name") or "").lower()
@@ -59,6 +73,17 @@ def error_child_ids_from_zni(payload: dict[str, Any]) -> list[int]:
         if child_id is not None:
             result.append(child_id)
     return result
+
+
+def parent_zni_id_from_error_payload(payload: dict[str, Any]) -> int | None:
+    """Родительское ЗНИ для ошибки: ссылка Hierarchy-Reverse на карточке ошибки."""
+    for relation in as_relation_list(payload.get("relations")):
+        if not is_parent_link(relation):
+            continue
+        parent_id = relation_target_id(relation)
+        if parent_id is not None:
+            return parent_id
+    return None
 
 
 def linked_item_parent_map(payloads: list[dict[str, Any]]) -> dict[int, int]:

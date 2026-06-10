@@ -13,7 +13,7 @@ from app.db import SessionLocal, close_db_session
 from app.json_utils import as_work_item_list
 from app.iteration_plan import parse_iteration_plan, quarter_key_from_date
 from app.release_fields import work_item_planned_release
-from app.linked_errors import is_error_work_item_type
+from app.linked_errors import is_error_work_item_type, parent_zni_id_from_error_payload
 from app.resource_reservation import compute_ect_resource_reservation
 from app.completed_metrics import effective_closed_date, effective_closed_date_from_fields
 from app.zni_description import extract_business_goal_from_description, tfs_identity_display_name
@@ -518,7 +518,7 @@ async def sync_board(
             chunk_ids = error_ids[offset : offset + commit_chunk]
             error_payloads = await client.get_work_items_batch(
                 chunk_ids,
-                expand_relations=False,
+                expand_relations=True,
             )
             fetched += len(error_payloads)
 
@@ -530,8 +530,16 @@ async def sync_board(
                     continue
                 if has_excluded_tags(fields, board.exclude_sync_tags):
                     continue
-                parent_zni_id = error_child_map.get(item["id"])
+                parent_zni_id = error_child_map.get(item["id"]) or parent_zni_id_from_error_payload(item)
                 parent_db_id = zni_db_ids.get(parent_zni_id) if parent_zni_id else None
+                if parent_db_id is None and parent_zni_id is not None:
+                    parent_db_id = db.scalar(
+                        select(Task.id).where(
+                            Task.source_system_id == source_system_id,
+                            Task.task_type == TASK_TYPE_CHANGE,
+                            Task.external_id == str(parent_zni_id),
+                        )
+                    )
                 created = parse_tfs_datetime(fields.get("System.CreatedDate"))
                 updated = parse_tfs_datetime(fields.get("System.ChangedDate"))
                 closed = parse_tfs_datetime(fields.get("Microsoft.VSTS.Common.ClosedDate"))

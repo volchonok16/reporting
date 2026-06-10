@@ -308,6 +308,21 @@ def _is_closed_zni(task: Task) -> bool:
     return bool(task_status_tokens(task) & _closed_states_lower())
 
 
+def _build_errors_by_parent(zni_rows: list[Task], error_rows: list[Task]) -> dict[int, list[Task]]:
+    zni_id_by_external = {row.external_id: row.id for row in zni_rows}
+    zni_db_ids = {row.id for row in zni_rows}
+    errors_by_parent: dict[int, list[Task]] = {}
+    for error in error_rows:
+        parent_id = error.parent_task_id
+        if parent_id is None or parent_id not in zni_db_ids:
+            raw_parent = _extra(error).get("parent_zni_id")
+            if raw_parent is not None:
+                parent_id = zni_id_by_external.get(str(raw_parent))
+        if parent_id is not None:
+            errors_by_parent.setdefault(parent_id, []).append(error)
+    return errors_by_parent
+
+
 def _matches_closed_table_visibility(task: Task, metric: str | None) -> bool:
     """Closed ЗНИ показываем в таблице только при фильтре «Завершённые»."""
     if not _is_closed_zni(task):
@@ -418,13 +433,7 @@ def _compute_metrics(
         errorsCount=sum(
             1
             for row in rows
-            if _matches_dashboard_row(
-                row,
-                "errors",
-                errors_by_parent=errors_by_parent,
-                date_from=date_from,
-                date_to=date_to,
-            )
+            if not _is_closed_zni(row) and has_linked_errors(row, errors_by_parent)
         ),
     )
 
@@ -478,10 +487,7 @@ def load_change_requests(
 
     rows_with_customer = [row for row in rows if has_customer_name(row)]
 
-    errors_by_parent: dict[int, list[Task]] = {}
-    for error in error_rows:
-        if error.parent_task_id:
-            errors_by_parent.setdefault(error.parent_task_id, []).append(error)
+    errors_by_parent = _build_errors_by_parent(rows, error_rows)
 
     filtered = [
         row
