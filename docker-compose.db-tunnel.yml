@@ -1,0 +1,12 @@
+# SSH-туннель к PostgreSQL на production (DBeaver, DataGrip, psql).
+# Порт только на localhost сервера — не открыт в интернет.
+#
+# На сервере:
+#   bash scripts/db-tunnel.sh
+#
+# На Mac (DBeaver): Host localhost, SSH → IP сервера, порт 22.
+
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"

@@ -30,11 +30,13 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 
 Вход: PAT-токен TFS (Work Items Read). После входа — «Обновить из TFS» для загрузки ЗНИ и ошибок.
 
-## Только PostgreSQL
+## Только PostgreSQL (локально)
 
 ```bash
-docker compose up -d postgres
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres
 ```
+
+Без `docker-compose.dev.yml` порт `5432` на Mac не пробрасывается.
 
 Проверка, что установлено:
 
@@ -81,29 +83,76 @@ Docker Compose подхватывает `.env` автоматически для
 
 > Init-скрипты выполняются только при **пустом** томе. Пересоздание: `docker compose down -v && docker compose up -d`
 
-## Подключение снаружи
+## Подключение к БД
+
+### Локально (Mac, dev)
+
+Порт `5432` пробрасывается через `docker-compose.dev.yml`. Docker Desktop должен быть запущен:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres
+```
 
 | Параметр | Значение |
 |----------|----------|
-| Host | `localhost` (или IP сервера) |
+| Host | `localhost` |
 | Port | `5432` |
 | Database | `reporting` |
+| User / Password | `alex` / `alex` (или `ivan` / `ivan`) |
 
-**alex:**
-
-```
-postgresql://alex:alex@localhost:5432/reporting
-```
-
-**ivan:**
-
-```
-postgresql://ivan:ivan@localhost:5432/reporting
-```
+JDBC (DBeaver, DataGrip): `jdbc:postgresql://localhost:5432/reporting` — вкладка **SSH не нужна**.
 
 ```bash
 psql "postgresql://alex:alex@localhost:5432/reporting" -c "\dt"
 ```
+
+### Production-сервер (DBeaver / DataGrip с Mac)
+
+PostgreSQL в контейнере **не слушает интернет**. Прямое подключение к `IP_сервера:5432` не работает (`Connection reset` / `Connection refused`).
+
+Схема: **ваш Mac → SSH → сервер → localhost:5432 → контейнер postgres**.
+
+**1. На сервере** (один раз после `git pull`):
+
+```bash
+cd /var/database/reporting   # путь к проекту на VPS
+bash scripts/db-tunnel.sh
+```
+
+Скрипт пробрасывает `127.0.0.1:5432` на хост (только localhost, не в интернет).
+
+**2. В DBeaver**
+
+Вкладка **Главное**:
+
+| Поле | Значение |
+|------|----------|
+| Host | `localhost` |
+| Port | `5432` |
+| Database | `reporting` |
+| User | `alex` |
+| Password | из `.env` на сервере (`TASKHUB_ALEX_PASSWORD`) |
+
+Вкладка **SSH** — включить **Use SSH Tunnel**:
+
+| Поле | Значение |
+|------|----------|
+| Host | IP сервера (например `45.9.13.214`) |
+| Port | `22` |
+| User | ваш SSH-логин на VPS |
+| Auth | SSH-ключ или пароль |
+
+Сначала **Test tunnel**, затем **Test connection**.
+
+> Не указывайте IP сервера во вкладке «Главное» и не используйте URL вида `postgresql+psycopg://` — это формат SQLAlchemy для backend, не для JDBC.
+
+**3. Альтернатива: туннель из терминала Mac**
+
+```bash
+ssh -N -L 5432:127.0.0.1:5432 user@45.9.13.214
+```
+
+Окно не закрывать. В клиенте: Host `localhost`, SSH в клиенте выключен.
 
 ## Обновление схемы (миграции)
 

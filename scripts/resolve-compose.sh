@@ -56,6 +56,9 @@ case "$resolve_compose_mode" in
   prod)
     COMPOSE+=( -f docker-compose.yml -f docker-compose.prod.yml )
     ;;
+  prod-tunnel)
+    COMPOSE+=( -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.db-tunnel.yml )
+    ;;
   base)
     COMPOSE+=( -f docker-compose.yml )
     ;;
