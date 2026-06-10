@@ -51,6 +51,13 @@ class QuarterOptionOut(BaseModel):
     label: str
 
 
+class TagFilterGroupOut(BaseModel):
+    key: str
+    label: str
+    tags: list[str]
+    subsectionPrefixes: list[str] = Field(default_factory=list)
+
+
 class ChangeRequestOut(BaseModel):
     id: str
     number: str
@@ -89,6 +96,7 @@ class DashboardOut(BaseModel):
     totalShown: int
     availableStatuses: list[str] = Field(default_factory=list)
     availableQuarters: list[QuarterOptionOut] = Field(default_factory=list)
+    availableTagGroups: list[TagFilterGroupOut] = Field(default_factory=list)
 
 
 class ProductStatusSheetOut(BaseModel):

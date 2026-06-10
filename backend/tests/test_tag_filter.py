@@ -1,0 +1,36 @@
+from app.tag_filters import (
+    TAG_FILTER_GROUPS,
+    normalize_tag_group_keys,
+    task_matches_tag_group,
+    task_matches_tag_groups,
+)
+
+
+def test_tag_filter_groups_config() -> None:
+    keys = {group.key for group in TAG_FILTER_GROUPS}
+    assert keys == {"newlk", "site"}
+
+
+def test_normalize_tag_group_keys() -> None:
+    assert normalize_tag_group_keys(["newlk", "site", "unknown", "NEWLK"]) == ["newlk", "site"]
+
+
+def test_task_matches_site_group() -> None:
+    site = next(group for group in TAG_FILTER_GROUPS if group.key == "site")
+    assert task_matches_tag_group(["B2B", "site_b2b"], site)
+    assert task_matches_tag_group(["site_portal"], site)
+    assert not task_matches_tag_group(["LK_B2B", "lk_serv"], site)
+
+
+def test_task_matches_newlk_group_with_subsections() -> None:
+    newlk = next(group for group in TAG_FILTER_GROUPS if group.key == "newlk")
+    assert task_matches_tag_group(["B2B", "DesignTasks", "LK_B2B", "lk_serv"], newlk)
+    assert task_matches_tag_group(["lk_serv"], newlk)
+    assert not task_matches_tag_group(["site_b2b"], newlk)
+
+
+def test_task_matches_tag_groups_or_logic() -> None:
+    assert task_matches_tag_groups(["site_b2b"], ["site"])
+    assert task_matches_tag_groups(["lk_serv"], ["newlk"])
+    assert not task_matches_tag_groups(["content"], ["site", "newlk"])
+    assert task_matches_tag_groups(["content"], [])

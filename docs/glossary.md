@@ -430,6 +430,15 @@
 
 **Доски приложения:** Digital Streams B2b (`Tele2\Digital\Streams\B2b`, в UI — «Digital»); B2B Product — CORE, КАТС, Голосовые продукты, М2М / IoT, SMS, Solar, Umnico (area path `Tele2\B2B Product…`, те же правила синка и метрик, что у Digital: без `EFO`, ошибки `FE B2B` / `microservice`, «Скоро запуск» — `UAT`, «Запущено» — `Pilot`); BE Analytics (`BE-T2\BE Analytics`, ЗНИ с `b2b_product`); ESB (`BE-T2\ESB\ESB Analytics`, в UI — «ESB», те же теги и метрики, что у BE Analytics).
 
+**Фильтр групп тегов (дашборд):** query-параметр `tag_group` (можно несколько). Группы задаются в `backend/app/tag_filters.py` и работают на всех досках и подразделах:
+
+| Группа (UI) | Корневой тег | Подразделы (префикс) |
+|-------------|--------------|----------------------|
+| `newlk` | `LK_B2B` | `lk_*` (напр. `lk_serv`) |
+| `site` | `site_b2b` | `site_*` |
+
+При выборе нескольких групп ЗНИ попадает в выборку, если совпадает хотя бы одна группа (логика ИЛИ). Теги берутся из `extra_json.tags` (`System.Tags` при синке).
+
 После синхронизации доски записи `task` с тем же `board_code`, не попавшие в выгрузку, удаляются (очистка устаревших ЗНИ/ошибок).
 
 **Фильтр синхронизации:** ЗНИ в статусе `Closed` с `ChangedDate` / `ClosedDate` старше 365 дней не загружаются (`TFS_EXCLUDE_CLOSED_OLDER_THAN_DAYS`).

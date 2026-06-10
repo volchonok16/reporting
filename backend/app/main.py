@@ -142,6 +142,10 @@ def dashboard(
         default=None,
         description="Фильтр таблицы: launching_soon, launched, completed, errors",
     ),
+    tag_group: list[str] = Query(
+        default=[],
+        description="Фильтр по группам тегов: newlk (LK_B2B и lk_*), site (site_b2b и site_*)",
+    ),
 ) -> DashboardOut:
     return load_change_requests(
         db,
@@ -153,6 +157,7 @@ def dashboard(
         status=status,
         quarter=quarter,
         metric=metric,
+        tag_groups=tag_group,
     )
 
 

@@ -47,6 +47,13 @@ type QuarterOption = {
   label: string
 }
 
+type TagFilterGroup = {
+  key: string
+  label: string
+  tags: string[]
+  subsectionPrefixes: string[]
+}
+
 type ChangeRequest = {
   number: string
   title: string
@@ -81,6 +88,7 @@ type DashboardData = {
   totalShown: number
   availableStatuses: string[]
   availableQuarters: QuarterOption[]
+  availableTagGroups: TagFilterGroup[]
 }
 
 function formatDate(value?: string | null): string {
@@ -188,6 +196,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const [dateTo, setDateTo] = useState(() => currentQuarterIsoRange().to)
   const [statusFilter, setStatusFilter] = useState('')
   const [quarterFilter, setQuarterFilter] = useState('')
+  const [tagGroupFilter, setTagGroupFilter] = useState<string[]>([])
   const [metricFilter, setMetricFilter] = useState<MetricFilter>('')
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(false)
@@ -206,6 +215,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   useEffect(() => {
     setStatusFilter('')
     setQuarterFilter('')
+    setTagGroupFilter([])
     setMetricFilter('')
   }, [boardCode])
 
@@ -219,6 +229,9 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     if (dateTo) params.set('date_to', dateTo)
     if (statusFilter) params.set('status', statusFilter)
     if (quarterFilter) params.set('quarter', quarterFilter)
+    for (const group of tagGroupFilter) {
+      params.append('tag_group', group)
+    }
     if (metricFilter) params.set('metric', metricFilter)
     try {
       const payload = await getJson<DashboardData>(`/api/dashboard?${params}`)
@@ -228,7 +241,21 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     } finally {
       setLoading(false)
     }
-  }, [boardCode, search, sort, dateFrom, dateTo, statusFilter, quarterFilter, metricFilter])
+  }, [boardCode, search, sort, dateFrom, dateTo, statusFilter, quarterFilter, tagGroupFilter, metricFilter])
+
+  const toggleTagGroupFilter = (key: string) => {
+    setTagGroupFilter((current) =>
+      current.includes(key) ? current.filter((value) => value !== key) : [...current, key],
+    )
+  }
+
+  const tagGroupFilterLabel = (): string => {
+    if (!tagGroupFilter.length) return 'Все теги'
+    const groups = data?.availableTagGroups ?? []
+    return tagGroupFilter
+      .map((key) => groups.find((group) => group.key === key)?.label ?? key)
+      .join(', ')
+  }
 
   const toggleMetricFilter = (value: MetricFilter) => {
     setMetricFilter((current) => (current === value ? '' : value))
@@ -453,6 +480,33 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             </select>
           </label>
 
+          <div className="tag-group-filter">
+            <span className="tag-group-filter-label">Теги</span>
+            <details className="tag-group-filter-details">
+              <summary>{tagGroupFilterLabel()}</summary>
+              <div className="tag-group-filter-menu" role="group" aria-label="Фильтр по тегам">
+                {(data?.availableTagGroups ?? []).map((group) => {
+                  const active = tagGroupFilter.includes(group.key)
+                  const subsectionHint = [
+                    ...group.tags,
+                    ...group.subsectionPrefixes.map((prefix) => `${prefix}*`),
+                  ].join(', ')
+                  return (
+                    <label key={group.key} className={`tag-group-filter-option${active ? ' is-active' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={active}
+                        onChange={() => toggleTagGroupFilter(group.key)}
+                      />
+                      <span className="tag-group-filter-option-label">{group.label}</span>
+                      <span className="tag-group-filter-option-hint">{subsectionHint}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </details>
+          </div>
+
           <label className="select-wrap">
             <span>План квартала</span>
             <select value={quarterFilter} onChange={(e) => setQuarterFilter(e.target.value)}>
@@ -533,6 +587,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         <p className="table-meta">
           Показано строк {data?.totalShown ?? 0}
           {metricFilter ? ` · фильтр: ${METRIC_LABELS[metricFilter]}` : ''}
+          {tagGroupFilter.length ? ` · теги: ${tagGroupFilterLabel()}` : ''}
           {boardLabel ? ` · ${boardLabel}` : ''}
           {loading ? ' · загрузка…' : ''}
         </p>

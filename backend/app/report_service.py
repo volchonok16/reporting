@@ -25,7 +25,9 @@ from app.schemas import (
     DashboardOut,
     LinkedErrorOut,
     QuarterOptionOut,
+    TagFilterGroupOut,
 )
+from app.tag_filters import TAG_FILTER_GROUPS, normalize_tag_group_keys, task_matches_tag_groups
 
 
 def _board_out(board: BoardConfig) -> BoardOut:
@@ -41,6 +43,29 @@ def _matches_search(task: Task, search: str) -> bool:
 
 def _extra(task: Task) -> dict:
     return task.extra_json if isinstance(task.extra_json, dict) else {}
+
+
+def _task_tags(task: Task) -> list[str]:
+    raw = _extra(task).get("tags")
+    if not isinstance(raw, list):
+        return []
+    return [str(tag).strip() for tag in raw if str(tag).strip()]
+
+
+def _matches_tag_groups(task: Task, tag_groups: list[str]) -> bool:
+    return task_matches_tag_groups(_task_tags(task), tag_groups)
+
+
+def _tag_filter_groups_out() -> list[TagFilterGroupOut]:
+    return [
+        TagFilterGroupOut(
+            key=group.key,
+            label=group.label,
+            tags=list(group.root_tags),
+            subsectionPrefixes=list(group.subsection_prefixes),
+        )
+        for group in TAG_FILTER_GROUPS
+    ]
 
 
 def _planned_release(task: Task) -> str | None:
@@ -325,7 +350,9 @@ def load_change_requests(
     status: str | None = None,
     quarter: str | None = None,
     metric: str | None = None,
+    tag_groups: list[str] | None = None,
 ) -> DashboardOut:
+    selected_tag_groups = normalize_tag_group_keys(tag_groups)
     all_boards = is_all_boards(board_code)
     board = board_by_code(board_code)
 
@@ -374,6 +401,7 @@ def load_change_requests(
             date_from=date_from,
             date_to=date_to,
         )
+        and _matches_tag_groups(row, selected_tag_groups)
     ]
 
     if sort == "planned_date_upcoming":
@@ -434,6 +462,7 @@ def load_change_requests(
         totalShown=len(items),
         availableStatuses=_collect_available_statuses(rows_with_customer),
         availableQuarters=_collect_available_quarters(rows_with_customer),
+        availableTagGroups=_tag_filter_groups_out(),
     )
 
 
