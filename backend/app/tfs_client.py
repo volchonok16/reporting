@@ -319,8 +319,8 @@ class TfsClient:
 
     async def get_error_ids_for_area(
         self,
-        *,
         area_path: str,
+        *,
         tags: Iterable[str] | None = None,
         exclude_tags: Iterable[str] | None = None,
         limit_results: bool = True,
