@@ -491,7 +491,6 @@ async def sync_board(
         error_child_map = await client.get_error_links_for_area(
             board.area_path,
             zni_tags=board.sync_tags or None,
-            error_tags=board.error_sync_tags or None,
             exclude_zni_states=board.exclude_sync_states or None,
             exclude_zni_tags=board.exclude_sync_tags or None,
             exclude_error_tags=board.exclude_sync_tags or None,
@@ -500,6 +499,12 @@ async def sync_board(
         error_child_map = {
             error_id: zni_id for error_id, zni_id in error_child_map.items() if zni_id in zni_id_set
         }
+        if zni_id_set:
+            linked_by_zni = await client.get_error_links_for_zni_ids(
+                zni_id_set,
+                exclude_error_tags=board.exclude_sync_tags or None,
+            )
+            error_child_map.update(linked_by_zni)
 
         board_error_ids = await client.get_error_ids_for_area(
             board.area_path,
@@ -527,11 +532,11 @@ async def sync_board(
                 fields = item.get("fields") or {}
                 if not is_error_work_item_type(str(fields.get("System.WorkItemType") or "")):
                     continue
-                if not has_required_tags(fields, board.error_sync_tags):
+                parent_zni_id = error_child_map.get(item["id"]) or parent_zni_id_from_error_payload(item)
+                if parent_zni_id is None and not has_required_tags(fields, board.error_sync_tags):
                     continue
                 if has_excluded_tags(fields, board.exclude_sync_tags):
                     continue
-                parent_zni_id = error_child_map.get(item["id"]) or parent_zni_id_from_error_payload(item)
                 parent_db_id = zni_db_ids.get(parent_zni_id) if parent_zni_id else None
                 if parent_db_id is None and parent_zni_id is not None:
                     parent_db_id = db.scalar(

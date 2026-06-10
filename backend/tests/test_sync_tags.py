@@ -9,9 +9,11 @@ def test_has_required_tags_b2b_product() -> None:
 
 
 def test_has_required_tags_error_b2b() -> None:
-    assert has_required_tags({"System.Tags": "FE B2B; microservice"}, ("FE B2B", "microservice"))
-    assert has_required_tags({"System.Tags": "microservice"}, ("FE B2B", "microservice"))
-    assert not has_required_tags({"System.Tags": "mixx"}, ("FE B2B", "microservice"))
+    tags = ("FE B2B", "microservice")
+    assert has_required_tags({"System.Tags": "FE B2B; microservice"}, tags)
+    assert has_required_tags({"System.Tags": "microservice"}, tags)
+    assert not has_required_tags({"System.Tags": "B2B; HOLD; QA 8"}, tags)
+    assert not has_required_tags({"System.Tags": "mixx"}, tags)
 
 
 def test_excluded_sync_state_rejected() -> None:

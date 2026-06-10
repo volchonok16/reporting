@@ -356,6 +356,7 @@ class TfsClient:
                 "System.CreatedDate",
                 "System.ChangedDate",
                 "System.Tags",
+                "System.Parent",
                 "Microsoft.VSTS.Common.ClosedDate",
                 "Microsoft.VSTS.Common.Severity",
             ]
@@ -391,18 +392,16 @@ class TfsClient:
         area_path: str,
         *,
         zni_tags: Iterable[str] | None = None,
-        error_tags: Iterable[str] | None = None,
         exclude_zni_states: Iterable[str] | None = None,
         exclude_zni_tags: Iterable[str] | None = None,
         exclude_error_tags: Iterable[str] | None = None,
     ) -> dict[int, int]:
-        """error_id -> zni_id через один WIQL вместо Relations на каждом ЗНИ."""
+        """error_id -> zni_id через WIQL по AreaPath (без фильтра error_sync_tags на Target)."""
         types = ", ".join(wiql_quote(item) for item in settings.change_type_list)
         error_types = ", ".join(wiql_quote(item) for item in settings.error_type_list)
         project = wiql_quote(self.project)
         area = wiql_quote(area_path)
         zni_tags_clause = wiql_tags_clause(zni_tags, field="[Source].[System.Tags]")
-        error_tags_clause = wiql_tags_clause(error_tags, field="[Target].[System.Tags]")
         exclude_zni_states_clause = wiql_exclude_states_clause(
             exclude_zni_states,
             field="[Source].[System.State]",
@@ -423,7 +422,7 @@ class TfsClient:
             f"{exclude_zni_states_clause}{exclude_zni_tags_clause} "
             f"AND [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward' "
             f"AND [Target].[System.WorkItemType] IN ({error_types})"
-            f"{error_tags_clause}{exclude_error_tags_clause} "
+            f"{exclude_error_tags_clause} "
             f"MODE (MustContain)"
         )
         payload = await self.run_wiql(query)
@@ -441,6 +440,51 @@ class TfsClient:
                 result[error_id] = zni_id
             except (KeyError, TypeError, ValueError):
                 continue
+        return result
+
+    async def get_error_links_for_zni_ids(
+        self,
+        zni_ids: Iterable[int],
+        *,
+        exclude_error_tags: Iterable[str] | None = None,
+    ) -> dict[int, int]:
+        """error_id -> zni_id для уже синхронизированных ЗНИ (точнее, чем фильтр по AreaPath)."""
+        ids = sorted({int(item) for item in zni_ids})
+        if not ids:
+            return {}
+
+        error_types = ", ".join(wiql_quote(item) for item in settings.error_type_list)
+        exclude_error_tags_clause = wiql_exclude_tags_clause(
+            exclude_error_tags,
+            field="[Target].[System.Tags]",
+        )
+        result: dict[int, int] = {}
+        chunk_size = min(settings.tfs_batch_size, WIT_BATCH_MAX_IDS)
+        for offset in range(0, len(ids), chunk_size):
+            chunk = ids[offset : offset + chunk_size]
+            id_list = ", ".join(str(item) for item in chunk)
+            query = (
+                f"SELECT [System.Id] FROM WorkItemLinks "
+                f"WHERE [Source].[System.Id] IN ({id_list}) "
+                f"AND [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward' "
+                f"AND [Target].[System.WorkItemType] IN ({error_types})"
+                f"{exclude_error_tags_clause} "
+                f"MODE (MustContain)"
+            )
+            payload = await self.run_wiql(query)
+            for rel in as_list(payload.get("workItemRelations")):
+                if not isinstance(rel, dict):
+                    continue
+                source = rel.get("source")
+                target = rel.get("target")
+                if not isinstance(source, dict) or not isinstance(target, dict):
+                    continue
+                try:
+                    zni_id = int(source["id"])
+                    error_id = int(target["id"])
+                    result[error_id] = zni_id
+                except (KeyError, TypeError, ValueError):
+                    continue
         return result
 
     @staticmethod

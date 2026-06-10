@@ -75,8 +75,23 @@ def error_child_ids_from_zni(payload: dict[str, Any]) -> list[int]:
     return result
 
 
+def parent_zni_id_from_error_fields(fields: dict[str, Any]) -> int | None:
+    """Родительское ЗНИ из поля System.Parent (без expand Relations)."""
+    parent = fields.get("System.Parent")
+    if parent in (None, ""):
+        return None
+    try:
+        return int(parent)
+    except (TypeError, ValueError):
+        return None
+
+
 def parent_zni_id_from_error_payload(payload: dict[str, Any]) -> int | None:
-    """Родительское ЗНИ для ошибки: ссылка Hierarchy-Reverse на карточке ошибки."""
+    """Родительское ЗНИ для ошибки: System.Parent, затем Hierarchy-Reverse."""
+    fields = as_dict(payload.get("fields"))
+    parent_id = parent_zni_id_from_error_fields(fields)
+    if parent_id is not None:
+        return parent_id
     for relation in as_relation_list(payload.get("relations")):
         if not is_parent_link(relation):
             continue

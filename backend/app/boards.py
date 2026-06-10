@@ -53,7 +53,6 @@ def _tele2_digital_style_board(
         project_id=_TELE2_PROJECT_ID,
         team_id=_TELE2_TEAM_ID,
         area_path=area_path,
-        error_sync_tags=("FE B2B", "microservice"),
         exclude_sync_tags=("EFO",),
         launching_soon_states=("UAT",),
         launched_states=("Pilot", "Пилот"),
