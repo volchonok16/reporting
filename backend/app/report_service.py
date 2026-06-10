@@ -381,7 +381,7 @@ def _compute_metrics(
     date_to: date | None,
 ) -> DashboardMetricsOut:
     return DashboardMetricsOut(
-        totalTasks=len(rows),
+        totalTasks=sum(1 for row in rows if not _is_closed_zni(row)),
         launchingSoon=sum(
             1
             for row in rows

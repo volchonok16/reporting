@@ -41,6 +41,20 @@ def test_launching_soon_ignores_start_date_range() -> None:
     assert metrics.totalTasks == 2
 
 
+def test_total_tasks_excludes_closed() -> None:
+    open_task = _zni(source_status="UAT", external_id="1")
+    closed_task = _zni(source_status="Closed", external_id="2")
+
+    metrics = _compute_metrics(
+        [open_task, closed_task],
+        error_rows=[],
+        errors_by_parent={},
+        date_from=None,
+        date_to=None,
+    )
+    assert metrics.totalTasks == 1
+
+
 def test_total_tasks_and_default_table_use_start_date_range() -> None:
     old = _zni(start_date=date(2020, 1, 1), external_id="1")
     recent = _zni(start_date=date(2026, 4, 15), external_id="2")
