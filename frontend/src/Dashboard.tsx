@@ -277,8 +277,29 @@ function BusinessValueEditor({ item, disabled, saving, onSave }: BusinessValueEd
   )
 }
 
-function rowHasExpandDetails(item: ChangeRequest): boolean {
-  return Boolean(item.customerName?.trim() || item.boardColumn?.trim() || item.status?.trim())
+function isClosedStatus(value?: string | null): boolean {
+  if (!value?.trim()) return false
+  return value.trim().toLowerCase() === 'closed'
+}
+
+function visibleBoardStatus(item: ChangeRequest, metricFilter: MetricFilter): string | null {
+  const column = item.boardColumn?.trim()
+  if (!column) return null
+  if (isClosedStatus(column) && metricFilter !== 'completed') return null
+  return column
+}
+
+function visibleWorkflowStatus(item: ChangeRequest, metricFilter: MetricFilter): string | null {
+  const status = item.status?.trim()
+  if (!status) return null
+  if (isClosedStatus(status) && metricFilter !== 'completed') return null
+  return status
+}
+
+function rowHasExpandDetails(item: ChangeRequest, metricFilter: MetricFilter): boolean {
+  return Boolean(
+    item.customerName?.trim() || visibleBoardStatus(item, metricFilter) || visibleWorkflowStatus(item, metricFilter),
+  )
 }
 
 type MetricFilter = '' | 'launching_soon' | 'launched' | 'completed' | 'errors'
@@ -870,7 +891,9 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                 {data?.items.flatMap((item) => {
                   const key = itemRowKey(item)
                   const expanded = expandedKeys.has(key)
-                  const hasDetails = rowHasExpandDetails(item)
+                  const hasDetails = rowHasExpandDetails(item, metricFilter)
+                  const boardStatus = visibleBoardStatus(item, metricFilter)
+                  const workflowStatus = visibleWorkflowStatus(item, metricFilter)
                   const customerParts = customerNameParts(item.customerName)
                   const colCount = tableColumnCount(Boolean(data.allBoards))
                   const rows = [
@@ -952,9 +975,11 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                             <div className="zni-detail-field">
                               <div className="zni-detail-label">Статус</div>
                               <div className="zni-detail-value cell-status">
-                                <span className="status-board">{item.boardColumn || item.status || '—'}</span>
-                                {item.boardColumn && item.status && item.boardColumn !== item.status && (
-                                  <span className="status-workflow">{item.status}</span>
+                                <span className="status-board">
+                                  {boardStatus || workflowStatus || '—'}
+                                </span>
+                                {boardStatus && workflowStatus && boardStatus !== workflowStatus && (
+                                  <span className="status-workflow">{workflowStatus}</span>
                                 )}
                               </div>
                             </div>

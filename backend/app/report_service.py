@@ -6,7 +6,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.boards import ALL_BOARDS_CODE, BOARDS, BoardConfig, board_by_code, is_all_boards
-from app.board_metrics import active_errors, has_linked_errors, is_completed, is_launched, is_launching_soon
+from app.board_metrics import (
+    active_errors,
+    has_linked_errors,
+    is_completed,
+    is_launched,
+    is_launching_soon,
+    task_status_tokens,
+)
 from app.config import settings
 from app.iteration_plan import (
     PLAN_QUARTER_TBD,
@@ -293,14 +300,31 @@ def _collect_available_quarters(rows: list[Task]) -> list[QuarterOptionOut]:
     ]
 
 
+def _closed_states_lower() -> set[str]:
+    return {value.lower() for value in settings.closed_state_list}
+
+
+def _is_closed_zni(task: Task) -> bool:
+    return bool(task_status_tokens(task) & _closed_states_lower())
+
+
+def _matches_closed_table_visibility(task: Task, metric: str | None) -> bool:
+    """Closed ЗНИ показываем в таблице только при фильтре «Завершённые»."""
+    if not _is_closed_zni(task):
+        return True
+    return metric == "completed"
+
+
 def _collect_available_statuses(rows: list[Task]) -> list[str]:
+    closed_states = _closed_states_lower()
     values: set[str] = set()
     for row in rows:
         column = _board_column(row)
-        if column:
+        if column and column.casefold() not in closed_states:
             values.add(column)
-        if row.source_status:
-            values.add(row.source_status)
+        status = row.source_status
+        if status and status.casefold() not in closed_states:
+            values.add(status)
     return sorted(values, key=str.casefold)
 
 
@@ -474,6 +498,7 @@ def load_change_requests(
             date_to=date_to,
         )
         and _matches_tag_groups(row, selected_tag_groups)
+        and _matches_closed_table_visibility(row, metric)
     ]
 
     if sort == "planned_date_upcoming":
