@@ -204,7 +204,7 @@ def _wit_batch_api_version_candidates(preferred: str | None = None) -> tuple[str
 
 
 class TfsClient:
-    def __init__(self, tfs_auth: TfsAuth) -> None:
+    def __init__(self, tfs_auth: TfsAuth, *, timeout: float | None = None) -> None:
         if not tfs_auth.has_credentials():
             raise ValueError("TFS credentials are not configured.")
 
@@ -224,7 +224,7 @@ class TfsClient:
             base_url=self.base_url,
             auth=http_auth,
             headers=headers,
-            timeout=settings.tfs_timeout_seconds,
+            timeout=timeout if timeout is not None else settings.tfs_timeout_seconds,
             verify=settings.tfs_verify_tls,
         )
 
@@ -341,6 +341,23 @@ class TfsClient:
                 "Microsoft.VSTS.Common.Triage",
                 "Microsoft.VSTS.Common.BusinessValue",
                 *settings.scheduling_batch_field_list,
+            ]
+        )
+
+    def _error_batch_field_list(self) -> list[str]:
+        """Поля для workItemsBatch по ошибкам — без кастомных полей ЗНИ (иначе TFS отвечает 400)."""
+        return wit_api_field_names(
+            [
+                "System.Id",
+                "System.Title",
+                "System.WorkItemType",
+                "System.State",
+                "System.AreaPath",
+                "System.CreatedDate",
+                "System.ChangedDate",
+                "System.Tags",
+                "Microsoft.VSTS.Common.ClosedDate",
+                "Microsoft.VSTS.Common.Severity",
             ]
         )
 
@@ -530,6 +547,8 @@ class TfsClient:
         *,
         fields: list[str] | None,
         with_relations: bool,
+        allow_expand_retry: bool = True,
+        allow_fields_retry: bool = True,
     ) -> list[dict[str, Any]]:
         if not ids:
             return []
@@ -545,7 +564,27 @@ class TfsClient:
             json=body,
         )
 
-        if response.status_code in {500, 502, 503} and len(ids) > 1:
+        if response.status_code == 400 and with_relations and allow_expand_retry:
+            logger.warning("tfs_batch_retry_without_relations size=%s", len(ids))
+            return await self._fetch_work_items_chunk(
+                ids,
+                fields=fields,
+                with_relations=False,
+                allow_expand_retry=False,
+                allow_fields_retry=allow_fields_retry,
+            )
+
+        if response.status_code == 400 and fields and allow_fields_retry:
+            logger.warning("tfs_batch_retry_without_fields size=%s", len(ids))
+            return await self._fetch_work_items_chunk(
+                ids,
+                fields=None,
+                with_relations=with_relations,
+                allow_expand_retry=False,
+                allow_fields_retry=False,
+            )
+
+        if response.status_code in {400, 500, 502, 503} and len(ids) > 1:
             mid = len(ids) // 2
             logger.warning(
                 "tfs_batch_split status=%s size=%s -> %s + %s",
@@ -555,11 +594,19 @@ class TfsClient:
                 len(ids) - mid,
             )
             left = await self._fetch_work_items_chunk(
-                ids[:mid], fields=fields, with_relations=with_relations
+                ids[:mid],
+                fields=fields,
+                with_relations=with_relations,
+                allow_expand_retry=allow_expand_retry,
+                allow_fields_retry=allow_fields_retry,
             )
             await asyncio.sleep(settings.tfs_request_delay_seconds)
             right = await self._fetch_work_items_chunk(
-                ids[mid:], fields=fields, with_relations=with_relations
+                ids[mid:],
+                fields=fields,
+                with_relations=with_relations,
+                allow_expand_retry=allow_expand_retry,
+                allow_fields_retry=allow_fields_retry,
             )
             return left + right
 
@@ -584,12 +631,18 @@ class TfsClient:
         on_progress: Callable[[int, int], None] | None = None,
         expand_relations: bool | None = None,
         batch_size: int | None = None,
+        fields: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         if not ids:
             return []
 
         result: list[dict[str, Any]] = []
-        fields = None if settings.tfs_fetch_all_fields else self._batch_field_list()
+        if settings.tfs_fetch_all_fields:
+            resolved_fields = None
+        elif fields is not None:
+            resolved_fields = fields
+        else:
+            resolved_fields = self._batch_field_list()
         requested = batch_size or settings.tfs_batch_size
         chunk_size = max(1, min(requested, WIT_BATCH_MAX_IDS))
         with_relations = (
@@ -601,7 +654,7 @@ class TfsClient:
             result.extend(
                 await self._fetch_work_items_chunk(
                     chunk,
-                    fields=fields,
+                    fields=resolved_fields,
                     with_relations=with_relations,
                 )
             )
@@ -774,9 +827,7 @@ class TfsClient:
                 if response.status_code == 200:
                     return response
                 if response.status_code == 400:
-                    body_lower = response.text.lower()
-                    if "out of range" in body_lower or "preview" in body_lower:
-                        break
+                    break
                 return response
         if last_response is not None:
             return last_response

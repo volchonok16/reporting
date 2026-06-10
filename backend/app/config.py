@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     tfs_base_url: str = Field(default="https://tfs.t2.ru/tfs/Main", alias="TFS_BASE_URL")
     tfs_verify_tls: bool = Field(default=True, alias="TFS_VERIFY_TLS")
     tfs_timeout_seconds: float = Field(default=45, alias="TFS_TIMEOUT_SECONDS")
+    tfs_auth_probe_timeout_seconds: float = Field(
+        default=10,
+        alias="TFS_AUTH_PROBE_TIMEOUT_SECONDS",
+        description="Таймаут HTTP при проверке PAT при входе (сек).",
+    )
     tfs_api_version: str = Field(default="6.1", alias="TFS_API_VERSION")
     tfs_batch_size: int = Field(default=200, alias="TFS_BATCH_SIZE")
     tfs_linked_batch_size: int = Field(

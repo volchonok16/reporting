@@ -7,38 +7,31 @@ from app.config import settings
 from app.http_auth import auth_attempts
 from app.schemas import AuthLoginOut
 from app.tfs_auth import TfsAuth, build_tfs_auth
-from app.tfs_client import TfsClient, wiql_quote
+from app.tfs_client import TfsClient
 
 
-async def probe_tfs(client: TfsClient, auth: TfsAuth) -> tuple[bool, int | None]:
-    last_status: int | None = None
-
+async def probe_tfs(client: TfsClient) -> tuple[bool, int | None]:
+    """Быстрая проверка PAT: один лёгкий запрос вместо цепочки из connectionData/projects/WIQL."""
     response = await client.client.get(
+        "/_apis/projects",
+        params={"$top": "1", "api-version": "5.1"},
+    )
+    status = response.status_code
+    if status == 200:
+        return True, status
+    if status in {401, 403}:
+        return False, status
+
+    fallback = await client.client.get(
         "/_apis/connectionData",
         params={"connectOptions": "includeServices", "lastChangeId": "-1", "api-version": "5.0"},
     )
-    last_status = response.status_code
-    if response.status_code == 200:
-        return True, last_status
-    if response.status_code in {401, 403}:
-        return False, last_status
-
-    response = await client.client.get("/_apis/projects", params={"$top": "1", "api-version": "5.1"})
-    last_status = response.status_code
-    if response.status_code == 200:
-        return True, last_status
-    if response.status_code in {401, 403}:
-        return False, last_status
-
-    try:
-        await client.run_wiql(
-            f"SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = {wiql_quote(auth.project)}"
-        )
-        return True, 200
-    except httpx.HTTPStatusError as exc:
-        return exc.response.status_code not in {401, 403}, exc.response.status_code
-
-    return False, last_status
+    status = fallback.status_code
+    if status == 200:
+        return True, status
+    if status in {401, 403}:
+        return False, status
+    return False, status
 
 
 async def resolve_working_auth(auth: TfsAuth) -> TfsAuth:
@@ -48,9 +41,9 @@ async def resolve_working_auth(auth: TfsAuth) -> TfsAuth:
 
     errors: list[str] = []
     for attempt in attempts:
-        client = TfsClient(attempt.auth)
+        client = TfsClient(attempt.auth, timeout=settings.tfs_auth_probe_timeout_seconds)
         try:
-            ok, status = await probe_tfs(client, attempt.auth)
+            ok, status = await probe_tfs(client)
             if ok:
                 return attempt.auth
             errors.append(f"{attempt.label}: HTTP {status or '?'}")
@@ -102,6 +95,5 @@ async def login_with_app_user(
         project_id=project_id,
         pat=sync_pat,
     )
-    resolved = await resolve_working_auth(auth)
-    session_id = create_session(resolved, auth_mode="app_user", app_login=login)
+    session_id = create_session(auth, auth_mode="app_user", app_login=login)
     return AuthLoginOut(sessionId=session_id, authMode="app_user", username=login)

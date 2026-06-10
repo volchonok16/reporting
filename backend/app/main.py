@@ -7,7 +7,7 @@ from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy.orm import Session
 
 from app.auth_service import login_with_app_user, login_with_pat
-from app.auth_sessions import delete_session, get_session, get_session_meta
+from app.auth_sessions import delete_session, get_session, get_session_with_meta
 from app.boards import ALL_BOARDS_CODE, BOARDS, boards_for_sync
 from app.config import settings
 from app.db import ensure_auth_session_table, get_db
@@ -74,10 +74,9 @@ def auth_defaults() -> AuthDefaultsOut:
 
 @app.get("/api/auth/status", response_model=TfsAuthStatusOut)
 def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session-Id")) -> TfsAuthStatusOut:
-    auth = get_session(x_session_id)
+    auth, meta = get_session_with_meta(x_session_id)
     if auth is None:
         return TfsAuthStatusOut(authenticated=False)
-    meta = get_session_meta(x_session_id)
     return TfsAuthStatusOut(
         authenticated=True,
         baseUrl=auth.base_url,

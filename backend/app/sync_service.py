@@ -518,7 +518,8 @@ async def sync_board(
             chunk_ids = error_ids[offset : offset + commit_chunk]
             error_payloads = await client.get_work_items_batch(
                 chunk_ids,
-                expand_relations=True,
+                expand_relations=False,
+                fields=client._error_batch_field_list(),
             )
             fetched += len(error_payloads)
 

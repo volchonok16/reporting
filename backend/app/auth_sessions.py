@@ -43,6 +43,28 @@ def _auth_from_payload(payload: dict) -> TfsAuth | None:
     )
 
 
+def _session_meta_from_payload(payload: dict) -> dict[str, str | None]:
+    auth_mode = payload.get("auth_mode")
+    app_login = payload.get("app_login")
+    return {
+        "auth_mode": str(auth_mode) if auth_mode else None,
+        "app_login": str(app_login) if app_login else None,
+    }
+
+
+def _load_session_payload(session_id: str | None) -> dict | None:
+    if not session_id:
+        return None
+    db = SessionLocal()
+    try:
+        row = db.get(AuthSession, session_id)
+        if row is None or not isinstance(row.payload, dict):
+            return None
+        return dict(row.payload)
+    finally:
+        db.close()
+
+
 def create_session(
     auth: TfsAuth,
     *,
@@ -65,35 +87,24 @@ def create_session(
 
 
 def get_session_meta(session_id: str | None) -> dict[str, str | None]:
-    if not session_id:
+    payload = _load_session_payload(session_id)
+    if payload is None:
         return {"auth_mode": None, "app_login": None}
-    db = SessionLocal()
-    try:
-        row = db.get(AuthSession, session_id)
-        if row is None or not isinstance(row.payload, dict):
-            return {"auth_mode": None, "app_login": None}
-        payload = row.payload
-        auth_mode = payload.get("auth_mode")
-        app_login = payload.get("app_login")
-        return {
-            "auth_mode": str(auth_mode) if auth_mode else None,
-            "app_login": str(app_login) if app_login else None,
-        }
-    finally:
-        db.close()
+    return _session_meta_from_payload(payload)
 
 
 def get_session(session_id: str | None) -> TfsAuth | None:
-    if not session_id:
+    payload = _load_session_payload(session_id)
+    if payload is None:
         return None
-    db = SessionLocal()
-    try:
-        row = db.get(AuthSession, session_id)
-        if row is None or not isinstance(row.payload, dict):
-            return None
-        return _auth_from_payload(row.payload)
-    finally:
-        db.close()
+    return _auth_from_payload(payload)
+
+
+def get_session_with_meta(session_id: str | None) -> tuple[TfsAuth | None, dict[str, str | None]]:
+    payload = _load_session_payload(session_id)
+    if payload is None:
+        return None, {"auth_mode": None, "app_login": None}
+    return _auth_from_payload(payload), _session_meta_from_payload(payload)
 
 
 def delete_session(session_id: str | None) -> None:
