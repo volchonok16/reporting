@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+DIGITAL_BOARD_CODE = "digital_streams_b2b"
+
 
 @dataclass(frozen=True)
 class TagFilterGroup:
@@ -31,6 +33,10 @@ def tag_filter_group_by_key(key: str | None) -> TagFilterGroup | None:
     if not key:
         return None
     return _TAG_FILTER_GROUP_BY_KEY.get(key.strip().lower())
+
+
+def tag_filter_supported_for_board(board_code: str | None) -> bool:
+    return (board_code or "").strip().lower() == DIGITAL_BOARD_CODE
 
 
 def normalize_tag_group_keys(keys: list[str] | None) -> list[str]:

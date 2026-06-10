@@ -27,7 +27,12 @@ from app.schemas import (
     QuarterOptionOut,
     TagFilterGroupOut,
 )
-from app.tag_filters import TAG_FILTER_GROUPS, normalize_tag_group_keys, task_matches_tag_groups
+from app.tag_filters import (
+    TAG_FILTER_GROUPS,
+    normalize_tag_group_keys,
+    tag_filter_supported_for_board,
+    task_matches_tag_groups,
+)
 
 
 def _board_out(board: BoardConfig) -> BoardOut:
@@ -352,9 +357,13 @@ def load_change_requests(
     metric: str | None = None,
     tag_groups: list[str] | None = None,
 ) -> DashboardOut:
-    selected_tag_groups = normalize_tag_group_keys(tag_groups)
     all_boards = is_all_boards(board_code)
     board = board_by_code(board_code)
+    selected_tag_groups = (
+        normalize_tag_group_keys(tag_groups)
+        if tag_filter_supported_for_board(board_code)
+        else []
+    )
 
     if all_boards:
         board_names = [b.name for b in BOARDS]
@@ -462,7 +471,11 @@ def load_change_requests(
         totalShown=len(items),
         availableStatuses=_collect_available_statuses(rows_with_customer),
         availableQuarters=_collect_available_quarters(rows_with_customer),
-        availableTagGroups=_tag_filter_groups_out(),
+        availableTagGroups=(
+            _tag_filter_groups_out()
+            if tag_filter_supported_for_board(board_code)
+            else []
+        ),
     )
 
 

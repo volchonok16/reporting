@@ -430,7 +430,7 @@
 
 **Доски приложения:** Digital Streams B2b (`Tele2\Digital\Streams\B2b`, в UI — «Digital»); B2B Product — CORE, КАТС, Голосовые продукты, М2М / IoT, SMS, Solar, Umnico (area path `Tele2\B2B Product…`, те же правила синка и метрик, что у Digital: без `EFO`, ошибки `FE B2B` / `microservice`, «Скоро запуск» — `UAT`, «Запущено» — `Pilot`); BE Analytics (`BE-T2\BE Analytics`, ЗНИ с `b2b_product`); ESB (`BE-T2\ESB\ESB Analytics`, в UI — «ESB», те же теги и метрики, что у BE Analytics).
 
-**Фильтр групп тегов (дашборд):** query-параметр `tag_group` (можно несколько). Группы задаются в `backend/app/tag_filters.py` и работают на всех досках и подразделах:
+**Фильтр групп тегов (дашборд):** только доска **Digital** (`digital_streams_b2b`). Query-параметр `tag_group` (можно несколько); на остальных досках и в «Все доски» игнорируется. Группы задаются в `backend/app/tag_filters.py`:
 
 | Группа (UI) | Корневой тег | Подразделы (префикс) |
 |-------------|--------------|----------------------|
@@ -621,7 +621,9 @@
 | `TFS_CLOSED_STATE_VALUES` | `Closed` | Статусы для фильтра |
 | `TFS_RESOURCE_RESERVATION_TYPE_VALUES` | `Бронь ресурсов` | Тип элемента TFS «Бронь ресурсов» для колонки «Бронь ресурса ЕЦТ» |
 
-Алгоритм: WIQL по AreaPath → `workItemsBatch` (поля) → WIQL `WorkItemLinks` (ЗНИ→Ошибка, ЗНИ→Related «Бронь ресурсов») → batch ошибок → upsert в `task`.
+Алгоритм: WIQL по AreaPath → `workItemsBatch` (поля) → WIQL `WorkItemLinks` (ЗНИ→Ошибка, ЗНИ→Related «Бронь ресурсов») → batch ошибок → upsert в `task` → `prune_stale` (не попали в выгрузку) → `prune_closed_before_current_year` (Closed с `ClosedDate` / валидной `closed_transitions` до текущего календарного года).
+
+При синхронизации Closed ЗНИ с датой закрытия в прошлом календарном году **не загружаются** (`should_skip_closed_zni`) и **удаляются из БД**, если остались от старых прогонов. Дата закрытия — `task.closed_at` (`Microsoft.VSTS.Common.ClosedDate`), при её отсутствии — первая валидная дата из `extra_json.closed_transitions` (годы 2000–2100; битые даты вроде `9999-01-01` из TFS игнорируются).
 
 ### REST API
 

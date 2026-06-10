@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type KeyboardEvent } from 'react'
 import { apiFetch, clearSessionId, getJson } from './api'
 
 const ALL_BOARDS = 'all'
+const DIGITAL_BOARD = 'digital_streams_b2b'
 
 const BOARD_LABELS: Record<string, string> = {
   all: 'Все доски',
@@ -229,8 +230,10 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     if (dateTo) params.set('date_to', dateTo)
     if (statusFilter) params.set('status', statusFilter)
     if (quarterFilter) params.set('quarter', quarterFilter)
-    for (const group of tagGroupFilter) {
-      params.append('tag_group', group)
+    if (boardCode === DIGITAL_BOARD) {
+      for (const group of tagGroupFilter) {
+        params.append('tag_group', group)
+      }
     }
     if (metricFilter) params.set('metric', metricFilter)
     try {
@@ -480,32 +483,34 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             </select>
           </label>
 
-          <div className="tag-group-filter">
-            <span className="tag-group-filter-label">Теги</span>
-            <details className="tag-group-filter-details">
-              <summary>{tagGroupFilterLabel()}</summary>
-              <div className="tag-group-filter-menu" role="group" aria-label="Фильтр по тегам">
-                {(data?.availableTagGroups ?? []).map((group) => {
-                  const active = tagGroupFilter.includes(group.key)
-                  const subsectionHint = [
-                    ...group.tags,
-                    ...group.subsectionPrefixes.map((prefix) => `${prefix}*`),
-                  ].join(', ')
-                  return (
-                    <label key={group.key} className={`tag-group-filter-option${active ? ' is-active' : ''}`}>
-                      <input
-                        type="checkbox"
-                        checked={active}
-                        onChange={() => toggleTagGroupFilter(group.key)}
-                      />
-                      <span className="tag-group-filter-option-label">{group.label}</span>
-                      <span className="tag-group-filter-option-hint">{subsectionHint}</span>
-                    </label>
-                  )
-                })}
-              </div>
-            </details>
-          </div>
+          {boardCode === DIGITAL_BOARD && (
+            <div className="tag-group-filter">
+              <span className="tag-group-filter-label">Теги</span>
+              <details className="tag-group-filter-details">
+                <summary>{tagGroupFilterLabel()}</summary>
+                <div className="tag-group-filter-menu" role="group" aria-label="Фильтр по тегам">
+                  {(data?.availableTagGroups ?? []).map((group) => {
+                    const active = tagGroupFilter.includes(group.key)
+                    const subsectionHint = [
+                      ...group.tags,
+                      ...group.subsectionPrefixes.map((prefix) => `${prefix}*`),
+                    ].join(', ')
+                    return (
+                      <label key={group.key} className={`tag-group-filter-option${active ? ' is-active' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={active}
+                          onChange={() => toggleTagGroupFilter(group.key)}
+                        />
+                        <span className="tag-group-filter-option-label">{group.label}</span>
+                        <span className="tag-group-filter-option-hint">{subsectionHint}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </details>
+            </div>
+          )}
 
           <label className="select-wrap">
             <span>План квартала</span>
@@ -587,7 +592,9 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         <p className="table-meta">
           Показано строк {data?.totalShown ?? 0}
           {metricFilter ? ` · фильтр: ${METRIC_LABELS[metricFilter]}` : ''}
-          {tagGroupFilter.length ? ` · теги: ${tagGroupFilterLabel()}` : ''}
+          {boardCode === DIGITAL_BOARD && tagGroupFilter.length
+            ? ` · теги: ${tagGroupFilterLabel()}`
+            : ''}
           {boardLabel ? ` · ${boardLabel}` : ''}
           {loading ? ' · загрузка…' : ''}
         </p>

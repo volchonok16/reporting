@@ -654,6 +654,8 @@ class TfsClient:
             revised = parse_tfs_datetime(update.get("revisedDate"))
             if revised is None:
                 continue
+            if not (2000 <= revised.year <= 2100):
+                continue
             transitions.append(
                 {
                     "at": revised.isoformat(),

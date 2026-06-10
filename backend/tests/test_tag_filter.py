@@ -1,9 +1,18 @@
 from app.tag_filters import (
+    DIGITAL_BOARD_CODE,
     TAG_FILTER_GROUPS,
     normalize_tag_group_keys,
+    tag_filter_supported_for_board,
     task_matches_tag_group,
     task_matches_tag_groups,
 )
+
+
+def test_tag_filter_only_for_digital_board() -> None:
+    assert tag_filter_supported_for_board(DIGITAL_BOARD_CODE)
+    assert not tag_filter_supported_for_board("b2b_product_core")
+    assert not tag_filter_supported_for_board("all")
+    assert not tag_filter_supported_for_board(None)
 
 
 def test_tag_filter_groups_config() -> None:

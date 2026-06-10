@@ -15,6 +15,7 @@ from app.iteration_plan import parse_iteration_plan, quarter_key_from_date
 from app.release_fields import work_item_planned_release
 from app.linked_errors import is_error_work_item_type
 from app.resource_reservation import compute_ect_resource_reservation
+from app.completed_metrics import effective_closed_date, effective_closed_date_from_fields
 from app.zni_description import extract_business_goal_from_description, tfs_identity_display_name
 from app.models import Project, SourceSystem, SyncRun, Task, Team
 from app.tfs_client import TfsClient, date_from_field_list, parse_tfs_datetime
@@ -70,18 +71,23 @@ def is_excluded_sync_state(fields: dict[str, Any], excluded_states: tuple[str, .
 
 
 def should_skip_closed_zni(fields: dict[str, Any]) -> bool:
-    if settings.tfs_exclude_closed_older_than_days <= 0 or not settings.closed_state_list:
+    if not settings.closed_state_list:
         return False
     state = str(fields.get("System.State") or "").strip().lower()
     if state not in {value.lower() for value in settings.closed_state_list}:
         return False
-    cutoff = date.today() - timedelta(days=settings.tfs_exclude_closed_older_than_days)
-    closed = parse_tfs_datetime(fields.get("Microsoft.VSTS.Common.ClosedDate"))
-    changed = parse_tfs_datetime(fields.get("System.ChangedDate"))
-    ref = closed or changed
-    if ref is None:
+
+    closed_date = effective_closed_date_from_fields(fields)
+    if closed_date is not None and closed_date.year < date.today().year:
+        return True
+
+    if settings.tfs_exclude_closed_older_than_days <= 0:
         return False
-    return ref.date() < cutoff
+    cutoff = date.today() - timedelta(days=settings.tfs_exclude_closed_older_than_days)
+    if closed_date is not None:
+        return closed_date < cutoff
+    changed = parse_tfs_datetime(fields.get("System.ChangedDate"))
+    return changed is not None and changed.date() < cutoff
 
 
 def tfs_item_url(item_id: int, board: BoardConfig) -> str:
@@ -118,6 +124,57 @@ def prune_stale_board_tasks(
     removed = result.rowcount or 0
     if removed:
         logger.info("sync_prune_stale board=%s removed=%s", board.code, removed)
+    return removed
+
+
+def is_closed_before_current_year(task: Task, *, current_year: int | None = None) -> bool:
+    if not settings.closed_state_list:
+        return False
+    closed_lower = {value.lower() for value in settings.closed_state_list}
+    if (task.source_status or "").strip().lower() not in closed_lower:
+        return False
+    closed_date = effective_closed_date(task)
+    if closed_date is None:
+        return False
+    year_threshold = current_year if current_year is not None else date.today().year
+    return closed_date.year < year_threshold
+
+
+def prune_closed_before_current_year(
+    db: Session,
+    *,
+    board: BoardConfig,
+    source_system_id: int,
+) -> int:
+    """Удаляет Closed ЗНИ доски, закрытые до текущего календарного года."""
+    if not settings.closed_state_list:
+        return 0
+
+    board_names = {board.name, board.display_name, "BE-T2 Team", "BE Analytics"}
+    rows = list(
+        db.scalars(
+            select(Task).where(
+                Task.source_system_id == source_system_id,
+                Task.task_type == TASK_TYPE_CHANGE,
+                or_(
+                    Task.source_team.in_(board_names),
+                    Task.extra_json["board_code"].as_string() == board.code,
+                ),
+            )
+        )
+    )
+
+    stale_ids = [row.id for row in rows if is_closed_before_current_year(row)]
+
+    if not stale_ids:
+        return 0
+
+    db.execute(delete(Task).where(Task.parent_task_id.in_(stale_ids)))
+    result = db.execute(delete(Task).where(Task.id.in_(stale_ids)))
+    db.commit()
+    removed = result.rowcount or 0
+    if removed:
+        logger.info("sync_prune_closed_old_year board=%s removed=%s", board.code, removed)
     return removed
 
 
@@ -501,6 +558,11 @@ async def sync_board(
             board=board,
             source_system_id=source_system_id,
             synced_external_ids=synced_external_ids,
+        )
+        prune_closed_before_current_year(
+            db,
+            board=board,
+            source_system_id=source_system_id,
         )
 
         return fetched, upserted
