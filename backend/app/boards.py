@@ -53,7 +53,7 @@ def _tele2_digital_style_board(
         project_id=_TELE2_PROJECT_ID,
         team_id=_TELE2_TEAM_ID,
         area_path=area_path,
-        exclude_sync_tags=("EFO",),
+        exclude_sync_tags=("EFO", "not_product"),
         launching_soon_states=("UAT",),
         launched_states=("Pilot", "Пилот"),
     )
