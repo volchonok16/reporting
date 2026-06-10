@@ -58,19 +58,6 @@ class TagFilterGroupOut(BaseModel):
     subsectionPrefixes: list[str] = Field(default_factory=list)
 
 
-class PlannedDateUpdateIn(BaseModel):
-    plannedDate: date | None = None
-
-
-class PlannedDateUpdateOut(BaseModel):
-    id: str
-    number: str
-    plannedDate: date | None = None
-    plannedLabel: str | None = None
-    planQuarter: str | None = None
-    releaseDate: date | None = None
-
-
 class ChangeRequestOut(BaseModel):
     id: str
     number: str

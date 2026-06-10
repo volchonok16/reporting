@@ -379,18 +379,19 @@ async def sync_board(
             }
             if triage not in (None, ""):
                 extra_json["triage"] = str(triage).strip()
-            target_date = effective_release_date(fields)
-            if target_date:
-                extra_json["planned_status"] = "date"
-                extra_json["planned_date"] = target_date.isoformat()
-                extra_json["plan_quarter"] = quarter_key_from_date(target_date)
-            elif iteration_plan.is_tbd:
+            if iteration_plan.is_tbd:
                 extra_json["planned_status"] = "tbd"
                 extra_json["plan_quarter"] = iteration_plan.quarter_key
             elif iteration_plan.planned_date:
                 extra_json["planned_status"] = "date"
                 extra_json["planned_date"] = iteration_plan.planned_date.isoformat()
                 extra_json["plan_quarter"] = iteration_plan.quarter_key
+            else:
+                target_date = effective_release_date(fields)
+                if target_date:
+                    extra_json["planned_status"] = "date"
+                    extra_json["planned_date"] = target_date.isoformat()
+                    extra_json["plan_quarter"] = quarter_key_from_date(target_date)
 
             planned_release = work_item_planned_release(fields)
             if planned_release:
@@ -403,6 +404,13 @@ async def sync_board(
             business_goal = extract_business_goal_from_description(fields.get("System.Description"))
             if business_goal:
                 extra_json["business_goal"] = business_goal
+
+            business_value = fields.get("Microsoft.VSTS.Common.BusinessValue")
+            if business_value not in (None, ""):
+                try:
+                    extra_json["business_value"] = int(business_value)
+                except (TypeError, ValueError):
+                    pass
 
             if settings.tfs_fetch_pilot_history:
                 existing = db.scalar(

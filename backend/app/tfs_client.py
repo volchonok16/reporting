@@ -21,30 +21,6 @@ logger = logging.getLogger(__name__)
 # Лимит Azure DevOps / TFS на workItemsBatch
 WIT_BATCH_MAX_IDS = 200
 
-DEFAULT_TARGET_DATE_FIELD = "Microsoft.VSTS.Scheduling.TargetDate"
-
-
-def primary_target_date_field() -> str:
-    fields = settings.target_date_field_list
-    return fields[0] if fields else DEFAULT_TARGET_DATE_FIELD
-
-
-def format_tfs_target_date_value(value: date) -> str:
-    return value.isoformat()
-
-
-def build_target_date_patch(target_date: date | None) -> list[dict[str, str]]:
-    field_path = f"/fields/{primary_target_date_field()}"
-    if target_date is None:
-        return [{"op": "remove", "path": field_path}]
-    return [
-        {
-            "op": "add",
-            "path": field_path,
-            "value": format_tfs_target_date_value(target_date),
-        }
-    ]
-
 MS_DATE_RE = re.compile(r"^/Date\((?P<milliseconds>-?\d+)(?:[+-]\d+)?\)/$")
 TFS_CALENDAR_TZ = ZoneInfo("Europe/Moscow")
 
@@ -354,6 +330,7 @@ class TfsClient:
                 "Microsoft.VSTS.Common.ClosedDate",
                 "Microsoft.VSTS.Common.Severity",
                 "Microsoft.VSTS.Common.Triage",
+                "Microsoft.VSTS.Common.BusinessValue",
                 *settings.scheduling_batch_field_list,
             ]
         )
@@ -625,43 +602,6 @@ class TfsClient:
                 await asyncio.sleep(settings.tfs_request_delay_seconds)
 
         return result
-
-    async def patch_work_item(self, item_id: int, operations: list[dict[str, str]]) -> dict[str, Any]:
-        path = f"/{self.project}/_apis/wit/workitems/{item_id}"
-        last_response: httpx.Response | None = None
-        for api_version in _api_version_candidates():
-            for attempt in range(1, 4):
-                try:
-                    response = await self.client.patch(
-                        path,
-                        params={"api-version": api_version},
-                        json=operations,
-                        headers={"Content-Type": "application/json-patch+json"},
-                    )
-                except (httpx.TimeoutException, httpx.RequestError) as exc:
-                    logger.warning(
-                        "tfs_patch_retry id=%s attempt=%s error=%s",
-                        item_id,
-                        attempt,
-                        exc,
-                    )
-                    if attempt >= 3:
-                        raise
-                    await asyncio.sleep(min(1.0 * attempt, 3.0))
-                    continue
-                last_response = response
-                if response.status_code == 200:
-                    body = response.json()
-                    return body if isinstance(body, dict) else {}
-                if response.status_code in {400, 404}:
-                    break
-                response.raise_for_status()
-        if last_response is not None and last_response.status_code != 200:
-            last_response.raise_for_status()
-        raise httpx.HTTPError(f"PATCH work item {item_id} failed")
-
-    async def update_target_date(self, item_id: int, target_date: date | None) -> dict[str, Any]:
-        return await self.patch_work_item(item_id, build_target_date_patch(target_date))
 
     async def get_work_item_updates(self, item_id: int) -> list[dict[str, Any]]:
         last_response: httpx.Response | None = None

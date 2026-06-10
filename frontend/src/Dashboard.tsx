@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { apiFetch, clearSessionId, getJson, readApiError } from './api'
+import { useCallback, useEffect, useState, type KeyboardEvent } from 'react'
+import { apiFetch, clearSessionId, getJson } from './api'
 
 const ALL_BOARDS = 'all'
 const DIGITAL_BOARD = 'digital_streams_b2b'
@@ -56,7 +56,6 @@ type TagFilterGroup = {
 }
 
 type ChangeRequest = {
-  id: string
   number: string
   title: string
   url?: string | null
@@ -91,6 +90,18 @@ type DashboardData = {
   availableStatuses: string[]
   availableQuarters: QuarterOption[]
   availableTagGroups: TagFilterGroup[]
+}
+
+function formatDate(value?: string | null): string {
+  if (!value) return '—'
+  const [year, month, day] = value.split('-')
+  if (!year || !month || !day) return value
+  return `${day}.${month}.${year}`
+}
+
+function formatPlannedDate(item: ChangeRequest): string {
+  if (item.plannedLabel) return item.plannedLabel
+  return formatDate(item.plannedDate)
 }
 
 function formatEctReservation(value?: boolean): string {
@@ -175,80 +186,9 @@ function currentQuarterIsoRange(): { from: string; to: string } {
 const SORT_OPTIONS = [
   { value: 'planned_date_upcoming', label: 'План. дата (ближайшие)' },
   { value: 'start_date_desc', label: 'Дата начала (убыв.)' },
+  { value: 'business_value_asc', label: 'Ценность для бизнеса (возр.)' },
+  { value: 'business_value_desc', label: 'Ценность для бизнеса (убыв.)' },
 ]
-
-type PlannedDateEditorProps = {
-  item: ChangeRequest
-  disabled: boolean
-  saving: boolean
-  onSave: (item: ChangeRequest, value: string) => void
-}
-
-function plannedDateInputValue(item: ChangeRequest): string {
-  if (item.plannedLabel === 'TBD' || !item.plannedDate) return ''
-  return item.plannedDate
-}
-
-function openDatePicker(input: HTMLInputElement | null) {
-  if (!input || input.disabled) return
-  if (typeof input.showPicker === 'function') {
-    try {
-      input.showPicker()
-    } catch {
-      input.focus()
-    }
-    return
-  }
-  input.focus()
-}
-
-function PlannedDateEditor({ item, disabled, saving, onSave }: PlannedDateEditorProps) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [draft, setDraft] = useState(plannedDateInputValue(item))
-
-  useEffect(() => {
-    setDraft(plannedDateInputValue(item))
-  }, [item.id, item.plannedDate, item.plannedLabel])
-
-  const commit = () => {
-    const current = plannedDateInputValue(item)
-    if (draft === current) return
-    onSave(item, draft)
-  }
-
-  const dateInputProps = {
-    ref: inputRef,
-    type: 'date' as const,
-    className: 'planned-date-input',
-    value: draft,
-    disabled: disabled || saving,
-    lang: 'ru',
-    onChange: (event: React.ChangeEvent<HTMLInputElement>) => setDraft(event.target.value),
-    onClick: () => openDatePicker(inputRef.current),
-    onBlur: commit,
-    onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => {
-      if (event.key === 'Enter') {
-        event.currentTarget.blur()
-      }
-    },
-  }
-
-  if (item.plannedLabel === 'TBD' && !draft) {
-    return (
-      <div className="planned-date-editor">
-        <span className="planned-date-tbd">TBD</span>
-        <input {...dateInputProps} title="Задать целевую дату в TFS" />
-      </div>
-    )
-  }
-
-  return (
-    <input
-      {...dateInputProps}
-      title="Целевая дата (Microsoft.VSTS.Scheduling.TargetDate в TFS)"
-    />
-  )
-}
 
 export default function Dashboard({ onLogout }: DashboardProps) {
   const [boards, setBoards] = useState<Board[]>([])
@@ -265,7 +205,6 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [exporting, setExporting] = useState(false)
-  const [savingPlannedDateId, setSavingPlannedDateId] = useState<string | null>(null)
   const [syncProgress, setSyncProgress] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set())
@@ -343,46 +282,6 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       toggleExpanded(key)
-    }
-  }
-
-  const handlePlannedDateSave = async (item: ChangeRequest, value: string) => {
-    setSavingPlannedDateId(item.id)
-    setError(null)
-    try {
-      const response = await apiFetch(`/api/tasks/${item.id}/planned-date`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plannedDate: value || null }),
-      })
-      if (!response.ok) {
-        throw new Error(await readApiError(response))
-      }
-      const updated = (await response.json()) as {
-        plannedDate?: string | null
-        plannedLabel?: string | null
-        planQuarter?: string | null
-      }
-      setData((current) => {
-        if (!current) return current
-        return {
-          ...current,
-          items: current.items.map((row) =>
-            row.id === item.id
-              ? {
-                  ...row,
-                  plannedDate: updated.plannedDate ?? null,
-                  plannedLabel: updated.plannedLabel ?? null,
-                  planQuarter: updated.planQuarter ?? null,
-                }
-              : row,
-          ),
-        }
-      })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось сохранить план. дату')
-    } finally {
-      setSavingPlannedDateId(null)
     }
   }
 
@@ -768,16 +667,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                           '—'
                         )}
                       </td>
-                      <td className="cell-date">
-                        <PlannedDateEditor
-                          item={item}
-                          disabled={syncing || exporting}
-                          saving={savingPlannedDateId === item.id}
-                          onSave={(row, value) => {
-                            void handlePlannedDateSave(row, value)
-                          }}
-                        />
-                      </td>
+                      <td className="cell-date">{formatPlannedDate(item)}</td>
                       <td className="cell-quarter">{item.planQuarter || '—'}</td>
                       <td
                         className={`cell-reservation${item.ectResourceReservation ? ' cell-reservation-yes' : ' cell-reservation-no'}`}

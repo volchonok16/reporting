@@ -64,6 +64,7 @@
 | planned_release | Logrocon.FoundinRelease / Logrocon.Release | Плановый релиз (`2026.06.02.0-R` или имя релиза) |
 | customer_name | Logrocon.PO | Заказчик ЗНИ (ФИО) |
 | business_goal | System.Description | Текст секции «Цель и бизнес-смысл доработки*» |
+| business_value | Microsoft.VSTS.Common.BusinessValue | Ценность для бизнеса (целое число) |
 | triage | Microsoft.VSTS.Common.Triage | Triage ЗНИ (для метрики «Скоро запуск» на BE Analytics) |
 | pilot_transitions | TFS updates | Переходы в «Пилот»: `[{at, status}]` |
 | ect_resource_reservation | WIQL WorkItemLinks (Related) | `true` / `false`: у ЗНИ есть Related на элемент «Бронь ресурсов» (колонка «Бронь ресурса ЕЦТ», `ДА` / `НЕТ`) |

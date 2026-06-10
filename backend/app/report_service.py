@@ -96,6 +96,39 @@ def _business_goal(task: Task) -> str | None:
     return str(value).strip() if value else None
 
 
+def _business_value(task: Task) -> int | None:
+    value = _extra(task).get("business_value")
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _number_tiebreaker(task: Task) -> int:
+    try:
+        return int(task.external_id)
+    except ValueError:
+        return 0
+
+
+def _business_value_asc_sort_key(task: Task) -> tuple[int, int, int]:
+    """1 → больше; без значения — в конце."""
+    value = _business_value(task)
+    if value is None:
+        return (1, 0, _number_tiebreaker(task))
+    return (0, value, _number_tiebreaker(task))
+
+
+def _business_value_desc_sort_key(task: Task) -> tuple[int, int, int]:
+    """Без значения — в начале; затем от большего к меньшему."""
+    value = _business_value(task)
+    if value is None:
+        return (0, 0, _number_tiebreaker(task))
+    return (1, -value, _number_tiebreaker(task))
+
+
 def _board_column(task: Task) -> str | None:
     value = _extra(task).get("board_column")
     return str(value).strip() if value else None
@@ -416,6 +449,10 @@ def load_change_requests(
 
     if sort == "planned_date_upcoming":
         filtered.sort(key=_planned_date_upcoming_sort_key)
+    elif sort == "business_value_asc":
+        filtered.sort(key=_business_value_asc_sort_key)
+    elif sort == "business_value_desc":
+        filtered.sort(key=_business_value_desc_sort_key)
     else:
         reverse = sort.endswith("_desc") or sort == "id_desc"
         sort_field = sort.replace("_desc", "").replace("_asc", "")

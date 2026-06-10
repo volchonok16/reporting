@@ -15,15 +15,12 @@ from app.models import SyncRun
 from app.product_status_service import load_b2b_product_status
 from app.product_status_excel import generate_b2b_product_status_excel
 from app.product_status_presentation import generate_b2b_product_status_presentation
-from app.planned_date_service import update_task_planned_date
 from app.report_service import export_csv, load_change_requests
 from app.schemas import (
     AuthDefaultsOut,
     AuthLoginOut,
     BoardOut,
     DashboardOut,
-    PlannedDateUpdateIn,
-    PlannedDateUpdateOut,
     ProductStatusB2BOut,
     SyncRunOut,
     TfsAuthIn,
@@ -196,21 +193,6 @@ def product_status_b2b_excel_from_payload(payload: ProductStatusB2BOut) -> Respo
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-@app.patch("/api/tasks/{task_id}/planned-date", response_model=PlannedDateUpdateOut)
-async def patch_planned_date(
-    task_id: int,
-    payload: PlannedDateUpdateIn,
-    db: Session = Depends(get_db),
-    pat: str = Depends(require_pat),
-) -> PlannedDateUpdateOut:
-    return await update_task_planned_date(
-        db,
-        task_id=task_id,
-        planned_date=payload.plannedDate,
-        pat=pat,
     )
 
 
