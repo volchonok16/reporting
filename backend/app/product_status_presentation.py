@@ -54,9 +54,10 @@ A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 CHAR_WIDTH_EMU = 76000
 LINE_HEIGHT_EMU = 145000
+LINE_HEIGHT_DENSE_EMU = int(LINE_HEIGHT_EMU * TABLE_FONT_SIZE_DENSE.pt / TABLE_FONT_SIZE.pt)
+CELL_TEXT_MARGIN_EMU = int(Pt(6).emu)
 HEADER_ROW_HEIGHT_EMU = 320000
-MIN_ROW_HEIGHT_EMU = 340000
-ROW_PADDING_EMU = 45000
+MIN_ROW_HEIGHT_EMU = LINE_HEIGHT_EMU + CELL_TEXT_MARGIN_EMU
 BODY_HEIGHT_EMU = 3_408_600
 BODY_WIDTH_EMU = 8_900_700
 COLUMN_WIDTH_RATIOS = (0.10, 0.14, 0.46, 0.30)
@@ -297,7 +298,14 @@ def _cell_font_size(col_index: int, text: str = "") -> tuple[Pt, str]:
 
 
 def _column_chars_per_line(widths: tuple[int, ...]) -> tuple[int, ...]:
-    return tuple(max(8, int(width / CHAR_WIDTH_EMU)) for width in widths)
+    dense_scale = TABLE_FONT_SIZE.pt / TABLE_FONT_SIZE_DENSE.pt
+    chars: list[int] = []
+    for index, width in enumerate(widths):
+        per_line = max(8, int(width / CHAR_WIDTH_EMU))
+        if index == WHY_COLUMN_INDEX:
+            per_line = max(8, int(per_line * dense_scale))
+        chars.append(per_line)
+    return tuple(chars)
 
 
 def _column_widths(total_width: int) -> tuple[int, ...]:
@@ -312,17 +320,37 @@ def _sanitize_cell_text(text: str) -> str:
     return "\n".join(lines).strip()
 
 
-def _estimate_row_height(values: list[str], col_chars_per_line: tuple[int, ...]) -> int:
-    max_lines = 1
-    for index, text in enumerate(values):
-        cleaned = display_cell_text(text)
-        if not cleaned:
+def _estimate_text_lines(text: str, chars_per_line: int) -> int:
+    cleaned = display_cell_text(text)
+    if not cleaned:
+        return 0
+    total = 0
+    for line in cleaned.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            total += 1
             continue
-        chars_per_line = col_chars_per_line[index] if index < len(col_chars_per_line) else 40
-        explicit_lines = cleaned.count("\n") + 1
-        wrapped_lines = max(1, (len(cleaned) + chars_per_line - 1) // chars_per_line)
-        max_lines = max(max_lines, explicit_lines, wrapped_lines)
-    return max(MIN_ROW_HEIGHT_EMU, max_lines * LINE_HEIGHT_EMU + ROW_PADDING_EMU)
+        total += max(1, (len(stripped) + chars_per_line - 1) // chars_per_line)
+    return total
+
+
+def _estimate_cell_height(text: str, col_index: int, col_chars_per_line: tuple[int, ...]) -> int:
+    chars_per_line = col_chars_per_line[col_index] if col_index < len(col_chars_per_line) else 40
+    lines = _estimate_text_lines(text, chars_per_line)
+    if not lines:
+        return 0
+    line_height = LINE_HEIGHT_DENSE_EMU if col_index == WHY_COLUMN_INDEX else LINE_HEIGHT_EMU
+    return lines * line_height + CELL_TEXT_MARGIN_EMU
+
+
+def _estimate_row_height(values: list[str], col_chars_per_line: tuple[int, ...]) -> int:
+    heights = [
+        _estimate_cell_height(text, index, col_chars_per_line) for index, text in enumerate(values)
+    ]
+    positive = [height for height in heights if height > 0]
+    if not positive:
+        return MIN_ROW_HEIGHT_EMU
+    return max(MIN_ROW_HEIGHT_EMU, max(positive))
 
 
 def _chunk_rows(rows: list[dict[str, str]], columns: list[str]) -> list[list[dict[str, str]]]:

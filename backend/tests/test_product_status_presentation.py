@@ -14,6 +14,8 @@ from app.product_status_presentation import (
     TemplateCatalog,
     _cell_font_size,
     _chunk_rows,
+    _estimate_row_height,
+    _estimate_text_lines,
     _mapped_columns,
     _normalize_title,
     _row_values,
@@ -21,6 +23,7 @@ from app.product_status_presentation import (
     _template_index_for_sheet,
     generate_b2b_product_status_presentation,
 )
+from app.product_status_presentation import _column_chars_per_line, _column_widths, BODY_WIDTH_EMU
 from app.schemas import ProductStatusB2BOut, ProductStatusSheetOut
 
 TEMPLATE_PATH = (
@@ -79,6 +82,37 @@ def test_row_values_maps_semantic_columns() -> None:
         "Зачем и для чего делаем": "Комментарий",
     }
     assert _row_values(row, columns, 4) == ["01.06", "SMS Hub", "Статус", "Комментарий"]
+
+
+def test_estimate_text_lines_wraps_each_paragraph_separately() -> None:
+    short_lines = "Первая строка\nВторая строка\nТретья строка"
+    assert _estimate_text_lines(short_lines, 40) == 3
+
+    long_paragraph = " ".join(["Фраза с пояснением"] * 18)
+    col_chars = _column_chars_per_line(_column_widths(BODY_WIDTH_EMU))
+    dense_chars = col_chars[3]
+    per_line_wrapping = max(1, (len(long_paragraph) + dense_chars - 1) // dense_chars)
+    assert _estimate_text_lines(long_paragraph, dense_chars) == per_line_wrapping
+
+
+def test_estimate_row_height_uses_dense_column_metrics() -> None:
+    columns = ["Дата запуска", "Проект", "Описание проекта", "Зачем и для чего делаем"]
+    row = {
+        "Дата запуска": "июль",
+        "Проект": "KATC",
+        "Описание проекта": "Короткий статус",
+        "Зачем и для чего делаем": (
+            "Первая строка пояснения. "
+            "Вторая строка пояснения. "
+            "Третья строка пояснения. "
+            "ориентировочный срок тестирования 15 июня"
+        ),
+    }
+    col_chars = _column_chars_per_line(_column_widths(BODY_WIDTH_EMU))
+    height = _estimate_row_height(_row_values(row, columns, 4), col_chars)
+    lines = _estimate_text_lines(row["Зачем и для чего делаем"], col_chars[3])
+    assert lines <= 4
+    assert height < lines * 145000 + 45000
 
 
 def test_chunk_rows_splits_long_sheet() -> None:
