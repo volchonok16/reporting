@@ -401,18 +401,18 @@ body {
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 16px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
   margin-bottom: 24px;
 }
 
 .metric-card {
   border-radius: 12px;
-  padding: 24px;
-  min-height: 120px;
+  padding: 16px 14px;
+  min-height: 96px;
   display: grid;
   align-content: center;
-  gap: 8px;
+  gap: 6px;
   border: 2px solid transparent;
   cursor: pointer;
   text-align: left;
@@ -485,11 +485,12 @@ body {
 }
 
 .metric-label {
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 1.2;
 }
 
 .metric-value {
-  font-size: 40px;
+  font-size: 32px;
   line-height: 1;
 }
 
@@ -1017,9 +1018,15 @@ body {
   color: #666;
 }
 
+@media (max-width: 1100px) {
+  .metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 1000px) {
   .metrics {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .zni-detail-panel-compact {
