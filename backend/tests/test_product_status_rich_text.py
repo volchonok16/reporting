@@ -101,6 +101,36 @@ def test_cell_text_with_highlights_from_cell_background_and_border() -> None:
     assert "$" not in result
 
 
+def test_apply_text_format_runs_drops_background_when_foreground_is_set() -> None:
+    runs = [
+        {
+            "startIndex": 0,
+            "format": {
+                "foregroundColor": {"red": 1, "green": 0, "blue": 0},
+                "backgroundColor": {"red": 1, "green": 1, "blue": 0},
+            },
+        },
+        {"startIndex": 8, "format": {}},
+    ]
+    assert apply_text_format_runs("Контроль", runs) == "[[fg:FF0000::Контроль]]"
+
+    blue_runs = [
+        {
+            "startIndex": 0,
+            "format": {
+                "foregroundColor": {"red": 0.07, "green": 0.33, "blue": 0.8},
+                "backgroundColor": {"red": 1, "green": 1, "blue": 0},
+            },
+        },
+    ]
+    assert apply_text_format_runs("hh.ru", blue_runs) == "[[fg:1254CC::hh.ru]]"
+
+
+def test_cell_highlight_colors_ignores_background_on_colored_text() -> None:
+    assert cell_highlight_colors("[[bg:FFFF00;fg:FF0000::Контроль]]") == []
+    assert cell_highlight_colors("$жёлтый$") == ["FFFF00"]
+
+
 def test_cell_text_with_highlights_keeps_red_asterisk_without_yellow_marker() -> None:
     cell = {
         "effectiveValue": {"stringValue": "SMS Hub *"},

@@ -14,6 +14,14 @@ export type TextStyleSegment = {
 
 export type HighlightSegment = TextStyleSegment
 
+/** Цвет текста без фоновой подсветки — как в Google Sheets и экспорте PPTX. */
+export function normalizeTextSegment(segment: TextStyleSegment): TextStyleSegment {
+  if (segment.fg && segment.bg) {
+    return { ...segment, bg: null }
+  }
+  return segment
+}
+
 const CELL_WRAPPER_PATTERN = /^<<cell:([^>]+)>>(.*)<<>>$/s
 const STYLE_SEGMENT_PATTERN =
   /\[\[((?:[^;\]]|;)+)::((?:[^\[]|\[(?!\[))*?)\]\]|\$([^$]+)\$|\{\{([0-9A-Fa-f]{6}):([^}]*)\}\}/g
@@ -71,14 +79,16 @@ export function splitStyleSegments(value: string): TextStyleSegment[] {
     }
     if (match[1] !== undefined) {
       const attrs = parseStyleAttrs(match[1])
-      segments.push({
-        text: match[2],
-        bg: typeof attrs.bg === 'string' ? attrs.bg : null,
-        fg: typeof attrs.fg === 'string' ? attrs.fg : null,
-        strike: Boolean(attrs.strike),
-        bold: Boolean(attrs.bold),
-        italic: Boolean(attrs.italic),
-      })
+      segments.push(
+        normalizeTextSegment({
+          text: match[2],
+          bg: typeof attrs.bg === 'string' ? attrs.bg : null,
+          fg: typeof attrs.fg === 'string' ? attrs.fg : null,
+          strike: Boolean(attrs.strike),
+          bold: Boolean(attrs.bold),
+          italic: Boolean(attrs.italic),
+        }),
+      )
     } else if (match[3] !== undefined) {
       segments.push({
         text: match[3],
@@ -132,25 +142,26 @@ export function displayCellText(value: string): string {
 }
 
 function encodeStyleSegment(segment: TextStyleSegment): string {
-  if (!segment.text) return ''
+  const normalized = normalizeTextSegment(segment)
+  if (!normalized.text) return ''
   if (
-    segment.bg &&
-    !segment.fg &&
-    !segment.strike &&
-    !segment.bold &&
-    !segment.italic
+    normalized.bg &&
+    !normalized.fg &&
+    !normalized.strike &&
+    !normalized.bold &&
+    !normalized.italic
   ) {
-    if (segment.bg === 'FFFF00') return `$${segment.text}$`
-    return `{{${segment.bg}:${segment.text}}}`
+    if (normalized.bg === 'FFFF00') return `$${normalized.text}$`
+    return `{{${normalized.bg}:${normalized.text}}}`
   }
   const parts: string[] = []
-  if (segment.bg) parts.push(`bg:${segment.bg}`)
-  if (segment.fg) parts.push(`fg:${segment.fg}`)
-  if (segment.strike) parts.push('strike')
-  if (segment.bold) parts.push('bold')
-  if (segment.italic) parts.push('italic')
-  if (parts.length === 0) return segment.text
-  return `[[${parts.join(';')}::${segment.text}]]`
+  if (normalized.bg) parts.push(`bg:${normalized.bg}`)
+  if (normalized.fg) parts.push(`fg:${normalized.fg}`)
+  if (normalized.strike) parts.push('strike')
+  if (normalized.bold) parts.push('bold')
+  if (normalized.italic) parts.push('italic')
+  if (parts.length === 0) return normalized.text
+  return `[[${parts.join(';')}::${normalized.text}]]`
 }
 
 export function serializeEditableCell(root: HTMLElement, cellStyle: CellStyle): string {
@@ -174,14 +185,16 @@ export function serializeEditableCell(root: HTMLElement, cellStyle: CellStyle): 
     if (node.tagName === 'MARK') {
       const text = node.textContent ?? ''
       if (!text) return
-      segments.push({
-        text,
-        bg: node.dataset.bg?.toUpperCase() ?? null,
-        fg: node.dataset.fg?.toUpperCase() ?? null,
-        strike: node.dataset.strike === '1',
-        bold: node.dataset.bold === '1',
-        italic: node.dataset.italic === '1',
-      })
+      segments.push(
+        normalizeTextSegment({
+          text,
+          bg: node.dataset.bg?.toUpperCase() ?? null,
+          fg: node.dataset.fg?.toUpperCase() ?? null,
+          strike: node.dataset.strike === '1',
+          bold: node.dataset.bold === '1',
+          italic: node.dataset.italic === '1',
+        }),
+      )
     } else {
       const text = node.textContent ?? ''
       if (text) {
@@ -205,14 +218,14 @@ export function serializeEditableCell(root: HTMLElement, cellStyle: CellStyle): 
 }
 
 function readMarkStyle(node: HTMLElement): TextStyleSegment {
-  return {
+  return normalizeTextSegment({
     text: node.textContent ?? '',
     bg: node.dataset.bg?.toUpperCase() ?? null,
     fg: node.dataset.fg?.toUpperCase() ?? null,
     strike: node.dataset.strike === '1',
     bold: node.dataset.bold === '1',
     italic: node.dataset.italic === '1',
-  }
+  })
 }
 
 function applyPatchToSegment(
@@ -230,36 +243,37 @@ function applyPatchToSegment(
 }
 
 function decorateMark(mark: HTMLElement, segment: TextStyleSegment) {
+  const normalized = normalizeTextSegment(segment)
   mark.className = 'product-status-highlight'
-  if (segment.bg) {
-    mark.dataset.bg = segment.bg
-    mark.style.backgroundColor = `#${segment.bg}`
+  if (normalized.bg) {
+    mark.dataset.bg = normalized.bg
+    mark.style.backgroundColor = `#${normalized.bg}`
   } else {
     delete mark.dataset.bg
     mark.style.backgroundColor = ''
   }
-  if (segment.fg) {
-    mark.dataset.fg = segment.fg
-    mark.style.color = `#${segment.fg}`
+  if (normalized.fg) {
+    mark.dataset.fg = normalized.fg
+    mark.style.color = `#${normalized.fg}`
   } else {
     delete mark.dataset.fg
     mark.style.color = ''
   }
-  if (segment.strike) {
+  if (normalized.strike) {
     mark.dataset.strike = '1'
     mark.style.textDecoration = 'line-through'
   } else {
     delete mark.dataset.strike
     mark.style.textDecoration = ''
   }
-  if (segment.bold) {
+  if (normalized.bold) {
     mark.dataset.bold = '1'
     mark.style.fontWeight = '600'
   } else {
     delete mark.dataset.bold
     mark.style.fontWeight = ''
   }
-  if (segment.italic) {
+  if (normalized.italic) {
     mark.dataset.italic = '1'
     mark.style.fontStyle = 'italic'
   } else {
@@ -268,10 +282,11 @@ function decorateMark(mark: HTMLElement, segment: TextStyleSegment) {
   }
 }
 
-function createStyledMark(segment: TextStyleSegment): HTMLElement {
+export function createStyledMark(segment: TextStyleSegment): HTMLElement {
+  const normalized = normalizeTextSegment(segment)
   const mark = document.createElement('mark')
-  mark.textContent = segment.text
-  decorateMark(mark, segment)
+  mark.textContent = normalized.text
+  decorateMark(mark, normalized)
   return mark
 }
 

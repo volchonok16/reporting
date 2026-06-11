@@ -3,6 +3,8 @@ import {
   applyCellStylePatch,
   applyStyleToSelection,
   clearFormattingInSelection,
+  createStyledMark,
+  normalizeTextSegment,
   serializeEditableCell,
   splitCellWrapper,
   splitStyleSegments,
@@ -34,36 +36,14 @@ function renderSegments(inner: string, container: HTMLElement) {
   container.replaceChildren()
   for (const segment of splitStyleSegments(inner)) {
     if (!segment.text) continue
+    const normalized = normalizeTextSegment(segment)
     const hasStyle =
-      segment.bg || segment.fg || segment.strike || segment.bold || segment.italic
+      normalized.bg || normalized.fg || normalized.strike || normalized.bold || normalized.italic
     if (!hasStyle) {
-      container.append(document.createTextNode(segment.text))
+      container.append(document.createTextNode(normalized.text))
       continue
     }
-    const mark = document.createElement('mark')
-    mark.className = 'product-status-highlight'
-    if (segment.bg) {
-      mark.dataset.bg = segment.bg
-      mark.style.backgroundColor = `#${segment.bg}`
-    }
-    if (segment.fg) {
-      mark.dataset.fg = segment.fg
-      mark.style.color = `#${segment.fg}`
-    }
-    if (segment.strike) {
-      mark.dataset.strike = '1'
-      mark.style.textDecoration = 'line-through'
-    }
-    if (segment.bold) {
-      mark.dataset.bold = '1'
-      mark.style.fontWeight = '600'
-    }
-    if (segment.italic) {
-      mark.dataset.italic = '1'
-      mark.style.fontStyle = 'italic'
-    }
-    mark.textContent = segment.text
-    container.append(mark)
+    container.append(createStyledMark(normalized))
   }
   if (!container.childNodes.length) {
     container.append(document.createTextNode(''))

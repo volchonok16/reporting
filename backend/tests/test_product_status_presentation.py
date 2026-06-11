@@ -235,6 +235,43 @@ def test_generate_presentation_uses_colored_templates_per_sheet(mock_load) -> No
 
 
 @patch("app.product_status_presentation.load_b2b_product_status")
+def test_generate_presentation_colored_text_has_no_highlight_fill(mock_load) -> None:
+    mock_load.return_value = ProductStatusB2BOut(
+        title="Статус продукта B2B",
+        sheets=[
+            ProductStatusSheetOut(
+                gid="0",
+                name="Продуктовый офис: SMS",
+                columns=["Дата запуска", "Проект", "Описание проекта", "Зачем и для чего делаем"],
+                rows=[
+                    {
+                        "Дата запуска": "",
+                        "Проект": "[[fg:FF0000::Контроль]]",
+                        "Описание проекта": "[[fg:1254CC::hh.ru]] — риск оттока",
+                        "Зачем и для чего делаем": "",
+                    }
+                ],
+                totalShown=1,
+            )
+        ],
+    )
+
+    content, _ = generate_b2b_product_status_presentation()
+    prs = Presentation(io.BytesIO(content))
+    content_slide = prs.slides[FIXED_SLIDE_COUNT]
+    xml = content_slide.part.blob.decode()
+    control_start = xml.index("<a:t>Контроль</a:t>")
+    control_run = xml[max(0, control_start - 500):control_start + 200]
+    assert "val=\"FF0000\"" in control_run
+    assert "<a:highlight>" not in control_run
+
+    link_start = xml.index("<a:t>hh.ru</a:t>")
+    link_run = xml[max(0, link_start - 500):link_start + 200]
+    assert "val=\"1254CC\"" in link_run
+    assert "<a:highlight>" not in link_run
+
+
+@patch("app.product_status_presentation.load_b2b_product_status")
 def test_generate_presentation_table_cells_contain_text_xml(mock_load) -> None:
     mock_load.return_value = ProductStatusB2BOut(
         title="Статус продукта B2B",

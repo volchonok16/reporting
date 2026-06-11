@@ -130,6 +130,29 @@ class Settings(BaseSettings):
             "Эталон Google Slides: ссылка в UI и PPTX-шаблон для «Скачать презентацию»."
         ),
     )
+    b2b_news_spreadsheet_id: str = Field(
+        default="",
+        alias="B2B_NEWS_SPREADSHEET_ID",
+        description="ID Google Sheets для вкладки «Новости».",
+    )
+    b2b_news_sheet_url: str = Field(
+        default="",
+        alias="B2B_NEWS_SHEET_URL",
+        description="CSV-экспорт листа новостей (fallback, если нет списка листов).",
+    )
+    b2b_news_sheets: str = Field(
+        default="",
+        alias="B2B_NEWS_SHEETS",
+        description=(
+            "Список листов новостей: JSON [{gid,name}] или gid:имя;gid2:имя2. "
+            "Пусто — автоизвлечение из Google Sheets."
+        ),
+    )
+    b2b_news_sheet_public_url: str = Field(
+        default="",
+        alias="B2B_NEWS_SHEET_PUBLIC_URL",
+        description="Ссылка на таблицу новостей (кнопка «Открыть таблицу»).",
+    )
     google_sheets_api_key: str = Field(
         default="",
         alias="GOOGLE_SHEETS_API_KEY",

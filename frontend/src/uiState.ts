@@ -1,6 +1,6 @@
 const STORAGE_KEY = 'reporting.uiState'
 
-export type SheetId = 'zni' | 'product-status-b2b'
+export type SheetId = 'zni' | 'product-status-b2b' | 'b2b-news'
 
 export type DashboardUiState = {
   boardCode: string
@@ -19,6 +19,7 @@ type UiState = {
   activeSheet?: SheetId
   dashboard?: Partial<DashboardUiState>
   productStatusB2bGid?: string | null
+  b2bNewsGid?: string | null
 }
 
 function readUiState(): UiState {
@@ -36,9 +37,14 @@ function writeUiState(patch: UiState): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...patch }))
 }
 
+const WORKBOOK_SHEETS: SheetId[] = ['product-status-b2b', 'b2b-news']
+
 export function loadActiveSheet(): SheetId {
   const sheet = readUiState().activeSheet
-  return sheet === 'product-status-b2b' ? sheet : 'zni'
+  if (sheet && WORKBOOK_SHEETS.includes(sheet)) {
+    return sheet
+  }
+  return 'zni'
 }
 
 export function saveActiveSheet(activeSheet: SheetId): void {
@@ -60,4 +66,13 @@ export function loadProductStatusB2bGid(): string | null {
 
 export function saveProductStatusB2bGid(gid: string | null): void {
   writeUiState({ productStatusB2bGid: gid })
+}
+
+export function loadB2bNewsGid(): string | null {
+  const gid = readUiState().b2bNewsGid
+  return typeof gid === 'string' && gid ? gid : null
+}
+
+export function saveB2bNewsGid(gid: string | null): void {
+  writeUiState({ b2bNewsGid: gid })
 }

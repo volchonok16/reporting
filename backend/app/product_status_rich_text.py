@@ -229,13 +229,24 @@ def _format_has_style(fmt: dict) -> bool:
     )
 
 
+def _segment_style_colors(fmt: dict) -> tuple[str | None, str | None]:
+    fg = color_to_hex(fmt.get("foregroundColor"))
+    bg = color_to_hex(fmt.get("backgroundColor"))
+    # Google Sheets иногда отдаёт жёлтую подсветку вместе с цветом текста — в экспорте
+    # оставляем только foreground.
+    if fg and bg:
+        bg = None
+    return bg, fg
+
+
 def _segment_from_format(text: str, fmt: dict) -> str:
     if not text:
         return ""
+    bg, fg = _segment_style_colors(fmt)
     return encode_style_segment(
         _escape_marker_text(text),
-        bg=color_to_hex(fmt.get("backgroundColor")),
-        fg=color_to_hex(fmt.get("foregroundColor")),
+        bg=bg,
+        fg=fg,
         strike=bool(fmt.get("strikethrough")),
         bold=bool(fmt.get("bold")),
         italic=bool(fmt.get("italic")),
@@ -331,6 +342,6 @@ def cell_highlight_colors(text: str) -> list[str]:
     if cell_style.bg:
         colors.append(cell_style.bg)
     for segment in split_style_segments(inner):
-        if segment.bg:
+        if segment.bg and not segment.fg:
             colors.append(segment.bg)
     return colors

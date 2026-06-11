@@ -12,10 +12,14 @@ from app.boards import ALL_BOARDS_CODE, BOARDS, boards_for_sync
 from app.config import settings
 from app.db import ensure_auth_session_table, get_db
 from app.models import SyncRun
+from app.b2b_news_service import load_b2b_news
 from app.product_status_service import load_b2b_product_status
 from app.product_status_excel import generate_b2b_product_status_excel
 from app.product_status_presentation import generate_b2b_product_status_presentation
-from app.product_status_sheets_write import save_b2b_product_status_to_google
+from app.product_status_sheets_write import (
+    save_b2b_news_to_google,
+    save_b2b_product_status_to_google,
+)
 from app.report_service import export_csv, load_change_requests
 from app.business_value_service import update_business_value
 from app.schemas import (
@@ -241,6 +245,17 @@ def product_status_b2b_presentation_from_payload(payload: ProductStatusB2BOut) -
 @app.post("/api/product-status/b2b/save")
 def product_status_b2b_save(payload: ProductStatusB2BOut) -> dict[str, str]:
     save_b2b_product_status_to_google(payload)
+    return {"status": "ok"}
+
+
+@app.get("/api/b2b-news", response_model=ProductStatusB2BOut)
+def b2b_news() -> ProductStatusB2BOut:
+    return load_b2b_news()
+
+
+@app.post("/api/b2b-news/save")
+def b2b_news_save(payload: ProductStatusB2BOut) -> dict[str, str]:
+    save_b2b_news_to_google(payload)
     return {"status": "ok"}
 
 

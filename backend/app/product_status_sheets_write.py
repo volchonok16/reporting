@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from app.config import settings
 from app.product_status_google_encode import sheet_grid_to_google_rows
 from app.product_status_sheets_api import _resolve_sheet_title
-from app.product_status_service import normalize_google_sheets_api_key
+from app.google_sheets_workbook import normalize_google_sheets_api_key
 from app.schemas import ProductStatusB2BOut, ProductStatusSheetOut
 
 logger = logging.getLogger(__name__)
@@ -128,12 +128,12 @@ def _sheet_write_requests(
     ]
 
 
-def save_b2b_product_status_to_google(data: ProductStatusB2BOut) -> None:
-    spreadsheet_id = settings.b2b_product_status_spreadsheet_id.strip()
+def save_workbook_to_google(*, spreadsheet_id: str, data: ProductStatusB2BOut) -> None:
+    spreadsheet_id = spreadsheet_id.strip()
     if not spreadsheet_id:
         raise HTTPException(
             status_code=503,
-            detail="B2B_PRODUCT_STATUS_SPREADSHEET_ID не настроен.",
+            detail="ID Google Sheets не настроен.",
         )
 
     api_key = normalize_google_sheets_api_key(settings.google_sheets_api_key)
@@ -180,3 +180,17 @@ def save_b2b_product_status_to_google(data: ProductStatusB2BOut) -> None:
                 status_code=502,
                 detail="Google Sheets отклонил сохранение. Проверьте доступ сервисного аккаунта.",
             )
+
+
+def save_b2b_product_status_to_google(data: ProductStatusB2BOut) -> None:
+    save_workbook_to_google(
+        spreadsheet_id=settings.b2b_product_status_spreadsheet_id,
+        data=data,
+    )
+
+
+def save_b2b_news_to_google(data: ProductStatusB2BOut) -> None:
+    save_workbook_to_google(
+        spreadsheet_id=settings.b2b_news_spreadsheet_id,
+        data=data,
+    )
