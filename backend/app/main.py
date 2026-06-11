@@ -15,6 +15,7 @@ from app.models import SyncRun
 from app.product_status_service import load_b2b_product_status
 from app.product_status_excel import generate_b2b_product_status_excel
 from app.product_status_presentation import generate_b2b_product_status_presentation
+from app.product_status_sheets_write import save_b2b_product_status_to_google
 from app.report_service import export_csv, load_change_requests
 from app.business_value_service import update_business_value
 from app.schemas import (
@@ -225,6 +226,22 @@ def product_status_b2b_excel_from_payload(payload: ProductStatusB2BOut) -> Respo
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@app.post("/api/product-status/b2b/presentation")
+def product_status_b2b_presentation_from_payload(payload: ProductStatusB2BOut) -> Response:
+    content, filename = generate_b2b_product_status_presentation(payload)
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/api/product-status/b2b/save")
+def product_status_b2b_save(payload: ProductStatusB2BOut) -> dict[str, str]:
+    save_b2b_product_status_to_google(payload)
+    return {"status": "ok"}
 
 
 @app.get("/api/export")

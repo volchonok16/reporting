@@ -632,8 +632,10 @@ def _read_presentation_sections(prs: Presentation) -> list[tuple[str, list[int]]
     return []
 
 
-def generate_b2b_product_status_presentation() -> tuple[bytes, str]:
-    data = load_b2b_product_status()
+def generate_b2b_product_status_presentation(
+    data: ProductStatusB2BOut | None = None,
+) -> tuple[bytes, str]:
+    payload = data if data is not None else load_b2b_product_status()
 
     template_path = _template_path()
     prs = Presentation(str(template_path))
@@ -646,7 +648,7 @@ def generate_b2b_product_status_presentation() -> tuple[bytes, str]:
 
     generated_at = datetime.now(MOSCOW_TZ)
     catalog = TemplateCatalog.from_presentation(prs)
-    specs = _build_slide_specs(data, catalog)
+    specs = _build_slide_specs(payload, catalog)
     if not specs:
         raise HTTPException(
             status_code=502,

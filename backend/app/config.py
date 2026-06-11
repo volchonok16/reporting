@@ -133,6 +133,14 @@ class Settings(BaseSettings):
             "частичное выделение). Пусто — fallback на XLSX-экспорт, затем CSV."
         ),
     )
+    google_sheets_service_account_json: str = Field(
+        default="",
+        alias="GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON",
+        description=(
+            "JSON сервисного аккаунта Google (или путь к .json) для записи "
+            "в таблицу статуса продукта B2B."
+        ),
+    )
 
     @computed_field
     @property

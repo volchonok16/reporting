@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getJson, apiFetch, readApiError } from './api'
 import { loadProductStatusB2bGid, saveProductStatusB2bGid } from './uiState'
-import ProductStatusCell from './ProductStatusCell'
+import ProductStatusCell, { type ProductStatusCellHandle } from './ProductStatusCell'
+import ProductStatusFormatToolbar from './ProductStatusFormatToolbar'
+import type { CellStyle, TextStyleSegment } from './productStatusRichText'
 
 type ProductStatusSheet = {
   gid: string
@@ -16,6 +18,11 @@ type ProductStatusData = {
   sourceUrl?: string | null
   presentationReferenceUrl?: string | null
   sheets: ProductStatusSheet[]
+}
+
+type ActiveCell = {
+  rowIndex: number
+  column: string
 }
 
 function cloneSheets(sheets: ProductStatusSheet[]): ProductStatusSheet[] {
@@ -40,14 +47,27 @@ function filenameFromDisposition(disposition: string, fallback: string): string 
   return match?.[1] ?? fallback
 }
 
+function buildPayload(data: ProductStatusData | null, sheets: ProductStatusSheet[]): ProductStatusData {
+  return {
+    title: data?.title ?? 'Статус продукта B2B',
+    sourceUrl: data?.sourceUrl,
+    presentationReferenceUrl: data?.presentationReferenceUrl,
+    sheets,
+  }
+}
+
 export default function ProductStatusB2B() {
   const [data, setData] = useState<ProductStatusData | null>(null)
   const [sheets, setSheets] = useState<ProductStatusSheet[]>([])
   const [activeGid, setActiveGid] = useState<string | null>(null)
+  const [activeCell, setActiveCell] = useState<ActiveCell | null>(null)
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [exportingPresentation, setExportingPresentation] = useState(false)
   const [exportingExcel, setExportingExcel] = useState(false)
+  const [dirty, setDirty] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const activeCellRef = useRef<ProductStatusCellHandle | null>(null)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -56,6 +76,7 @@ export default function ProductStatusB2B() {
       const payload = await getJson<ProductStatusData>('/api/product-status/b2b')
       setData(payload)
       setSheets(cloneSheets(payload.sheets))
+      setDirty(false)
       setActiveGid((current) => {
         const savedGid = loadProductStatusB2bGid()
         if (savedGid && payload.sheets.some((sheet) => sheet.gid === savedGid)) {
@@ -73,11 +94,37 @@ export default function ProductStatusB2B() {
     }
   }, [])
 
+  const handleSave = useCallback(async () => {
+    if (sheets.length === 0) return
+    setSaving(true)
+    setError(null)
+    try {
+      const response = await apiFetch('/api/product-status/b2b/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildPayload(data, sheets)),
+      })
+      if (!response.ok) {
+        throw new Error(await readApiError(response))
+      }
+      setDirty(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка сохранения в Google Sheets')
+    } finally {
+      setSaving(false)
+    }
+  }, [data, sheets])
+
   const handleExportPresentation = useCallback(async () => {
+    if (sheets.length === 0) return
     setExportingPresentation(true)
     setError(null)
     try {
-      const response = await apiFetch('/api/product-status/b2b/presentation')
+      const response = await apiFetch('/api/product-status/b2b/presentation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildPayload(data, sheets)),
+      })
       if (!response.ok) {
         throw new Error(await readApiError(response))
       }
@@ -91,25 +138,17 @@ export default function ProductStatusB2B() {
     } finally {
       setExportingPresentation(false)
     }
-  }, [])
+  }, [data, sheets])
 
   const handleExportExcel = useCallback(async () => {
-    if (sheets.length === 0) {
-      return
-    }
+    if (sheets.length === 0) return
     setExportingExcel(true)
     setError(null)
     try {
-      const payload: ProductStatusData = {
-        title: data?.title ?? 'Статус продукта B2B',
-        sourceUrl: data?.sourceUrl,
-        presentationReferenceUrl: data?.presentationReferenceUrl,
-        sheets,
-      }
       const response = await apiFetch('/api/product-status/b2b/excel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(buildPayload(data, sheets)),
       })
       if (!response.ok) {
         throw new Error(await readApiError(response))
@@ -127,11 +166,10 @@ export default function ProductStatusB2B() {
   }, [data, sheets])
 
   const updateCell = useCallback((gid: string, rowIndex: number, column: string, value: string) => {
+    setDirty(true)
     setSheets((current) =>
       current.map((sheet) => {
-        if (sheet.gid !== gid) {
-          return sheet
-        }
+        if (sheet.gid !== gid) return sheet
         const rows = sheet.rows.map((row, index) =>
           index === rowIndex ? { ...row, [column]: value } : row,
         )
@@ -139,6 +177,51 @@ export default function ProductStatusB2B() {
       }),
     )
   }, [])
+
+  const addRow = useCallback(() => {
+    if (!activeGid) return
+    setDirty(true)
+    setSheets((current) =>
+      current.map((sheet) => {
+        if (sheet.gid !== activeGid) return sheet
+        const emptyRow = Object.fromEntries(sheet.columns.map((column) => [column, '']))
+        return { ...sheet, rows: [...sheet.rows, emptyRow], totalShown: sheet.rows.length + 1 }
+      }),
+    )
+  }, [activeGid])
+
+  const addColumn = useCallback(() => {
+    if (!activeGid) return
+    const sheet = sheets.find((item) => item.gid === activeGid)
+    if (!sheet) return
+    const proposed = window.prompt('Название нового столбца', 'Новый столбец')
+    const name = proposed?.trim()
+    if (!name) return
+    if (sheet.columns.includes(name)) {
+      setError(`Столбец «${name}» уже есть на этом листе`)
+      return
+    }
+
+    setDirty(true)
+    setSheets((current) =>
+      current.map((item) => {
+        if (item.gid !== activeGid) return item
+        const rows = item.rows.map((row) => ({ ...row, [name]: '' }))
+        return {
+          ...item,
+          columns: [...item.columns, name],
+          rows,
+        }
+      }),
+    )
+  }, [activeGid, sheets])
+
+  const handleRefresh = useCallback(() => {
+    if (dirty && !window.confirm('Есть несохранённые изменения. Обновить из Google Sheets?')) {
+      return
+    }
+    void loadData()
+  }, [dirty, loadData])
 
   useEffect(() => {
     void loadData()
@@ -156,6 +239,19 @@ export default function ProductStatusB2B() {
   )
 
   const exporting = exportingPresentation || exportingExcel
+  const busy = loading || saving || exporting
+
+  const applyTextStyle = useCallback((patch: Partial<TextStyleSegment>) => {
+    activeCellRef.current?.applyTextStyle(patch)
+  }, [])
+
+  const applyCellStyle = useCallback((patch: Partial<CellStyle>) => {
+    activeCellRef.current?.applyCellStyle(patch)
+  }, [])
+
+  const clearFormatting = useCallback(() => {
+    activeCellRef.current?.clearFormatting()
+  }, [])
 
   return (
     <div className="product-status">
@@ -182,13 +278,22 @@ export default function ProductStatusB2B() {
               ) : null}
             </p>
           )}
+          {dirty ? <p className="product-status-dirty">Есть несохранённые изменения</p> : null}
         </div>
         <div className="product-status-toolbar-actions">
           <button
             type="button"
+            className="btn-primary"
+            onClick={() => void handleSave()}
+            disabled={busy || sheets.length === 0 || !dirty}
+          >
+            {saving ? 'Сохранение…' : 'Сохранить в Google'}
+          </button>
+          <button
+            type="button"
             className="btn-secondary"
             onClick={() => void handleExportExcel()}
-            disabled={loading || exporting || sheets.length === 0}
+            disabled={busy || sheets.length === 0}
           >
             {exportingExcel ? 'Формирование…' : 'Скачать Excel'}
           </button>
@@ -196,11 +301,11 @@ export default function ProductStatusB2B() {
             type="button"
             className="btn-secondary"
             onClick={() => void handleExportPresentation()}
-            disabled={loading || exporting || sheets.length === 0}
+            disabled={busy || sheets.length === 0}
           >
             {exportingPresentation ? 'Формирование…' : 'Скачать презентацию'}
           </button>
-          <button type="button" className="btn-secondary" onClick={() => void loadData()} disabled={loading}>
+          <button type="button" className="btn-secondary" onClick={handleRefresh} disabled={loading}>
             {loading ? 'Загрузка…' : 'Обновить'}
           </button>
         </div>
@@ -224,28 +329,56 @@ export default function ProductStatusB2B() {
         </nav>
       )}
 
+      <ProductStatusFormatToolbar
+        disabled={busy}
+        hasActiveCell={activeCell !== null}
+        onTextStyle={applyTextStyle}
+        onCellStyle={applyCellStyle}
+        onClearFormatting={clearFormatting}
+      />
+
       {error && <p className="banner-error">{error}</p>}
 
       <section className="table-section product-status-table-section">
-        <p className="table-meta">
-          {activeSheet ? (
-            <>
-              Лист «{activeSheet.name}» · строк {activeSheet.rows.length}
-            </>
-          ) : (
-            <>Показано строк 0</>
-          )}
-          {loading ? ' · загрузка…' : ''}
-        </p>
+        <div className="product-status-table-toolbar">
+          <p className="table-meta">
+            {activeSheet ? (
+              <>
+                Лист «{activeSheet.name}» · строк {activeSheet.rows.length} · столбцов{' '}
+                {activeSheet.columns.length}
+              </>
+            ) : (
+              <>Показано строк 0</>
+            )}
+            {loading ? ' · загрузка…' : ''}
+          </p>
+          <div className="product-status-table-toolbar-actions">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={addRow}
+              disabled={busy || !activeSheet}
+            >
+              + Строка
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={addColumn}
+              disabled={busy || !activeSheet}
+            >
+              + Столбец
+            </button>
+          </div>
+        </div>
         <div className="table">
           <div className="table-scroll">
             {activeSheet && activeSheet.columns.length > 0 ? (
               <table className="product-status-table">
                 <colgroup>
-                  <col className="col-launch" />
-                  <col className="col-project" />
-                  <col className="col-description" />
-                  <col className="col-why" />
+                  {activeSheet.columns.map((_, index) => (
+                    <col key={index} className={index === 1 ? 'col-project' : undefined} />
+                  ))}
                 </colgroup>
                 <thead>
                   <tr>
@@ -257,25 +390,49 @@ export default function ProductStatusB2B() {
                 <tbody>
                   {activeSheet.rows.map((row, rowIndex) => (
                     <tr key={`${activeSheet.gid}-${rowIndex}`}>
-                      {activeSheet.columns.map((column, columnIndex) => (
-                        <td
-                          key={`${rowIndex}-${column}`}
-                          className={
-                            columnIndex === 1 ? 'cell-project product-status-multiline' : 'product-status-multiline'
-                          }
-                        >
-                          <ProductStatusCell
-                            className={`product-status-cell-input${
-                              columnIndex === 1 ? ' product-status-cell-project' : ''
-                            }`}
-                            value={row[column] ?? ''}
-                            ariaLabel={column}
-                            onChange={(nextValue) =>
-                              updateCell(activeSheet.gid, rowIndex, column, nextValue)
+                      {activeSheet.columns.map((column, columnIndex) => {
+                        const isActive =
+                          activeCell?.rowIndex === rowIndex && activeCell.column === column
+                        return (
+                          <td
+                            key={`${rowIndex}-${column}`}
+                            className={
+                              columnIndex === 1
+                                ? 'cell-project product-status-multiline'
+                                : 'product-status-multiline'
                             }
-                          />
-                        </td>
-                      ))}
+                          >
+                            <ProductStatusCell
+                              ref={(handle) => {
+                                if (isActive) {
+                                  activeCellRef.current = handle
+                                }
+                              }}
+                              className={`product-status-cell-input${
+                                columnIndex === 1 ? ' product-status-cell-project' : ''
+                              }`}
+                              value={row[column] ?? ''}
+                              ariaLabel={column}
+                              onFocus={() =>
+                                setActiveCell({
+                                  rowIndex,
+                                  column,
+                                })
+                              }
+                              onBlur={() => {
+                                setActiveCell((current) =>
+                                  current?.rowIndex === rowIndex && current.column === column
+                                    ? null
+                                    : current,
+                                )
+                              }}
+                              onChange={(nextValue) =>
+                                updateCell(activeSheet.gid, rowIndex, column, nextValue)
+                              }
+                            />
+                          </td>
+                        )
+                      })}
                     </tr>
                   ))}
                 </tbody>

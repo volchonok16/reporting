@@ -203,3 +203,155 @@ export function serializeEditableCell(root: HTMLElement, cellStyle: CellStyle): 
   if (cellStyle.border) attrs.push(`border:${cellStyle.border}`)
   return `<<cell:${attrs.join(';')}>>${inner}<<>>`
 }
+
+function readMarkStyle(node: HTMLElement): TextStyleSegment {
+  return {
+    text: node.textContent ?? '',
+    bg: node.dataset.bg?.toUpperCase() ?? null,
+    fg: node.dataset.fg?.toUpperCase() ?? null,
+    strike: node.dataset.strike === '1',
+    bold: node.dataset.bold === '1',
+    italic: node.dataset.italic === '1',
+  }
+}
+
+function applyPatchToSegment(
+  segment: TextStyleSegment,
+  patch: Partial<TextStyleSegment>,
+): TextStyleSegment {
+  return {
+    text: segment.text,
+    bg: patch.bg !== undefined ? patch.bg : segment.bg,
+    fg: patch.fg !== undefined ? patch.fg : segment.fg,
+    strike: patch.strike !== undefined ? patch.strike : segment.strike,
+    bold: patch.bold !== undefined ? patch.bold : segment.bold,
+    italic: patch.italic !== undefined ? patch.italic : segment.italic,
+  }
+}
+
+function decorateMark(mark: HTMLElement, segment: TextStyleSegment) {
+  mark.className = 'product-status-highlight'
+  if (segment.bg) {
+    mark.dataset.bg = segment.bg
+    mark.style.backgroundColor = `#${segment.bg}`
+  } else {
+    delete mark.dataset.bg
+    mark.style.backgroundColor = ''
+  }
+  if (segment.fg) {
+    mark.dataset.fg = segment.fg
+    mark.style.color = `#${segment.fg}`
+  } else {
+    delete mark.dataset.fg
+    mark.style.color = ''
+  }
+  if (segment.strike) {
+    mark.dataset.strike = '1'
+    mark.style.textDecoration = 'line-through'
+  } else {
+    delete mark.dataset.strike
+    mark.style.textDecoration = ''
+  }
+  if (segment.bold) {
+    mark.dataset.bold = '1'
+    mark.style.fontWeight = '600'
+  } else {
+    delete mark.dataset.bold
+    mark.style.fontWeight = ''
+  }
+  if (segment.italic) {
+    mark.dataset.italic = '1'
+    mark.style.fontStyle = 'italic'
+  } else {
+    delete mark.dataset.italic
+    mark.style.fontStyle = ''
+  }
+}
+
+function createStyledMark(segment: TextStyleSegment): HTMLElement {
+  const mark = document.createElement('mark')
+  mark.textContent = segment.text
+  decorateMark(mark, segment)
+  return mark
+}
+
+export function applyStyleToSelection(root: HTMLElement, patch: Partial<TextStyleSegment>): boolean {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    return false
+  }
+  const range = selection.getRangeAt(0)
+  if (!root.contains(range.commonAncestorContainer)) {
+    return false
+  }
+
+  const mark = document.createElement('mark')
+  const current = readMarkStyle(mark)
+  const next = applyPatchToSegment({ ...current, text: '' }, patch)
+  decorateMark(mark, next)
+
+  try {
+    range.surroundContents(mark)
+  } catch {
+    const fragment = range.extractContents()
+    mark.appendChild(fragment)
+    range.insertNode(mark)
+    const merged = applyPatchToSegment(readMarkStyle(mark), patch)
+    decorateMark(mark, merged)
+  }
+
+  selection.removeAllRanges()
+  return true
+}
+
+export function clearFormattingInSelection(root: HTMLElement): boolean {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    return false
+  }
+  const range = selection.getRangeAt(0)
+  if (!root.contains(range.commonAncestorContainer)) {
+    return false
+  }
+  const text = range.toString()
+  if (!text) return false
+  range.deleteContents()
+  range.insertNode(document.createTextNode(text))
+  selection.removeAllRanges()
+  return true
+}
+
+export function applyCellStylePatch(value: string, patch: Partial<CellStyle>): string {
+  const { cellStyle, inner } = splitCellWrapper(value)
+  const nextStyle: CellStyle = {
+    bg: patch.bg !== undefined ? patch.bg : cellStyle.bg,
+    border: patch.border !== undefined ? patch.border : cellStyle.border,
+  }
+  if (!nextStyle.bg && !nextStyle.border) {
+    return inner
+  }
+  const attrs: string[] = []
+  if (nextStyle.bg) attrs.push(`bg:${nextStyle.bg}`)
+  if (nextStyle.border) attrs.push(`border:${nextStyle.border}`)
+  return `<<cell:${attrs.join(';')}>>${inner}<<>>`
+}
+
+export function wrapCellValue(inner: string, cellStyle: CellStyle): string {
+  return serializeEditableCell(
+    (() => {
+      const root = document.createElement('div')
+      for (const segment of splitStyleSegments(inner)) {
+        if (!segment.text) continue
+        const hasStyle =
+          segment.bg || segment.fg || segment.strike || segment.bold || segment.italic
+        if (!hasStyle) {
+          root.append(document.createTextNode(segment.text))
+        } else {
+          root.append(createStyledMark(segment))
+        }
+      }
+      return root
+    })(),
+    cellStyle,
+  )
+}
