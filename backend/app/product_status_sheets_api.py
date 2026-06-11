@@ -11,6 +11,18 @@ logger = logging.getLogger(__name__)
 
 _SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets"
 _A1_ESCAPE = re.compile(r"['\\]")
+# textFormatRuns.format.backgroundColor is not readable via spreadsheets.get field mask.
+_GRID_DATA_FIELDS = (
+    "sheets(data/rowData/values("
+    "formattedValue,effectiveValue,userEnteredValue,"
+    "userEnteredFormat.backgroundColor,userEnteredFormat.borders,"
+    "userEnteredFormat.textFormat,"
+    "effectiveFormat.backgroundColor,effectiveFormat.borders,"
+    "effectiveFormat.textFormat,"
+    "textFormatRuns(format.foregroundColor,format.bold,format.italic,"
+    "format.strikethrough,format.underline)"
+    "))"
+)
 
 
 def _quote_sheet_range(sheet_name: str) -> str:
@@ -111,17 +123,7 @@ def fetch_sheet_with_formatting(
     params = {
         "includeGridData": "true",
         "ranges": sheet_range,
-        "fields": (
-            "sheets(data/rowData/values("
-            "formattedValue,effectiveValue,userEnteredValue,"
-            "userEnteredFormat.backgroundColor,userEnteredFormat.borders,"
-            "userEnteredFormat.textFormat,"
-            "effectiveFormat.backgroundColor,effectiveFormat.borders,"
-            "effectiveFormat.textFormat,"
-            "textFormatRuns(format.backgroundColor,format.foregroundColor,"
-            "format.bold,format.italic,format.strikethrough,format.underline)"
-            "))"
-        ),
+        "fields": _GRID_DATA_FIELDS,
         "key": api_key,
     }
     try:

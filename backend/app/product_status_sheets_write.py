@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from app.config import settings
 from app.product_status_google_encode import sheet_grid_to_google_rows
 from app.product_status_sheets_api import _resolve_sheet_title
+from app.product_status_service import normalize_google_sheets_api_key
 from app.schemas import ProductStatusB2BOut, ProductStatusSheetOut
 
 logger = logging.getLogger(__name__)
@@ -108,11 +109,14 @@ def save_b2b_product_status_to_google(data: ProductStatusB2BOut) -> None:
             detail="B2B_PRODUCT_STATUS_SPREADSHEET_ID не настроен.",
         )
 
-    api_key = settings.google_sheets_api_key.strip()
+    api_key = normalize_google_sheets_api_key(settings.google_sheets_api_key)
     if not api_key:
         raise HTTPException(
             status_code=503,
-            detail="GOOGLE_SHEETS_API_KEY нужен для определения листов при записи.",
+            detail=(
+                "GOOGLE_SHEETS_API_KEY нужен для определения листов при записи "
+                "(ключ вида AIza…, не ссылка на таблицу)."
+            ),
         )
 
     token = _access_token()

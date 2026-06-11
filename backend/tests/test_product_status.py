@@ -1,6 +1,7 @@
 from app.product_status_service import (
     _pair_captions_with_gids,
     discover_sheet_tabs,
+    normalize_google_sheets_api_key,
     parse_sheet_csv,
     parse_sheets_config,
     resolve_sheet_tabs,
@@ -40,6 +41,31 @@ def test_parse_sheets_config_compact() -> None:
         {"gid": "0", "name": "Статус"},
         {"gid": "123456", "name": "Архив"},
     ]
+
+
+def test_parse_sheets_config_rejects_url() -> None:
+    assert parse_sheets_config(
+        "https://docs.google.com/presentation/d/abc/edit"
+    ) == []
+
+
+def test_parse_sheets_config_skips_invalid_gid() -> None:
+    assert parse_sheets_config("https:broken;0:CORE") == [
+        {"gid": "0", "name": "CORE"},
+    ]
+
+
+def test_normalize_google_sheets_api_key_rejects_sheet_url() -> None:
+    assert (
+        normalize_google_sheets_api_key(
+            "https://docs.google.com/spreadsheets/d/abc/edit?usp=sharing"
+        )
+        == ""
+    )
+
+
+def test_normalize_google_sheets_api_key_accepts_api_key() -> None:
+    assert normalize_google_sheets_api_key("AIzaSyAbcdefghijklmnop") == "AIzaSyAbcdefghijklmnop"
 
 
 def test_pair_captions_with_gids() -> None:

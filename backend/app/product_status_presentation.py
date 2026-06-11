@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import httpx
 from fastapi import HTTPException
 from pptx import Presentation
 from pptx.dml.color import RGBColor
@@ -20,6 +21,7 @@ from pptx.oxml.xmlchemy import OxmlElement
 from pptx.util import Pt
 
 from app.config import settings
+from app.product_status_slides_template import fetch_google_slides_pptx
 from app.product_status_rich_text import (
     CellStyle,
     display_cell_text,
@@ -142,22 +144,78 @@ def _normalize_title(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip().casefold())
 
 
-def _template_path() -> Path:
+def _looks_like_url(value: str) -> bool:
+    lowered = value.strip().casefold()
+    return lowered.startswith("http://") or lowered.startswith("https://")
+
+
+def _bundled_template_path() -> Path:
+    return Path(__file__).resolve().parent.parent / "assets" / "b2b_product_status_template.pptx"
+
+
+def _google_http_client() -> httpx.Client:
+    proxy = settings.outbound_http_proxy.strip() or None
+    return httpx.Client(timeout=60.0, follow_redirects=True, proxy=proxy)
+
+
+def _open_template_presentation() -> Presentation:
     configured = settings.b2b_product_status_presentation_template.strip()
     if configured:
-        path = Path(configured)
-        if path.is_file():
-            return path
-        logger.warning("product_status_template_missing path=%s", configured)
+        if _looks_like_url(configured):
+            logger.warning(
+                "product_status_template_url_in_template_setting — "
+                "используйте B2B_PRODUCT_STATUS_PRESENTATION_REFERENCE_URL"
+            )
+        else:
+            path = Path(configured)
+            if path.is_file():
+                return Presentation(str(path))
+            logger.warning("product_status_template_missing path=%s", configured)
 
-    default = Path(__file__).resolve().parent.parent / "assets" / "b2b_product_status_template.pptx"
+    reference_url = settings.b2b_product_status_presentation_reference_url.strip()
+    if reference_url and _looks_like_url(reference_url):
+        try:
+            with _google_http_client() as client:
+                pptx_bytes = fetch_google_slides_pptx(reference_url=reference_url, client=client)
+            prs = Presentation(io.BytesIO(pptx_bytes))
+            if len(prs.slides) >= FIXED_SLIDE_COUNT + 1:
+                return prs
+            logger.warning(
+                "google_slides_template_too_short slides=%s url=%s",
+                len(prs.slides),
+                reference_url,
+            )
+        except (httpx.HTTPError, ValueError, OSError):
+            logger.warning(
+                "google_slides_template_fetch_failed url=%s",
+                reference_url,
+                exc_info=True,
+            )
+
+    default = _bundled_template_path()
     if default.is_file():
-        return default
+        return Presentation(str(default))
 
     raise HTTPException(
         status_code=503,
-        detail="Шаблон презентации статуса продукта B2B не найден.",
+        detail=(
+            "Шаблон презентации не найден. Проверьте доступ к эталону Google Slides "
+            "или положите PPTX в backend/assets/b2b_product_status_template.pptx."
+        ),
     )
+
+
+def _template_path() -> Path:
+    """Совместимость для тестов и скриптов — предпочтительно _open_template_presentation()."""
+    configured = settings.b2b_product_status_presentation_template.strip()
+    if configured and not _looks_like_url(configured):
+        path = Path(configured)
+        if path.is_file():
+            return path
+    default = _bundled_template_path()
+    if default.is_file():
+        return default
+    raise HTTPException(status_code=503, detail="Шаблон презентации статуса продукта B2B не найден.")
 
 
 def _template_index_for_sheet(sheet_name: str) -> int:
@@ -637,8 +695,7 @@ def generate_b2b_product_status_presentation(
 ) -> tuple[bytes, str]:
     payload = data if data is not None else load_b2b_product_status()
 
-    template_path = _template_path()
-    prs = Presentation(str(template_path))
+    prs = _open_template_presentation()
 
     if len(prs.slides) < FIXED_SLIDE_COUNT + 1:
         raise HTTPException(

@@ -109,7 +109,7 @@ export default function ProductStatusB2B() {
       }
       setDirty(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка сохранения в Google Sheets')
+      setError(err instanceof Error ? err.message : 'Ошибка сохранения')
     } finally {
       setSaving(false)
     }
@@ -287,7 +287,7 @@ export default function ProductStatusB2B() {
             onClick={() => void handleSave()}
             disabled={busy || sheets.length === 0 || !dirty}
           >
-            {saving ? 'Сохранение…' : 'Сохранить в Google'}
+            {saving ? 'Сохранение…' : 'Сохранить'}
           </button>
           <button
             type="button"

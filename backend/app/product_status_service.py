@@ -21,6 +21,8 @@ _SHEET_META_PATTERN = re.compile(
 )
 _TAB_CAPTION_PATTERN = re.compile(r'docs-sheet-tab-caption">([^<]+)</div>')
 _GID_PATTERN = re.compile(r"gid=(\d+)")
+_VALID_GID_PATTERN = re.compile(r"^\d+$")
+_API_KEY_PATTERN = re.compile(r"^AIza[0-9A-Za-z_-]{10,}$")
 
 _DEFAULT_SHEETS_BY_SPREADSHEET: dict[str, list[dict[str, str]]] = {
     "1zTxzUqa1p6wFUjmk-8_2czfsJaSm3eTrNGazN0oFKqI": [
@@ -133,9 +135,59 @@ def discover_sheet_tabs(spreadsheet_id: str, *, client: httpx.Client) -> list[di
     return []
 
 
+def _is_valid_sheet_gid(gid: str) -> bool:
+    return bool(_VALID_GID_PATTERN.match(gid.strip()))
+
+
+def _looks_like_url(value: str) -> bool:
+    lowered = value.strip().casefold()
+    return lowered.startswith("http://") or lowered.startswith("https://")
+
+
+def normalize_google_sheets_api_key(raw: str) -> str:
+    value = raw.strip()
+    if not value:
+        return ""
+    if _looks_like_url(value):
+        logger.warning(
+            "google_sheets_api_key_looks_like_url — укажите API-ключ AIza…, "
+            "а ссылку на таблицу задайте в B2B_PRODUCT_STATUS_SHEET_PUBLIC_URL"
+        )
+        return ""
+    if not _API_KEY_PATTERN.match(value):
+        logger.warning(
+            "google_sheets_api_key_invalid_format — ожидается ключ вида AIza…; "
+            "чтение стилей через Sheets API отключено"
+        )
+        return ""
+    return value
+
+
+def _sheet_tab_from_parts(gid: str, name: str) -> dict[str, str] | None:
+    gid = gid.strip()
+    name = name.strip()
+    if not gid or not name:
+        return None
+    if not _is_valid_sheet_gid(gid):
+        logger.warning(
+            "product_status_invalid_sheet_gid gid=%r name=%r — gid должен быть числом",
+            gid,
+            name,
+        )
+        return None
+    return {"gid": gid, "name": name}
+
+
 def parse_sheets_config(raw: str) -> list[dict[str, str]]:
     value = raw.strip()
     if not value:
+        return []
+
+    if _looks_like_url(value):
+        logger.warning(
+            "b2b_product_status_sheets_looks_like_url — укажите gid:имя;gid2:имя2 "
+            "или оставьте пустым для автоопределения листов"
+        )
         return []
 
     if value.startswith("["):
@@ -146,10 +198,12 @@ def parse_sheets_config(raw: str) -> list[dict[str, str]]:
         for item in parsed:
             if not isinstance(item, dict):
                 continue
-            gid = str(item.get("gid", "")).strip()
-            name = str(item.get("name", "")).strip()
-            if gid and name:
-                sheets.append({"gid": gid, "name": name})
+            tab = _sheet_tab_from_parts(
+                str(item.get("gid", "")),
+                str(item.get("name", "")),
+            )
+            if tab:
+                sheets.append(tab)
         return sheets
 
     sheets = []
@@ -158,10 +212,9 @@ def parse_sheets_config(raw: str) -> list[dict[str, str]]:
         if not part or ":" not in part:
             continue
         gid, name = part.split(":", 1)
-        gid = gid.strip()
-        name = name.strip()
-        if gid and name:
-            sheets.append({"gid": gid, "name": name})
+        tab = _sheet_tab_from_parts(gid, name)
+        if tab:
+            sheets.append(tab)
     return sheets
 
 
@@ -207,56 +260,100 @@ def parse_sheet_csv(text: str) -> tuple[list[str], list[dict[str, str]]]:
     return headers, rows
 
 
+def _google_http_client() -> httpx.Client:
+    proxy = settings.outbound_http_proxy.strip() or None
+    return httpx.Client(timeout=45.0, follow_redirects=True, proxy=proxy)
+
+
+def _load_sheet_tab(
+    *,
+    spreadsheet_id: str,
+    gid: str,
+    name: str,
+    api_key: str,
+    client: httpx.Client,
+) -> tuple[list[str], list[dict[str, str]], str | None]:
+    columns: list[str] = []
+    rows: list[dict[str, str]] = []
+    last_error: str | None = None
+
+    if api_key:
+        formatted = fetch_sheet_with_formatting(
+            spreadsheet_id=spreadsheet_id,
+            sheet_name=name,
+            gid=gid,
+            api_key=api_key,
+            client=client,
+        )
+        if formatted:
+            columns, rows = formatted
+        else:
+            last_error = f"{name}: Sheets API недоступен"
+
+    if not columns:
+        xlsx_formatted = fetch_sheet_from_xlsx(
+            spreadsheet_id=spreadsheet_id,
+            gid=gid,
+            client=client,
+        )
+        if xlsx_formatted:
+            columns, rows = xlsx_formatted
+        elif last_error is None:
+            last_error = f"{name}: XLSX-экспорт недоступен"
+
+    if not columns:
+        url = _csv_export_url(spreadsheet_id, gid)
+        try:
+            response = client.get(url)
+            response.raise_for_status()
+            columns, rows = parse_sheet_csv(response.text)
+            if not columns:
+                last_error = f"{name}: CSV пустой или без заголовков"
+        except httpx.HTTPError as exc:
+            last_error = f"{name}: CSV {exc.__class__.__name__}"
+            logger.warning(
+                "product_status_sheet_fetch_failed gid=%s name=%s error=%s",
+                gid,
+                name,
+                exc,
+            )
+
+    if columns:
+        return columns, rows, None
+    return [], [], last_error
+
+
 def load_b2b_product_status() -> ProductStatusB2BOut:
     spreadsheet_id = _spreadsheet_id()
 
     try:
-        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+        with _google_http_client() as client:
             sheet_tabs = resolve_sheet_tabs(client=client)
-            sheets: list[ProductStatusSheetOut] = []
+            if not sheet_tabs:
+                raise HTTPException(
+                    status_code=502,
+                    detail=(
+                        "Не удалось определить листы Google Sheets. "
+                        "Задайте B2B_PRODUCT_STATUS_SHEETS в .env."
+                    ),
+                )
 
-            api_key = settings.google_sheets_api_key.strip()
+            sheets: list[ProductStatusSheetOut] = []
+            load_errors: list[str] = []
+            api_key = normalize_google_sheets_api_key(settings.google_sheets_api_key)
 
             for tab in sheet_tabs:
                 gid = tab["gid"]
                 name = tab["name"]
-                columns: list[str] = []
-                rows: list[dict[str, str]] = []
-
-                if api_key:
-                    formatted = fetch_sheet_with_formatting(
-                        spreadsheet_id=spreadsheet_id,
-                        sheet_name=name,
-                        gid=gid,
-                        api_key=api_key,
-                        client=client,
-                    )
-                    if formatted:
-                        columns, rows = formatted
-
-                if not columns:
-                    xlsx_formatted = fetch_sheet_from_xlsx(
-                        spreadsheet_id=spreadsheet_id,
-                        gid=gid,
-                        client=client,
-                    )
-                    if xlsx_formatted:
-                        columns, rows = xlsx_formatted
-
-                if not columns:
-                    url = _csv_export_url(spreadsheet_id, gid)
-                    try:
-                        response = client.get(url)
-                        response.raise_for_status()
-                    except httpx.HTTPError:
-                        logger.warning(
-                            "product_status_sheet_fetch_failed gid=%s name=%s",
-                            gid,
-                            name,
-                        )
-                        continue
-                    columns, rows = parse_sheet_csv(response.text)
-
+                columns, rows, error = _load_sheet_tab(
+                    spreadsheet_id=spreadsheet_id,
+                    gid=gid,
+                    name=name,
+                    api_key=api_key,
+                    client=client,
+                )
+                if error:
+                    load_errors.append(error)
                 if not columns:
                     continue
 
@@ -282,9 +379,22 @@ def load_b2b_product_status() -> ProductStatusB2BOut:
         ) from exc
 
     if not sheets:
+        hint = (
+            "Проверьте доступ сервера к docs.google.com "
+            "(curl export?format=csv) и настройки B2B_PRODUCT_STATUS_* в .env."
+        )
+        if load_errors:
+            sample = "; ".join(load_errors[:3])
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Не удалось загрузить ни одного листа Google Sheets. "
+                    f"Ошибки: {sample}. {hint}"
+                ),
+            )
         raise HTTPException(
             status_code=502,
-            detail="Не удалось загрузить ни одного листа Google Sheets.",
+            detail=f"Не удалось загрузить ни одного листа Google Sheets. {hint}",
         )
 
     return ProductStatusB2BOut(

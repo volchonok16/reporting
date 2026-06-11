@@ -3,6 +3,9 @@
 .env
 .env.local
 
+# Локальные ключи (Google SA и др.) — только на диске, не в git
+secrets/*.json
+
 # OS
 Thumbs.db
 Desktop.ini

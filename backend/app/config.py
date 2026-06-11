@@ -115,7 +115,10 @@ class Settings(BaseSettings):
     b2b_product_status_presentation_template: str = Field(
         default="",
         alias="B2B_PRODUCT_STATUS_PRESENTATION_TEMPLATE",
-        description="Путь к PPTX-шаблону презентации. Пусто — backend/assets/b2b_product_status_template.pptx.",
+        description=(
+            "Локальный путь к PPTX-шаблону (опционально). Пусто — экспорт эталона "
+            "из B2B_PRODUCT_STATUS_PRESENTATION_REFERENCE_URL, затем assets/."
+        ),
     )
     b2b_product_status_presentation_reference_url: str = Field(
         default=(
@@ -123,7 +126,9 @@ class Settings(BaseSettings):
             "1EDejas495X7XC3-pOW9QID_ooECrqNRYJBfrUpApCx4/edit"
         ),
         alias="B2B_PRODUCT_STATUS_PRESENTATION_REFERENCE_URL",
-        description="Эталонная Google Slides-презентация (для ссылки в UI).",
+        description=(
+            "Эталон Google Slides: ссылка в UI и PPTX-шаблон для «Скачать презентацию»."
+        ),
     )
     google_sheets_api_key: str = Field(
         default="",
@@ -140,6 +145,11 @@ class Settings(BaseSettings):
             "JSON сервисного аккаунта Google (или путь к .json) для записи "
             "в таблицу статуса продукта B2B."
         ),
+    )
+    outbound_http_proxy: str = Field(
+        default="",
+        alias="OUTBOUND_HTTP_PROXY",
+        description="HTTP(S)-прокси для запросов к Google Sheets (если с сервера нет прямого доступа).",
     )
 
     @computed_field

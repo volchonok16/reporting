@@ -85,7 +85,7 @@ Docker Compose подхватывает `.env` автоматически для
 
 Для цветов и выделения в ячейках (UI и презентация) в `.env` нужен `GOOGLE_SHEETS_API_KEY` — ключ Google Cloud с включённым Sheets API; таблица должна быть доступна «всем по ссылке». Без ключа backend пробует XLSX-экспорт (цвет всей ячейки), затем CSV без стилей.
 
-Для кнопки «Сохранить в Google» на вкладке «Статус продукта B2B» нужен `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` (JSON сервисного аккаунта или путь к файлу); email аккаунта — с правами «Редактор» в Google Sheets.
+Для кнопки «Сохранить в Google» на вкладке «Статус продукта B2B» положите JSON ключа в `secrets/google-sheets-sa.json` и укажите в `.env` путь `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON=/app/secrets/google-sheets-sa.json`. Email из `client_email` — с правами «Редактор» в Google Sheets. Папка `secrets/` монтируется в backend-контейнер.
 
 Переменные `B2B_PRODUCT_STATUS_*`, `GOOGLE_SHEETS_API_KEY` и `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` пробрасываются в контейнер `backend` через `docker-compose.yml`.
 
