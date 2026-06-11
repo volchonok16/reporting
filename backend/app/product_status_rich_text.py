@@ -321,10 +321,6 @@ def cell_text_with_highlights(cell: dict) -> str:
         bg, border = _cell_format_styles(fmt)
         cell_bg = cell_bg or bg
         cell_border = cell_border or border
-        if not runs and not STYLE_SEGMENT_PATTERN.search(styled):
-            bg_only, _ = _cell_format_styles(fmt)
-            if bg_only:
-                styled = wrap_highlighted_text(styled, bg_only)
 
     return wrap_cell_text(styled, bg=cell_bg, border=cell_border)
 

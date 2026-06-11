@@ -17,28 +17,55 @@ logger = logging.getLogger(__name__)
 
 _SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets"
 _SCOPES = ("https://www.googleapis.com/auth/spreadsheets",)
-def _load_service_account_info(raw: str) -> dict | None:
+
+
+def _service_account_json_candidates(raw: str) -> list[Path]:
     value = raw.strip()
-    if not value:
-        return None
+    repo_root = Path(__file__).resolve().parents[2]
+    candidates: list[Path] = []
+    if value and not value.startswith("{"):
+        candidates.append(Path(value))
+    candidates.extend(
+        [
+            Path("/app/secrets/google-sheets-sa.json"),
+            repo_root / "secrets" / "google-sheets-sa.json",
+        ]
+    )
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for path in candidates:
+        key = str(path)
+        if key not in seen:
+            seen.add(key)
+            unique.append(path)
+    return unique
+
+
+def _load_service_account_info(raw: str) -> tuple[dict | None, str | None]:
+    value = raw.strip()
     if value.startswith("{"):
         parsed = json.loads(value)
-        return parsed if isinstance(parsed, dict) else None
-    path = Path(value)
-    if path.is_file():
-        parsed = json.loads(path.read_text(encoding="utf-8"))
-        return parsed if isinstance(parsed, dict) else None
-    return None
+        return (parsed, None) if isinstance(parsed, dict) else (None, "некорректный JSON в переменной")
+    for path in _service_account_json_candidates(value):
+        if path.is_file():
+            parsed = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(parsed, dict):
+                return parsed, None
+            return None, f"файл {path} не содержит JSON-объект"
+    if value:
+        return None, f"файл не найден: {value}"
+    return None, "переменная GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON не задана"
 
 
 def _access_token() -> str:
-    info = _load_service_account_info(settings.google_sheets_service_account_json)
+    info, config_error = _load_service_account_info(settings.google_sheets_service_account_json)
     if not info:
         raise HTTPException(
             status_code=503,
             detail=(
-                "Запись в Google Sheets не настроена: укажите "
-                "GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON (JSON или путь к файлу). "
+                "Запись в Google Sheets не настроена: "
+                f"{config_error or 'укажите GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON'}. "
+                "Положите ключ в secrets/google-sheets-sa.json (Docker: /app/secrets/…). "
                 "Сервисному аккаунту нужен доступ «Редактор» к таблице."
             ),
         )

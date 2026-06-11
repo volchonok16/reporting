@@ -98,6 +98,23 @@ def test_cell_text_with_highlights_from_cell_background_and_border() -> None:
     assert result.startswith("<<cell:")
     assert "border:" in result
     assert "Идет миграция" in result
+    assert "$" not in result
+
+
+def test_cell_text_with_highlights_keeps_red_asterisk_without_yellow_marker() -> None:
+    cell = {
+        "effectiveValue": {"stringValue": "SMS Hub *"},
+        "textFormatRuns": [
+            {"startIndex": 0},
+            {
+                "startIndex": 8,
+                "format": {"foregroundColor": {"red": 1, "green": 0, "blue": 0}},
+            },
+        ],
+    }
+    result = cell_text_with_highlights(cell)
+    assert result == "SMS Hub [[fg:FF0000::*]]"
+    assert "$" not in result
 
 
 def test_cell_highlight_colors_collects_unique_order() -> None:

@@ -9,14 +9,14 @@ type ProductStatusFormatToolbarProps = {
 }
 
 const TEXT_PRESETS: Array<{ label: string; patch: Partial<TextStyleSegment> }> = [
-  { label: 'Жёлтый', patch: { bg: 'FFFF00' } },
+  { label: 'Маркер (жёлтый)', patch: { bg: 'FFFF00' } },
   { label: 'Красный текст', patch: { fg: 'FF0000' } },
   { label: 'Синий текст', patch: { fg: '0000FF' } },
 ]
 
 const CELL_PRESETS: Array<{ label: string; patch: Partial<CellStyle> }> = [
-  { label: 'Фон ячейки', patch: { bg: 'C6EFCE' } },
-  { label: 'Без фона', patch: { bg: null } },
+  { label: 'Заливка ячейки', patch: { bg: 'C6EFCE' } },
+  { label: 'Без заливки', patch: { bg: null } },
 ]
 
 export default function ProductStatusFormatToolbar({

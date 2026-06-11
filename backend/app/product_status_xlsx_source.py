@@ -9,7 +9,6 @@ from openpyxl import load_workbook
 from app.product_status_rich_text import (
     encode_style_segment,
     wrap_cell_text,
-    wrap_highlighted_text,
 )
 
 logger = logging.getLogger(__name__)
@@ -78,8 +77,6 @@ def _cell_encoded_value(cell) -> str:
             bold=bool(font and font.bold),
             italic=bool(font and font.italic),
         )
-    elif cell_bg:
-        styled = wrap_highlighted_text(text, cell_bg)
 
     return wrap_cell_text(styled, bg=cell_bg, border=border)
 

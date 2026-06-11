@@ -39,9 +39,9 @@ def test_parse_grid_sheet_preserves_yellow_text_runs() -> None:
     assert rows[0]["Проект"] == "Убираем $300 рублевые $офферы"
 
 
-def test_grid_data_fields_mask_excludes_unreadable_text_run_background() -> None:
-    assert "textFormatRuns(format.backgroundColor" not in _GRID_DATA_FIELDS
-    assert "textFormatRuns(format.foregroundColor" in _GRID_DATA_FIELDS
+def test_grid_data_fields_mask_includes_text_run_colors() -> None:
+    assert "format.backgroundColor" in _GRID_DATA_FIELDS
+    assert "format.foregroundColor" in _GRID_DATA_FIELDS
 
 
 def test_resolve_sheet_title_matches_gid() -> None:

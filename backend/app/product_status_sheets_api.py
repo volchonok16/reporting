@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 _SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets"
 _A1_ESCAPE = re.compile(r"['\\]")
-# textFormatRuns.format.backgroundColor is not readable via spreadsheets.get field mask.
 _GRID_DATA_FIELDS = (
     "sheets(data/rowData/values("
     "formattedValue,effectiveValue,userEnteredValue,"
@@ -19,8 +18,8 @@ _GRID_DATA_FIELDS = (
     "userEnteredFormat.textFormat,"
     "effectiveFormat.backgroundColor,effectiveFormat.borders,"
     "effectiveFormat.textFormat,"
-    "textFormatRuns(format.foregroundColor,format.bold,format.italic,"
-    "format.strikethrough,format.underline)"
+    "textFormatRuns(format.foregroundColor,format.backgroundColor,format.bold,"
+    "format.italic,format.strikethrough,format.underline)"
     "))"
 )
 
