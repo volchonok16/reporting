@@ -3,7 +3,6 @@ import { apiFetch, clearSessionId, getJson } from './api'
 import { loadDashboardUiState, saveDashboardUiState } from './uiState'
 
 const ALL_BOARDS = 'all'
-const DIGITAL_BOARD = 'digital_streams_b2b'
 
 const BOARD_LABELS: Record<string, string> = {
   all: 'Все доски',
@@ -437,7 +436,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     if (statusFilter) params.set('status', statusFilter)
     if (quarterFilter) params.set('quarter', quarterFilter)
     if (ectReservationFilter) params.set('ect_reservation', ectReservationFilter)
-    if (boardCode === DIGITAL_BOARD) {
+    if (boardCode !== ALL_BOARDS) {
       for (const group of tagGroupFilter) {
         params.append('tag_group', group)
       }
@@ -735,7 +734,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             </select>
           </label>
 
-          {boardCode === DIGITAL_BOARD && (
+          {(data?.availableTagGroups?.length ?? 0) > 0 && (
             <div className="tag-group-filter">
               <span className="tag-group-filter-label">Область</span>
               <div className="tag-group-filter-dropdown">
@@ -832,9 +831,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         <p className="table-meta">
           Показано строк {data?.totalShown ?? 0}
           {metricFilter ? ` · фильтр: ${METRIC_LABELS[metricFilter]}` : ''}
-          {boardCode === DIGITAL_BOARD && tagGroupFilter.length
-            ? ` · область: ${tagGroupFilterLabel()}`
-            : ''}
+          {tagGroupFilter.length ? ` · область: ${tagGroupFilterLabel()}` : ''}
           {boardLabel ? ` · ${boardLabel}` : ''}
           {loading ? ' · загрузка…' : ''}
         </p>

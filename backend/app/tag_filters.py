@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from app.boards import is_all_boards
+
 DIGITAL_BOARD_CODE = "digital_streams_b2b"
 
 
@@ -24,7 +26,20 @@ TAG_FILTER_GROUPS: tuple[TagFilterGroup, ...] = (
         root_tags=("site_b2b",),
         subsection_prefixes=("site_",),
     ),
+    TagFilterGroup(
+        key="eshop_b2b",
+        label="EShop B2B",
+        root_tags=("EShopB2B",),
+    ),
+    TagFilterGroup(
+        key="eshop",
+        label="EShop",
+        root_tags=("EShop",),
+    ),
 )
+
+_DIGITAL_TAG_GROUP_KEYS = frozenset({"newlk", "site", "eshop_b2b"})
+_OTHER_BOARDS_TAG_GROUP_KEYS = frozenset({"eshop"})
 
 _TAG_FILTER_GROUP_BY_KEY = {group.key: group for group in TAG_FILTER_GROUPS}
 
@@ -36,17 +51,35 @@ def tag_filter_group_by_key(key: str | None) -> TagFilterGroup | None:
 
 
 def tag_filter_supported_for_board(board_code: str | None) -> bool:
-    return (board_code or "").strip().lower() == DIGITAL_BOARD_CODE
+    if is_all_boards(board_code) or not board_code:
+        return False
+    return bool(tag_filter_groups_for_board(board_code))
 
 
-def normalize_tag_group_keys(keys: list[str] | None) -> list[str]:
+def tag_filter_groups_for_board(board_code: str | None) -> tuple[TagFilterGroup, ...]:
+    if is_all_boards(board_code) or not board_code:
+        return ()
+    if board_code.strip().lower() == DIGITAL_BOARD_CODE:
+        return tuple(
+            group for group in TAG_FILTER_GROUPS if group.key in _DIGITAL_TAG_GROUP_KEYS
+        )
+    return tuple(
+        group for group in TAG_FILTER_GROUPS if group.key in _OTHER_BOARDS_TAG_GROUP_KEYS
+    )
+
+
+def normalize_tag_group_keys(
+    keys: list[str] | None,
+    board_code: str | None = None,
+) -> list[str]:
     if not keys:
         return []
+    allowed = {group.key for group in tag_filter_groups_for_board(board_code)}
     normalized: list[str] = []
     seen: set[str] = set()
     for key in keys:
         group = tag_filter_group_by_key(key)
-        if group is None or group.key in seen:
+        if group is None or group.key not in allowed or group.key in seen:
             continue
         seen.add(group.key)
         normalized.append(group.key)

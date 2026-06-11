@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 
 from app.board_metrics import active_errors
 from app.models import Task
@@ -22,7 +22,7 @@ def _zni(**kwargs) -> Task:
     return Task(**defaults)
 
 
-def test_launching_soon_ignores_start_date_range() -> None:
+def test_digital_launching_soon_ignores_start_date_range() -> None:
     old_uat = _zni(source_status="UAT", start_date=date(2024, 6, 1), external_id="970092")
     new_uat = _zni(source_status="UAT", start_date=date(2026, 4, 15), external_id="1172515")
     rows = [old_uat, new_uat]
@@ -31,6 +31,7 @@ def test_launching_soon_ignores_start_date_range() -> None:
 
     metrics = _compute_metrics(
         rows,
+        board_code="digital_streams_b2b",
         error_rows=[],
         errors_by_parent={},
         date_from=date_from,
@@ -41,12 +42,65 @@ def test_launching_soon_ignores_start_date_range() -> None:
     assert metrics.totalTasks == 2
 
 
+def test_be_launching_soon_respects_start_date_range() -> None:
+    old_uat = _zni(
+        source_status="UAT Prod",
+        source_team="BE Analytics",
+        extra_json={"board_code": "be_t2_team", "customer_name": "Иванов"},
+        start_date=date(2024, 6, 1),
+        external_id="1",
+    )
+    new_uat = _zni(
+        source_status="UAT Prod",
+        source_team="BE Analytics",
+        extra_json={"board_code": "be_t2_team", "customer_name": "Петров"},
+        start_date=date(2026, 4, 15),
+        external_id="2",
+    )
+    date_from = date(2026, 1, 1)
+    date_to = date(2026, 12, 31)
+
+    metrics = _compute_metrics(
+        [old_uat, new_uat],
+        board_code="be_t2_team",
+        error_rows=[],
+        errors_by_parent={},
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+    assert metrics.launchingSoon == 1
+
+
+def test_be_metric_uses_created_at_when_start_date_missing() -> None:
+    dev = _zni(
+        source_status="Development",
+        source_team="BE Analytics",
+        extra_json={"board_code": "be_t2_team", "customer_name": "Иванов"},
+        start_date=None,
+        created_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
+        external_id="1",
+    )
+    date_from = date(2026, 1, 1)
+    date_to = date(2026, 6, 30)
+
+    assert _matches_dashboard_row(
+        dev,
+        "in_progress",
+        board_code="be_t2_team",
+        errors_by_parent={},
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
 def test_total_tasks_excludes_closed() -> None:
     open_task = _zni(source_status="UAT", external_id="1")
     closed_task = _zni(source_status="Closed", external_id="2")
 
     metrics = _compute_metrics(
         [open_task, closed_task],
+        board_code="digital_streams_b2b",
         error_rows=[],
         errors_by_parent={},
         date_from=None,
@@ -62,14 +116,25 @@ def test_total_tasks_and_default_table_use_start_date_range() -> None:
     date_to = date(2026, 12, 31)
 
     assert _matches_dashboard_row(
-        old, None, errors_by_parent={}, date_from=date_from, date_to=date_to
+        old,
+        None,
+        board_code="digital_streams_b2b",
+        errors_by_parent={},
+        date_from=date_from,
+        date_to=date_to,
     ) is False
     assert _matches_dashboard_row(
-        recent, "", errors_by_parent={}, date_from=date_from, date_to=date_to
+        recent,
+        "",
+        board_code="digital_streams_b2b",
+        errors_by_parent={},
+        date_from=date_from,
+        date_to=date_to,
     )
 
     metrics = _compute_metrics(
         [old, recent],
+        board_code="digital_streams_b2b",
         error_rows=[],
         errors_by_parent={},
         date_from=date_from,
@@ -78,7 +143,7 @@ def test_total_tasks_and_default_table_use_start_date_range() -> None:
     assert metrics.totalTasks == 2
 
 
-def test_errors_count_matches_zni_with_linked_errors_without_start_date_filter() -> None:
+def test_digital_errors_count_ignores_start_date_filter() -> None:
     zni = _zni(start_date=date(2020, 1, 1), external_id="1")
     zni.id = 10
     error = Task(
@@ -97,6 +162,7 @@ def test_errors_count_matches_zni_with_linked_errors_without_start_date_filter()
 
     metrics = _compute_metrics(
         [zni],
+        board_code="digital_streams_b2b",
         error_rows=[error],
         errors_by_parent=errors_by_parent,
         date_from=date_from,
@@ -106,27 +172,52 @@ def test_errors_count_matches_zni_with_linked_errors_without_start_date_filter()
     assert _matches_dashboard_row(
         zni,
         "errors",
+        board_code="digital_streams_b2b",
         errors_by_parent=errors_by_parent,
         date_from=date_from,
         date_to=date_to,
     )
 
 
-def test_errors_count_ignores_unlinked_errors() -> None:
-    zni = _zni(start_date=date(2020, 1, 1), external_id="1")
+def test_be_errors_count_respects_start_date_filter() -> None:
+    zni = _zni(
+        start_date=date(2020, 1, 1),
+        source_team="BE Analytics",
+        extra_json={"board_code": "be_t2_team", "customer_name": "Иванов"},
+        external_id="1",
+    )
+    zni.id = 10
     error = Task(
         source_system_id=1,
         project_id=1,
         external_id="99",
         title="Err",
         task_type="error",
-        source_team="Digital Streams B2b",
-        start_date=date(2020, 1, 1),
+        source_team="BE Analytics",
+        parent_task_id=10,
     )
+    errors_by_parent = {10: [error]}
+    date_from = date(2026, 1, 1)
+    date_to = date(2026, 12, 31)
 
     metrics = _compute_metrics(
         [zni],
+        board_code="be_t2_team",
         error_rows=[error],
+        errors_by_parent=errors_by_parent,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    assert metrics.errorsCount == 0
+
+
+def test_errors_count_ignores_unlinked_errors() -> None:
+    zni = _zni(start_date=date(2020, 1, 1), external_id="1")
+
+    metrics = _compute_metrics(
+        [zni],
+        board_code="digital_streams_b2b",
+        error_rows=[],
         errors_by_parent={},
         date_from=None,
         date_to=None,
@@ -139,13 +230,14 @@ def test_launched_metric_includes_closed_be_board_in_table() -> None:
         source_status="Closed",
         source_team="BE Analytics",
         extra_json={"board_code": "be_t2_team", "customer_name": "Иванов"},
-        start_date=date(2024, 1, 1),
+        start_date=date(2026, 2, 1),
     )
     date_from = date(2026, 1, 1)
     date_to = date(2026, 6, 30)
 
     metrics = _compute_metrics(
         [closed],
+        board_code="be_t2_team",
         error_rows=[],
         errors_by_parent={},
         date_from=date_from,
@@ -155,6 +247,7 @@ def test_launched_metric_includes_closed_be_board_in_table() -> None:
     assert _matches_dashboard_row(
         closed,
         "launched",
+        board_code="be_t2_team",
         errors_by_parent={},
         date_from=date_from,
         date_to=date_to,
@@ -167,6 +260,7 @@ def test_in_progress_metric_counts_development() -> None:
 
     metrics = _compute_metrics(
         [dev, uat],
+        board_code="digital_streams_b2b",
         error_rows=[],
         errors_by_parent={},
         date_from=None,
@@ -203,6 +297,7 @@ def test_errors_count_ignores_closed_errors() -> None:
 
     metrics = _compute_metrics(
         [zni],
+        board_code="digital_streams_b2b",
         error_rows=error_rows,
         errors_by_parent=errors_by_parent,
         date_from=None,

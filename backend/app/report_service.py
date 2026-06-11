@@ -36,8 +36,9 @@ from app.schemas import (
     TagFilterGroupOut,
 )
 from app.tag_filters import (
-    TAG_FILTER_GROUPS,
+    DIGITAL_BOARD_CODE,
     normalize_tag_group_keys,
+    tag_filter_groups_for_board,
     tag_filter_supported_for_board,
     task_matches_tag_groups,
 )
@@ -70,7 +71,7 @@ def _matches_tag_groups(task: Task, tag_groups: list[str]) -> bool:
     return task_matches_tag_groups(_task_tags(task), tag_groups)
 
 
-def _tag_filter_groups_out() -> list[TagFilterGroupOut]:
+def _tag_filter_groups_out(board_code: str | None) -> list[TagFilterGroupOut]:
     return [
         TagFilterGroupOut(
             key=group.key,
@@ -78,7 +79,7 @@ def _tag_filter_groups_out() -> list[TagFilterGroupOut]:
             tags=list(group.root_tags),
             subsectionPrefixes=list(group.subsection_prefixes),
         )
-        for group in TAG_FILTER_GROUPS
+        for group in tag_filter_groups_for_board(board_code)
     ]
 
 
@@ -225,11 +226,13 @@ def _in_date_range(task: Task, date_from: date | None, date_to: date | None) -> 
     return True
 
 
-def _uses_start_date_period(metric: str | None) -> bool:
-    """Период «Дата начала»–«Дата конца» по start_date / created_at."""
+def _uses_start_date_period(metric: str | None, board_code: str | None) -> bool:
+    """Период по start_date / created_at. Digital: метрики без даты; остальные доски — всегда."""
     if not metric:
         return True
-    return metric not in {"in_progress", "launching_soon", "launched", "completed", "errors"}
+    if (board_code or "").strip().lower() == DIGITAL_BOARD_CODE:
+        return metric not in {"in_progress", "launching_soon", "launched", "completed", "errors"}
+    return True
 
 
 def _planned_date_upcoming_sort_key(task: Task, *, today: date | None = None) -> tuple[int, date, int]:
@@ -373,11 +376,12 @@ def _matches_dashboard_row(
     row: Task,
     metric: str | None,
     *,
+    board_code: str | None,
     errors_by_parent: dict[int, list[Task]],
     date_from: date | None,
     date_to: date | None,
 ) -> bool:
-    if _uses_start_date_period(metric) and not _in_date_range(row, date_from, date_to):
+    if _uses_start_date_period(metric, board_code) and not _in_date_range(row, date_from, date_to):
         return False
     if not metric:
         return True
@@ -393,62 +397,29 @@ def _matches_dashboard_row(
 def _compute_metrics(
     rows: list[Task],
     *,
+    board_code: str | None,
     error_rows: list[Task],
     errors_by_parent: dict[int, list[Task]],
     date_from: date | None,
     date_to: date | None,
 ) -> DashboardMetricsOut:
+    def _metric_row(row: Task, metric: str) -> bool:
+        return _matches_dashboard_row(
+            row,
+            metric,
+            board_code=board_code,
+            errors_by_parent=errors_by_parent,
+            date_from=date_from,
+            date_to=date_to,
+        )
+
     return DashboardMetricsOut(
         totalTasks=sum(1 for row in rows if not _is_closed_zni(row)),
-        inProgress=sum(
-            1
-            for row in rows
-            if _matches_dashboard_row(
-                row,
-                "in_progress",
-                errors_by_parent=errors_by_parent,
-                date_from=date_from,
-                date_to=date_to,
-            )
-        ),
-        launchingSoon=sum(
-            1
-            for row in rows
-            if _matches_dashboard_row(
-                row,
-                "launching_soon",
-                errors_by_parent=errors_by_parent,
-                date_from=date_from,
-                date_to=date_to,
-            )
-        ),
-        launched=sum(
-            1
-            for row in rows
-            if _matches_dashboard_row(
-                row,
-                "launched",
-                errors_by_parent=errors_by_parent,
-                date_from=date_from,
-                date_to=date_to,
-            )
-        ),
-        completed=sum(
-            1
-            for row in rows
-            if _matches_dashboard_row(
-                row,
-                "completed",
-                errors_by_parent=errors_by_parent,
-                date_from=date_from,
-                date_to=date_to,
-            )
-        ),
-        errorsCount=sum(
-            1
-            for row in rows
-            if not _is_closed_zni(row) and has_linked_errors(row, errors_by_parent)
-        ),
+        inProgress=sum(1 for row in rows if _metric_row(row, "in_progress")),
+        launchingSoon=sum(1 for row in rows if _metric_row(row, "launching_soon")),
+        launched=sum(1 for row in rows if _metric_row(row, "launched")),
+        completed=sum(1 for row in rows if _metric_row(row, "completed")),
+        errorsCount=sum(1 for row in rows if _metric_row(row, "errors")),
     )
 
 
@@ -469,7 +440,7 @@ def load_change_requests(
     all_boards = is_all_boards(board_code)
     board = board_by_code(board_code)
     selected_tag_groups = (
-        normalize_tag_group_keys(tag_groups)
+        normalize_tag_group_keys(tag_groups, board_code)
         if tag_filter_supported_for_board(board_code)
         else []
     )
@@ -513,6 +484,7 @@ def load_change_requests(
         and _matches_dashboard_row(
             row,
             metric,
+            board_code=board_code,
             errors_by_parent=errors_by_parent,
             date_from=date_from,
             date_to=date_to,
@@ -575,6 +547,7 @@ def load_change_requests(
         allBoards=all_boards,
         metrics=_compute_metrics(
             rows_with_customer,
+            board_code=board_code,
             error_rows=error_rows,
             errors_by_parent=errors_by_parent,
             date_from=date_from,
@@ -585,7 +558,7 @@ def load_change_requests(
         availableStatuses=_collect_available_statuses(rows_with_customer),
         availableQuarters=_collect_available_quarters(rows_with_customer),
         availableTagGroups=(
-            _tag_filter_groups_out()
+            _tag_filter_groups_out(board_code)
             if tag_filter_supported_for_board(board_code)
             else []
         ),

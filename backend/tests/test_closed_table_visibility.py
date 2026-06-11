@@ -74,6 +74,7 @@ def test_errors_count_uses_parent_zni_id_fallback() -> None:
 
     metrics = _compute_metrics(
         [zni],
+        board_code="digital_streams_b2b",
         error_rows=[error],
         errors_by_parent=_build_errors_by_parent([zni], [error]),
         date_from=None,
