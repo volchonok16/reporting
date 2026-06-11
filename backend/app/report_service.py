@@ -10,6 +10,7 @@ from app.board_metrics import (
     active_errors,
     has_linked_errors,
     is_completed,
+    is_in_progress,
     is_launched,
     is_launching_soon,
     task_status_tokens,
@@ -228,7 +229,7 @@ def _uses_start_date_period(metric: str | None) -> bool:
     """Период «Дата начала»–«Дата конца» по start_date / created_at."""
     if not metric:
         return True
-    return metric not in {"launching_soon", "launched", "completed", "errors"}
+    return metric not in {"in_progress", "launching_soon", "launched", "completed", "errors"}
 
 
 def _planned_date_upcoming_sort_key(task: Task, *, today: date | None = None) -> tuple[int, date, int]:
@@ -324,10 +325,10 @@ def _build_errors_by_parent(zni_rows: list[Task], error_rows: list[Task]) -> dic
 
 
 def _matches_closed_table_visibility(task: Task, metric: str | None) -> bool:
-    """Closed ЗНИ показываем в таблице только при фильтре «Завершённые»."""
+    """Closed ЗНИ: в таблице при «Завершённые» и «Запущено» (BE: Closed = запущено)."""
     if not _is_closed_zni(task):
         return True
-    return metric == "completed"
+    return metric in {"completed", "launched"}
 
 
 def _collect_available_statuses(rows: list[Task]) -> list[str]:
@@ -355,6 +356,8 @@ def _matches_metric_filter(
         return True
     today = date.today()
     horizon = today + timedelta(days=settings.launching_soon_days)
+    if metric == "in_progress":
+        return is_in_progress(row)
     if metric == "launching_soon":
         return is_launching_soon(row, today=today, horizon=horizon)
     if metric == "launched":
@@ -397,6 +400,17 @@ def _compute_metrics(
 ) -> DashboardMetricsOut:
     return DashboardMetricsOut(
         totalTasks=sum(1 for row in rows if not _is_closed_zni(row)),
+        inProgress=sum(
+            1
+            for row in rows
+            if _matches_dashboard_row(
+                row,
+                "in_progress",
+                errors_by_parent=errors_by_parent,
+                date_from=date_from,
+                date_to=date_to,
+            )
+        ),
         launchingSoon=sum(
             1
             for row in rows

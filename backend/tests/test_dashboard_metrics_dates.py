@@ -134,6 +134,47 @@ def test_errors_count_ignores_unlinked_errors() -> None:
     assert metrics.errorsCount == 0
 
 
+def test_launched_metric_includes_closed_be_board_in_table() -> None:
+    closed = _zni(
+        source_status="Closed",
+        source_team="BE Analytics",
+        extra_json={"board_code": "be_t2_team", "customer_name": "Иванов"},
+        start_date=date(2024, 1, 1),
+    )
+    date_from = date(2026, 1, 1)
+    date_to = date(2026, 6, 30)
+
+    metrics = _compute_metrics(
+        [closed],
+        error_rows=[],
+        errors_by_parent={},
+        date_from=date_from,
+        date_to=date_to,
+    )
+    assert metrics.launched == 1
+    assert _matches_dashboard_row(
+        closed,
+        "launched",
+        errors_by_parent={},
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
+def test_in_progress_metric_counts_development() -> None:
+    dev = _zni(source_status="Development", external_id="1")
+    uat = _zni(source_status="UAT", external_id="2")
+
+    metrics = _compute_metrics(
+        [dev, uat],
+        error_rows=[],
+        errors_by_parent={},
+        date_from=None,
+        date_to=None,
+    )
+    assert metrics.inProgress == 1
+
+
 def test_errors_count_ignores_closed_errors() -> None:
     zni = _zni(start_date=date(2020, 1, 1), external_id="1")
     zni.id = 10

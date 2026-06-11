@@ -2,7 +2,7 @@ from datetime import date
 
 from app.board_metrics import has_linked_errors, is_launching_soon
 from app.models import Task
-from app.report_service import _matches_metric_filter
+from app.report_service import _matches_closed_table_visibility, _matches_metric_filter
 
 
 def _zni(**kwargs) -> Task:
@@ -17,6 +17,39 @@ def _zni(**kwargs) -> Task:
     }
     defaults.update(kwargs)
     return Task(**defaults)
+
+
+def test_metric_filter_in_progress() -> None:
+    assert _matches_metric_filter(
+        _zni(source_status="Development"),
+        "in_progress",
+        errors_by_parent={},
+        date_from=None,
+        date_to=None,
+    )
+    assert not _matches_metric_filter(
+        _zni(source_status="UAT"),
+        "in_progress",
+        errors_by_parent={},
+        date_from=None,
+        date_to=None,
+    )
+
+
+def test_metric_filter_launched_shows_closed_be_board() -> None:
+    closed = _zni(
+        source_status="Closed",
+        source_team="BE Analytics",
+        extra_json={"board_code": "be_t2_team", "customer_name": "Иванов"},
+    )
+    assert _matches_metric_filter(
+        closed,
+        "launched",
+        errors_by_parent={},
+        date_from=None,
+        date_to=None,
+    )
+    assert _matches_closed_table_visibility(closed, "launched")
 
 
 def test_metric_filter_launching_soon() -> None:

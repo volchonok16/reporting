@@ -82,6 +82,7 @@ type DashboardData = {
   allBoards: boolean
   metrics: {
     totalTasks: number
+    inProgress: number
     launchingSoon: number
     launched: number
     completed: number
@@ -282,17 +283,21 @@ function isClosedStatus(value?: string | null): boolean {
   return value.trim().toLowerCase() === 'closed'
 }
 
+function showClosedStatus(metricFilter: MetricFilter): boolean {
+  return metricFilter === 'completed' || metricFilter === 'launched'
+}
+
 function visibleBoardStatus(item: ChangeRequest, metricFilter: MetricFilter): string | null {
   const column = item.boardColumn?.trim()
   if (!column) return null
-  if (isClosedStatus(column) && metricFilter !== 'completed') return null
+  if (isClosedStatus(column) && !showClosedStatus(metricFilter)) return null
   return column
 }
 
 function visibleWorkflowStatus(item: ChangeRequest, metricFilter: MetricFilter): string | null {
   const status = item.status?.trim()
   if (!status) return null
-  if (isClosedStatus(status) && metricFilter !== 'completed') return null
+  if (isClosedStatus(status) && !showClosedStatus(metricFilter)) return null
   return status
 }
 
@@ -302,7 +307,7 @@ function rowHasExpandDetails(item: ChangeRequest, metricFilter: MetricFilter): b
   )
 }
 
-type MetricFilter = '' | 'launching_soon' | 'launched' | 'completed' | 'errors'
+type MetricFilter = '' | 'in_progress' | 'launching_soon' | 'launched' | 'completed' | 'errors'
 
 type DashboardProps = {
   onLogout: () => void
@@ -310,6 +315,7 @@ type DashboardProps = {
 
 const METRIC_LABELS: Record<MetricFilter, string> = {
   '': 'Все задачи',
+  in_progress: 'В работе',
   launching_soon: 'Скоро запуск',
   launched: 'Запущено',
   completed: 'Завершенные',
@@ -341,7 +347,14 @@ const ECT_FILTER_OPTIONS: ColumnMenuOption[] = [
 ]
 
 function isMetricFilter(value: string | undefined): value is MetricFilter {
-  return value === '' || value === 'launching_soon' || value === 'launched' || value === 'completed' || value === 'errors'
+  return (
+    value === ''
+    || value === 'in_progress'
+    || value === 'launching_soon'
+    || value === 'launched'
+    || value === 'completed'
+    || value === 'errors'
+  )
 }
 
 export default function Dashboard({ onLogout }: DashboardProps) {
@@ -772,6 +785,14 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         >
           <span className="metric-label">Всего задач</span>
           <strong className="metric-value">{data?.metrics.totalTasks ?? '—'}</strong>
+        </button>
+        <button
+          type="button"
+          className={`metric-card metric-in-progress${metricFilter === 'in_progress' ? ' metric-card-active' : ''}`}
+          onClick={() => toggleMetricFilter('in_progress')}
+        >
+          <span className="metric-label">В работе</span>
+          <strong className="metric-value">{data?.metrics.inProgress ?? '—'}</strong>
         </button>
         <button
           type="button"

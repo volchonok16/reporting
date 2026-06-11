@@ -77,6 +77,12 @@ def is_launched(task: Task, *, date_from: date | None, date_to: date | None) -> 
     return pilot_entered_in_period(task, date_from=date_from, date_to=date_to)
 
 
+def is_in_progress(task: Task) -> bool:
+    board = board_for_task(task)
+    states = board.in_progress_states if board else ("Development",)
+    return matches_board_states(task, states)
+
+
 def count_launching_soon(
     rows: list[Task],
     *,
@@ -97,6 +103,10 @@ def count_launched_rows(
     date_to: date | None,
 ) -> int:
     return sum(1 for row in rows if is_launched(row, date_from=date_from, date_to=date_to))
+
+
+def count_in_progress(rows: list[Task]) -> int:
+    return sum(1 for row in rows if is_in_progress(row))
 
 
 def _closed_states_lower() -> set[str]:

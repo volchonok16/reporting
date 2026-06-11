@@ -119,6 +119,7 @@
 | Метрика | Таблица / поле |
 |---------|----------------|
 | Всего ЗНИ | `task` · `task_type = change_request` |
+| В работе | `source_status` / `extra_json.board_column` = `Development` |
 | Скоро запуск | Digital и B2B Product: `UAT`; BE Analytics / ESB: `UAT Prod` / `Implementation Prod` / Triage `в Работе` |
 | Запущено | Digital и B2B Product: `Pilot`; BE Analytics / ESB: `Closed` |
 | Ошибок | `task` · `task_type = error` · `parent_task_id` |

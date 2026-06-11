@@ -146,7 +146,7 @@ def dashboard(
     ),
     metric: str | None = Query(
         default=None,
-        description="Фильтр таблицы: launching_soon, launched, completed, errors",
+        description="Фильтр таблицы: in_progress, launching_soon, launched, completed, errors",
     ),
     tag_group: list[str] = Query(
         default=[],

@@ -439,6 +439,16 @@ body {
   color: #fff;
 }
 
+.metric-in-progress {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.metric-in-progress.metric-card-active {
+  border-color: var(--t2-lime-border);
+  background: var(--t2-lime-soft);
+}
+
 .metric-soon {
   background: var(--surface);
   border-color: var(--border);

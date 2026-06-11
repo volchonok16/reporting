@@ -20,6 +20,7 @@ class BoardConfig:
     launching_soon_states: tuple[str, ...] = ()
     launching_soon_triage_values: tuple[str, ...] = ()
     launched_states: tuple[str, ...] = ()
+    in_progress_states: tuple[str, ...] = ("Development",)
     base_url: str = settings.tfs_base_url
 
     def to_tfs_auth(self, pat: str) -> TfsAuth:

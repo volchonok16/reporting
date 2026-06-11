@@ -37,6 +37,7 @@ def test_closed_hidden_from_table_without_completed_metric() -> None:
     assert not _matches_closed_table_visibility(closed, None)
     assert not _matches_closed_table_visibility(closed, "launching_soon")
     assert _matches_closed_table_visibility(closed, "completed")
+    assert _matches_closed_table_visibility(closed, "launched")
 
 
 def test_build_errors_by_parent_uses_parent_zni_id_fallback() -> None:
