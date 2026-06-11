@@ -42,7 +42,7 @@ def test_digital_launching_soon_ignores_start_date_range() -> None:
     assert metrics.totalTasks == 2
 
 
-def test_be_launching_soon_respects_start_date_range() -> None:
+def test_be_launching_soon_ignores_start_date_range_like_before() -> None:
     old_uat = _zni(
         source_status="UAT Prod",
         source_team="BE Analytics",
@@ -69,10 +69,12 @@ def test_be_launching_soon_respects_start_date_range() -> None:
         date_to=date_to,
     )
 
-    assert metrics.launchingSoon == 1
+    assert metrics.launchingSoon == 2
 
 
-def test_be_metric_uses_created_at_when_start_date_missing() -> None:
+def test_be_metric_uses_created_at_for_incident_errors_only() -> None:
+    from app.report_service import _matches_incident_error_row
+
     dev = _zni(
         source_status="Development",
         source_team="BE Analytics",
@@ -89,6 +91,26 @@ def test_be_metric_uses_created_at_when_start_date_missing() -> None:
         "in_progress",
         board_code="be_t2_team",
         errors_by_parent={},
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+    incident = Task(
+        source_system_id=1,
+        project_id=1,
+        external_id="1251042",
+        title="Incident",
+        task_type="error",
+        source_team="BE Analytics",
+        created_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
+        extra_json={"board_code": "be_t2_team", "incident_error": True, "tags": ["b2b_product"]},
+    )
+    assert _matches_incident_error_row(
+        incident,
+        board_code="be_t2_team",
+        metric="errors",
+        search=None,
+        status=None,
         date_from=date_from,
         date_to=date_to,
     )
@@ -179,7 +201,7 @@ def test_digital_errors_count_ignores_start_date_filter() -> None:
     )
 
 
-def test_be_errors_count_respects_start_date_filter() -> None:
+def test_be_errors_count_ignores_start_date_for_linked_zni_like_before() -> None:
     zni = _zni(
         start_date=date(2020, 1, 1),
         source_team="BE Analytics",
@@ -208,7 +230,7 @@ def test_be_errors_count_respects_start_date_filter() -> None:
         date_from=date_from,
         date_to=date_to,
     )
-    assert metrics.errorsCount == 0
+    assert metrics.errorsCount == 1
 
 
 def test_errors_count_ignores_unlinked_errors() -> None:

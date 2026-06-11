@@ -246,7 +246,7 @@ def _matches_incident_error_row(
         return False
     if not _matches_status(error, status):
         return False
-    if _uses_start_date_period(metric, board_code) and not _in_date_range(error, date_from, date_to):
+    if not _in_date_range(error, date_from, date_to):
         return False
     return True
 
@@ -287,11 +287,17 @@ def _in_date_range(task: Task, date_from: date | None, date_to: date | None) -> 
     return True
 
 
+def _board_metrics_ignore_date_period(board_code: str | None) -> bool:
+    """Digital и Bercut: карточки метрик не режутся по периоду (как до изменений)."""
+    normalized = (board_code or "").strip().lower()
+    return normalized in {DIGITAL_BOARD_CODE, BERCUT_BOARD_CODE}
+
+
 def _uses_start_date_period(metric: str | None, board_code: str | None) -> bool:
-    """Период по start_date / created_at. Digital: метрики без даты; остальные доски — всегда."""
+    """Период по start_date / created_at для списка «Всего задач» и досок с датой в метриках."""
     if not metric:
         return True
-    if (board_code or "").strip().lower() == DIGITAL_BOARD_CODE:
+    if _board_metrics_ignore_date_period(board_code):
         return metric not in {"in_progress", "launching_soon", "launched", "completed", "errors"}
     return True
 
