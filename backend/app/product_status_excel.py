@@ -11,6 +11,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 from app.product_status_rich_text import (
+    _filter_cell_background,
     cell_highlight_colors,
     display_cell_text,
     split_cell_wrapper,
@@ -76,8 +77,9 @@ def _write_sheet(worksheet: Worksheet, sheet: ProductStatusSheetOut) -> None:
             cell = worksheet.cell(row=row_index, column=col_index, value=value or None)
             cell.alignment = _CELL_ALIGNMENT
             cell_style, inner = split_cell_wrapper(raw)
-            if cell_style.bg:
-                cell.fill = _highlight_fill(cell_style.bg)
+            cell_bg = _filter_cell_background(cell_style.bg, inner)
+            if cell_bg:
+                cell.fill = _highlight_fill(cell_bg)
             elif cell_highlight_colors(raw):
                 cell.fill = _highlight_fill(cell_highlight_colors(raw)[0])
             if cell_style.border:

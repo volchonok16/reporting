@@ -75,7 +75,10 @@ def _access_token() -> str:
     except ImportError as exc:
         raise HTTPException(
             status_code=503,
-            detail="Для записи в Google Sheets установите пакет google-auth.",
+            detail=(
+                "Для записи в Google Sheets установите пакеты google-auth и requests "
+                "(pip install -r backend/requirements.txt или пересборка Docker-образа backend)."
+            ),
         ) from exc
 
     credentials = service_account.Credentials.from_service_account_info(info, scopes=_SCOPES)

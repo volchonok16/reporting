@@ -4,6 +4,7 @@ import {
   applyStyleToSelection,
   clearFormattingInSelection,
   createStyledMark,
+  normalizeCellValue,
   normalizeTextSegment,
   serializeEditableCell,
   splitCellWrapper,
@@ -64,7 +65,8 @@ const ProductStatusCell = forwardRef<ProductStatusCellHandle, ProductStatusCellP
       if (!element || value === lastSerialized.current) {
         return
       }
-      const { cellStyle, inner } = splitCellWrapper(value)
+      const normalized = normalizeCellValue(value)
+      const { cellStyle, inner } = splitCellWrapper(normalized)
       cellStyleRef.current = cellStyle
       applyCellStyle(element, cellStyle)
       renderSegments(inner, element)

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { apiFetch, clearSessionId } from './api'
-import B2BNews from './B2BNews'
 import Dashboard from './Dashboard'
 import ProductStatusB2B from './ProductStatusB2B'
 import { loadActiveSheet, saveActiveSheet, type SheetId } from './uiState'
@@ -13,7 +12,6 @@ type SheetTab = {
 const SHEETS: SheetTab[] = [
   { id: 'zni', label: 'ЗНИ' },
   { id: 'product-status-b2b', label: 'Статус продукта B2B' },
-  { id: 'b2b-news', label: 'Новости' },
 ]
 
 type WorkbookAppProps = {
@@ -61,7 +59,7 @@ export default function WorkbookApp({ onLogout }: WorkbookAppProps) {
                 Выйти
               </button>
             </header>
-            {activeSheet === 'product-status-b2b' ? <ProductStatusB2B /> : <B2BNews />}
+            <ProductStatusB2B />
           </div>
         )}
       </div>

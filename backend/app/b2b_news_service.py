@@ -9,9 +9,9 @@ def _b2b_news_source() -> GoogleSheetsWorkbookSource:
         sheet_url=settings.b2b_news_sheet_url,
         sheets_config=settings.b2b_news_sheets,
         sheet_public_url=settings.b2b_news_sheet_public_url,
-        title="Новости",
-        fallback_sheet_name="Новости",
-        spreadsheet_id_missing_detail="ID Google Sheets для вкладки «Новости» не настроен.",
+        title="Новости и запуски",
+        fallback_sheet_name="Новости и запуски",
+        spreadsheet_id_missing_detail="ID Google Sheets для раздела «Новости и запуски» не настроен.",
     )
 
 

@@ -1056,6 +1056,19 @@ body {
   }
 }
 
+.product-status-section {
+  margin: 20px 0 24px;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--border);
+}
+
+.product-status-section-title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
 .product-status-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -1111,6 +1124,65 @@ body {
 .product-status-title {
   margin: 0;
   font-size: 24px;
+}
+
+.product-status-title-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.product-status-title-sep {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #cbd5e1;
+  user-select: none;
+}
+
+.product-status-title-tab {
+  margin: 0;
+  padding: 0 2px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font: inherit;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--t2-black);
+  cursor: pointer;
+  transition: opacity 0.12s ease, border-color 0.12s ease;
+}
+
+.product-status-title-tab:hover {
+  opacity: 0.9;
+}
+
+.product-status-title-tab:not(.product-status-title-tab-active):hover {
+  border-bottom-color: currentColor;
+}
+
+.product-status-title-tab-active {
+  cursor: default;
+}
+
+.product-status-title-tab:not(.product-status-title-tab-active) {
+  opacity: 0.55;
+}
+
+.product-status-title-tab-alt {
+  color: #c41e3a;
+}
+
+.product-status-title-tab-alt.product-status-title-tab-active {
+  opacity: 1;
+  border-bottom-color: #c41e3a;
+}
+
+.product-status-title-tab-active:not(.product-status-title-tab-alt) {
+  border-bottom-color: var(--t2-black);
 }
 
 .product-status-subtitle {
@@ -1210,6 +1282,7 @@ body {
 .product-status-highlight {
   border-radius: 2px;
   padding: 0 1px;
+  background-color: transparent;
 }
 
 .product-status-dirty {

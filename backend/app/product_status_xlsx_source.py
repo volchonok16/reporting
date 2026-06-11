@@ -7,6 +7,7 @@ import time
 import httpx
 from openpyxl import load_workbook
 from app.product_status_rich_text import (
+    _filter_cell_background,
     encode_style_segment,
     wrap_cell_text,
 )
@@ -78,6 +79,7 @@ def _cell_encoded_value(cell) -> str:
             italic=bool(font and font.italic),
         )
 
+    cell_bg = _filter_cell_background(cell_bg, styled)
     return wrap_cell_text(styled, bg=cell_bg, border=border)
 
 

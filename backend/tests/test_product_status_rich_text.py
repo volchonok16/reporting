@@ -150,3 +150,23 @@ def test_cell_text_with_highlights_keeps_red_asterisk_without_yellow_marker() ->
 def test_cell_highlight_colors_collects_unique_order() -> None:
     assert cell_highlight_colors("$жёлтый$ и {{FF66B2:розовый}}") == ["FFFF00", "FF66B2"]
     assert cell_highlight_colors("<<cell:bg:C6EFCE>>$жёлтый$<<>>") == ["C6EFCE", "FFFF00"]
+
+
+def test_cell_text_with_highlights_drops_yellow_cell_fill_for_colored_text() -> None:
+    cell = {
+        "effectiveValue": {"stringValue": "Контроль"},
+        "effectiveFormat": {
+            "backgroundColor": {"red": 1, "green": 1, "blue": 0},
+        },
+        "textFormatRuns": [
+            {
+                "startIndex": 0,
+                "format": {
+                    "foregroundColor": {"red": 1, "green": 0, "blue": 0},
+                    "backgroundColor": {"red": 1, "green": 1, "blue": 0},
+                },
+            },
+        ],
+    }
+    assert cell_text_with_highlights(cell) == "[[fg:FF0000::Контроль]]"
+    assert cell_highlight_colors(cell_text_with_highlights(cell)) == []

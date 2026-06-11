@@ -297,6 +297,27 @@ def _cell_format_styles(fmt: dict) -> tuple[str | None, str | None]:
     return bg, border
 
 
+def _hex_to_google_color(hex_color: str) -> dict[str, float]:
+    value = hex_color.upper()
+    return {
+        "red": int(value[0:2], 16) / 255.0,
+        "green": int(value[2:4], 16) / 255.0,
+        "blue": int(value[4:6], 16) / 255.0,
+    }
+
+
+def _inner_has_foreground(styled: str) -> bool:
+    return any(segment.fg for segment in split_style_segments(styled))
+
+
+def _filter_cell_background(cell_bg: str | None, styled: str) -> str | None:
+    if not cell_bg or not _inner_has_foreground(styled):
+        return cell_bg
+    if is_yellow_highlight_color(_hex_to_google_color(cell_bg)):
+        return None
+    return cell_bg
+
+
 def cell_text_with_highlights(cell: dict) -> str:
     effective = cell.get("effectiveValue") or cell.get("userEnteredValue") or {}
     if "stringValue" in effective:
@@ -333,14 +354,16 @@ def cell_text_with_highlights(cell: dict) -> str:
         cell_bg = cell_bg or bg
         cell_border = cell_border or border
 
+    cell_bg = _filter_cell_background(cell_bg, styled)
     return wrap_cell_text(styled, bg=cell_bg, border=cell_border)
 
 
 def cell_highlight_colors(text: str) -> list[str]:
     cell_style, inner = split_cell_wrapper(text)
     colors: list[str] = []
-    if cell_style.bg:
-        colors.append(cell_style.bg)
+    cell_bg = _filter_cell_background(cell_style.bg, inner)
+    if cell_bg:
+        colors.append(cell_bg)
     for segment in split_style_segments(inner):
         if segment.bg and not segment.fg:
             colors.append(segment.bg)

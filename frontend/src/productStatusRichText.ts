@@ -22,6 +22,31 @@ export function normalizeTextSegment(segment: TextStyleSegment): TextStyleSegmen
   return segment
 }
 
+function isYellowHighlightHex(hex: string): boolean {
+  const value = hex.toUpperCase()
+  if (value === 'FFFF00' || value === 'FFF2CC' || value === 'FFE599') {
+    return true
+  }
+  const red = parseInt(value.slice(0, 2), 16) / 255
+  const green = parseInt(value.slice(2, 4), 16) / 255
+  const blue = parseInt(value.slice(4, 6), 16) / 255
+  return red >= 0.7 && green >= 0.65 && blue <= 0.85 && red + green > blue + 0.9
+}
+
+/** Убирает жёлтую заливку ячейки, если внутри есть цветной текст. */
+export function normalizeCellValue(value: string): string {
+  const { cellStyle, inner } = splitCellWrapper(value)
+  const hasForeground = splitStyleSegments(inner).some((segment) => segment.fg)
+  const bg = hasForeground && cellStyle.bg && isYellowHighlightHex(cellStyle.bg) ? null : cellStyle.bg
+  if (!bg && !cellStyle.border) {
+    return inner
+  }
+  const attrs: string[] = []
+  if (bg) attrs.push(`bg:${bg}`)
+  if (cellStyle.border) attrs.push(`border:${cellStyle.border}`)
+  return `<<cell:${attrs.join(';')}>>${inner}<<>>`
+}
+
 const CELL_WRAPPER_PATTERN = /^<<cell:([^>]+)>>(.*)<<>>$/s
 const STYLE_SEGMENT_PATTERN =
   /\[\[((?:[^;\]]|;)+)::((?:[^\[]|\[(?!\[))*?)\]\]|\$([^$]+)\$|\{\{([0-9A-Fa-f]{6}):([^}]*)\}\}/g
@@ -182,7 +207,7 @@ export function serializeEditableCell(root: HTMLElement, cellStyle: CellStyle): 
       return
     }
     if (!(node instanceof HTMLElement)) return
-    if (node.tagName === 'MARK') {
+    if (node.classList.contains('product-status-highlight')) {
       const text = node.textContent ?? ''
       if (!text) return
       segments.push(
@@ -242,52 +267,55 @@ function applyPatchToSegment(
   }
 }
 
-function decorateMark(mark: HTMLElement, segment: TextStyleSegment) {
+const STYLED_TEXT_TAG = 'SPAN'
+
+function decorateStyledText(element: HTMLElement, segment: TextStyleSegment) {
   const normalized = normalizeTextSegment(segment)
-  mark.className = 'product-status-highlight'
+  element.className = 'product-status-highlight'
   if (normalized.bg) {
-    mark.dataset.bg = normalized.bg
-    mark.style.backgroundColor = `#${normalized.bg}`
+    element.dataset.bg = normalized.bg
+    element.style.backgroundColor = `#${normalized.bg}`
   } else {
-    delete mark.dataset.bg
-    mark.style.backgroundColor = ''
+    delete element.dataset.bg
+    // span/mark без явного bg — без подсветки (не браузерный жёлтый <mark>)
+    element.style.backgroundColor = 'transparent'
   }
   if (normalized.fg) {
-    mark.dataset.fg = normalized.fg
-    mark.style.color = `#${normalized.fg}`
+    element.dataset.fg = normalized.fg
+    element.style.color = `#${normalized.fg}`
   } else {
-    delete mark.dataset.fg
-    mark.style.color = ''
+    delete element.dataset.fg
+    element.style.color = ''
   }
   if (normalized.strike) {
-    mark.dataset.strike = '1'
-    mark.style.textDecoration = 'line-through'
+    element.dataset.strike = '1'
+    element.style.textDecoration = 'line-through'
   } else {
-    delete mark.dataset.strike
-    mark.style.textDecoration = ''
+    delete element.dataset.strike
+    element.style.textDecoration = ''
   }
   if (normalized.bold) {
-    mark.dataset.bold = '1'
-    mark.style.fontWeight = '600'
+    element.dataset.bold = '1'
+    element.style.fontWeight = '600'
   } else {
-    delete mark.dataset.bold
-    mark.style.fontWeight = ''
+    delete element.dataset.bold
+    element.style.fontWeight = ''
   }
   if (normalized.italic) {
-    mark.dataset.italic = '1'
-    mark.style.fontStyle = 'italic'
+    element.dataset.italic = '1'
+    element.style.fontStyle = 'italic'
   } else {
-    delete mark.dataset.italic
-    mark.style.fontStyle = ''
+    delete element.dataset.italic
+    element.style.fontStyle = ''
   }
 }
 
 export function createStyledMark(segment: TextStyleSegment): HTMLElement {
   const normalized = normalizeTextSegment(segment)
-  const mark = document.createElement('mark')
-  mark.textContent = normalized.text
-  decorateMark(mark, normalized)
-  return mark
+  const element = document.createElement(STYLED_TEXT_TAG)
+  element.textContent = normalized.text
+  decorateStyledText(element, normalized)
+  return element
 }
 
 export function applyStyleToSelection(root: HTMLElement, patch: Partial<TextStyleSegment>): boolean {
@@ -300,19 +328,19 @@ export function applyStyleToSelection(root: HTMLElement, patch: Partial<TextStyl
     return false
   }
 
-  const mark = document.createElement('mark')
-  const current = readMarkStyle(mark)
+  const styled = document.createElement(STYLED_TEXT_TAG)
+  const current = readMarkStyle(styled)
   const next = applyPatchToSegment({ ...current, text: '' }, patch)
-  decorateMark(mark, next)
+  decorateStyledText(styled, next)
 
   try {
-    range.surroundContents(mark)
+    range.surroundContents(styled)
   } catch {
     const fragment = range.extractContents()
-    mark.appendChild(fragment)
-    range.insertNode(mark)
-    const merged = applyPatchToSegment(readMarkStyle(mark), patch)
-    decorateMark(mark, merged)
+    styled.appendChild(fragment)
+    range.insertNode(styled)
+    const merged = applyPatchToSegment(readMarkStyle(styled), patch)
+    decorateStyledText(styled, merged)
   }
 
   selection.removeAllRanges()

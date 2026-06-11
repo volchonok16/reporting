@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { getJson, apiFetch, readApiError } from './api'
 import ProductStatusCell, { type ProductStatusCellHandle } from './ProductStatusCell'
 import ProductStatusFormatToolbar from './ProductStatusFormatToolbar'
@@ -29,6 +29,9 @@ export type ProductStatusWorkbookConfig = {
   defaultTitle: string
   loadGid: () => string | null
   saveGid: (gid: string | null) => void
+  variant?: 'page' | 'section'
+  afterHeader?: ReactNode
+  headerTitle?: ReactNode
   enablePresentationExport?: boolean
   enableExcelExport?: boolean
   presentationFilename?: string
@@ -71,11 +74,19 @@ export default function ProductStatusWorkbook({
   defaultTitle,
   loadGid,
   saveGid,
+  variant = 'page',
+  afterHeader,
+  headerTitle,
   enablePresentationExport = false,
   enableExcelExport = false,
   presentationFilename = 'workbook.pptx',
   excelFilename = 'workbook.xlsx',
 }: ProductStatusWorkbookConfig) {
+  const isSection = variant === 'section'
+  const RootTag = isSection ? 'section' : 'div'
+  const rootClassName = isSection ? 'product-status-section' : 'product-status'
+  const titleClassName = isSection ? 'product-status-section-title' : 'product-status-title'
+  const TitleTag = isSection ? 'h2' : 'h1'
   const [data, setData] = useState<ProductStatusData | null>(null)
   const [sheets, setSheets] = useState<ProductStatusSheet[]>([])
   const [activeGid, setActiveGid] = useState<string | null>(null)
@@ -273,10 +284,12 @@ export default function ProductStatusWorkbook({
   }, [])
 
   return (
-    <div className="product-status">
+    <RootTag className={rootClassName}>
       <header className="product-status-toolbar">
         <div className="product-status-toolbar-left">
-          <h1 className="product-status-title">{data?.title ?? defaultTitle}</h1>
+          {headerTitle ?? (
+            <TitleTag className={titleClassName}>{data?.title ?? defaultTitle}</TitleTag>
+          )}
           {(data?.sourceUrl || data?.presentationReferenceUrl) && (
             <p className="product-status-subtitle">
               {data?.sourceUrl ? (
@@ -333,6 +346,8 @@ export default function ProductStatusWorkbook({
           </button>
         </div>
       </header>
+
+      {afterHeader}
 
       {sheets.length > 0 && (
         <nav className="product-status-sheet-tabs" aria-label="Листы Google Sheets">
@@ -471,6 +486,6 @@ export default function ProductStatusWorkbook({
           </div>
         </div>
       </section>
-    </div>
+    </RootTag>
   )
 }

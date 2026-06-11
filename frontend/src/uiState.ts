@@ -1,6 +1,8 @@
 const STORAGE_KEY = 'reporting.uiState'
 
-export type SheetId = 'zni' | 'product-status-b2b' | 'b2b-news'
+export type SheetId = 'zni' | 'product-status-b2b'
+
+export type B2bPanelId = 'status' | 'news'
 
 export type DashboardUiState = {
   boardCode: string
@@ -20,6 +22,7 @@ type UiState = {
   dashboard?: Partial<DashboardUiState>
   productStatusB2bGid?: string | null
   b2bNewsGid?: string | null
+  b2bPanel?: B2bPanelId
 }
 
 function readUiState(): UiState {
@@ -37,12 +40,15 @@ function writeUiState(patch: UiState): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...patch }))
 }
 
-const WORKBOOK_SHEETS: SheetId[] = ['product-status-b2b', 'b2b-news']
+const WORKBOOK_SHEETS: SheetId[] = ['product-status-b2b']
 
 export function loadActiveSheet(): SheetId {
-  const sheet = readUiState().activeSheet
-  if (sheet && WORKBOOK_SHEETS.includes(sheet)) {
-    return sheet
+  const sheet = readUiState().activeSheet as string | undefined
+  if (sheet === 'b2b-news') {
+    return 'product-status-b2b'
+  }
+  if (sheet && WORKBOOK_SHEETS.includes(sheet as SheetId)) {
+    return sheet as SheetId
   }
   return 'zni'
 }
@@ -75,4 +81,19 @@ export function loadB2bNewsGid(): string | null {
 
 export function saveB2bNewsGid(gid: string | null): void {
   writeUiState({ b2bNewsGid: gid })
+}
+
+export function loadB2bPanel(): B2bPanelId {
+  const state = readUiState()
+  if (state.b2bPanel === 'status' || state.b2bPanel === 'news') {
+    return state.b2bPanel
+  }
+  if ((state.activeSheet as string | undefined) === 'b2b-news') {
+    return 'news'
+  }
+  return 'status'
+}
+
+export function saveB2bPanel(panel: B2bPanelId): void {
+  writeUiState({ b2bPanel: panel })
 }
