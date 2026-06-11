@@ -57,6 +57,7 @@ type TagFilterGroup = {
 
 type ChangeRequest = {
   number: string
+  rowType?: 'change_request' | 'error'
   title: string
   url?: string | null
   status?: string | null
@@ -147,8 +148,13 @@ function customerNameParts(name?: string | null): string[] {
   return name.trim().split(/\s+/).slice(0, 3)
 }
 
+function isErrorRow(item: ChangeRequest): boolean {
+  return item.rowType === 'error'
+}
+
 function itemRowKey(item: ChangeRequest): string {
-  return `${item.boardCode ?? item.boardName ?? ''}-${item.number}`
+  const prefix = isErrorRow(item) ? 'error' : 'zni'
+  return `${prefix}-${item.boardCode ?? item.boardName ?? ''}-${item.number}`
 }
 
 function tableColumnCount(allBoards: boolean): number {
@@ -301,6 +307,9 @@ function visibleWorkflowStatus(item: ChangeRequest, metricFilter: MetricFilter):
 }
 
 function rowHasExpandDetails(item: ChangeRequest, metricFilter: MetricFilter): boolean {
+  if (isErrorRow(item)) {
+    return Boolean(visibleBoardStatus(item, metricFilter) || visibleWorkflowStatus(item, metricFilter))
+  }
   return Boolean(
     item.customerName?.trim() || visibleBoardStatus(item, metricFilter) || visibleWorkflowStatus(item, metricFilter),
   )
@@ -915,7 +924,15 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                   const customerParts = customerNameParts(item.customerName)
                   const colCount = tableColumnCount(Boolean(data.allBoards))
                   const rows = [
-                    <tr key={key} className={expanded ? 'zni-table-row-expanded' : undefined}>
+                    <tr
+                      key={key}
+                      className={[
+                        expanded ? 'zni-table-row-expanded' : '',
+                        isErrorRow(item) ? 'zni-table-row-error' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ') || undefined}
+                    >
                       <td className="cell-expand">
                         {hasDetails ? (
                           <button
@@ -945,22 +962,33 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                         <td className="cell-board">{boardNameLabel(item.boardName, item.boardCode)}</td>
                       )}
                       <td className="cell-title" title={item.title}>
-                        {item.title}
+                        {isErrorRow(item) ? (
+                          <span className="row-type-error">
+                            <span className="row-type-badge">Ошибка</span>
+                            {item.title}
+                          </span>
+                        ) : (
+                          item.title
+                        )}
                       </td>
                       <td className="cell-business-goal">
-                        {item.businessGoal?.trim() ? (
+                        {!isErrorRow(item) && item.businessGoal?.trim() ? (
                           <BusinessGoalText text={item.businessGoal} className="cell-business-goal-text" />
                         ) : (
                           '—'
                         )}
                       </td>
                       <td className="cell-business-value">
-                        <BusinessValueEditor
-                          item={item}
-                          disabled={syncing || exporting}
-                          saving={savingBusinessValueId === item.number}
-                          onSave={saveBusinessValue}
-                        />
+                        {!isErrorRow(item) ? (
+                          <BusinessValueEditor
+                            item={item}
+                            disabled={syncing || exporting}
+                            saving={savingBusinessValueId === item.number}
+                            onSave={saveBusinessValue}
+                          />
+                        ) : (
+                          '—'
+                        )}
                       </td>
                       <td className="cell-date">{formatPlannedDate(item)}</td>
                       <td className="cell-quarter">{item.planQuarter || '—'}</td>

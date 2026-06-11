@@ -44,6 +44,9 @@ from app.tag_filters import (
 )
 from app.zni_title_filters import is_excluded_zni_title
 
+BERCUT_BOARD_CODE = "be_t2_team"
+INCIDENT_ERROR_ROW_TYPE = "error"
+
 
 def _board_out(board: BoardConfig) -> BoardOut:
     return BoardOut(code=board.code, name=board.name, displayName=board.display_name, project=board.project)
@@ -207,6 +210,64 @@ def _matches_status(task: Task, status: str | None) -> bool:
     column = (_board_column(task) or "").lower()
     workflow = (task.source_status or "").lower()
     return needle in {column, workflow}
+
+
+def _is_incident_standalone_error(task: Task) -> bool:
+    if task.task_type != "error" or task.parent_task_id is not None:
+        return False
+    return _extra(task).get("incident_error") is True
+
+
+def _standalone_incident_errors(error_rows: list[Task]) -> list[Task]:
+    return [row for row in error_rows if _is_incident_standalone_error(row)]
+
+
+def _incident_error_visible_for_metric(metric: str | None) -> bool:
+    return not metric or metric == "errors"
+
+
+def _matches_incident_error_row(
+    error: Task,
+    *,
+    board_code: str | None,
+    metric: str | None,
+    search: str | None,
+    status: str | None,
+    date_from: date | None,
+    date_to: date | None,
+) -> bool:
+    if (board_code or "").strip().lower() != BERCUT_BOARD_CODE:
+        return False
+    if not _is_incident_standalone_error(error):
+        return False
+    if not _incident_error_visible_for_metric(metric):
+        return False
+    if not _matches_search(error, search or ""):
+        return False
+    if not _matches_status(error, status):
+        return False
+    if _uses_start_date_period(metric, board_code) and not _in_date_range(error, date_from, date_to):
+        return False
+    return True
+
+
+def _incident_error_to_item(error: Task) -> ChangeRequestOut:
+    board_code_value = _extra(error).get("board_code")
+    return ChangeRequestOut(
+        id=str(error.id),
+        number=error.external_id,
+        rowType=INCIDENT_ERROR_ROW_TYPE,
+        title=error.title,
+        url=error.external_url,
+        status=error.source_status,
+        boardColumn=_board_column(error),
+        startDate=_effective_start(error),
+        releaseDate=error.release_date,
+        createdAt=error.created_at,
+        boardCode=str(board_code_value) if board_code_value else None,
+        boardName=error.source_team or _board_name_by_code(str(board_code_value) if board_code_value else None),
+        errors=[],
+    )
 
 
 def _effective_start(task: Task) -> date | None:
@@ -413,13 +474,28 @@ def _compute_metrics(
             date_to=date_to,
         )
 
+    standalone_incident_errors = _standalone_incident_errors(error_rows)
+    incident_errors_count = sum(
+        1
+        for error in standalone_incident_errors
+        if _matches_incident_error_row(
+            error,
+            board_code=board_code,
+            metric="errors",
+            search=None,
+            status=None,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    )
+
     return DashboardMetricsOut(
         totalTasks=sum(1 for row in rows if not _is_closed_zni(row)),
         inProgress=sum(1 for row in rows if _metric_row(row, "in_progress")),
         launchingSoon=sum(1 for row in rows if _metric_row(row, "launching_soon")),
         launched=sum(1 for row in rows if _metric_row(row, "launched")),
         completed=sum(1 for row in rows if _metric_row(row, "completed")),
-        errorsCount=sum(1 for row in rows if _metric_row(row, "errors")),
+        errorsCount=sum(1 for row in rows if _metric_row(row, "errors")) + incident_errors_count,
     )
 
 
@@ -493,19 +569,39 @@ def load_change_requests(
         and _matches_closed_table_visibility(row, metric)
     ]
 
+    filtered_incident_errors = [
+        error
+        for error in _standalone_incident_errors(error_rows)
+        if _matches_incident_error_row(
+            error,
+            board_code=board_code,
+            metric=metric,
+            search=search,
+            status=status,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    ]
+
+    combined_rows: list[tuple[str, Task]] = [("change_request", row) for row in filtered]
+    combined_rows.extend(("error", error) for error in filtered_incident_errors)
+
     if sort == "planned_date_upcoming":
-        filtered.sort(key=_planned_date_upcoming_sort_key)
+        combined_rows.sort(key=lambda pair: _planned_date_upcoming_sort_key(pair[1]))
     elif sort == "business_value_asc":
-        filtered.sort(key=_business_value_asc_sort_key)
+        combined_rows.sort(key=lambda pair: _business_value_asc_sort_key(pair[1]))
     elif sort == "business_value_desc":
-        filtered.sort(key=_business_value_desc_sort_key)
+        combined_rows.sort(key=lambda pair: _business_value_desc_sort_key(pair[1]))
     else:
         reverse = sort.endswith("_desc") or sort == "id_desc"
         sort_field = sort.replace("_desc", "").replace("_asc", "")
-        filtered.sort(key=lambda t: _sort_key(t, sort_field), reverse=reverse)
+        combined_rows.sort(key=lambda pair: _sort_key(pair[1], sort_field), reverse=reverse)
 
     items: list[ChangeRequestOut] = []
-    for row in filtered:
+    for row_type, row in combined_rows:
+        if row_type == "error":
+            items.append(_incident_error_to_item(row))
+            continue
         linked = errors_by_parent.get(row.id, [])
         board_code_value = _extra(row).get("board_code")
         planned_date, _, quarter_label, planned_label = _task_plan_meta(row)
@@ -513,6 +609,7 @@ def load_change_requests(
             ChangeRequestOut(
                 id=str(row.id),
                 number=row.external_id,
+                rowType="change_request",
                 title=row.title,
                 url=row.external_url,
                 status=row.source_status,
@@ -555,7 +652,13 @@ def load_change_requests(
         ),
         items=items,
         totalShown=len(items),
-        availableStatuses=_collect_available_statuses(rows_with_customer),
+        availableStatuses=_collect_available_statuses(
+            rows_with_customer + (
+                _standalone_incident_errors(error_rows)
+                if (board_code or "").strip().lower() == BERCUT_BOARD_CODE
+                else []
+            )
+        ),
         availableQuarters=_collect_available_quarters(rows_with_customer),
         availableTagGroups=(
             _tag_filter_groups_out(board_code)

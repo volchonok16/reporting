@@ -512,8 +512,20 @@ async def sync_board(
             exclude_tags=board.exclude_sync_tags or None,
         )
 
+        incident_error_ids: set[int] = set()
+        if board.incident_error_area_path:
+            incident_error_ids = set(
+                await client.get_error_ids_for_area(
+                    board.incident_error_area_path,
+                    tags=board.incident_error_sync_tags or None,
+                    exclude_tags=board.exclude_sync_tags or None,
+                )
+            )
+
         synced_error_ids: set[str] = set()
-        error_ids = sorted(set(error_child_map.keys()) | set(board_error_ids))
+        error_ids = sorted(
+            set(error_child_map.keys()) | set(board_error_ids) | incident_error_ids
+        )
 
         if error_ids and sync_run:
             touch_sync_progress(db, sync_run, f"{board.display_name}: загрузка {len(error_ids)} ошибок…")
@@ -532,8 +544,12 @@ async def sync_board(
                 fields = item.get("fields") or {}
                 if not is_error_work_item_type(str(fields.get("System.WorkItemType") or "")):
                     continue
+                is_incident_error = item["id"] in incident_error_ids
                 parent_zni_id = error_child_map.get(item["id"]) or parent_zni_id_from_error_payload(item)
-                if parent_zni_id is None and not has_required_tags(fields, board.error_sync_tags):
+                if parent_zni_id is None and is_incident_error:
+                    if not has_required_tags(fields, board.incident_error_sync_tags):
+                        continue
+                elif parent_zni_id is None and not has_required_tags(fields, board.error_sync_tags):
                     continue
                 if has_excluded_tags(fields, board.exclude_sync_tags):
                     continue
@@ -571,6 +587,14 @@ async def sync_board(
                         "board_code": board.code,
                         "tags": work_item_tags(fields),
                         "severity": fields.get("Microsoft.VSTS.Common.Severity"),
+                        **(
+                            {
+                                "incident_error": True,
+                                "area_path": fields.get("System.AreaPath"),
+                            }
+                            if is_incident_error
+                            else {}
+                        ),
                     },
                 )
                 synced_error_ids.add(str(item["id"]))

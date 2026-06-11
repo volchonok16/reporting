@@ -61,6 +61,7 @@ class TagFilterGroupOut(BaseModel):
 class ChangeRequestOut(BaseModel):
     id: str
     number: str
+    rowType: str = "change_request"
     title: str
     url: str | None = None
     status: str | None = None

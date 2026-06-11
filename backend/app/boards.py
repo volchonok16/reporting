@@ -21,6 +21,8 @@ class BoardConfig:
     launching_soon_triage_values: tuple[str, ...] = ()
     launched_states: tuple[str, ...] = ()
     in_progress_states: tuple[str, ...] = ("Development",)
+    incident_error_area_path: str | None = None
+    incident_error_sync_tags: tuple[str, ...] = ()
     base_url: str = settings.tfs_base_url
 
     def to_tfs_auth(self, pat: str) -> TfsAuth:
@@ -123,6 +125,8 @@ BOARDS: list[BoardConfig] = [
         launching_soon_states=("UAT Prod", "Implementation Prod"),
         launching_soon_triage_values=("в Работе",),
         launched_states=("Closed",),
+        incident_error_area_path=r"BE-T2\Incident management",
+        incident_error_sync_tags=("b2b_product",),
     ),
     BoardConfig(
         code="esb_analytics",
