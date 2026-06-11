@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.boards import ALL_BOARDS_CODE, BOARDS, BoardConfig, board_by_code, is_all_boards
 from app.board_metrics import (
     active_errors,
+    board_for_task,
     has_linked_errors,
     is_completed,
     is_in_progress,
@@ -236,10 +237,14 @@ def _matches_incident_error_row(
     date_from: date | None,
     date_to: date | None,
 ) -> bool:
-    if (board_code or "").strip().lower() != BERCUT_BOARD_CODE:
-        return False
     if not _is_incident_standalone_error(error):
         return False
+    error_board_code = str(_extra(error).get("board_code") or "").strip().lower()
+    if error_board_code != BERCUT_BOARD_CODE:
+        return False
+    if board_code and not is_all_boards(board_code):
+        if board_code.strip().lower() != BERCUT_BOARD_CODE:
+            return False
     if not _incident_error_visible_for_metric(metric):
         return False
     if not _matches_search(error, search or ""):
@@ -285,6 +290,14 @@ def _in_date_range(task: Task, date_from: date | None, date_to: date | None) -> 
     if date_to and start > date_to:
         return False
     return True
+
+
+def _row_board_code(row: Task, dashboard_board_code: str | None) -> str | None:
+    """На «Все доски» правила метрик — по доске задачи, не по фильтру дашборда."""
+    if is_all_boards(dashboard_board_code):
+        board = board_for_task(row)
+        return board.code if board else None
+    return dashboard_board_code
 
 
 def _board_metrics_ignore_date_period(board_code: str | None) -> bool:
@@ -448,7 +461,8 @@ def _matches_dashboard_row(
     date_from: date | None,
     date_to: date | None,
 ) -> bool:
-    if _uses_start_date_period(metric, board_code) and not _in_date_range(row, date_from, date_to):
+    row_board_code = _row_board_code(row, board_code)
+    if _uses_start_date_period(metric, row_board_code) and not _in_date_range(row, date_from, date_to):
         return False
     if not metric:
         return True
@@ -661,7 +675,8 @@ def load_change_requests(
         availableStatuses=_collect_available_statuses(
             rows_with_customer + (
                 _standalone_incident_errors(error_rows)
-                if (board_code or "").strip().lower() == BERCUT_BOARD_CODE
+                if is_all_boards(board_code)
+                or (board_code or "").strip().lower() == BERCUT_BOARD_CODE
                 else []
             )
         ),

@@ -1,4 +1,4 @@
-from app.product_status_sheets_api import _parse_grid_sheet
+from app.product_status_sheets_api import _parse_grid_sheet, _resolve_sheet_title
 
 
 def test_parse_grid_sheet_preserves_yellow_text_runs() -> None:
@@ -33,3 +33,30 @@ def test_parse_grid_sheet_preserves_yellow_text_runs() -> None:
     assert columns == ["Дата запуска", "Проект"]
     assert rows[0]["Дата запуска"] == "09.06"
     assert rows[0]["Проект"] == "Убираем $300 рублевые $офферы"
+
+
+def test_resolve_sheet_title_matches_gid() -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "sheets": [
+                    {"properties": {"sheetId": 0, "title": "Продуктовый офис: CORE"}},
+                    {"properties": {"sheetId": 1512199647, "title": "Продуктовый офис: SMS"}},
+                ]
+            }
+
+    class FakeClient:
+        def get(self, url: str, params: dict) -> FakeResponse:
+            assert params["fields"] == "sheets(properties(sheetId,title))"
+            return FakeResponse()
+
+    title = _resolve_sheet_title(
+        spreadsheet_id="sheet-id",
+        gid="1512199647",
+        api_key="test-key",
+        client=FakeClient(),  # type: ignore[arg-type]
+    )
+    assert title == "Продуктовый офис: SMS"

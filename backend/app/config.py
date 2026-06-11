@@ -129,8 +129,8 @@ class Settings(BaseSettings):
         default="",
         alias="GOOGLE_SHEETS_API_KEY",
         description=(
-            "API-ключ Google Sheets для чтения жёлтой заливки ячеек. "
-            "Пусто — только CSV без стилей."
+            "API-ключ Google Sheets для чтения стилей ячеек (цвет текста, заливка, "
+            "частичное выделение). Пусто — fallback на XLSX-экспорт, затем CSV."
         ),
     )
 

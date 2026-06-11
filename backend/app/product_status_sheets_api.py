@@ -62,14 +62,52 @@ def _parse_grid_sheet(
     return headers, rows
 
 
+def _resolve_sheet_title(
+    *,
+    spreadsheet_id: str,
+    gid: str,
+    api_key: str,
+    client: httpx.Client,
+) -> str | None:
+    params = {
+        "fields": "sheets(properties(sheetId,title))",
+        "key": api_key,
+    }
+    try:
+        response = client.get(f"{_SHEETS_API}/{spreadsheet_id}", params=params)
+        response.raise_for_status()
+    except httpx.HTTPError:
+        logger.warning(
+            "product_status_sheets_metadata_fetch_failed gid=%s",
+            gid,
+            exc_info=True,
+        )
+        return None
+
+    for sheet in response.json().get("sheets", []):
+        props = sheet.get("properties") or {}
+        if str(props.get("sheetId", "")) == str(gid):
+            title = str(props.get("title", "")).strip()
+            return title or None
+    return None
+
+
 def fetch_sheet_with_formatting(
     *,
     spreadsheet_id: str,
     sheet_name: str,
+    gid: str,
     api_key: str,
     client: httpx.Client,
 ) -> tuple[list[str], list[dict[str, str]]] | None:
-    sheet_range = f"{_quote_sheet_range(sheet_name)}!A1:Z500"
+    resolved_title = _resolve_sheet_title(
+        spreadsheet_id=spreadsheet_id,
+        gid=gid,
+        api_key=api_key,
+        client=client,
+    )
+    sheet_title = resolved_title or sheet_name
+    sheet_range = f"{_quote_sheet_range(sheet_title)}!A1:Z500"
     params = {
         "includeGridData": "true",
         "ranges": sheet_range,

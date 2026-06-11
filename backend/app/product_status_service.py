@@ -11,6 +11,7 @@ from fastapi import HTTPException
 
 from app.config import settings
 from app.product_status_sheets_api import fetch_sheet_with_formatting
+from app.product_status_xlsx_source import fetch_sheet_from_xlsx
 from app.schemas import ProductStatusB2BOut, ProductStatusSheetOut
 
 logger = logging.getLogger(__name__)
@@ -226,11 +227,21 @@ def load_b2b_product_status() -> ProductStatusB2BOut:
                     formatted = fetch_sheet_with_formatting(
                         spreadsheet_id=spreadsheet_id,
                         sheet_name=name,
+                        gid=gid,
                         api_key=api_key,
                         client=client,
                     )
                     if formatted:
                         columns, rows = formatted
+
+                if not columns:
+                    xlsx_formatted = fetch_sheet_from_xlsx(
+                        spreadsheet_id=spreadsheet_id,
+                        gid=gid,
+                        client=client,
+                    )
+                    if xlsx_formatted:
+                        columns, rows = xlsx_formatted
 
                 if not columns:
                     url = _csv_export_url(spreadsheet_id, gid)

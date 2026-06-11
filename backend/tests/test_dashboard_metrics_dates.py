@@ -291,6 +291,63 @@ def test_in_progress_metric_counts_development() -> None:
     assert metrics.inProgress == 1
 
 
+def test_all_boards_metrics_use_per_row_board_date_rules() -> None:
+    """На «Все доски» Digital/BE не режутся по периоду в карточках метрик."""
+    old_uat = _zni(
+        source_status="UAT",
+        start_date=date(2024, 6, 1),
+        external_id="970092",
+    )
+    be_dev = _zni(
+        source_status="Development",
+        source_team="BE Analytics",
+        extra_json={"board_code": "be_t2_team", "customer_name": "Иванов"},
+        start_date=date(2024, 1, 1),
+        external_id="2",
+    )
+    date_from = date(2026, 1, 1)
+    date_to = date(2026, 12, 31)
+
+    metrics = _compute_metrics(
+        [old_uat, be_dev],
+        board_code="all",
+        error_rows=[],
+        errors_by_parent={},
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+    assert metrics.launchingSoon == 1
+    assert metrics.inProgress == 1
+
+
+def test_all_boards_shows_bercut_incident_errors() -> None:
+    from app.report_service import _matches_incident_error_row
+
+    incident = Task(
+        source_system_id=1,
+        project_id=1,
+        external_id="1251042",
+        title="Incident",
+        task_type="error",
+        source_team="BE Analytics",
+        created_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
+        extra_json={"board_code": "be_t2_team", "incident_error": True, "tags": ["b2b_product"]},
+    )
+    date_from = date(2026, 1, 1)
+    date_to = date(2026, 6, 30)
+
+    assert _matches_incident_error_row(
+        incident,
+        board_code="all",
+        metric="errors",
+        search=None,
+        status=None,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
 def test_errors_count_ignores_closed_errors() -> None:
     zni = _zni(start_date=date(2020, 1, 1), external_id="1")
     zni.id = 10

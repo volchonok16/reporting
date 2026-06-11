@@ -99,6 +99,24 @@ def tfs_item_url(item_id: int, board: BoardConfig) -> str:
     return f"{board.base_url.rstrip('/')}/{board.project}/_workitems/edit/{item_id}"
 
 
+def _board_scope_source_teams(board: BoardConfig) -> set[str]:
+    names = {board.name, board.display_name}
+    if board.code == "be_t2_team":
+        names.add("BE-T2 Team")
+    return names
+
+
+def _board_task_scope_filter(source_system_id: int, board: BoardConfig):
+    scope_teams = _board_scope_source_teams(board)
+    return select(Task).where(
+        Task.source_system_id == source_system_id,
+        or_(
+            Task.extra_json["board_code"].as_string() == board.code,
+            Task.source_team.in_(scope_teams),
+        ),
+    )
+
+
 def prune_stale_board_tasks(
     db: Session,
     *,
@@ -107,18 +125,7 @@ def prune_stale_board_tasks(
     synced_external_ids: set[str],
 ) -> int:
     """Удаляет из БД ЗНИ/ошибки доски, не попавшие в текущую выгрузку."""
-    board_names = {board.name, board.display_name, "BE-T2 Team", "BE Analytics"}
-    stale_rows = list(
-        db.scalars(
-            select(Task).where(
-                Task.source_system_id == source_system_id,
-                or_(
-                    Task.source_team.in_(board_names),
-                    Task.extra_json["board_code"].as_string() == board.code,
-                ),
-            )
-        )
-    )
+    stale_rows = list(db.scalars(_board_task_scope_filter(source_system_id, board)))
     stale_ids = [row.id for row in stale_rows if row.external_id not in synced_external_ids]
     if not stale_ids:
         return 0
@@ -155,16 +162,10 @@ def prune_closed_before_current_year(
     if not settings.closed_state_list:
         return 0
 
-    board_names = {board.name, board.display_name, "BE-T2 Team", "BE Analytics"}
     rows = list(
         db.scalars(
-            select(Task).where(
-                Task.source_system_id == source_system_id,
+            _board_task_scope_filter(source_system_id, board).where(
                 Task.task_type == TASK_TYPE_CHANGE,
-                or_(
-                    Task.source_team.in_(board_names),
-                    Task.extra_json["board_code"].as_string() == board.code,
-                ),
             )
         )
     )

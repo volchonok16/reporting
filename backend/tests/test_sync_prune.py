@@ -1,7 +1,12 @@
 from datetime import date, datetime, timezone
 
+from app.boards import board_by_code
 from app.models import Task
-from app.sync_service import is_closed_before_current_year, should_skip_closed_zni
+from app.sync_service import (
+    _board_scope_source_teams,
+    is_closed_before_current_year,
+    should_skip_closed_zni,
+)
 
 
 def _closed_task(**kwargs) -> Task:
@@ -35,6 +40,18 @@ def test_should_not_skip_closed_zni_from_current_year() -> None:
         "System.ChangedDate": f"{date.today().year}-03-15T10:00:00Z",
     }
     assert not should_skip_closed_zni(fields)
+
+
+def test_board_scope_source_teams_isolated_per_board() -> None:
+    esb = board_by_code("esb_analytics")
+    be = board_by_code("be_t2_team")
+    core = board_by_code("b2b_product_core")
+    assert esb is not None and be is not None and core is not None
+
+    assert "BE Analytics" not in _board_scope_source_teams(esb)
+    assert "BE Analytics" in _board_scope_source_teams(be)
+    assert "BE-T2 Team" in _board_scope_source_teams(be)
+    assert "BE-T2 Team" not in _board_scope_source_teams(core)
 
 
 def test_is_closed_before_current_year() -> None:

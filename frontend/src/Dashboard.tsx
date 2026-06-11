@@ -541,46 +541,6 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     }
   }, [])
 
-  const boardsForSync = useCallback((): Board[] => {
-    if (boardCode === ALL_BOARDS) {
-      return boards.filter((board) => board.code !== ALL_BOARDS)
-    }
-    const selected = boards.find((board) => board.code === boardCode)
-    return selected ? [selected] : []
-  }, [boardCode, boards])
-
-  const syncBoardList = useCallback(
-    async (targetBoards: Board[]) => {
-      if (targetBoards.length === 0) {
-        throw new Error('Нет досок для синхронизации')
-      }
-      const failures: string[] = []
-      for (let index = 0; index < targetBoards.length; index += 1) {
-        const board = targetBoards[index]
-        const label = boardButtonLabel(board.code, board.displayName)
-        const prefix = targetBoards.length > 1 ? `${index + 1}/${targetBoards.length}: ` : ''
-        setSyncProgress(`${prefix}Синхронизация ${label}…`)
-        try {
-          await waitForSync(board.code)
-        } catch (err) {
-          const message = err instanceof Error ? err.message : 'Ошибка синхронизации'
-          failures.push(`${label}: ${message}`)
-        }
-      }
-      if (failures.length === targetBoards.length) {
-        throw new Error(failures.join('; '))
-      }
-      if (failures.length > 0) {
-        setSyncProgress(`Готово с ошибками: ${failures.join('; ')}`)
-        return
-      }
-      if (targetBoards.length > 1) {
-        setSyncProgress(`Готово: ${targetBoards.length} досок`)
-      }
-    },
-    [waitForSync],
-  )
-
   const downloadCsv = useCallback(async (targetBoard: string, filename: string) => {
     const params = `?board=${encodeURIComponent(targetBoard)}`
     const response = await apiFetch(`/api/export${params}`)
@@ -601,11 +561,8 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     setSyncProgress('Старт…')
     setError(null)
     try {
-      const targetBoards = boardsForSync()
-      await syncBoardList(targetBoards)
-      if (targetBoards.length === 1) {
-        setSyncProgress(null)
-      }
+      await waitForSync(boardCode)
+      setSyncProgress(null)
       await loadDashboard()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка синхронизации')
@@ -620,7 +577,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     setError(null)
     try {
       if (boardCode === ALL_BOARDS) {
-        await syncBoardList(boardsForSync())
+        await waitForSync(ALL_BOARDS)
         setSyncProgress('Формирование CSV…')
         await downloadCsv(ALL_BOARDS, 'zni-report-all.csv')
         setSyncProgress(null)
