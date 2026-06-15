@@ -69,6 +69,16 @@ function buildPayload(data: ProductStatusData | null, sheets: ProductStatusSheet
   }
 }
 
+function resolveColumnClass(column: string): string | undefined {
+  const key = column.trim().toLowerCase()
+  if (key === 'дата' || key.startsWith('дата')) return 'col-date'
+  if (key === 'новость') return 'col-news'
+  if (key === 'проект') return 'col-project'
+  if (key.includes('описание')) return 'col-description'
+  if (key.includes('зачем')) return 'col-why'
+  return undefined
+}
+
 export default function ProductStatusWorkbook({
   apiBase,
   defaultTitle,
@@ -414,8 +424,8 @@ export default function ProductStatusWorkbook({
             {activeSheet && activeSheet.columns.length > 0 ? (
               <table className="product-status-table">
                 <colgroup>
-                  {activeSheet.columns.map((_, index) => (
-                    <col key={index} className={index === 1 ? 'col-project' : undefined} />
+                  {activeSheet.columns.map((column, index) => (
+                    <col key={index} className={resolveColumnClass(column)} />
                   ))}
                 </colgroup>
                 <thead>

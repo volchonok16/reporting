@@ -1199,6 +1199,10 @@ body {
   table-layout: fixed;
 }
 
+.product-status-table col.col-date {
+  width: 80px;
+}
+
 .product-status-table col.col-launch {
   width: 96px;
 }
@@ -1207,12 +1211,12 @@ body {
   width: 140px;
 }
 
-.product-status-table col.col-description {
-  width: 42%;
+.product-status-table col.col-news {
+  width: 30%;
 }
 
 .product-status-table col.col-why {
-  width: 28%;
+  width: 26%;
 }
 
 .product-status-table thead th {
