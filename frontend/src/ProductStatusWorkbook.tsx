@@ -72,11 +72,19 @@ function buildPayload(data: ProductStatusData | null, sheets: ProductStatusSheet
   }
 }
 
+function isPresentationFlagColumn(column: string): boolean {
+  return column.trim().toLowerCase().includes('идет в презентацию')
+}
+
+function isAttentionColumn(column: string): boolean {
+  const key = column.trim().toLowerCase()
+  return key.includes('обратить вниман')
+}
+
 function resolveColumnClass(column: string): string | undefined {
   const key = column.trim().toLowerCase()
   if (key === 'зни') return 'col-zni'
-  if (key.includes('идет в презентацию')) return 'col-presentation-flag'
-  if (key.includes('обратить внимание')) return 'col-attention'
+  if (isPresentationFlagColumn(column) || isAttentionColumn(column)) return 'col-presentation-flag'
   if (key === 'дата' || key.startsWith('дата')) return 'col-date'
   if (key === 'новость') return 'col-news'
   if (key === 'проект') return 'col-project'
@@ -87,8 +95,7 @@ function resolveColumnClass(column: string): string | undefined {
 }
 
 function isBooleanColumn(column: string): boolean {
-  const key = column.trim().toLowerCase()
-  return key.includes('идет в презентацию') || key.includes('обратить внимание')
+  return isPresentationFlagColumn(column) || isAttentionColumn(column)
 }
 
 function isYesValue(value: string): boolean {

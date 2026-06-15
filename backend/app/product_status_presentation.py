@@ -333,13 +333,25 @@ def _filter_presentation_rows(
     ]
 
 
-def _slide_notes_text(rows: list[dict[str, str]], columns: list[str]) -> str:
+def _description_paragraphs(text: str) -> list[str]:
+    paragraphs: list[str] = []
+    for chunk in re.split(r"\n\s*\n", text.strip()):
+        stripped = chunk.strip()
+        if stripped:
+            paragraphs.append(stripped)
+    if paragraphs:
+        return paragraphs
+    stripped = text.strip()
+    return [stripped] if stripped else []
+
+
+def _slide_notes_blocks(rows: list[dict[str, str]], columns: list[str]) -> list[list[str]]:
     full_column = _find_column(columns, FULL_DESCRIPTION_PATTERN)
     project_column = _find_column(columns, r"^Проект")
     if not full_column:
-        return ""
+        return []
 
-    blocks: list[str] = []
+    blocks: list[list[str]] = []
     for row in rows:
         text = display_cell_text(row.get(full_column, "")).strip()
         if not text:
@@ -349,8 +361,20 @@ def _slide_notes_text(rows: list[dict[str, str]], columns: list[str]) -> str:
             if project_column
             else ""
         )
-        blocks.append(f"{project}\n{text}" if project else text)
-    return "\n\n—\n\n".join(blocks)
+        block: list[str] = []
+        if project:
+            block.append(project)
+        block.extend(_description_paragraphs(text))
+        blocks.append(block)
+    return blocks
+
+
+def _slide_notes_text(rows: list[dict[str, str]], columns: list[str]) -> str:
+    """Совместимость для тестов — плоское представление блоков заметок."""
+    rendered: list[str] = []
+    for block in _slide_notes_blocks(rows, columns):
+        rendered.append("\n\n".join(block))
+    return "\n\n—\n\n".join(rendered)
 
 
 def _row_values(row: dict[str, str], columns: list[str], col_count: int) -> list[str]:
@@ -668,6 +692,50 @@ def _apply_paragraph_pr(paragraph, paragraph_pr) -> None:
     paragraph._p.insert(0, deepcopy(paragraph_pr))
 
 
+def _clear_paragraph_bullets(paragraph) -> None:
+    paragraph_pr = paragraph._p.get_or_add_pPr()
+    for tag in (
+        "a:buChar",
+        "a:buAutoNum",
+        "a:buBlip",
+        "a:buClr",
+        "a:buClrTx",
+        "a:buFont",
+        "a:buSzPct",
+        "a:buSzPts",
+    ):
+        for node in list(paragraph_pr.findall(qn(tag))):
+            paragraph_pr.remove(node)
+    if paragraph_pr.find(qn("a:buNone")) is None:
+        paragraph_pr.insert(0, OxmlElement("a:buNone"))
+
+
+def _fill_slide_notes(slide, rows: list[dict[str, str]], columns: list[str]) -> None:
+    blocks = _slide_notes_blocks(rows, columns)
+    if not blocks:
+        return
+
+    notes_frame = slide.notes_slide.notes_text_frame
+    notes_frame.clear()
+    notes_frame.word_wrap = True
+
+    paragraph_count = 0
+    for block_index, block in enumerate(blocks):
+        for paragraph_index, text in enumerate(block):
+            paragraph = notes_frame.paragraphs[0] if paragraph_count == 0 else notes_frame.add_paragraph()
+            _clear_paragraph_bullets(paragraph)
+            paragraph.alignment = PP_ALIGN.LEFT
+            paragraph.space_before = Pt(10 if block_index > 0 and paragraph_index == 0 else 0)
+            paragraph.space_after = Pt(6)
+            run = paragraph.add_run()
+            run.text = text
+            run.font.name = TABLE_FONT_NAME
+            run.font.size = TABLE_FONT_SIZE
+            run.font.bold = paragraph_index == 0 and len(block) > 1
+            run.font.color.rgb = TEXT_COLOR
+            paragraph_count += 1
+
+
 def _fill_body_lines(shape, lines: list[str], *, bullet: bool = False) -> None:
     frame = shape.text_frame
     font_name, font_size, font_bold = None, None, None
@@ -947,11 +1015,7 @@ def _fill_content_slide(
     _apply_table_grid(table)
     _layout_table_rows(table, rows, columns, body_shape.height)
 
-    notes_text = _slide_notes_text(rows, columns)
-    if notes_text:
-        notes_frame = slide.notes_slide.notes_text_frame
-        notes_frame.clear()
-        notes_frame.text = notes_text
+    _fill_slide_notes(slide, rows, columns)
 
 
 def _build_slide_specs(

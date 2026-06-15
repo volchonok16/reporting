@@ -27,6 +27,7 @@ from app.product_status_presentation import (
     _presentation_headers,
     _row_values,
     _section_name_for_sheet,
+    _slide_notes_blocks,
     _slide_notes_text,
     _template_index_for_sheet,
     generate_b2b_product_status_presentation,
@@ -143,8 +144,21 @@ def test_slide_notes_text_joins_full_descriptions() -> None:
         {"Проект": "SMS", "Полное Описание проекта и статус": "Вторая заметка"},
     ]
     assert _slide_notes_text(rows, columns) == (
-        "CORE\nПервая заметка\n\n—\n\nSMS\nВторая заметка"
+        "CORE\n\nПервая заметка\n\n—\n\nSMS\n\nВторая заметка"
     )
+
+
+def test_slide_notes_blocks_splits_multiline_descriptions() -> None:
+    columns = ["Проект", "Полное Описание проекта и статус"]
+    rows = [
+        {
+            "Проект": "SMS Hub",
+            "Полное Описание проекта и статус": "Первый абзац\n\nВторой абзац",
+        },
+    ]
+    assert _slide_notes_blocks(rows, columns) == [
+        ["SMS Hub", "Первый абзац", "Второй абзац"],
+    ]
 
 
 def test_estimate_text_lines_wraps_each_paragraph_separately() -> None:
@@ -599,6 +613,10 @@ def test_generate_presentation_filters_rows_and_fills_notes(mock_load) -> None:
     assert "CORE" in notes
     assert "Полный текст для заметок" in notes
     assert "Не попасть" not in notes
+
+    notes_xml = content_slide.notes_slide.part.blob.decode()
+    assert "<a:buChar" not in notes_xml
+    assert "<a:buNone" in notes_xml
 
 
 @patch("app.product_status_presentation.load_b2b_product_status")
