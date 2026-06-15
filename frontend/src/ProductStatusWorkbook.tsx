@@ -83,6 +83,20 @@ function resolveColumnClass(column: string): string | undefined {
   return undefined
 }
 
+function isBooleanColumn(column: string): boolean {
+  const key = column.trim().toLowerCase()
+  return key.includes('идет в презентацию') || key.includes('обратить внимание')
+}
+
+function isYesValue(value: string): boolean {
+  const normalized = value.trim().toLowerCase()
+  return normalized === 'да' || normalized === 'yes' || normalized === '1' || normalized === 'true'
+}
+
+function yesValueFromChecked(checked: boolean): string {
+  return checked ? 'Да' : ''
+}
+
 export default function ProductStatusWorkbook({
   apiBase,
   defaultTitle,
@@ -446,17 +460,38 @@ export default function ProductStatusWorkbook({
                         const isActive =
                           activeCell?.rowIndex === rowIndex && activeCell.column === column
                         const colClass = resolveColumnClass(column)
+                        const cellClassName = [
+                          colClass,
+                          columnIndex === 1 ? 'cell-project' : '',
+                          isBooleanColumn(column) ? 'product-status-bool-cell' : 'product-status-multiline',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')
+
+                        if (isBooleanColumn(column)) {
+                          return (
+                            <td key={`${rowIndex}-${column}`} className={cellClassName}>
+                              <input
+                                type="checkbox"
+                                className="product-status-bool-checkbox"
+                                checked={isYesValue(row[column] ?? '')}
+                                aria-label={column}
+                                disabled={busy}
+                                onChange={(event) =>
+                                  updateCell(
+                                    activeSheet.gid,
+                                    rowIndex,
+                                    column,
+                                    yesValueFromChecked(event.target.checked),
+                                  )
+                                }
+                              />
+                            </td>
+                          )
+                        }
+
                         return (
-                          <td
-                            key={`${rowIndex}-${column}`}
-                            className={[
-                              colClass,
-                              columnIndex === 1 ? 'cell-project' : '',
-                              'product-status-multiline',
-                            ]
-                              .filter(Boolean)
-                              .join(' ')}
-                          >
+                          <td key={`${rowIndex}-${column}`} className={cellClassName}>
                             <ProductStatusCell
                               ref={(handle) => {
                                 if (isActive) {
