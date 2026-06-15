@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 
 import httpx
 
@@ -11,6 +12,9 @@ logger = logging.getLogger(__name__)
 
 _SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets"
 _A1_ESCAPE = re.compile(r"['\\]")
+_GENERIC_SHEET_NAME = re.compile(r"^Лист \d+$", re.IGNORECASE)
+_SHEET_TITLES_CACHE_TTL_SECONDS = 3600
+_spreadsheet_sheet_titles_cache: dict[str, tuple[float, dict[str, str]]] = {}
 _GRID_DATA_FIELDS = (
     "sheets(data/rowData/values("
     "formattedValue,effectiveValue,userEnteredValue,"
@@ -73,13 +77,18 @@ def _parse_grid_sheet(
     return headers, rows
 
 
-def _resolve_sheet_title(
+def _fetch_sheet_titles_by_gid(
     *,
     spreadsheet_id: str,
-    gid: str,
     api_key: str,
     client: httpx.Client,
-) -> str | None:
+) -> dict[str, str]:
+    cached = _spreadsheet_sheet_titles_cache.get(spreadsheet_id)
+    if cached is not None:
+        cached_at, mapping = cached
+        if time.time() - cached_at <= _SHEET_TITLES_CACHE_TTL_SECONDS:
+            return mapping
+
     params = {
         "fields": "sheets(properties(sheetId,title))",
         "key": api_key,
@@ -89,18 +98,38 @@ def _resolve_sheet_title(
         response.raise_for_status()
     except httpx.HTTPError:
         logger.warning(
-            "product_status_sheets_metadata_fetch_failed gid=%s",
-            gid,
+            "product_status_sheets_metadata_fetch_failed spreadsheet_id=%s",
+            spreadsheet_id,
             exc_info=True,
         )
-        return None
+        return {}
 
+    mapping: dict[str, str] = {}
     for sheet in response.json().get("sheets", []):
         props = sheet.get("properties") or {}
-        if str(props.get("sheetId", "")) == str(gid):
-            title = str(props.get("title", "")).strip()
-            return title or None
-    return None
+        gid = str(props.get("sheetId", "")).strip()
+        title = str(props.get("title", "")).strip()
+        if gid and title:
+            mapping[gid] = title
+
+    if mapping:
+        _spreadsheet_sheet_titles_cache[spreadsheet_id] = (time.time(), mapping)
+    return mapping
+
+
+def _resolve_sheet_title(
+    *,
+    spreadsheet_id: str,
+    gid: str,
+    api_key: str,
+    client: httpx.Client,
+) -> str | None:
+    mapping = _fetch_sheet_titles_by_gid(
+        spreadsheet_id=spreadsheet_id,
+        api_key=api_key,
+        client=client,
+    )
+    return mapping.get(str(gid))
 
 
 def fetch_sheet_with_formatting(
@@ -111,13 +140,15 @@ def fetch_sheet_with_formatting(
     api_key: str,
     client: httpx.Client,
 ) -> tuple[list[str], list[dict[str, str]]] | None:
-    resolved_title = _resolve_sheet_title(
-        spreadsheet_id=spreadsheet_id,
-        gid=gid,
-        api_key=api_key,
-        client=client,
-    )
-    sheet_title = resolved_title or sheet_name
+    sheet_title = sheet_name.strip()
+    if not sheet_title or _GENERIC_SHEET_NAME.match(sheet_title):
+        resolved_title = _resolve_sheet_title(
+            spreadsheet_id=spreadsheet_id,
+            gid=gid,
+            api_key=api_key,
+            client=client,
+        )
+        sheet_title = resolved_title or sheet_name
     sheet_range = f"{_quote_sheet_range(sheet_title)}!A1:Z500"
     params = {
         "includeGridData": "true",

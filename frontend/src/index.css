@@ -1272,6 +1272,14 @@ body {
   background: #f9fafb;
 }
 
+.product-status-table tbody tr.product-status-row-no-presentation td {
+  background-color: var(--row-bg, #f4cccc);
+}
+
+.product-status-table tbody tr.product-status-row-no-presentation:hover td {
+  background-color: color-mix(in srgb, var(--row-bg, #f4cccc) 92%, #111);
+}
+
 .product-status-table tbody tr:last-child td {
   border-bottom: none;
 }

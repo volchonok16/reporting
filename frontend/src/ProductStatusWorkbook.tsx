@@ -2,14 +2,24 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { getJson, apiFetch, postJson, readApiError } from './api'
 import ProductStatusCell, { type ProductStatusCellHandle } from './ProductStatusCell'
 import ProductStatusFormatToolbar from './ProductStatusFormatToolbar'
-import { collectZniNumbers, isZniColumn, parseZniNumber } from './productStatusZni'
+import {
+  collectZniNumbers,
+  isZniColumn,
+  normalizeZniCellValue,
+  parseZniNumber,
+} from './productStatusZni'
 import {
   booleanCellBackground,
   resolveBooleanColors,
+  resolvePresentationRowBackground,
   styledBooleanValue,
 } from './productStatusBoolean'
 import { displayCellText, type CellStyle, type TextStyleSegment } from './productStatusRichText'
-import ZniDetailModal from './ZniDetailModal'
+import {
+  clearProductStatusCache,
+  readProductStatusCache,
+  writeProductStatusCache,
+} from './productStatusClientCache'
 import type { ChangeRequest, TaskLookupResponse } from './zniTypes'
 
 type ProductStatusSheet = {
@@ -161,11 +171,31 @@ export default function ProductStatusWorkbook({
 
   const loadSheetData = useCallback(
     async (gid: string, options?: { refresh?: boolean }) => {
+      if (!options?.refresh) {
+        const cached = readProductStatusCache(apiBase, { gid })
+        if (cached) {
+          const sheet = cached.sheets.find((item) => item.gid === gid && item.columns.length > 0)
+          if (sheet) {
+            setSheets((current) => current.map((item) => (item.gid === gid ? cloneSheet(sheet) : item)))
+            setLoadedGids((current) => new Set(current).add(gid))
+            setData((current) => ({
+              title: cached.title ?? current?.title ?? defaultTitle,
+              sourceUrl: cached.sourceUrl ?? current?.sourceUrl,
+              presentationReferenceUrl:
+                cached.presentationReferenceUrl ?? current?.presentationReferenceUrl,
+              sheets: current?.sheets ?? cached.sheets,
+            }))
+            return
+          }
+        }
+      }
+
       const params = new URLSearchParams({ gid })
       if (options?.refresh) {
         params.set('refresh', 'true')
       }
       const payload = await getJson<ProductStatusData>(`${apiBase}?${params}`)
+      writeProductStatusCache(apiBase, payload, { gid })
       const sheet = payload.sheets.find((item) => item.gid === gid && item.columns.length > 0)
       if (!sheet) {
         throw new Error('Лист пустой или не удалось загрузить данные')
@@ -207,12 +237,47 @@ export default function ProductStatusWorkbook({
       setLoading(true)
       setError(null)
       try {
+        if (options?.refresh) {
+          clearProductStatusCache(apiBase)
+        }
+
         if (lazySheets) {
+          if (!options?.refresh) {
+            const cachedMeta = readProductStatusCache(apiBase, { metaOnly: true })
+            if (cachedMeta) {
+              setData(cachedMeta)
+              setSheets(cloneSheets(cachedMeta.sheets))
+              setLoadedGids(new Set())
+              setDirty(false)
+
+              const savedGid = loadGid()
+              const initialGid =
+                savedGid && cachedMeta.sheets.some((sheet) => sheet.gid === savedGid)
+                  ? savedGid
+                  : cachedMeta.sheets[0]?.gid ?? null
+              setActiveGid(initialGid)
+              setLoading(false)
+
+              if (initialGid) {
+                setSheetLoadingGid(initialGid)
+                try {
+                  await loadSheetData(initialGid, options)
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : 'Ошибка загрузки листа')
+                } finally {
+                  setSheetLoadingGid(null)
+                }
+              }
+              return
+            }
+          }
+
           const params = new URLSearchParams({ meta_only: 'true' })
           if (options?.refresh) {
             params.set('refresh', 'true')
           }
           const meta = await getJson<ProductStatusData>(`${apiBase}?${params}`)
+          writeProductStatusCache(apiBase, meta, { metaOnly: true })
           setData(meta)
           setSheets(cloneSheets(meta.sheets))
           setLoadedGids(new Set())
@@ -239,8 +304,30 @@ export default function ProductStatusWorkbook({
           return
         }
 
+        if (!options?.refresh) {
+          const cached = readProductStatusCache(apiBase)
+          if (cached) {
+            setData(cached)
+            setSheets(cloneSheets(cached.sheets))
+            setLoadedGids(new Set(cached.sheets.map((sheet) => sheet.gid)))
+            setDirty(false)
+            setActiveGid((current) => {
+              const savedGid = loadGid()
+              if (savedGid && cached.sheets.some((sheet) => sheet.gid === savedGid)) {
+                return savedGid
+              }
+              if (current && cached.sheets.some((sheet) => sheet.gid === current)) {
+                return current
+              }
+              return cached.sheets[0]?.gid ?? null
+            })
+            return
+          }
+        }
+
         const url = options?.refresh ? `${apiBase}?refresh=true` : apiBase
         const payload = await getJson<ProductStatusData>(url)
+        writeProductStatusCache(apiBase, payload)
         setData(payload)
         setSheets(cloneSheets(payload.sheets))
         setLoadedGids(new Set(payload.sheets.map((sheet) => sheet.gid)))
@@ -278,6 +365,7 @@ export default function ProductStatusWorkbook({
         throw new Error(await readApiError(response))
       }
       setDirty(false)
+      clearProductStatusCache(apiBase)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка сохранения')
     } finally {
@@ -654,8 +742,18 @@ export default function ProductStatusWorkbook({
                   </tr>
                 </thead>
                 <tbody>
-                  {activeSheet.rows.map((row, rowIndex) => (
-                    <tr key={`${activeSheet.gid}-${rowIndex}`}>
+                  {activeSheet.rows.map((row, rowIndex) => {
+                    const rowBg = resolvePresentationRowBackground(row, activeSheet.columns)
+                    return (
+                    <tr
+                      key={`${activeSheet.gid}-${rowIndex}`}
+                      className={rowBg ? 'product-status-row-no-presentation' : undefined}
+                      style={
+                        rowBg
+                          ? ({ '--row-bg': `#${rowBg}` } as React.CSSProperties)
+                          : undefined
+                      }
+                    >
                       {activeSheet.columns.map((column) => {
                         const isActive =
                           activeCell?.rowIndex === rowIndex && activeCell.column === column
@@ -669,7 +767,8 @@ export default function ProductStatusWorkbook({
 
                         if (isBooleanColumn(column)) {
                           const cellValue = row[column] ?? ''
-                          const cellBg = booleanCellBackground(cellValue)
+                          const cellBg =
+                            isPresentationFlagColumn(column) ? null : booleanCellBackground(cellValue)
                           return (
                             <td
                               key={`${rowIndex}-${column}`}
@@ -702,6 +801,10 @@ export default function ProductStatusWorkbook({
                           ? parseZniNumber(row[column] ?? '')
                           : null
                         const matchedZni = zniNumber ? zniLookup[zniNumber] : undefined
+                        const showZniTrigger = Boolean(matchedZni && zniNumber && !isActive)
+                        const cellValue = isZniColumn(column)
+                          ? normalizeZniCellValue(row[column] ?? '')
+                          : row[column] ?? ''
 
                         return (
                           <td
@@ -712,8 +815,13 @@ export default function ProductStatusWorkbook({
                             ]
                               .filter(Boolean)
                               .join(' ')}
+                            onDoubleClick={() => {
+                              if (showZniTrigger) {
+                                setActiveCell({ rowIndex, column })
+                              }
+                            }}
                           >
-                            {matchedZni && zniNumber ? (
+                            {showZniTrigger ? (
                               <button
                                 type="button"
                                 className="zni-link product-status-zni-trigger"
@@ -721,7 +829,7 @@ export default function ProductStatusWorkbook({
                               >
                                 {zniNumber}
                               </button>
-                            ) : null}
+                            ) : (
                             <ProductStatusCell
                               ref={(handle) => {
                                 if (isActive) {
@@ -729,7 +837,7 @@ export default function ProductStatusWorkbook({
                                 }
                               }}
                               className="product-status-cell-input"
-                              value={row[column] ?? ''}
+                              value={cellValue}
                               ariaLabel={column}
                               onFocus={() =>
                                 setActiveCell({
@@ -748,11 +856,13 @@ export default function ProductStatusWorkbook({
                                 updateCell(activeSheet.gid, rowIndex, column, nextValue)
                               }
                             />
+                            )}
                           </td>
                         )
                       })}
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             ) : loading || sheetLoading ? (

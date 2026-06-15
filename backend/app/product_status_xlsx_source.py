@@ -48,6 +48,12 @@ def _cell_plain_value(cell) -> str:
     value = cell.value
     if value is None:
         return ""
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return str(int(value)) if value.is_integer() else str(value)
     if hasattr(value, "isoformat"):
         try:
             return value.strftime("%d.%m.%Y")

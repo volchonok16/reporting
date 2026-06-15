@@ -87,7 +87,7 @@ Docker Compose подхватывает `.env` автоматически для
 
 Для кнопки «Сохранить в Google» на вкладке «Статус продукта B2B» положите JSON ключа в `secrets/google-sheets-sa.json` и укажите в `.env` путь `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON=/app/secrets/google-sheets-sa.json`. Email из `client_email` — с правами «Редактор» в Google Sheets. Папка `secrets/` монтируется в backend-контейнер.
 
-Переменные `B2B_PRODUCT_STATUS_*`, `B2B_NEWS_*`, `GOOGLE_SHEETS_API_KEY` и `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` пробрасываются в контейнер `backend` через `docker-compose.yml`.
+Переменные `B2B_PRODUCT_STATUS_*`, `B2B_NEWS_*`, `GOOGLE_SHEETS_API_KEY`, `GOOGLE_SHEETS_WORKBOOK_CACHE_TTL_SECONDS` (по умолчанию 300 с — in-memory кеш листов на backend) и `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` пробрасываются в контейнер `backend` через `docker-compose.yml`.
 
 Вкладка **«Новости»** читает отдельную Google Sheets-таблицу: задайте `B2B_NEWS_SPREADSHEET_ID`, `B2B_NEWS_SHEET_URL` и при необходимости `B2B_NEWS_SHEET_PUBLIC_URL`. Список листов — в `B2B_NEWS_SHEETS` (как у `B2B_PRODUCT_STATUS_SHEETS`); пусто — автоопределение.
 

@@ -27,6 +27,15 @@ def test_cell_encoded_value_applies_cell_background() -> None:
     assert "Идет миграция" in encoded
 
 
+def test_cell_plain_value_formats_integer_float_without_fraction() -> None:
+    workbook = Workbook()
+    worksheet = workbook.active
+    cell = worksheet["A1"]
+    cell.value = 441181.0
+
+    assert _cell_encoded_value(cell) == "441181"
+
+
 def test_parse_xlsx_sheet_reads_headers_and_rows() -> None:
     workbook = Workbook()
     worksheet = workbook.active

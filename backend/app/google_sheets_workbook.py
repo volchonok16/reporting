@@ -21,8 +21,9 @@ from app.schemas import ProductStatusB2BOut, ProductStatusSheetOut
 
 logger = logging.getLogger(__name__)
 
-WORKBOOK_CACHE_TTL_SECONDS = 90
 _workbook_cache: dict[tuple[str, str], tuple[float, ProductStatusB2BOut]] = {}
+_sheet_tabs_cache: dict[str, tuple[float, list[dict[str, str]]]] = {}
+_SHEET_TABS_CACHE_TTL_SECONDS = 3600
 
 _SHEET_META_PATTERN = re.compile(
     r'"sheetId":(\d+),"title":"((?:\\.|[^"\\])*)"',
@@ -239,17 +240,27 @@ def resolve_sheet_tabs(
         return configured
 
     spreadsheet_id = _spreadsheet_id_from_source(source)
+    cached_tabs = _sheet_tabs_cache.get(spreadsheet_id)
+    if cached_tabs is not None:
+        cached_at, tabs = cached_tabs
+        if time.time() - cached_at <= _SHEET_TABS_CACHE_TTL_SECONDS:
+            return tabs
+
     discovered = discover_sheet_tabs(spreadsheet_id, client=client)
     if discovered:
+        _sheet_tabs_cache[spreadsheet_id] = (time.time(), discovered)
         return discovered
 
     default_sheets = source.default_sheets_by_spreadsheet.get(spreadsheet_id, [])
     if default_sheets:
+        _sheet_tabs_cache[spreadsheet_id] = (time.time(), default_sheets)
         return default_sheets
 
     parsed = urlparse(source.sheet_url.strip())
     query_gid = parse_qs(parsed.query).get("gid", ["0"])[0]
-    return [{"gid": query_gid or "0", "name": source.fallback_sheet_name}]
+    fallback = [{"gid": query_gid or "0", "name": source.fallback_sheet_name}]
+    _sheet_tabs_cache[spreadsheet_id] = (time.time(), fallback)
+    return fallback
 
 
 def parse_sheet_csv(text: str) -> tuple[list[str], list[dict[str, str]]]:
@@ -287,6 +298,7 @@ def invalidate_workbook_cache(spreadsheet_id: str) -> None:
     for key in list(_workbook_cache):
         if key[0] == spreadsheet_id:
             del _workbook_cache[key]
+    _sheet_tabs_cache.pop(spreadsheet_id, None)
 
 
 def _workbook_cache_key(spreadsheet_id: str, *, gid: str | None, meta_only: bool) -> tuple[str, str]:
@@ -308,7 +320,7 @@ def _workbook_from_cache(
     if cached is None:
         return None
     cached_at, payload = cached
-    if time.time() - cached_at > WORKBOOK_CACHE_TTL_SECONDS:
+    if time.time() - cached_at > settings.google_sheets_workbook_cache_ttl_seconds:
         del _workbook_cache[key]
         return None
     return payload

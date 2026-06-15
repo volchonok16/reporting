@@ -60,3 +60,26 @@ export function booleanCellBackground(value: string): string | null {
   if (!raw) return null
   return cellDisplayBackground(raw)
 }
+
+function isPresentationFlagColumn(column: string): boolean {
+  return column.trim().toLowerCase().includes('идет в презентацию')
+}
+
+function isBooleanNoValue(value: string): boolean {
+  const text = displayCellText(value).trim().toLowerCase()
+  return text === 'нет' || text === 'no' || text === '0' || text === 'false'
+}
+
+/** Красная подсветка строки, если «Идет в презентацию» = нет (не на ячейку-чекбокс). */
+export function resolvePresentationRowBackground(
+  row: Record<string, string>,
+  columns: string[],
+): string | null {
+  for (const column of columns) {
+    if (!isPresentationFlagColumn(column)) continue
+    const raw = (row[column] ?? '').trim()
+    if (!raw || !isBooleanNoValue(raw)) continue
+    return booleanCellBackground(raw) ?? BOOLEAN_NO_BG
+  }
+  return null
+}

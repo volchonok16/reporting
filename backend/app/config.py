@@ -161,6 +161,14 @@ class Settings(BaseSettings):
             "частичное выделение). Пусто — fallback на XLSX-экспорт, затем CSV."
         ),
     )
+    google_sheets_workbook_cache_ttl_seconds: int = Field(
+        default=300,
+        alias="GOOGLE_SHEETS_WORKBOOK_CACHE_TTL_SECONDS",
+        description=(
+            "TTL in-memory кеша листов Google Sheets на backend (сек). "
+            "Кнопка «Обновить» с refresh=true обходит кеш."
+        ),
+    )
     google_sheets_service_account_json: str = Field(
         default="",
         alias="GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON",
