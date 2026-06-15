@@ -43,6 +43,7 @@ COLUMN_COUNT = 4
 WHY_COLUMN_INDEX = 3
 DESCRIPTION_SLOT_INDEX = 2
 DESCRIPTION_HEADER = "Описание проекта и статус"
+WHY_HEADER = "Зачем и для чего делаем"
 PRESENTATION_FLAG_PATTERN = r"идет в презентацию"
 PRESENTATION_DESCRIPTION_PATTERN = r"для презентации"
 FULL_DESCRIPTION_PATTERN = r"полное описание"
@@ -323,16 +324,69 @@ def _is_presentation_internal_column(column: str) -> bool:
     return False
 
 
+def _is_legacy_description_column(column: str) -> bool:
+    key = column.strip().casefold()
+    return (
+        re.search(DESCRIPTION_PATTERN, key) is not None
+        and re.search(WHY_PATTERN, key) is None
+        and not re.search(PRESENTATION_DESCRIPTION_PATTERN, key)
+        and not re.search(FULL_DESCRIPTION_PATTERN, key)
+        and not key.startswith("полное")
+    )
+
+
+def _is_legacy_why_column(column: str) -> bool:
+    key = column.strip().casefold()
+    return (
+        re.search(WHY_PATTERN, key) is not None
+        and not re.search(PRESENTATION_DESCRIPTION_PATTERN, key)
+        and not re.search(FULL_DESCRIPTION_PATTERN, key)
+    )
+
+
+def _full_description_notes_column(columns: list[str]) -> str:
+    for column in columns:
+        if _is_full_description_notes_column(column):
+            return column
+    for column in columns:
+        key = column.strip().casefold()
+        if (
+            key.startswith("полное")
+            and re.search(DESCRIPTION_PATTERN, key) is not None
+            and re.search(WHY_PATTERN, key) is None
+            and not re.search(PRESENTATION_DESCRIPTION_PATTERN, key)
+        ):
+            return column
+    return ""
+
+
+def _full_why_notes_column(columns: list[str]) -> str:
+    for column in columns:
+        if _is_full_why_notes_column(column):
+            return column
+    has_full_notes = bool(_full_description_notes_column(columns))
+    if not has_full_notes:
+        return ""
+    for column in columns:
+        key = column.strip().casefold()
+        if re.search(WHY_PATTERN, key) and not re.search(PRESENTATION_DESCRIPTION_PATTERN, key):
+            return column
+    return ""
+
+
 def _description_value_column(columns: list[str]) -> str:
     for column in columns:
         if _is_description_presentation_column(column):
             return column
 
+    has_presentation_desc = any(_is_description_presentation_column(column) for column in columns)
     excluded = {column for column in columns if _is_presentation_internal_column(column)}
     excluded.update(column for column in columns if _is_description_presentation_column(column))
     excluded.update(column for column in columns if _is_why_presentation_column(column))
     for column in columns:
         if column in excluded:
+            continue
+        if has_presentation_desc and _is_legacy_description_column(column):
             continue
         key = column.strip().casefold()
         if re.search(DESCRIPTION_PATTERN, key) and not re.search(WHY_PATTERN, key):
@@ -345,11 +399,14 @@ def _why_value_column(columns: list[str]) -> str:
         if _is_why_presentation_column(column):
             return column
 
+    has_presentation_why = any(_is_why_presentation_column(column) for column in columns)
     excluded = {column for column in columns if _is_presentation_internal_column(column)}
     excluded.update(column for column in columns if _is_why_presentation_column(column))
     excluded.update(column for column in columns if _is_description_presentation_column(column))
     for column in columns:
         if column in excluded:
+            continue
+        if has_presentation_why and _is_legacy_why_column(column):
             continue
         if re.search(WHY_PATTERN, column.strip(), re.IGNORECASE):
             return column
@@ -378,11 +435,13 @@ def _mapped_columns(columns: list[str]) -> list[str]:
 
 def _presentation_headers(columns: list[str]) -> list[str]:
     mapped = _mapped_columns(columns)
-    defaults = ("Дата запуска", "Проект", DESCRIPTION_HEADER, "Зачем и для чего делаем")
+    defaults = ("Дата запуска", "Проект", DESCRIPTION_HEADER, WHY_HEADER)
     headers: list[str] = []
     for index, (column_name, default_name) in enumerate(zip(mapped, defaults, strict=True)):
         if index == DESCRIPTION_SLOT_INDEX:
             headers.append(DESCRIPTION_HEADER)
+        elif index == WHY_COLUMN_INDEX:
+            headers.append(WHY_HEADER)
         else:
             headers.append(column_name or default_name)
     return headers
@@ -415,8 +474,8 @@ def _description_paragraphs(text: str) -> list[str]:
 
 
 def _slide_notes_blocks(rows: list[dict[str, str]], columns: list[str]) -> list[list[str]]:
-    full_column = next((column for column in columns if _is_full_description_notes_column(column)), "")
-    full_why_column = next((column for column in columns if _is_full_why_notes_column(column)), "")
+    full_column = _full_description_notes_column(columns)
+    full_why_column = _full_why_notes_column(columns)
     project_column = _find_column(columns, r"^Проект")
     if not full_column and not full_why_column:
         return []
@@ -437,8 +496,10 @@ def _slide_notes_blocks(rows: list[dict[str, str]], columns: list[str]) -> list[
         block: list[str] = []
         if project:
             block.append(project)
-        block.extend(_description_paragraphs(description_text))
-        block.extend(_description_paragraphs(why_text))
+        if description_text:
+            block.append(description_text)
+        if why_text:
+            block.append(why_text)
         blocks.append(block)
     return blocks
 

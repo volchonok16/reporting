@@ -174,7 +174,39 @@ def test_slide_notes_blocks_splits_multiline_descriptions() -> None:
         },
     ]
     assert _slide_notes_blocks(rows, columns) == [
-        ["SMS Hub", "Первый абзац", "Второй абзац"],
+        ["SMS Hub", "Первый абзац\n\nВторой абзац"],
+    ]
+
+
+def test_slide_notes_and_table_use_distinct_column_values() -> None:
+    columns = [
+        "Дата запуска",
+        "Проект",
+        "Полное Описание проекта и статус",
+        "Для презентации Описание проекта и статус",
+        "Описание проекта и статус",
+        "Зачем и для чего делаем полное описание",
+        "Зачем и для чего делаем для презентации",
+        "Зачем и для чего делаем",
+    ]
+    row = {
+        "Дата запуска": "01.06",
+        "Проект": "SMS Hub",
+        "Полное Описание проекта и статус": "Полный статус",
+        "Для презентации Описание проекта и статус": "Короткий статус",
+        "Описание проекта и статус": "Легаси",
+        "Зачем и для чего делаем полное описание": "Полный зачем",
+        "Зачем и для чего делаем для презентации": "Короткий зачем",
+        "Зачем и для чего делаем": "Легаси зачем",
+    }
+    assert _row_values(row, columns, 4) == [
+        "01.06",
+        "SMS Hub",
+        "Короткий статус",
+        "Короткий зачем",
+    ]
+    assert _slide_notes_blocks([row], columns) == [
+        ["SMS Hub", "Полный статус", "Полный зачем"],
     ]
 
 
@@ -636,6 +668,8 @@ def test_generate_presentation_filters_rows_and_fills_notes(mock_load) -> None:
                     "Полное Описание проекта и статус",
                     "Для презентации Описание проекта и статус",
                     "Описание проекта и статус",
+                    "Зачем и для чего делаем полное описание",
+                    "Зачем и для чего делаем для презентации",
                     "Зачем и для чего делаем",
                 ],
                 rows=[
@@ -646,6 +680,8 @@ def test_generate_presentation_filters_rows_and_fills_notes(mock_load) -> None:
                         "Полное Описание проекта и статус": "Полный текст для заметок",
                         "Для презентации Описание проекта и статус": "Коротко",
                         "Описание проекта и статус": "Игнор",
+                        "Зачем и для чего делаем полное описание": "Полный зачем для заметок",
+                        "Зачем и для чего делаем для презентации": "Короткий зачем",
                         "Зачем и для чего делаем": "OK",
                     },
                     {
@@ -670,12 +706,18 @@ def test_generate_presentation_filters_rows_and_fills_notes(mock_load) -> None:
     assert table.rows[0].cells[2].text == DESCRIPTION_HEADER
     assert table.rows[1].cells[1].text == "CORE"
     assert table.rows[1].cells[2].text == "Коротко"
+    assert table.rows[1].cells[3].text == "Короткий зачем"
     assert len(table.rows) == 2
     assert "SKIP" not in content_slide.part.blob.decode()
+    assert "Игнор" not in content_slide.part.blob.decode()
+    assert "OK" not in table.rows[1].cells[3].text
 
     notes = content_slide.notes_slide.notes_text_frame.text
     assert "CORE" in notes
     assert "Полный текст для заметок" in notes
+    assert "Полный зачем для заметок" in notes
+    assert "Коротко" not in notes
+    assert "Короткий зачем" not in notes
     assert "Не попасть" not in notes
     assert NOTES_BLOCK_SEPARATOR not in notes
 
@@ -698,7 +740,8 @@ def test_generate_presentation_notes_use_block_separators(mock_load) -> None:
                     "Проект",
                     "Полное Описание проекта и статус",
                     "Для презентации Описание проекта и статус",
-                    "Зачем и для чего делаем",
+                    "Зачем и для чего делаем полное описание",
+                    "Зачем и для чего делаем для презентации",
                 ],
                 rows=[
                     {
@@ -707,7 +750,8 @@ def test_generate_presentation_notes_use_block_separators(mock_load) -> None:
                         "Проект": "SMS Hub",
                         "Полное Описание проекта и статус": "Тендер ОТП-банк",
                         "Для презентации Описание проекта и статус": "Тендер",
-                        "Зачем и для чего делаем": "OK",
+                        "Зачем и для чего делаем полное описание": "Полный зачем 1",
+                        "Зачем и для чего делаем для презентации": "Короткий зачем 1",
                     },
                     {
                         "Идет в презентацию": "Да",
@@ -715,7 +759,8 @@ def test_generate_presentation_notes_use_block_separators(mock_load) -> None:
                         "Проект": "SMS Hub",
                         "Полное Описание проекта и статус": "Кейс с Озоном",
                         "Для презентации Описание проекта и статус": "Озон",
-                        "Зачем и для чего делаем": "OK",
+                        "Зачем и для чего делаем полное описание": "Полный зачем 2",
+                        "Зачем и для чего делаем для презентации": "Короткий зачем 2",
                     },
                 ],
                 totalShown=2,
@@ -729,7 +774,11 @@ def test_generate_presentation_notes_use_block_separators(mock_load) -> None:
     notes = content_slide.notes_slide.notes_text_frame.text
     assert "—" in notes
     assert "Тендер ОТП-банк" in notes
+    assert "Полный зачем 1" in notes
     assert "Кейс с Озоном" in notes
+    assert "Полный зачем 2" in notes
+    assert "Короткий зачем 1" not in notes
+    assert "Короткий зачем 2" not in notes
 
 
 @patch("app.product_status_presentation.load_b2b_product_status")
