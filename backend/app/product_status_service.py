@@ -38,12 +38,20 @@ def _product_status_source() -> GoogleSheetsWorkbookSource:
     )
 
 
-def load_b2b_product_status() -> ProductStatusB2BOut:
+def load_b2b_product_status(
+    *,
+    gid: str | None = None,
+    meta_only: bool = False,
+    use_cache: bool = True,
+) -> ProductStatusB2BOut:
     return load_google_sheets_workbook(
         _product_status_source(),
         presentation_reference_url=(
             settings.b2b_product_status_presentation_reference_url or None
         ),
+        gid=gid,
+        meta_only=meta_only,
+        use_cache=use_cache,
     )
 
 

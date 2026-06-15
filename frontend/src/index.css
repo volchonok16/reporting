@@ -1207,6 +1207,21 @@ body {
   width: 76px;
 }
 
+.product-status-table th.product-status-bool-header,
+.product-status-table td.product-status-bool-cell {
+  width: 76px;
+  max-width: 76px;
+  box-sizing: border-box;
+}
+
+.product-status-table th.product-status-bool-header {
+  font-size: 10px;
+  line-height: 1.25;
+  padding: 6px 4px;
+  word-break: break-word;
+  hyphens: auto;
+}
+
 .product-status-table col.col-date {
   width: 80px;
 }

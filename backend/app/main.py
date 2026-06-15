@@ -16,6 +16,7 @@ from app.b2b_news_service import load_b2b_news
 from app.product_status_service import load_b2b_product_status
 from app.product_status_excel import generate_b2b_product_status_excel
 from app.product_status_presentation import generate_b2b_product_status_presentation
+from app.google_sheets_workbook import invalidate_workbook_cache
 from app.product_status_sheets_write import (
     save_b2b_news_to_google,
     save_b2b_product_status_to_google,
@@ -205,8 +206,16 @@ async def patch_business_value(
 
 
 @app.get("/api/product-status/b2b", response_model=ProductStatusB2BOut)
-def product_status_b2b() -> ProductStatusB2BOut:
-    return load_b2b_product_status()
+def product_status_b2b(
+    gid: str | None = Query(default=None),
+    meta_only: bool = Query(default=False),
+    refresh: bool = Query(default=False),
+) -> ProductStatusB2BOut:
+    return load_b2b_product_status(
+        gid=gid,
+        meta_only=meta_only,
+        use_cache=not refresh,
+    )
 
 
 @app.get("/api/product-status/b2b/presentation")
@@ -252,17 +261,27 @@ def product_status_b2b_presentation_from_payload(payload: ProductStatusB2BOut) -
 @app.post("/api/product-status/b2b/save")
 def product_status_b2b_save(payload: ProductStatusB2BOut) -> dict[str, str]:
     save_b2b_product_status_to_google(payload)
+    invalidate_workbook_cache(settings.b2b_product_status_spreadsheet_id)
     return {"status": "ok"}
 
 
 @app.get("/api/b2b-news", response_model=ProductStatusB2BOut)
-def b2b_news() -> ProductStatusB2BOut:
-    return load_b2b_news()
+def b2b_news(
+    gid: str | None = Query(default=None),
+    meta_only: bool = Query(default=False),
+    refresh: bool = Query(default=False),
+) -> ProductStatusB2BOut:
+    return load_b2b_news(
+        gid=gid,
+        meta_only=meta_only,
+        use_cache=not refresh,
+    )
 
 
 @app.post("/api/b2b-news/save")
 def b2b_news_save(payload: ProductStatusB2BOut) -> dict[str, str]:
     save_b2b_news_to_google(payload)
+    invalidate_workbook_cache(settings.b2b_news_spreadsheet_id)
     return {"status": "ok"}
 
 

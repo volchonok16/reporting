@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Mapping
 from urllib.parse import parse_qs, urlparse
@@ -19,6 +20,9 @@ from app.product_status_xlsx_source import fetch_sheet_from_xlsx
 from app.schemas import ProductStatusB2BOut, ProductStatusSheetOut
 
 logger = logging.getLogger(__name__)
+
+WORKBOOK_CACHE_TTL_SECONDS = 90
+_workbook_cache: dict[tuple[str, str], tuple[float, ProductStatusB2BOut]] = {}
 
 _SHEET_META_PATTERN = re.compile(
     r'"sheetId":(\d+),"title":"((?:\\.|[^"\\])*)"',
@@ -276,6 +280,148 @@ def _google_http_client() -> httpx.Client:
     return httpx.Client(timeout=45.0, follow_redirects=True, proxy=proxy)
 
 
+def invalidate_workbook_cache(spreadsheet_id: str) -> None:
+    spreadsheet_id = spreadsheet_id.strip()
+    if not spreadsheet_id:
+        return
+    for key in list(_workbook_cache):
+        if key[0] == spreadsheet_id:
+            del _workbook_cache[key]
+
+
+def _workbook_cache_key(spreadsheet_id: str, *, gid: str | None, meta_only: bool) -> tuple[str, str]:
+    if meta_only:
+        return spreadsheet_id, "__meta__"
+    if gid:
+        return spreadsheet_id, f"gid:{gid}"
+    return spreadsheet_id, "__all__"
+
+
+def _workbook_from_cache(
+    spreadsheet_id: str,
+    *,
+    gid: str | None,
+    meta_only: bool,
+) -> ProductStatusB2BOut | None:
+    key = _workbook_cache_key(spreadsheet_id, gid=gid, meta_only=meta_only)
+    cached = _workbook_cache.get(key)
+    if cached is None:
+        return None
+    cached_at, payload = cached
+    if time.time() - cached_at > WORKBOOK_CACHE_TTL_SECONDS:
+        del _workbook_cache[key]
+        return None
+    return payload
+
+
+def _store_workbook_cache(
+    spreadsheet_id: str,
+    *,
+    gid: str | None,
+    meta_only: bool,
+    payload: ProductStatusB2BOut,
+) -> None:
+    key = _workbook_cache_key(spreadsheet_id, gid=gid, meta_only=meta_only)
+    _workbook_cache[key] = (time.time(), payload)
+
+
+def _empty_sheet_tab(tab: dict[str, str]) -> ProductStatusSheetOut:
+    return ProductStatusSheetOut(
+        gid=tab["gid"],
+        name=tab["name"],
+        columns=[],
+        rows=[],
+        totalShown=0,
+    )
+
+
+def _load_sheet_tab_isolated(
+    *,
+    spreadsheet_id: str,
+    gid: str,
+    name: str,
+    api_key: str,
+) -> tuple[str, str, list[str], list[dict[str, str]], str | None]:
+    with _google_http_client() as client:
+        columns, rows, error = _load_sheet_tab(
+            spreadsheet_id=spreadsheet_id,
+            gid=gid,
+            name=name,
+            api_key=api_key,
+            client=client,
+        )
+    return gid, name, columns, rows, error
+
+
+def _load_sheet_tabs_parallel(
+    *,
+    spreadsheet_id: str,
+    sheet_tabs: list[dict[str, str]],
+    api_key: str,
+) -> tuple[list[ProductStatusSheetOut], list[str]]:
+    if not sheet_tabs:
+        return [], []
+
+    if len(sheet_tabs) == 1:
+        tab = sheet_tabs[0]
+        gid, name, columns, rows, error = _load_sheet_tab_isolated(
+            spreadsheet_id=spreadsheet_id,
+            gid=tab["gid"],
+            name=tab["name"],
+            api_key=api_key,
+        )
+        load_errors = [error] if error else []
+        if not columns:
+            return [], load_errors
+        return [
+            ProductStatusSheetOut(
+                gid=gid,
+                name=name,
+                columns=columns,
+                rows=rows,
+                totalShown=len(rows),
+            )
+        ], load_errors
+
+    loaded_by_gid: dict[str, tuple[list[str], list[dict[str, str]], str | None]] = {}
+    load_errors: list[str] = []
+    max_workers = min(len(sheet_tabs), 6)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(
+                _load_sheet_tab_isolated,
+                spreadsheet_id=spreadsheet_id,
+                gid=tab["gid"],
+                name=tab["name"],
+                api_key=api_key,
+            ): tab
+            for tab in sheet_tabs
+        }
+        for future in as_completed(futures):
+            gid, name, columns, rows, error = future.result()
+            loaded_by_gid[gid] = (columns, rows, error)
+            if error:
+                load_errors.append(error)
+
+    sheets: list[ProductStatusSheetOut] = []
+    for tab in sheet_tabs:
+        gid = tab["gid"]
+        name = tab["name"]
+        columns, rows, error = loaded_by_gid.get(gid, ([], [], None))
+        if not columns:
+            continue
+        sheets.append(
+            ProductStatusSheetOut(
+                gid=gid,
+                name=name,
+                columns=columns,
+                rows=rows,
+                totalShown=len(rows),
+            )
+        )
+    return sheets, load_errors
+
+
 def _load_sheet_tab(
     *,
     spreadsheet_id: str,
@@ -338,8 +484,16 @@ def load_google_sheets_workbook(
     source: GoogleSheetsWorkbookSource,
     *,
     presentation_reference_url: str | None = None,
+    gid: str | None = None,
+    meta_only: bool = False,
+    use_cache: bool = True,
 ) -> ProductStatusB2BOut:
     spreadsheet_id = _spreadsheet_id_from_source(source)
+
+    if use_cache:
+        cached = _workbook_from_cache(spreadsheet_id, gid=gid, meta_only=meta_only)
+        if cached is not None:
+            return cached
 
     try:
         with _google_http_client() as client:
@@ -353,34 +507,86 @@ def load_google_sheets_workbook(
                     ),
                 )
 
-            sheets: list[ProductStatusSheetOut] = []
-            load_errors: list[str] = []
-            api_key = normalize_google_sheets_api_key(settings.google_sheets_api_key)
-
-            for tab in sheet_tabs:
-                gid = tab["gid"]
-                name = tab["name"]
-                columns, rows, error = _load_sheet_tab(
-                    spreadsheet_id=spreadsheet_id,
-                    gid=gid,
-                    name=name,
-                    api_key=api_key,
-                    client=client,
+            public_url = source.sheet_public_url.strip() or None
+            if meta_only:
+                payload = ProductStatusB2BOut(
+                    title=source.title,
+                    sourceUrl=public_url,
+                    presentationReferenceUrl=presentation_reference_url,
+                    sheets=[_empty_sheet_tab(tab) for tab in sheet_tabs],
                 )
-                if error:
-                    load_errors.append(error)
-                if not columns:
-                    continue
-
-                sheets.append(
-                    ProductStatusSheetOut(
-                        gid=gid,
-                        name=name,
-                        columns=columns,
-                        rows=rows,
-                        totalShown=len(rows),
+                if use_cache:
+                    _store_workbook_cache(
+                        spreadsheet_id,
+                        gid=None,
+                        meta_only=True,
+                        payload=payload,
                     )
+                return payload
+
+            api_key = normalize_google_sheets_api_key(settings.google_sheets_api_key)
+            tabs_to_load = sheet_tabs
+            if gid:
+                tabs_to_load = [tab for tab in sheet_tabs if tab["gid"] == gid]
+                if not tabs_to_load:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Лист с gid={gid} не найден.",
+                    )
+
+            loaded_sheets, load_errors = _load_sheet_tabs_parallel(
+                spreadsheet_id=spreadsheet_id,
+                sheet_tabs=tabs_to_load,
+                api_key=api_key,
+            )
+
+            if gid:
+                loaded = loaded_sheets[0] if loaded_sheets else None
+                if loaded is None:
+                    sample = "; ".join(load_errors[:3]) if load_errors else "нет данных"
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Не удалось загрузить лист gid={gid}. {sample}",
+                    )
+                sheets = [
+                    loaded if tab["gid"] == gid else _empty_sheet_tab(tab)
+                    for tab in sheet_tabs
+                ]
+            else:
+                sheets = loaded_sheets
+                if not sheets:
+                    hint = (
+                        "Проверьте доступ сервера к docs.google.com "
+                        "(curl export?format=csv) и настройки Google Sheets в .env."
+                    )
+                    if load_errors:
+                        sample = "; ".join(load_errors[:3])
+                        raise HTTPException(
+                            status_code=502,
+                            detail=(
+                                "Не удалось загрузить ни одного листа Google Sheets. "
+                                f"Ошибки: {sample}. {hint}"
+                            ),
+                        )
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Не удалось загрузить ни одного листа Google Sheets. {hint}",
+                    )
+
+            payload = ProductStatusB2BOut(
+                title=source.title,
+                sourceUrl=public_url,
+                presentationReferenceUrl=presentation_reference_url,
+                sheets=sheets,
+            )
+            if use_cache:
+                _store_workbook_cache(
+                    spreadsheet_id,
+                    gid=gid,
+                    meta_only=False,
+                    payload=payload,
                 )
+            return payload
     except json.JSONDecodeError as exc:
         raise HTTPException(
             status_code=500,
@@ -392,30 +598,3 @@ def load_google_sheets_workbook(
             status_code=502,
             detail=f"Не удалось загрузить таблицу «{source.title}».",
         ) from exc
-
-    if not sheets:
-        hint = (
-            "Проверьте доступ сервера к docs.google.com "
-            "(curl export?format=csv) и настройки Google Sheets в .env."
-        )
-        if load_errors:
-            sample = "; ".join(load_errors[:3])
-            raise HTTPException(
-                status_code=502,
-                detail=(
-                    "Не удалось загрузить ни одного листа Google Sheets. "
-                    f"Ошибки: {sample}. {hint}"
-                ),
-            )
-        raise HTTPException(
-            status_code=502,
-            detail=f"Не удалось загрузить ни одного листа Google Sheets. {hint}",
-        )
-
-    public_url = source.sheet_public_url.strip() or None
-    return ProductStatusB2BOut(
-        title=source.title,
-        sourceUrl=public_url,
-        presentationReferenceUrl=presentation_reference_url,
-        sheets=sheets,
-    )

@@ -62,7 +62,7 @@ export default function ProductStatusB2B() {
 
   return (
     <>
-      <div hidden={panel !== 'status'}>
+      {panel === 'status' ? (
         <ProductStatusWorkbook
           apiBase="/api/product-status/b2b"
           defaultTitle="Статус продукта B2B"
@@ -73,17 +73,19 @@ export default function ProductStatusB2B() {
           excelFilename="status-produkta-b2b.xlsx"
           presentationFilename="status-produkta-b2b.pptx"
           headerTitle={renderTitleSwitcher()}
+          lazySheets
         />
-      </div>
-      <div hidden={panel !== 'news'}>
+      ) : null}
+      {panel === 'news' ? (
         <ProductStatusWorkbook
           apiBase="/api/b2b-news"
           defaultTitle="Новости и запуски"
           loadGid={loadB2bNewsGid}
           saveGid={saveB2bNewsGid}
           headerTitle={renderTitleSwitcher()}
+          lazySheets
         />
-      </div>
+      ) : null}
     </>
   )
 }

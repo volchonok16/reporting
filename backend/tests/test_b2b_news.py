@@ -53,4 +53,4 @@ def test_load_b2b_news_uses_settings(monkeypatch) -> None:
     assert payload.title == "Новости и запуски"
     assert captured["spreadsheet_id"] == "news-spreadsheet"
     assert captured["public_url"] == "https://example.com/news"
-    assert captured["kwargs"] == {}
+    assert captured["kwargs"] == {"gid": None, "meta_only": False, "use_cache": True}

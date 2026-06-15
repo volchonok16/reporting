@@ -60,16 +60,24 @@ def test_normalize_title() -> None:
 
 def test_section_name_for_sheet() -> None:
     assert _section_name_for_sheet("Продуктовый офис: SMS") == "SMS"
+    assert _section_name_for_sheet("Офис: SMS") == "SMS"
     assert _section_name_for_sheet("Продуктовый офис: VOICE") == "Voice"
+    assert _section_name_for_sheet("Офис: VOICE") == "Voice"
 
 
 def test_template_index_for_sheet_colors() -> None:
     assert _template_index_for_sheet("Продуктовый офис: CORE") == 3
+    assert _template_index_for_sheet("Офис: CORE") == 3
     assert _template_index_for_sheet("Продуктовый офис: M2M / IoT") == 4
+    assert _template_index_for_sheet("Офис: M2M / IoT") == 4
     assert _template_index_for_sheet("Продуктовый офис: SMS") == 5
+    assert _template_index_for_sheet("Офис: SMS") == 5
     assert _template_index_for_sheet("Продуктовый офис: VOICE") == 6
+    assert _template_index_for_sheet("Офис: VOICE") == 6
     assert _template_index_for_sheet("Продуктовый офис: Перспективные продукты") == 7
+    assert _template_index_for_sheet("Офис: Перспективные продукты") == 7
     assert _template_index_for_sheet("Продуктовый офис: Продуктовый маркетинг") == 3
+    assert _template_index_for_sheet("Офис: Продуктовый маркетинг") == 3
 
 
 def test_mapped_columns_falls_back_to_column_order() -> None:

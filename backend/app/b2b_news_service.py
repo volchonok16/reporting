@@ -15,5 +15,15 @@ def _b2b_news_source() -> GoogleSheetsWorkbookSource:
     )
 
 
-def load_b2b_news() -> ProductStatusB2BOut:
-    return load_google_sheets_workbook(_b2b_news_source())
+def load_b2b_news(
+    *,
+    gid: str | None = None,
+    meta_only: bool = False,
+    use_cache: bool = True,
+) -> ProductStatusB2BOut:
+    return load_google_sheets_workbook(
+        _b2b_news_source(),
+        gid=gid,
+        meta_only=meta_only,
+        use_cache=use_cache,
+    )

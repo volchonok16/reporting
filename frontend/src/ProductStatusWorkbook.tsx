@@ -3,7 +3,7 @@ import { getJson, apiFetch, postJson, readApiError } from './api'
 import ProductStatusCell, { type ProductStatusCellHandle } from './ProductStatusCell'
 import ProductStatusFormatToolbar from './ProductStatusFormatToolbar'
 import { collectZniNumbers, isZniColumn, parseZniNumber } from './productStatusZni'
-import type { CellStyle, TextStyleSegment } from './productStatusRichText'
+import { displayCellText, type CellStyle, type TextStyleSegment } from './productStatusRichText'
 import ZniDetailModal from './ZniDetailModal'
 import type { ChangeRequest, TaskLookupResponse } from './zniTypes'
 
@@ -39,6 +39,15 @@ export type ProductStatusWorkbookConfig = {
   enableExcelExport?: boolean
   presentationFilename?: string
   excelFilename?: string
+  lazySheets?: boolean
+}
+
+function cloneSheet(sheet: ProductStatusSheet): ProductStatusSheet {
+  return {
+    ...sheet,
+    columns: [...sheet.columns],
+    rows: sheet.rows.map((row) => ({ ...row })),
+  }
 }
 
 function cloneSheets(sheets: ProductStatusSheet[]): ProductStatusSheet[] {
@@ -78,7 +87,7 @@ function isPresentationFlagColumn(column: string): boolean {
 
 function isAttentionColumn(column: string): boolean {
   const key = column.trim().toLowerCase()
-  return key.includes('обратить вниман')
+  return key.includes('обратить') && key.includes('вним')
 }
 
 function resolveColumnClass(column: string): string | undefined {
@@ -98,8 +107,12 @@ function isBooleanColumn(column: string): boolean {
   return isPresentationFlagColumn(column) || isAttentionColumn(column)
 }
 
+function booleanCellValue(value: string): string {
+  return displayCellText(value).trim()
+}
+
 function isYesValue(value: string): boolean {
-  const normalized = value.trim().toLowerCase()
+  const normalized = booleanCellValue(value).toLowerCase()
   if (normalized === 'нет' || normalized === 'no' || normalized === '0' || normalized === 'false') {
     return false
   }
@@ -122,6 +135,7 @@ export default function ProductStatusWorkbook({
   enableExcelExport = false,
   presentationFilename = 'workbook.pptx',
   excelFilename = 'workbook.xlsx',
+  lazySheets = false,
 }: ProductStatusWorkbookConfig) {
   const isSection = variant === 'section'
   const RootTag = isSection ? 'section' : 'div'
@@ -140,32 +154,114 @@ export default function ProductStatusWorkbook({
   const [error, setError] = useState<string | null>(null)
   const [zniLookup, setZniLookup] = useState<Record<string, ChangeRequest>>({})
   const [zniModalItem, setZniModalItem] = useState<ChangeRequest | null>(null)
+  const [loadedGids, setLoadedGids] = useState<Set<string>>(() => new Set())
+  const [sheetLoadingGid, setSheetLoadingGid] = useState<string | null>(null)
   const activeCellRef = useRef<ProductStatusCellHandle | null>(null)
 
-  const loadData = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const payload = await getJson<ProductStatusData>(apiBase)
-      setData(payload)
-      setSheets(cloneSheets(payload.sheets))
-      setDirty(false)
-      setActiveGid((current) => {
-        const savedGid = loadGid()
-        if (savedGid && payload.sheets.some((sheet) => sheet.gid === savedGid)) {
-          return savedGid
+  const loadSheetData = useCallback(
+    async (gid: string, options?: { refresh?: boolean }) => {
+      const params = new URLSearchParams({ gid })
+      if (options?.refresh) {
+        params.set('refresh', 'true')
+      }
+      const payload = await getJson<ProductStatusData>(`${apiBase}?${params}`)
+      const sheet = payload.sheets.find((item) => item.gid === gid && item.columns.length > 0)
+      if (!sheet) {
+        throw new Error('Лист пустой или не удалось загрузить данные')
+      }
+      setSheets((current) => current.map((item) => (item.gid === gid ? cloneSheet(sheet) : item)))
+      setLoadedGids((current) => new Set(current).add(gid))
+      setData((current) => ({
+        title: payload.title ?? current?.title ?? defaultTitle,
+        sourceUrl: payload.sourceUrl ?? current?.sourceUrl,
+        presentationReferenceUrl:
+          payload.presentationReferenceUrl ?? current?.presentationReferenceUrl,
+        sheets: current?.sheets ?? payload.sheets,
+      }))
+    },
+    [apiBase, defaultTitle],
+  )
+
+  const ensureSheetLoaded = useCallback(
+    async (gid: string, options?: { refresh?: boolean }) => {
+      const existing = sheets.find((sheet) => sheet.gid === gid)
+      if (!options?.refresh && loadedGids.has(gid) && existing && existing.columns.length > 0) {
+        return
+      }
+      setSheetLoadingGid(gid)
+      setError(null)
+      try {
+        await loadSheetData(gid, options)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Ошибка загрузки листа')
+      } finally {
+        setSheetLoadingGid((current) => (current === gid ? null : current))
+      }
+    },
+    [loadSheetData, loadedGids, sheets],
+  )
+
+  const loadData = useCallback(
+    async (options?: { refresh?: boolean }) => {
+      setLoading(true)
+      setError(null)
+      try {
+        if (lazySheets) {
+          const params = new URLSearchParams({ meta_only: 'true' })
+          if (options?.refresh) {
+            params.set('refresh', 'true')
+          }
+          const meta = await getJson<ProductStatusData>(`${apiBase}?${params}`)
+          setData(meta)
+          setSheets(cloneSheets(meta.sheets))
+          setLoadedGids(new Set())
+          setDirty(false)
+
+          const savedGid = loadGid()
+          const initialGid =
+            savedGid && meta.sheets.some((sheet) => sheet.gid === savedGid)
+              ? savedGid
+              : meta.sheets[0]?.gid ?? null
+          setActiveGid(initialGid)
+          setLoading(false)
+
+          if (initialGid) {
+            setSheetLoadingGid(initialGid)
+            try {
+              await loadSheetData(initialGid, options)
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Ошибка загрузки листа')
+            } finally {
+              setSheetLoadingGid(null)
+            }
+          }
+          return
         }
-        if (current && payload.sheets.some((sheet) => sheet.gid === current)) {
-          return current
-        }
-        return payload.sheets[0]?.gid ?? null
-      })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка загрузки')
-    } finally {
-      setLoading(false)
-    }
-  }, [apiBase, loadGid])
+
+        const url = options?.refresh ? `${apiBase}?refresh=true` : apiBase
+        const payload = await getJson<ProductStatusData>(url)
+        setData(payload)
+        setSheets(cloneSheets(payload.sheets))
+        setLoadedGids(new Set(payload.sheets.map((sheet) => sheet.gid)))
+        setDirty(false)
+        setActiveGid((current) => {
+          const savedGid = loadGid()
+          if (savedGid && payload.sheets.some((sheet) => sheet.gid === savedGid)) {
+            return savedGid
+          }
+          if (current && payload.sheets.some((sheet) => sheet.gid === current)) {
+            return current
+          }
+          return payload.sheets[0]?.gid ?? null
+        })
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Ошибка загрузки')
+      } finally {
+        setLoading(false)
+      }
+    },
+    [apiBase, lazySheets, loadGid, loadSheetData],
+  )
 
   const handleSave = useCallback(async () => {
     if (sheets.length === 0) return
@@ -193,11 +289,16 @@ export default function ProductStatusWorkbook({
     setExportingPresentation(true)
     setError(null)
     try {
-      const response = await apiFetch(`${apiBase}/presentation`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildPayload(data, sheets, defaultTitle)),
-      })
+      const response = await apiFetch(
+        `${apiBase}/presentation`,
+        lazySheets
+          ? undefined
+          : {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(buildPayload(data, sheets, defaultTitle)),
+            },
+      )
       if (!response.ok) {
         throw new Error(await readApiError(response))
       }
@@ -211,18 +312,23 @@ export default function ProductStatusWorkbook({
     } finally {
       setExportingPresentation(false)
     }
-  }, [apiBase, data, defaultTitle, enablePresentationExport, presentationFilename, sheets])
+  }, [apiBase, data, defaultTitle, enablePresentationExport, lazySheets, presentationFilename, sheets])
 
   const handleExportExcel = useCallback(async () => {
     if (!enableExcelExport || sheets.length === 0) return
     setExportingExcel(true)
     setError(null)
     try {
-      const response = await apiFetch(`${apiBase}/excel`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildPayload(data, sheets, defaultTitle)),
-      })
+      const response = await apiFetch(
+        `${apiBase}/excel`,
+        lazySheets
+          ? undefined
+          : {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(buildPayload(data, sheets, defaultTitle)),
+            },
+      )
       if (!response.ok) {
         throw new Error(await readApiError(response))
       }
@@ -236,7 +342,7 @@ export default function ProductStatusWorkbook({
     } finally {
       setExportingExcel(false)
     }
-  }, [apiBase, data, defaultTitle, enableExcelExport, excelFilename, sheets])
+  }, [apiBase, data, defaultTitle, enableExcelExport, excelFilename, lazySheets, sheets])
 
   const updateCell = useCallback((gid: string, rowIndex: number, column: string, value: string) => {
     setDirty(true)
@@ -293,7 +399,7 @@ export default function ProductStatusWorkbook({
     if (dirty && !window.confirm('Есть несохранённые изменения. Обновить из Google Sheets?')) {
       return
     }
-    void loadData()
+    void loadData({ refresh: true })
   }, [dirty, loadData])
 
   useEffect(() => {
@@ -316,38 +422,41 @@ export default function ProductStatusWorkbook({
     [activeSheet],
   )
 
+  const zniNumbersKey = useMemo(() => {
+    if (!activeSheet || !zniColumn) return ''
+    return collectZniNumbers(activeSheet.rows, zniColumn).join(',')
+  }, [activeSheet, zniColumn])
+
   useEffect(() => {
-    if (!activeSheet || !zniColumn) {
+    if (!zniNumbersKey) {
       setZniLookup({})
       return
     }
 
-    const numbers = collectZniNumbers(activeSheet.rows, zniColumn)
-    if (numbers.length === 0) {
-      setZniLookup({})
-      return
-    }
-
+    const numbers = zniNumbersKey.split(',').filter(Boolean)
     let cancelled = false
-    void postJson<TaskLookupResponse>('/api/tasks/lookup', { numbers })
-      .then((payload) => {
-        if (cancelled) return
-        const next: Record<string, ChangeRequest> = {}
-        for (const item of payload.items) {
-          next[item.number] = item
-        }
-        setZniLookup(next)
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setZniLookup({})
-        }
-      })
+    const timer = window.setTimeout(() => {
+      void postJson<TaskLookupResponse>('/api/tasks/lookup', { numbers })
+        .then((payload) => {
+          if (cancelled) return
+          const next: Record<string, ChangeRequest> = {}
+          for (const item of payload.items) {
+            next[item.number] = item
+          }
+          setZniLookup(next)
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setZniLookup({})
+          }
+        })
+    }, 300)
 
     return () => {
       cancelled = true
+      window.clearTimeout(timer)
     }
-  }, [activeSheet, zniColumn])
+  }, [zniNumbersKey])
 
   const openZniModal = useCallback((item: ChangeRequest) => {
     setZniModalItem(item)
@@ -358,7 +467,9 @@ export default function ProductStatusWorkbook({
   }, [])
 
   const exporting = exportingPresentation || exportingExcel
-  const busy = loading || saving || exporting
+  const sheetLoading = sheetLoadingGid !== null
+  const busy = loading || sheetLoading || saving || exporting
+  const activeSheetReady = Boolean(activeSheet && activeSheet.columns.length > 0)
 
   const applyTextStyle = useCallback((patch: Partial<TextStyleSegment>) => {
     activeCellRef.current?.applyTextStyle(patch)
@@ -448,7 +559,12 @@ export default function ProductStatusWorkbook({
               className={`product-status-sheet-tab${
                 activeSheet?.gid === sheet.gid ? ' product-status-sheet-tab-active' : ''
               }`}
-              onClick={() => setActiveGid(sheet.gid)}
+              onClick={() => {
+                setActiveGid(sheet.gid)
+                if (lazySheets) {
+                  void ensureSheetLoaded(sheet.gid)
+                }
+              }}
               aria-selected={activeSheet?.gid === sheet.gid}
             >
               {sheet.name}
@@ -478,14 +594,14 @@ export default function ProductStatusWorkbook({
             ) : (
               <>Показано строк 0</>
             )}
-            {loading ? ' · загрузка…' : ''}
+            {loading || sheetLoading ? ' · загрузка…' : ''}
           </p>
           <div className="product-status-table-toolbar-actions">
             <button
               type="button"
               className="btn-secondary"
               onClick={addRow}
-              disabled={busy || !activeSheet}
+              disabled={busy || !activeSheetReady}
             >
               + Строка
             </button>
@@ -493,7 +609,7 @@ export default function ProductStatusWorkbook({
               type="button"
               className="btn-secondary"
               onClick={addColumn}
-              disabled={busy || !activeSheet}
+              disabled={busy || !activeSheetReady}
             >
               + Столбец
             </button>
@@ -511,7 +627,17 @@ export default function ProductStatusWorkbook({
                 <thead>
                   <tr>
                     {activeSheet.columns.map((column) => (
-                      <th key={column}>{column}</th>
+                      <th
+                        key={column}
+                        className={[
+                          resolveColumnClass(column),
+                          isBooleanColumn(column) ? 'product-status-bool-header' : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                      >
+                        {column}
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -611,7 +737,7 @@ export default function ProductStatusWorkbook({
                   ))}
                 </tbody>
               </table>
-            ) : loading ? (
+            ) : loading || sheetLoading ? (
               <div className="table-empty">Загрузка…</div>
             ) : (
               <div className="table-empty">Нет данных в таблице.</div>

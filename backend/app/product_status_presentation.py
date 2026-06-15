@@ -80,13 +80,14 @@ _CNVPR_TAGS = (
 )
 
 # 0-based индексы слайдов-образцов в Status.pptx (слайд 4 = индекс 3).
+# Ключ — часть названия листа после «:» (префикс «Офис» / «Продуктовый офис» не важен).
 _SHEET_TEMPLATE_INDEX: dict[str, int] = {
-    "продуктовый офис: core": 3,
-    "продуктовый офис: m2m / iot": 4,
-    "продуктовый офис: sms": 5,
-    "продуктовый офис: voice": 6,
-    "продуктовый офис: перспективные продукты": 7,
-    "продуктовый офис: продуктовый маркетинг": 3,
+    "core": 3,
+    "m2m / iot": 4,
+    "sms": 5,
+    "voice": 6,
+    "перспективные продукты": 7,
+    "продуктовый маркетинг": 3,
 }
 
 # Совместимость со старыми тестами/импортами.
@@ -133,8 +134,7 @@ class TemplateCatalog:
         return cls(title_slide_index=0, templates=templates)
 
     def match(self, sheet_name: str) -> list[ContentSlideTemplate]:
-        key = _normalize_title(sheet_name)
-        index = _SHEET_TEMPLATE_INDEX.get(key, 3)
+        index = _template_index_for_sheet(sheet_name)
         return [ContentSlideTemplate(index=index, title=sheet_name)]
 
     def template_pool(self, sheet_name: str) -> list[ContentSlideTemplate]:
@@ -155,6 +155,12 @@ class TemplateCatalog:
 
 def _normalize_title(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip().casefold())
+
+
+def _sheet_section_key(sheet_name: str) -> str:
+    """Нормализованная часть названия листа после двоеточия."""
+    short = sheet_name.split(":", 1)[1].strip() if ":" in sheet_name else sheet_name.strip()
+    return _normalize_title(short)
 
 
 def _looks_like_url(value: str) -> bool:
@@ -232,7 +238,7 @@ def _template_path() -> Path:
 
 
 def _template_index_for_sheet(sheet_name: str) -> int:
-    return _SHEET_TEMPLATE_INDEX.get(_normalize_title(sheet_name), 3)
+    return _SHEET_TEMPLATE_INDEX.get(_sheet_section_key(sheet_name), 3)
 
 
 def _section_name_for_sheet(sheet_name: str) -> str:
@@ -266,7 +272,7 @@ def _is_presentation_internal_column(column: str) -> bool:
         return True
     if re.search(PRESENTATION_FLAG_PATTERN, key):
         return True
-    if re.search(r"обратить вниман", key):
+    if re.search(r"обратить.*вним", key):
         return True
     if re.search(FULL_DESCRIPTION_PATTERN, key):
         return True
