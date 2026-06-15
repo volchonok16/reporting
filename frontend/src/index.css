@@ -1199,6 +1199,18 @@ body {
   table-layout: fixed;
 }
 
+.product-status-table col.col-zni {
+  width: 52px;
+}
+
+.product-status-table col.col-presentation-flag {
+  width: 76px;
+}
+
+.product-status-table col.col-attention {
+  width: 96px;
+}
+
 .product-status-table col.col-date {
   width: 80px;
 }
@@ -1215,8 +1227,9 @@ body {
   width: 30%;
 }
 
+.product-status-table col.col-description,
 .product-status-table col.col-why {
-  width: 26%;
+  width: 220px;
 }
 
 .product-status-table thead th {

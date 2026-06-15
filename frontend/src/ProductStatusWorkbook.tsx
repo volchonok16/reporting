@@ -71,9 +71,13 @@ function buildPayload(data: ProductStatusData | null, sheets: ProductStatusSheet
 
 function resolveColumnClass(column: string): string | undefined {
   const key = column.trim().toLowerCase()
+  if (key === 'зни') return 'col-zni'
+  if (key.includes('идет в презентацию')) return 'col-presentation-flag'
+  if (key.includes('обратить внимание')) return 'col-attention'
   if (key === 'дата' || key.startsWith('дата')) return 'col-date'
   if (key === 'новость') return 'col-news'
   if (key === 'проект') return 'col-project'
+  if (key.includes('полное описание') || key.includes('для презентации')) return 'col-description'
   if (key.includes('описание')) return 'col-description'
   if (key.includes('зачем')) return 'col-why'
   return undefined
@@ -441,14 +445,17 @@ export default function ProductStatusWorkbook({
                       {activeSheet.columns.map((column, columnIndex) => {
                         const isActive =
                           activeCell?.rowIndex === rowIndex && activeCell.column === column
+                        const colClass = resolveColumnClass(column)
                         return (
                           <td
                             key={`${rowIndex}-${column}`}
-                            className={
-                              columnIndex === 1
-                                ? 'cell-project product-status-multiline'
-                                : 'product-status-multiline'
-                            }
+                            className={[
+                              colClass,
+                              columnIndex === 1 ? 'cell-project' : '',
+                              'product-status-multiline',
+                            ]
+                              .filter(Boolean)
+                              .join(' ')}
                           >
                             <ProductStatusCell
                               ref={(handle) => {

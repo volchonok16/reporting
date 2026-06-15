@@ -41,6 +41,11 @@ MARKET_NEWS_MARKERS = ("<$date>", "<$news>", "<$description>")
 FIXED_SLIDE_COUNT = 3
 COLUMN_COUNT = 4
 WHY_COLUMN_INDEX = 3
+DESCRIPTION_SLOT_INDEX = 2
+DESCRIPTION_HEADER = "Описание проекта и статус"
+PRESENTATION_FLAG_PATTERN = r"идет в презентацию"
+PRESENTATION_DESCRIPTION_PATTERN = r"для презентации"
+FULL_DESCRIPTION_PATTERN = r"полное описание"
 
 TABLE_FONT_NAME = "T2 Rooftop"
 TITLE_FONT_NAME = "T2 Halvar Breit ExtraBold"
@@ -255,29 +260,43 @@ def _find_column(
     return ""
 
 
+def _is_presentation_internal_column(column: str) -> bool:
+    key = column.strip().casefold()
+    if key == "зни":
+        return True
+    if re.search(PRESENTATION_FLAG_PATTERN, key):
+        return True
+    if re.search(r"обратить внимание", key):
+        return True
+    if re.search(FULL_DESCRIPTION_PATTERN, key):
+        return True
+    return False
+
+
+def _description_value_column(columns: list[str]) -> str:
+    presentation_col = _find_column(columns, PRESENTATION_DESCRIPTION_PATTERN)
+    if presentation_col:
+        return presentation_col
+
+    excluded = {column for column in columns if _is_presentation_internal_column(column)}
+    excluded.update(
+        column
+        for column in columns
+        if re.search(PRESENTATION_DESCRIPTION_PATTERN, column.strip(), re.IGNORECASE)
+    )
+    return _find_column(columns, r"Описание", exclude=excluded)
+
+
 def _mapped_columns(columns: list[str]) -> list[str]:
-    slot_patterns = [
-        (r"^Дата", r"Дата"),
-        (r"^Проект", r"Проект"),
-        (r"Описание",),
-        (r"Зачем",),
-    ]
     usable = [column.strip() for column in columns if column.strip()]
-    mapped: list[str] = []
-    used: set[str] = set()
+    mapped = [
+        _find_column(columns, r"^Дата"),
+        _find_column(columns, r"^Проект"),
+        _description_value_column(columns),
+        _find_column(columns, r"Зачем"),
+    ]
 
-    for patterns in slot_patterns:
-        found = ""
-        for pattern in patterns:
-            found = _find_column(columns, pattern, exclude=used)
-            if found:
-                break
-        if found:
-            mapped.append(found)
-            used.add(found)
-        else:
-            mapped.append("")
-
+    used = {column for column in mapped if column}
     remaining = [column for column in usable if column not in used]
     for index, column_name in enumerate(mapped):
         if column_name or not remaining:
@@ -286,6 +305,52 @@ def _mapped_columns(columns: list[str]) -> list[str]:
         used.add(mapped[index])
 
     return mapped
+
+
+def _presentation_headers(columns: list[str]) -> list[str]:
+    mapped = _mapped_columns(columns)
+    defaults = ("Дата запуска", "Проект", DESCRIPTION_HEADER, "Зачем и для чего делаем")
+    headers: list[str] = []
+    for index, (column_name, default_name) in enumerate(zip(mapped, defaults, strict=True)):
+        if index == DESCRIPTION_SLOT_INDEX:
+            headers.append(DESCRIPTION_HEADER)
+        else:
+            headers.append(column_name or default_name)
+    return headers
+
+
+def _filter_presentation_rows(
+    rows: list[dict[str, str]],
+    columns: list[str],
+) -> list[dict[str, str]]:
+    flag_column = _find_column(columns, PRESENTATION_FLAG_PATTERN)
+    if not flag_column:
+        return list(rows)
+    return [
+        row
+        for row in rows
+        if (row.get(flag_column, "") or "").strip().casefold() == "да"
+    ]
+
+
+def _slide_notes_text(rows: list[dict[str, str]], columns: list[str]) -> str:
+    full_column = _find_column(columns, FULL_DESCRIPTION_PATTERN)
+    project_column = _find_column(columns, r"^Проект")
+    if not full_column:
+        return ""
+
+    blocks: list[str] = []
+    for row in rows:
+        text = display_cell_text(row.get(full_column, "")).strip()
+        if not text:
+            continue
+        project = (
+            display_cell_text(row.get(project_column, "")).strip()
+            if project_column
+            else ""
+        )
+        blocks.append(f"{project}\n{text}" if project else text)
+    return "\n\n—\n\n".join(blocks)
 
 
 def _row_values(row: dict[str, str], columns: list[str], col_count: int) -> list[str]:
@@ -857,7 +922,7 @@ def _fill_content_slide(
     if body_shape is None:
         return
 
-    mapped_headers = _mapped_columns(columns)
+    mapped_headers = _presentation_headers(columns)
     data_rows = len(rows)
     table_shape = slide.shapes.add_table(
         data_rows + 1,
@@ -882,6 +947,12 @@ def _fill_content_slide(
     _apply_table_grid(table)
     _layout_table_rows(table, rows, columns, body_shape.height)
 
+    notes_text = _slide_notes_text(rows, columns)
+    if notes_text:
+        notes_frame = slide.notes_slide.notes_text_frame
+        notes_frame.clear()
+        notes_frame.text = notes_text
+
 
 def _build_slide_specs(
     data: ProductStatusB2BOut,
@@ -889,7 +960,10 @@ def _build_slide_specs(
 ) -> list[tuple[ProductStatusSheetOut, ContentSlideTemplate, list[dict[str, str]]]]:
     specs: list[tuple[ProductStatusSheetOut, ContentSlideTemplate, list[dict[str, str]]]] = []
     for sheet in data.sheets:
-        for template, chunk in catalog.chunk_plan(sheet.name, sheet.rows, sheet.columns):
+        rows = _filter_presentation_rows(sheet.rows, sheet.columns)
+        if not rows:
+            continue
+        for template, chunk in catalog.chunk_plan(sheet.name, rows, sheet.columns):
             specs.append((sheet, template, chunk))
     return specs
 
