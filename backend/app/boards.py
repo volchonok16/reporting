@@ -79,6 +79,13 @@ BOARDS: list[BoardConfig] = [
         sync_tags=("b2b_product",),
     ),
     _tele2_digital_style_board(
+        code="reports",
+        name="Reports",
+        display_name="Reports",
+        area_path=r"Tele2\Reports\Team A",
+        sync_tags=("b2b_product",),
+    ),
+    _tele2_digital_style_board(
         code="b2b_product_core",
         name="B2B Product",
         display_name="CORE",

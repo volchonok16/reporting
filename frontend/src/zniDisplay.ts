@@ -3,6 +3,7 @@ import type { ChangeRequest } from './zniTypes'
 const BOARD_LABELS: Record<string, string> = {
   digital_streams_b2b: 'Digital',
   tele2_products: 'Продукты',
+  reports: 'Reports',
   b2b_product_core: 'CORE',
   b2b_product_partners: 'КАТС',
   b2b_voice_products: 'Голосовые продукты',

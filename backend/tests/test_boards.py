@@ -26,3 +26,12 @@ def test_tele2_products_board() -> None:
     assert board.display_name == "Продукты"
     assert board.area_path == r"Tele2\Продукты"
     assert board.sync_tags == ("b2b_product",)
+
+
+def test_reports_board() -> None:
+    boards = boards_for_sync("reports")
+    assert len(boards) == 1
+    board = boards[0]
+    assert board.display_name == "Reports"
+    assert board.area_path == r"Tele2\Reports\Team A"
+    assert board.sync_tags == ("b2b_product",)
