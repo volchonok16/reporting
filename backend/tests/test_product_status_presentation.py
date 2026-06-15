@@ -9,6 +9,7 @@ from pptx.util import Pt
 from app.product_status_presentation import (
     DATE_PLACEHOLDER,
     FIXED_SLIDE_COUNT,
+    MARKET_NEWS_SLIDE_INDEX,
     TABLE_FONT_SIZE,
     TABLE_FONT_SIZE_DENSE,
     TemplateCatalog,
@@ -17,6 +18,7 @@ from app.product_status_presentation import (
     _estimate_row_height,
     _estimate_text_lines,
     _mapped_columns,
+    _market_news_lines,
     _normalize_title,
     _row_values,
     _section_name_for_sheet,
@@ -143,6 +145,94 @@ def test_catalog_chunk_plan_keeps_sheet_order() -> None:
     chunks = catalog.chunk_plan("Продуктовый офис: CORE", rows, ["Дата запуска", "Проект", "Описание проекта", "Зачем и для чего делаем"])
     assert chunks[0][0].index == 3
     assert len(chunks[0][1]) == 1
+
+
+def test_market_news_lines_formats_rows() -> None:
+    sheet = ProductStatusSheetOut(
+        gid="0",
+        name="Новости",
+        columns=["Дата", "Новость", "Описание"],
+        rows=[
+            {"Дата": "08.06", "Новость": "МТС изменил тариф", "Описание": "Подробности"},
+            {"Дата": "", "Новость": "", "Описание": ""},
+            {"Дата": "09.06", "Новость": "Yota обновила планы", "Описание": "Стоимость выросла"},
+        ],
+        totalShown=3,
+    )
+    assert _market_news_lines(sheet) == [
+        "08.06 | МТС изменил тариф | Подробности",
+        "09.06 | Yota обновила планы | Стоимость выросла",
+    ]
+
+
+@patch("app.product_status_presentation.load_b2b_news")
+@patch("app.product_status_presentation.load_b2b_product_status")
+def test_generate_presentation_fills_market_news_slide(mock_load, mock_news) -> None:
+    mock_load.return_value = ProductStatusB2BOut(
+        title="Статус продукта B2B",
+        sheets=[
+            ProductStatusSheetOut(
+                gid="0",
+                name="Продуктовый офис: CORE",
+                columns=["Дата запуска", "Проект", "Описание проекта", "Зачем и для чего делаем"],
+                rows=[
+                    {
+                        "Дата запуска": "",
+                        "Проект": "CORE",
+                        "Описание проекта": "Перенос номеров",
+                        "Зачем и для чего делаем": "В работе",
+                    }
+                ],
+                totalShown=1,
+            )
+        ],
+    )
+    mock_news.return_value = ProductStatusB2BOut(
+        title="Новости и запуски",
+        sheets=[
+            ProductStatusSheetOut(
+                gid="0",
+                name="Новости",
+                columns=["Дата", "Новость", "Описание"],
+                rows=[
+                    {
+                        "Дата": "08.06",
+                        "Новость": "МТС изменил тариф",
+                        "Описание": "Подробности",
+                    },
+                    {
+                        "Дата": "09.06",
+                        "Новость": "Yota обновила планы",
+                        "Описание": "Стоимость выросла",
+                    },
+                ],
+                totalShown=2,
+            )
+        ],
+    )
+
+    content, _ = generate_b2b_product_status_presentation()
+    prs = Presentation(io.BytesIO(content))
+    slide = prs.slides[MARKET_NEWS_SLIDE_INDEX]
+    body_texts = [
+        shape.text_frame.text
+        for shape in slide.shapes
+        if shape.has_text_frame and shape.is_placeholder and shape.text_frame.text.strip()
+    ]
+    assert len(body_texts) == 1
+    assert "<$date>" not in body_texts[0]
+    assert "08.06 | МТС изменил тариф | Подробности" in body_texts[0]
+    assert "09.06 | Yota обновила планы | Стоимость выросла" in body_texts[0]
+
+    body_shape = next(
+        shape
+        for shape in slide.shapes
+        if shape.has_text_frame and shape.is_placeholder and shape.text_frame.text.strip()
+    )
+    paragraphs = [paragraph.text for paragraph in body_shape.text_frame.paragraphs if paragraph.text.strip()]
+    assert len(paragraphs) == 2
+    assert paragraphs[0] == "08.06 | МТС изменил тариф | Подробности"
+    assert paragraphs[1] == "09.06 | Yota обновила планы | Стоимость выросла"
 
 
 @patch("app.product_status_presentation.load_b2b_product_status")

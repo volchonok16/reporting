@@ -20,6 +20,7 @@ from pptx.oxml.ns import qn
 from pptx.oxml.xmlchemy import OxmlElement
 from pptx.util import Pt
 
+from app.b2b_news_service import load_b2b_news
 from app.config import settings
 from app.product_status_slides_template import fetch_google_slides_pptx
 from app.product_status_rich_text import (
@@ -35,6 +36,8 @@ logger = logging.getLogger(__name__)
 
 MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 DATE_PLACEHOLDER = "<%date>"
+MARKET_NEWS_SLIDE_INDEX = 1
+MARKET_NEWS_MARKERS = ("<$date>", "<$news>", "<$description>")
 FIXED_SLIDE_COUNT = 3
 COLUMN_COUNT = 4
 WHY_COLUMN_INDEX = 3
@@ -553,6 +556,95 @@ def _fill_date_slide(slide, generated_at: datetime) -> None:
         shape.text_frame.text = text.replace(DATE_PLACEHOLDER, formatted)
 
 
+def _find_body_with_markers(slide, *markers: str):
+    for shape in slide.shapes:
+        if not shape.has_text_frame:
+            continue
+        if not shape.is_placeholder:
+            continue
+        if shape.placeholder_format.type != PP_PLACEHOLDER.BODY:
+            continue
+        text = shape.text_frame.text
+        if any(marker in text for marker in markers):
+            return shape
+    return None
+
+
+def _capture_paragraph_font(paragraph) -> tuple[str | None, Pt | None, bool | None]:
+    for run in paragraph.runs:
+        if run.text.strip():
+            return run.font.name, run.font.size, run.font.bold
+    return None, None, None
+
+
+def _fill_body_lines(shape, lines: list[str]) -> None:
+    frame = shape.text_frame
+    font_name, font_size, font_bold = None, None, None
+    for paragraph in frame.paragraphs:
+        font_name, font_size, font_bold = _capture_paragraph_font(paragraph)
+        if font_name or font_size:
+            break
+
+    frame.clear()
+    frame.word_wrap = True
+    if not lines:
+        return
+
+    for line_index, line in enumerate(lines):
+        paragraph = frame.paragraphs[0] if line_index == 0 else frame.add_paragraph()
+        paragraph.alignment = PP_ALIGN.LEFT
+        run = paragraph.add_run()
+        run.text = line
+        if font_name:
+            run.font.name = font_name
+        if font_size:
+            run.font.size = font_size
+        if font_bold is not None:
+            run.font.bold = font_bold
+        run.font.color.rgb = TEXT_COLOR
+
+
+def _find_news_sheet(data: ProductStatusB2BOut) -> ProductStatusSheetOut | None:
+    for sheet in data.sheets:
+        if _normalize_title(sheet.name) == _normalize_title("Новости"):
+            return sheet
+    return data.sheets[0] if data.sheets else None
+
+
+def _market_news_lines(sheet: ProductStatusSheetOut) -> list[str]:
+    date_col = _find_column(sheet.columns, r"^Дата")
+    news_col = _find_column(sheet.columns, r"^Новость")
+    if not news_col:
+        news_col = _find_column(sheet.columns, r"^Проект")
+    desc_col = _find_column(sheet.columns, r"Описание")
+
+    lines: list[str] = []
+    for row in sheet.rows:
+        date = display_cell_text(row.get(date_col, "") if date_col else "").strip()
+        news = display_cell_text(row.get(news_col, "") if news_col else "").strip()
+        description = display_cell_text(row.get(desc_col, "") if desc_col else "").strip()
+        if not (date or news or description):
+            continue
+        lines.append(f"{date} | {news} | {description}")
+    return lines
+
+
+def _fill_market_news_slide(slide, sheet: ProductStatusSheetOut) -> None:
+    _clear_secondary_body_placeholders(slide)
+    body_shape = _find_body_with_markers(slide, *MARKET_NEWS_MARKERS) or _find_main_body_shape(slide)
+    if body_shape is None:
+        return
+    _fill_body_lines(body_shape, _market_news_lines(sheet))
+
+
+def _try_load_market_news_sheet() -> ProductStatusSheetOut | None:
+    try:
+        news_data = load_b2b_news()
+    except HTTPException:
+        return None
+    return _find_news_sheet(news_data)
+
+
 def _hex_to_rgb(color_hex: str) -> RGBColor:
     value = color_hex.upper().lstrip("#")
     return RGBColor(int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16))
@@ -741,6 +833,11 @@ def generate_b2b_product_status_presentation(
         )
 
     _fill_date_slide(prs.slides[0], generated_at)
+
+    if len(prs.slides) > MARKET_NEWS_SLIDE_INDEX:
+        news_sheet = _try_load_market_news_sheet()
+        if news_sheet is not None:
+            _fill_market_news_slide(prs.slides[MARKET_NEWS_SLIDE_INDEX], news_sheet)
 
     for sheet, template, chunk in specs:
         template_index = _template_index_for_sheet(sheet.name)
