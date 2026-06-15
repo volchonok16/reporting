@@ -266,7 +266,7 @@ def _is_presentation_internal_column(column: str) -> bool:
         return True
     if re.search(PRESENTATION_FLAG_PATTERN, key):
         return True
-    if re.search(r"обратить внимание", key):
+    if re.search(r"обратить вниман", key):
         return True
     if re.search(FULL_DESCRIPTION_PATTERN, key):
         return True
