@@ -16,18 +16,29 @@ def test_encoded_cell_to_google_with_highlight_and_cell_bg() -> None:
     cell = encoded_cell_to_google("<<cell:bg:C6EFCE>>$важно$<<>>")
     assert cell["userEnteredValue"] == {"stringValue": "важно"}
     assert cell["userEnteredFormat"]["backgroundColor"]["green"] > 0.9
-    runs = cell["textFormatRuns"]
-    assert runs[0]["startIndex"] == 0
-    assert runs[0]["format"]["backgroundColor"]["blue"] == 0.0
+    assert "textFormatRuns" not in cell
+
+
+def test_encoded_cell_to_google_promotes_full_cell_yellow_marker_to_cell_bg() -> None:
+    cell = encoded_cell_to_google("$важно$")
+    assert cell["userEnteredValue"] == {"stringValue": "важно"}
+    assert cell["userEnteredFormat"]["backgroundColor"]["red"] == 1.0
+    assert cell["userEnteredFormat"]["backgroundColor"]["green"] == 1.0
+    assert "textFormatRuns" not in cell
+
+
+def test_encoded_cell_to_google_partial_yellow_does_not_use_run_background() -> None:
+    cell = encoded_cell_to_google("Убираем $300 рублевые$ офферы")
+    assert cell["userEnteredValue"] == {"stringValue": "Убираем 300 рублевые офферы"}
+    assert "userEnteredFormat" not in cell
+    for run in cell.get("textFormatRuns") or []:
+        assert "backgroundColor" not in run.get("format", {})
 
 
 def test_segments_to_text_format_runs_mixed_plain_and_colored() -> None:
     segments = split_style_segments("Убираем $300 рублевые$ офферы")
     runs = segments_to_text_format_runs(segments)
-    assert runs is not None
-    assert runs[0] == {"startIndex": 0, "format": {}}
-    assert runs[1]["startIndex"] == 8
-    assert runs[1]["format"]["backgroundColor"]["red"] == 1.0
+    assert runs is None
 
 
 def test_sheet_grid_to_google_rows_includes_header() -> None:

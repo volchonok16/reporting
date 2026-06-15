@@ -152,6 +152,19 @@ def test_cell_highlight_colors_collects_unique_order() -> None:
     assert cell_highlight_colors("<<cell:bg:C6EFCE>>$жёлтый$<<>>") == ["C6EFCE", "FFFF00"]
 
 
+def test_resolve_boolean_colors_learns_from_column() -> None:
+    from app.product_status_rich_text import resolve_boolean_colors, styled_boolean_value
+
+    rows = [
+        {"Флаг": "<<cell:bg:C6EFCE>>да<<>>"},
+        {"Флаг": "<<cell:bg:F4CCCC>>нет<<>>"},
+    ]
+    yes_bg, no_bg = resolve_boolean_colors(rows, "Флаг")
+    assert yes_bg == "C6EFCE"
+    assert no_bg == "F4CCCC"
+    assert styled_boolean_value(False, yes_bg=yes_bg, no_bg=no_bg) == "<<cell:bg:F4CCCC>>нет<<>>"
+
+
 def test_cell_text_with_highlights_drops_yellow_cell_fill_for_colored_text() -> None:
     cell = {
         "effectiveValue": {"stringValue": "Контроль"},

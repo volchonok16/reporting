@@ -3,6 +3,11 @@ import { getJson, apiFetch, postJson, readApiError } from './api'
 import ProductStatusCell, { type ProductStatusCellHandle } from './ProductStatusCell'
 import ProductStatusFormatToolbar from './ProductStatusFormatToolbar'
 import { collectZniNumbers, isZniColumn, parseZniNumber } from './productStatusZni'
+import {
+  booleanCellBackground,
+  resolveBooleanColors,
+  styledBooleanValue,
+} from './productStatusBoolean'
 import { displayCellText, type CellStyle, type TextStyleSegment } from './productStatusRichText'
 import ZniDetailModal from './ZniDetailModal'
 import type { ChangeRequest, TaskLookupResponse } from './zniTypes'
@@ -117,10 +122,6 @@ function isYesValue(value: string): boolean {
     return false
   }
   return normalized === 'да' || normalized === 'yes' || normalized === '1' || normalized === 'true'
-}
-
-function yesValueFromChecked(checked: boolean): string {
-  return checked ? 'да' : 'нет'
 }
 
 export default function ProductStatusWorkbook({
@@ -417,6 +418,17 @@ export default function ProductStatusWorkbook({
     [activeGid, sheets],
   )
 
+  const booleanColorsByColumn = useMemo(() => {
+    if (!activeSheet) return {}
+    const map: Record<string, ReturnType<typeof resolveBooleanColors>> = {}
+    for (const column of activeSheet.columns) {
+      if (isBooleanColumn(column)) {
+        map[column] = resolveBooleanColors(activeSheet.rows, column)
+      }
+    }
+    return map
+  }, [activeSheet])
+
   const zniColumn = useMemo(
     () => activeSheet?.columns.find((column) => isZniColumn(column)) ?? null,
     [activeSheet],
@@ -644,35 +656,43 @@ export default function ProductStatusWorkbook({
                 <tbody>
                   {activeSheet.rows.map((row, rowIndex) => (
                     <tr key={`${activeSheet.gid}-${rowIndex}`}>
-                      {activeSheet.columns.map((column, columnIndex) => {
+                      {activeSheet.columns.map((column) => {
                         const isActive =
                           activeCell?.rowIndex === rowIndex && activeCell.column === column
                         const colClass = resolveColumnClass(column)
                         const cellClassName = [
                           colClass,
-                          columnIndex === 1 ? 'cell-project' : '',
                           isBooleanColumn(column) ? 'product-status-bool-cell' : 'product-status-multiline',
                         ]
                           .filter(Boolean)
                           .join(' ')
 
                         if (isBooleanColumn(column)) {
+                          const cellValue = row[column] ?? ''
+                          const cellBg = booleanCellBackground(cellValue)
                           return (
-                            <td key={`${rowIndex}-${column}`} className={cellClassName}>
+                            <td
+                              key={`${rowIndex}-${column}`}
+                              className={cellClassName}
+                              style={cellBg ? { backgroundColor: `#${cellBg}` } : undefined}
+                            >
                               <input
                                 type="checkbox"
                                 className="product-status-bool-checkbox"
-                                checked={isYesValue(row[column] ?? '')}
+                                checked={isYesValue(cellValue)}
                                 aria-label={column}
                                 disabled={busy}
-                                onChange={(event) =>
+                                onChange={(event) => {
+                                  const colors =
+                                    booleanColorsByColumn[column] ??
+                                    resolveBooleanColors(activeSheet.rows, column)
                                   updateCell(
                                     activeSheet.gid,
                                     rowIndex,
                                     column,
-                                    yesValueFromChecked(event.target.checked),
+                                    styledBooleanValue(event.target.checked, colors),
                                   )
-                                }
+                                }}
                               />
                             </td>
                           )
@@ -708,9 +728,7 @@ export default function ProductStatusWorkbook({
                                   activeCellRef.current = handle
                                 }
                               }}
-                              className={`product-status-cell-input${
-                                columnIndex === 1 ? ' product-status-cell-project' : ''
-                              }`}
+                              className="product-status-cell-input"
                               value={row[column] ?? ''}
                               ariaLabel={column}
                               onFocus={() =>

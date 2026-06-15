@@ -94,7 +94,7 @@ export default function ProductStatusFormatToolbar({
         </button>
       ))}
       {!hasActiveCell && !disabled ? (
-        <span className="product-status-format-hint">Кликните в ячейку и выделите текст</span>
+        <span className="product-status-format-hint">Кликните в ячейку; «Сбросить» убирает выделение или всё форматирование ячейки</span>
       ) : null}
     </div>
   )

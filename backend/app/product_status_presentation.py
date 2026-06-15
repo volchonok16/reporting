@@ -73,6 +73,12 @@ NEWS_BODY_MARGIN_LEFT_EMU = 457200
 NEWS_CHAR_WIDTH_EMU = 55000
 NEWS_LINE_HEIGHT_EMU = 152400
 NEWS_PARAGRAPH_GAP_EMU = 40000
+NOTES_BLOCK_SEPARATOR = "—"
+NOTES_MUTED_COLOR = RGBColor(0xA0, 0xA0, 0xA0)
+NOTES_BLOCK_SPACE_BEFORE = Pt(12)
+NOTES_PARAGRAPH_SPACE_AFTER = Pt(6)
+CELL_PARAGRAPH_SPACE_BEFORE = Pt(4)
+CELL_PARAGRAPH_SPACE_AFTER = Pt(3)
 
 _CNVPR_TAGS = (
     "{http://schemas.openxmlformats.org/presentationml/2006/main}cNvPr",
@@ -335,7 +341,7 @@ def _filter_presentation_rows(
     return [
         row
         for row in rows
-        if (row.get(flag_column, "") or "").strip().casefold() == "да"
+        if display_cell_text(row.get(flag_column, "") or "").strip().casefold() == "да"
     ]
 
 
@@ -378,9 +384,11 @@ def _slide_notes_blocks(rows: list[dict[str, str]], columns: list[str]) -> list[
 def _slide_notes_text(rows: list[dict[str, str]], columns: list[str]) -> str:
     """Совместимость для тестов — плоское представление блоков заметок."""
     rendered: list[str] = []
-    for block in _slide_notes_blocks(rows, columns):
+    for block_index, block in enumerate(_slide_notes_blocks(rows, columns)):
+        if block_index > 0:
+            rendered.append(NOTES_BLOCK_SEPARATOR)
         rendered.append("\n\n".join(block))
-    return "\n\n—\n\n".join(rendered)
+    return "\n\n".join(rendered)
 
 
 def _row_values(row: dict[str, str], columns: list[str], col_count: int) -> list[str]:
@@ -716,6 +724,20 @@ def _clear_paragraph_bullets(paragraph) -> None:
         paragraph_pr.insert(0, OxmlElement("a:buNone"))
 
 
+def _append_notes_separator_paragraph(notes_frame, paragraph_count: int) -> int:
+    paragraph = notes_frame.paragraphs[0] if paragraph_count == 0 else notes_frame.add_paragraph()
+    _clear_paragraph_bullets(paragraph)
+    paragraph.alignment = PP_ALIGN.LEFT
+    paragraph.space_before = NOTES_BLOCK_SPACE_BEFORE
+    paragraph.space_after = Pt(2)
+    run = paragraph.add_run()
+    run.text = NOTES_BLOCK_SEPARATOR
+    run.font.name = TABLE_FONT_NAME
+    run.font.size = TABLE_FONT_SIZE
+    run.font.color.rgb = NOTES_MUTED_COLOR
+    return paragraph_count + 1
+
+
 def _fill_slide_notes(slide, rows: list[dict[str, str]], columns: list[str]) -> None:
     blocks = _slide_notes_blocks(rows, columns)
     if not blocks:
@@ -727,12 +749,17 @@ def _fill_slide_notes(slide, rows: list[dict[str, str]], columns: list[str]) -> 
 
     paragraph_count = 0
     for block_index, block in enumerate(blocks):
+        if block_index > 0:
+            paragraph_count = _append_notes_separator_paragraph(notes_frame, paragraph_count)
+
         for paragraph_index, text in enumerate(block):
             paragraph = notes_frame.paragraphs[0] if paragraph_count == 0 else notes_frame.add_paragraph()
             _clear_paragraph_bullets(paragraph)
             paragraph.alignment = PP_ALIGN.LEFT
-            paragraph.space_before = Pt(10 if block_index > 0 and paragraph_index == 0 else 0)
-            paragraph.space_after = Pt(6)
+            paragraph.space_before = Pt(4) if paragraph_index > 0 else Pt(0)
+            paragraph.space_after = (
+                NOTES_PARAGRAPH_SPACE_AFTER if paragraph_index < len(block) - 1 else Pt(8)
+            )
             run = paragraph.add_run()
             run.text = text
             run.font.name = TABLE_FONT_NAME
@@ -920,11 +947,17 @@ def _fill_white_cell(cell, value: str, *, col_index: int, bold: bool = False) ->
     frame.margin_bottom = Pt(3)
 
     lines = sanitized.split("\n") if sanitized else [""]
-    for line_index, line in enumerate(lines):
-        paragraph = frame.paragraphs[0] if line_index == 0 else frame.add_paragraph()
+    non_empty_lines = [line for line in lines if line.strip()]
+    if not non_empty_lines:
+        non_empty_lines = [""]
+
+    for output_index, line in enumerate(non_empty_lines):
+        paragraph = frame.paragraphs[0] if output_index == 0 else frame.add_paragraph()
         paragraph.alignment = PP_ALIGN.LEFT
-        paragraph.space_after = Pt(0)
-        paragraph.space_before = Pt(0)
+        paragraph.space_before = CELL_PARAGRAPH_SPACE_BEFORE if output_index > 0 else Pt(0)
+        paragraph.space_after = (
+            CELL_PARAGRAPH_SPACE_AFTER if output_index < len(non_empty_lines) - 1 else Pt(0)
+        )
         for segment in split_style_segments(line):
             if not segment.text:
                 continue

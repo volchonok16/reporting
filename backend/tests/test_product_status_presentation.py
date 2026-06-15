@@ -11,6 +11,7 @@ from app.product_status_presentation import (
     DESCRIPTION_HEADER,
     FIXED_SLIDE_COUNT,
     MARKET_NEWS_SLIDE_INDEX,
+    NOTES_BLOCK_SEPARATOR,
     TABLE_FONT_SIZE,
     TABLE_FONT_SIZE_DENSE,
     TemplateCatalog,
@@ -138,10 +139,12 @@ def test_filter_presentation_rows_keeps_only_yes() -> None:
         {"Идет в презентацию": "Нет", "Проект": "B"},
         {"Идет в презентацию": "", "Проект": "C"},
         {"Идет в презентацию": "да", "Проект": "D"},
+        {"Идет в презентацию": "<<cell:bg:C6EFCE>>да<<>>", "Проект": "E"},
     ]
     assert _filter_presentation_rows(rows, columns) == [
         {"Идет в презентацию": "Да", "Проект": "A"},
         {"Идет в презентацию": "да", "Проект": "D"},
+        {"Идет в презентацию": "<<cell:bg:C6EFCE>>да<<>>", "Проект": "E"},
     ]
 
 
@@ -166,6 +169,24 @@ def test_slide_notes_blocks_splits_multiline_descriptions() -> None:
     ]
     assert _slide_notes_blocks(rows, columns) == [
         ["SMS Hub", "Первый абзац", "Второй абзац"],
+    ]
+
+
+def test_slide_notes_blocks_one_table_row_per_block() -> None:
+    columns = ["Проект", "Полное Описание проекта и статус"]
+    rows = [
+        {
+            "Проект": "SMS Hub",
+            "Полное Описание проекта и статус": "Тендер ОТП-банк\nКейс с Озоном",
+        },
+        {
+            "Проект": "SMS Hub",
+            "Полное Описание проекта и статус": "Кастомные отчеты",
+        },
+    ]
+    assert _slide_notes_blocks(rows, columns) == [
+        ["SMS Hub", "Тендер ОТП-банк\nКейс с Озоном"],
+        ["SMS Hub", "Кастомные отчеты"],
     ]
 
 
@@ -621,10 +642,59 @@ def test_generate_presentation_filters_rows_and_fills_notes(mock_load) -> None:
     assert "CORE" in notes
     assert "Полный текст для заметок" in notes
     assert "Не попасть" not in notes
+    assert NOTES_BLOCK_SEPARATOR not in notes
 
     notes_xml = content_slide.notes_slide.part.blob.decode()
     assert "<a:buChar" not in notes_xml
     assert "<a:buNone" in notes_xml
+
+
+@patch("app.product_status_presentation.load_b2b_product_status")
+def test_generate_presentation_notes_use_block_separators(mock_load) -> None:
+    mock_load.return_value = ProductStatusB2BOut(
+        title="Статус продукта B2B",
+        sheets=[
+            ProductStatusSheetOut(
+                gid="1512199647",
+                name="Продуктовый офис: SMS",
+                columns=[
+                    "Идет в презентацию",
+                    "Дата запуска",
+                    "Проект",
+                    "Полное Описание проекта и статус",
+                    "Для презентации Описание проекта и статус",
+                    "Зачем и для чего делаем",
+                ],
+                rows=[
+                    {
+                        "Идет в презентацию": "Да",
+                        "Дата запуска": "01.06",
+                        "Проект": "SMS Hub",
+                        "Полное Описание проекта и статус": "Тендер ОТП-банк",
+                        "Для презентации Описание проекта и статус": "Тендер",
+                        "Зачем и для чего делаем": "OK",
+                    },
+                    {
+                        "Идет в презентацию": "Да",
+                        "Дата запуска": "02.06",
+                        "Проект": "SMS Hub",
+                        "Полное Описание проекта и статус": "Кейс с Озоном",
+                        "Для презентации Описание проекта и статус": "Озон",
+                        "Зачем и для чего делаем": "OK",
+                    },
+                ],
+                totalShown=2,
+            )
+        ],
+    )
+
+    content, _ = generate_b2b_product_status_presentation()
+    prs = Presentation(io.BytesIO(content))
+    content_slide = prs.slides[FIXED_SLIDE_COUNT]
+    notes = content_slide.notes_slide.notes_text_frame.text
+    assert "—" in notes
+    assert "Тендер ОТП-банк" in notes
+    assert "Кейс с Озоном" in notes
 
 
 @patch("app.product_status_presentation.load_b2b_product_status")

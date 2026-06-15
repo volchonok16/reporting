@@ -142,6 +142,44 @@ def encode_highlight(text: str, color_hex: str) -> str:
     return encode_style_segment(text, bg=color_hex)
 
 
+BOOLEAN_YES_BG = "C6EFCE"
+BOOLEAN_NO_BG = "F4CCCC"
+
+
+def _cell_display_background(encoded: str) -> str | None:
+    cell_style, inner = split_cell_wrapper(encoded)
+    if cell_style.bg:
+        return cell_style.bg
+    segments = [segment for segment in split_style_segments(inner) if segment.text]
+    if len(segments) == 1 and segments[0].bg and not segments[0].fg:
+        return segments[0].bg
+    return None
+
+
+def resolve_boolean_colors(rows: list[dict[str, str]], column: str) -> tuple[str, str]:
+    yes_bg: str | None = None
+    no_bg: str | None = None
+    for row in rows:
+        raw = (row.get(column) or "").strip()
+        if not raw:
+            continue
+        text = display_cell_text(raw).strip().casefold()
+        bg = _cell_display_background(raw)
+        if not bg:
+            continue
+        if text == "да":
+            yes_bg = yes_bg or bg
+        elif text == "нет":
+            no_bg = no_bg or bg
+    return yes_bg or BOOLEAN_YES_BG, no_bg or BOOLEAN_NO_BG
+
+
+def styled_boolean_value(checked: bool, *, yes_bg: str, no_bg: str) -> str:
+    label = "да" if checked else "нет"
+    bg = yes_bg if checked else no_bg
+    return wrap_cell_text(label, bg=bg)
+
+
 def wrap_cell_text(text: str, *, bg: str | None = None, border: str | None = None) -> str:
     if not text:
         return ""

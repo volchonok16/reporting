@@ -19,10 +19,9 @@ def hex_to_google_color(color_hex: str) -> dict[str, float]:
     }
 
 
-def _segment_to_google_format(segment: TextStyleSegment) -> dict:
+def _segment_to_google_text_format(segment: TextStyleSegment) -> dict:
+    """TextFormatRun.format — только TextFormat; backgroundColor API не принимает."""
     fmt: dict = {}
-    if segment.bg:
-        fmt["backgroundColor"] = hex_to_google_color(segment.bg)
     if segment.fg:
         fmt["foregroundColor"] = hex_to_google_color(segment.fg)
     if segment.strike:
@@ -32,6 +31,27 @@ def _segment_to_google_format(segment: TextStyleSegment) -> dict:
     if segment.italic:
         fmt["italic"] = True
     return fmt
+
+
+def _full_cell_highlight_bg(segments: list[TextStyleSegment]) -> str | None:
+    """Если весь текст ячейки — одна фоновая подсветка без других стилей."""
+    if not segments:
+        return None
+    bg: str | None = None
+    for segment in segments:
+        if not segment.text:
+            continue
+        if segment.fg or segment.strike or segment.bold or segment.italic:
+            return None
+        if segment.bg:
+            normalized = segment.bg.upper()
+            if bg is None:
+                bg = normalized
+            elif bg != normalized:
+                return None
+        else:
+            return None
+    return bg
 
 
 def _formats_equal(left: dict, right: dict) -> bool:
@@ -45,7 +65,7 @@ def segments_to_text_format_runs(segments: list[TextStyleSegment]) -> list[dict]
     for segment in segments:
         if not segment.text:
             continue
-        fmt = _segment_to_google_format(segment)
+        fmt = _segment_to_google_text_format(segment)
         if index == 0 or not _formats_equal(fmt, previous_fmt or {}):
             runs.append({"startIndex": index, "format": fmt})
             previous_fmt = fmt
@@ -87,11 +107,16 @@ def encoded_cell_to_google(encoded: str) -> dict:
 
     cell_data: dict = {"userEnteredValue": {"stringValue": plain_text}}
 
+    resolved_cell_style = cell_style
+    uniform_bg = _full_cell_highlight_bg(segments)
+    if uniform_bg and not cell_style.bg:
+        resolved_cell_style = CellStyle(bg=uniform_bg, border=cell_style.border)
+
     runs = segments_to_text_format_runs(segments)
-    if runs:
+    if runs and not uniform_bg:
         cell_data["textFormatRuns"] = runs
 
-    user_format = cell_style_to_google_format(cell_style)
+    user_format = cell_style_to_google_format(resolved_cell_style)
     if user_format:
         cell_data["userEnteredFormat"] = user_format
 

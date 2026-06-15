@@ -347,21 +347,40 @@ export function applyStyleToSelection(root: HTMLElement, patch: Partial<TextStyl
   return true
 }
 
-export function clearFormattingInSelection(root: HTMLElement): boolean {
+export function clearFormattingInCell(root: HTMLElement): boolean {
   const selection = window.getSelection()
-  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+  if (selection && selection.rangeCount > 0) {
+    const range = selection.getRangeAt(0)
+    if (root.contains(range.commonAncestorContainer)) {
+      if (!selection.isCollapsed) {
+        const text = range.toString()
+        if (text) {
+          range.deleteContents()
+          range.insertNode(document.createTextNode(text))
+          selection.removeAllRanges()
+          return true
+        }
+      } else if (root.querySelector('.product-status-highlight')) {
+        const plainText = root.textContent ?? ''
+        root.replaceChildren(document.createTextNode(plainText))
+        selection.removeAllRanges()
+        return true
+      }
+    }
+  }
+
+  if (!root.querySelector('.product-status-highlight')) {
     return false
   }
-  const range = selection.getRangeAt(0)
-  if (!root.contains(range.commonAncestorContainer)) {
-    return false
-  }
-  const text = range.toString()
-  if (!text) return false
-  range.deleteContents()
-  range.insertNode(document.createTextNode(text))
-  selection.removeAllRanges()
+
+  const plainText = root.textContent ?? ''
+  root.replaceChildren(document.createTextNode(plainText))
   return true
+}
+
+/** @deprecated Use clearFormattingInCell */
+export function clearFormattingInSelection(root: HTMLElement): boolean {
+  return clearFormattingInCell(root)
 }
 
 export function applyCellStylePatch(value: string, patch: Partial<CellStyle>): string {

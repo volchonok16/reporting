@@ -57,6 +57,19 @@ def _load_service_account_info(raw: str) -> tuple[dict | None, str | None]:
     return None, "переменная GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON не задана"
 
 
+def _google_sheets_error_message(response: httpx.Response) -> str | None:
+    try:
+        payload = response.json()
+        error = payload.get("error") or {}
+        message = error.get("message")
+        if isinstance(message, str) and message.strip():
+            return message.strip()
+    except (json.JSONDecodeError, AttributeError):
+        pass
+    text = response.text.strip()
+    return text[:300] if text else None
+
+
 def _access_token() -> str:
     info, config_error = _load_service_account_info(settings.google_sheets_service_account_json)
     if not info:
@@ -179,9 +192,15 @@ def save_workbook_to_google(*, spreadsheet_id: str, data: ProductStatusB2BOut) -
                 response.status_code,
                 response.text[:500],
             )
+            google_error = _google_sheets_error_message(response)
+            detail = "Google Sheets отклонил сохранение."
+            if google_error:
+                detail = f"{detail} {google_error}"
+            else:
+                detail = f"{detail} Проверьте доступ сервисного аккаунта."
             raise HTTPException(
                 status_code=502,
-                detail="Google Sheets отклонил сохранение. Проверьте доступ сервисного аккаунта.",
+                detail=detail,
             )
 
 

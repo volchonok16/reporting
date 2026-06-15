@@ -1215,7 +1215,6 @@ body {
 }
 
 .product-status-table th.product-status-bool-header {
-  font-size: 10px;
   line-height: 1.25;
   padding: 6px 4px;
   word-break: break-word;
@@ -1264,17 +1263,9 @@ body {
   padding: 10px 12px;
   border-bottom: 1px solid #eee;
   vertical-align: top;
+  font-size: 13px;
+  font-weight: 400;
   line-height: 1.45;
-}
-
-.product-status-table tbody td:nth-child(1),
-.product-status-table tbody td:nth-child(2),
-.product-status-table tbody td:nth-child(3) {
-  font-size: 10pt;
-}
-
-.product-status-table tbody td:nth-child(4) {
-  font-size: 8pt;
 }
 
 .product-status-table tbody tr:hover td {
@@ -1386,10 +1377,6 @@ body {
   gap: 8px;
 }
 
-.product-status-cell-project {
-  font-weight: 600;
-}
-
 .product-status-cell-input:hover {
   border-color: #d8dee8;
   background: #fafbfc;
@@ -1400,11 +1387,6 @@ body {
   border-color: #9db7e8;
   background: #fff;
   box-shadow: 0 0 0 2px rgba(29, 95, 191, 0.12);
-}
-
-.cell-project {
-  font-weight: 600;
-  color: #222;
 }
 
 .product-status-zni-cell--matched .product-status-zni-trigger {
