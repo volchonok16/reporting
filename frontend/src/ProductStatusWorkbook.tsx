@@ -11,7 +11,6 @@ import {
 import {
   booleanCellBackground,
   resolveBooleanColors,
-  resolvePresentationRowBackground,
   styledBooleanValue,
 } from './productStatusBoolean'
 import { displayCellText, type CellStyle, type TextStyleSegment } from './productStatusRichText'
@@ -743,18 +742,8 @@ export default function ProductStatusWorkbook({
                   </tr>
                 </thead>
                 <tbody>
-                  {activeSheet.rows.map((row, rowIndex) => {
-                    const rowBg = resolvePresentationRowBackground(row, activeSheet.columns)
-                    return (
-                    <tr
-                      key={`${activeSheet.gid}-${rowIndex}`}
-                      className={rowBg ? 'product-status-row-no-presentation' : undefined}
-                      style={
-                        rowBg
-                          ? ({ '--row-bg': `#${rowBg}` } as React.CSSProperties)
-                          : undefined
-                      }
-                    >
+                  {activeSheet.rows.map((row, rowIndex) => (
+                    <tr key={`${activeSheet.gid}-${rowIndex}`}>
                       {activeSheet.columns.map((column) => {
                         const isActive =
                           activeCell?.rowIndex === rowIndex && activeCell.column === column
@@ -862,8 +851,7 @@ export default function ProductStatusWorkbook({
                         )
                       })}
                     </tr>
-                    )
-                  })}
+                  ))}
                 </tbody>
               </table>
             ) : loading || sheetLoading ? (
