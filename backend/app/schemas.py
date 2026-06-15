@@ -117,6 +117,14 @@ class ProductStatusB2BOut(BaseModel):
     sheets: list[ProductStatusSheetOut]
 
 
+class TaskLookupIn(BaseModel):
+    numbers: list[str] = Field(default_factory=list, max_length=200)
+
+
+class TaskLookupOut(BaseModel):
+    items: list[ChangeRequestOut] = Field(default_factory=list)
+
+
 class BusinessValueUpdateIn(BaseModel):
     value: int | None = Field(
         default=None,

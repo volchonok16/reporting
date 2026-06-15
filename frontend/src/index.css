@@ -1200,7 +1200,7 @@ body {
 }
 
 .product-status-table col.col-zni {
-  width: 52px;
+  width: 72px;
 }
 
 .product-status-table col.col-presentation-flag {
@@ -1208,7 +1208,7 @@ body {
 }
 
 .product-status-table col.col-attention {
-  width: 56px;
+  width: 44px;
 }
 
 .product-status-table col.col-date {
@@ -1282,7 +1282,7 @@ body {
 .product-status-bool-cell {
   text-align: center;
   vertical-align: middle;
-  padding: 10px 4px;
+  padding: 10px 2px;
 }
 
 .product-status-bool-checkbox {
@@ -1394,6 +1394,113 @@ body {
 .cell-project {
   font-weight: 600;
   color: #222;
+}
+
+.product-status-zni-cell--matched .product-status-zni-trigger {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.zni-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(17, 24, 39, 0.45);
+}
+
+.zni-modal {
+  width: min(920px, 100%);
+  max-height: min(88vh, 900px);
+  overflow: auto;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
+}
+
+.zni-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.zni-modal-kicker {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #666;
+}
+
+.zni-modal-title {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.zni-modal-close {
+  border: none;
+  background: transparent;
+  color: #666;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.zni-modal-close:hover {
+  color: #111;
+}
+
+.zni-modal-body {
+  padding: 16px 24px 24px;
+}
+
+.zni-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 20px;
+}
+
+.zni-modal-field-wide {
+  grid-column: 1 / -1;
+}
+
+.zni-modal-field .zni-detail-label {
+  margin-bottom: 6px;
+}
+
+.zni-modal-errors {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #eee;
+}
+
+.zni-modal-errors-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.zni-modal-errors-list li + li {
+  margin-top: 6px;
+}
+
+@media (max-width: 800px) {
+  .zni-modal-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 800px) {

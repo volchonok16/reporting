@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { getJson, apiFetch, readApiError } from './api'
+import { getJson, apiFetch, postJson, readApiError } from './api'
 import ProductStatusCell, { type ProductStatusCellHandle } from './ProductStatusCell'
 import ProductStatusFormatToolbar from './ProductStatusFormatToolbar'
+import { collectZniNumbers, isZniColumn, parseZniNumber } from './productStatusZni'
 import type { CellStyle, TextStyleSegment } from './productStatusRichText'
+import ZniDetailModal from './ZniDetailModal'
+import type { ChangeRequest, TaskLookupResponse } from './zniTypes'
 
 type ProductStatusSheet = {
   gid: string
@@ -90,11 +93,14 @@ function isBooleanColumn(column: string): boolean {
 
 function isYesValue(value: string): boolean {
   const normalized = value.trim().toLowerCase()
+  if (normalized === 'нет' || normalized === 'no' || normalized === '0' || normalized === 'false') {
+    return false
+  }
   return normalized === 'да' || normalized === 'yes' || normalized === '1' || normalized === 'true'
 }
 
 function yesValueFromChecked(checked: boolean): string {
-  return checked ? 'Да' : ''
+  return checked ? 'да' : 'нет'
 }
 
 export default function ProductStatusWorkbook({
@@ -125,6 +131,8 @@ export default function ProductStatusWorkbook({
   const [exportingExcel, setExportingExcel] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [zniLookup, setZniLookup] = useState<Record<string, ChangeRequest>>({})
+  const [zniModalItem, setZniModalItem] = useState<ChangeRequest | null>(null)
   const activeCellRef = useRef<ProductStatusCellHandle | null>(null)
 
   const loadData = useCallback(async () => {
@@ -296,6 +304,52 @@ export default function ProductStatusWorkbook({
     [activeGid, sheets],
   )
 
+  const zniColumn = useMemo(
+    () => activeSheet?.columns.find((column) => isZniColumn(column)) ?? null,
+    [activeSheet],
+  )
+
+  useEffect(() => {
+    if (!activeSheet || !zniColumn) {
+      setZniLookup({})
+      return
+    }
+
+    const numbers = collectZniNumbers(activeSheet.rows, zniColumn)
+    if (numbers.length === 0) {
+      setZniLookup({})
+      return
+    }
+
+    let cancelled = false
+    void postJson<TaskLookupResponse>('/api/tasks/lookup', { numbers })
+      .then((payload) => {
+        if (cancelled) return
+        const next: Record<string, ChangeRequest> = {}
+        for (const item of payload.items) {
+          next[item.number] = item
+        }
+        setZniLookup(next)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setZniLookup({})
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeSheet, zniColumn])
+
+  const openZniModal = useCallback((item: ChangeRequest) => {
+    setZniModalItem(item)
+  }, [])
+
+  const closeZniModal = useCallback(() => {
+    setZniModalItem(null)
+  }, [])
+
   const exporting = exportingPresentation || exportingExcel
   const busy = loading || saving || exporting
 
@@ -313,6 +367,7 @@ export default function ProductStatusWorkbook({
 
   return (
     <RootTag className={rootClassName}>
+      <ZniDetailModal item={zniModalItem} onClose={closeZniModal} />
       <header className="product-status-toolbar">
         <div className="product-status-toolbar-left">
           {headerTitle ?? (
@@ -490,8 +545,30 @@ export default function ProductStatusWorkbook({
                           )
                         }
 
+                        const zniNumber = isZniColumn(column)
+                          ? parseZniNumber(row[column] ?? '')
+                          : null
+                        const matchedZni = zniNumber ? zniLookup[zniNumber] : undefined
+
                         return (
-                          <td key={`${rowIndex}-${column}`} className={cellClassName}>
+                          <td
+                            key={`${rowIndex}-${column}`}
+                            className={[
+                              cellClassName,
+                              matchedZni ? 'product-status-zni-cell--matched' : '',
+                            ]
+                              .filter(Boolean)
+                              .join(' ')}
+                          >
+                            {matchedZni && zniNumber ? (
+                              <button
+                                type="button"
+                                className="zni-link product-status-zni-trigger"
+                                onClick={() => openZniModal(matchedZni)}
+                              >
+                                {zniNumber}
+                              </button>
+                            ) : null}
                             <ProductStatusCell
                               ref={(handle) => {
                                 if (isActive) {

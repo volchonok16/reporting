@@ -20,7 +20,7 @@ from app.product_status_sheets_write import (
     save_b2b_news_to_google,
     save_b2b_product_status_to_google,
 )
-from app.report_service import export_csv, load_change_requests
+from app.report_service import export_csv, load_change_requests, load_change_requests_by_numbers
 from app.business_value_service import update_business_value
 from app.schemas import (
     AuthDefaultsOut,
@@ -31,6 +31,8 @@ from app.schemas import (
     DashboardOut,
     ProductStatusB2BOut,
     SyncRunOut,
+    TaskLookupIn,
+    TaskLookupOut,
     TfsAuthIn,
     TfsAuthStatusOut,
 )
@@ -171,6 +173,11 @@ def dashboard(
         metric=metric,
         tag_groups=tag_group,
     )
+
+
+@app.post("/api/tasks/lookup", response_model=TaskLookupOut)
+def tasks_lookup(payload: TaskLookupIn, db: Session = Depends(get_db)) -> TaskLookupOut:
+    return TaskLookupOut(items=load_change_requests_by_numbers(db, payload.numbers))
 
 
 @app.patch("/api/tasks/{external_id}/business-value", response_model=ChangeRequestOut)

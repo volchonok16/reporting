@@ -256,6 +256,85 @@ def _matches_incident_error_row(
     return True
 
 
+def _change_request_to_out(row: Task, linked_errors: list[Task]) -> ChangeRequestOut:
+    board_code_value = _extra(row).get("board_code")
+    planned_date, _, quarter_label, planned_label = _task_plan_meta(row)
+    return ChangeRequestOut(
+        id=str(row.id),
+        number=row.external_id,
+        rowType="change_request",
+        title=row.title,
+        url=row.external_url,
+        status=row.source_status,
+        boardColumn=_board_column(row),
+        startDate=_effective_start(row),
+        releaseDate=row.release_date,
+        plannedDate=planned_date,
+        plannedLabel=planned_label,
+        planQuarter=quarter_label,
+        plannedRelease=_planned_release(row),
+        createdAt=row.created_at,
+        boardCode=str(board_code_value) if board_code_value else None,
+        boardName=row.source_team or _board_name_by_code(str(board_code_value) if board_code_value else None),
+        customerName=_customer_name(row),
+        businessGoal=_business_goal(row),
+        businessValue=_business_value(row),
+        ectResourceReservation=_ect_resource_reservation(row),
+        errors=[
+            LinkedErrorOut(
+                id=error.external_id,
+                title=error.title,
+                status=error.source_status,
+                url=error.external_url,
+            )
+            for error in linked_errors
+        ],
+    )
+
+
+def load_change_requests_by_numbers(db: Session, numbers: list[str]) -> list[ChangeRequestOut]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in numbers:
+        number = raw.strip()
+        if not number or not number.isdigit() or number in seen:
+            continue
+        seen.add(number)
+        normalized.append(number)
+    if not normalized:
+        return []
+
+    board_names = [board.name for board in BOARDS]
+    rows = list(
+        db.scalars(
+            select(Task).where(
+                Task.task_type == "change_request",
+                Task.external_id.in_(normalized),
+                Task.source_team.in_(board_names),
+            )
+        )
+    )
+    if not rows:
+        return []
+
+    error_rows = active_errors(
+        list(
+            db.scalars(
+                select(Task).where(
+                    Task.task_type == "error",
+                    Task.source_team.in_(board_names),
+                )
+            )
+        )
+    )
+    errors_by_parent = _build_errors_by_parent(rows, error_rows)
+    by_number = {
+        row.external_id: _change_request_to_out(row, errors_by_parent.get(row.id, []))
+        for row in rows
+    }
+    return [by_number[number] for number in normalized if number in by_number]
+
+
 def _incident_error_to_item(error: Task) -> ChangeRequestOut:
     board_code_value = _extra(error).get("board_code")
     return ChangeRequestOut(
@@ -622,42 +701,7 @@ def load_change_requests(
         if row_type == "error":
             items.append(_incident_error_to_item(row))
             continue
-        linked = errors_by_parent.get(row.id, [])
-        board_code_value = _extra(row).get("board_code")
-        planned_date, _, quarter_label, planned_label = _task_plan_meta(row)
-        items.append(
-            ChangeRequestOut(
-                id=str(row.id),
-                number=row.external_id,
-                rowType="change_request",
-                title=row.title,
-                url=row.external_url,
-                status=row.source_status,
-                boardColumn=_board_column(row),
-                startDate=_effective_start(row),
-                releaseDate=row.release_date,
-                plannedDate=planned_date,
-                plannedLabel=planned_label,
-                planQuarter=quarter_label,
-                plannedRelease=_planned_release(row),
-                createdAt=row.created_at,
-                boardCode=str(board_code_value) if board_code_value else None,
-                boardName=row.source_team or _board_name_by_code(str(board_code_value) if board_code_value else None),
-                customerName=_customer_name(row),
-                businessGoal=_business_goal(row),
-                businessValue=_business_value(row),
-                ectResourceReservation=_ect_resource_reservation(row),
-                errors=[
-                    LinkedErrorOut(
-                        id=e.external_id,
-                        title=e.title,
-                        status=e.source_status,
-                        url=e.external_url,
-                    )
-                    for e in linked
-                ],
-            )
-        )
+        items.append(_change_request_to_out(row, errors_by_parent.get(row.id, [])))
 
     return DashboardOut(
         board=_board_out(board) if board and not all_boards else None,
