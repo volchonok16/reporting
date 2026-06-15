@@ -64,6 +64,10 @@ MIN_ROW_HEIGHT_EMU = LINE_HEIGHT_EMU + CELL_TEXT_MARGIN_EMU
 BODY_HEIGHT_EMU = 3_408_600
 BODY_WIDTH_EMU = 8_900_700
 COLUMN_WIDTH_RATIOS = (0.10, 0.14, 0.46, 0.30)
+NEWS_BODY_MARGIN_LEFT_EMU = 457200
+NEWS_CHAR_WIDTH_EMU = 55000
+NEWS_LINE_HEIGHT_EMU = 152400
+NEWS_PARAGRAPH_GAP_EMU = 40000
 
 _CNVPR_TAGS = (
     "{http://schemas.openxmlformats.org/presentationml/2006/main}cNvPr",
@@ -390,6 +394,13 @@ def _delete_slide(prs: Presentation, index: int) -> None:
     slide_ids.remove(slide_id)
 
 
+def _move_slide_to_index(prs: Presentation, from_index: int, to_index: int) -> None:
+    slide_ids = prs.slides._sldIdLst
+    slide_id = slide_ids[from_index]
+    slide_ids.remove(slide_id)
+    slide_ids.insert(to_index, slide_id)
+
+
 def _max_shape_id(slide) -> int:
     max_id = 1
     for shape in slide.shapes:
@@ -577,9 +588,25 @@ def _capture_paragraph_font(paragraph) -> tuple[str | None, Pt | None, bool | No
     return None, None, None
 
 
-def _fill_body_lines(shape, lines: list[str]) -> None:
+def _capture_bullet_paragraph_pr(frame):
+    for paragraph in frame.paragraphs:
+        paragraph_pr = paragraph._p.find(qn("a:pPr"))
+        if paragraph_pr is not None and paragraph_pr.find(qn("a:buChar")) is not None:
+            return deepcopy(paragraph_pr)
+    return None
+
+
+def _apply_paragraph_pr(paragraph, paragraph_pr) -> None:
+    existing = paragraph._p.find(qn("a:pPr"))
+    if existing is not None:
+        paragraph._p.remove(existing)
+    paragraph._p.insert(0, deepcopy(paragraph_pr))
+
+
+def _fill_body_lines(shape, lines: list[str], *, bullet: bool = False) -> None:
     frame = shape.text_frame
     font_name, font_size, font_bold = None, None, None
+    bullet_pr = _capture_bullet_paragraph_pr(frame) if bullet else None
     for paragraph in frame.paragraphs:
         font_name, font_size, font_bold = _capture_paragraph_font(paragraph)
         if font_name or font_size:
@@ -592,6 +619,8 @@ def _fill_body_lines(shape, lines: list[str]) -> None:
 
     for line_index, line in enumerate(lines):
         paragraph = frame.paragraphs[0] if line_index == 0 else frame.add_paragraph()
+        if bullet_pr is not None:
+            _apply_paragraph_pr(paragraph, bullet_pr)
         paragraph.alignment = PP_ALIGN.LEFT
         run = paragraph.add_run()
         run.text = line
@@ -629,12 +658,71 @@ def _market_news_lines(sheet: ProductStatusSheetOut) -> list[str]:
     return lines
 
 
-def _fill_market_news_slide(slide, sheet: ProductStatusSheetOut) -> None:
+def _news_body_text_metrics(body_shape) -> tuple[int, int]:
+    text_width = max(body_shape.width - NEWS_BODY_MARGIN_LEFT_EMU - CELL_TEXT_MARGIN_EMU, 1_000_000)
+    chars_per_line = max(16, int(text_width / NEWS_CHAR_WIDTH_EMU))
+    return chars_per_line, body_shape.height
+
+
+def _estimate_news_item_height(line: str, chars_per_line: int) -> int:
+    wrapped_lines = max(1, _estimate_text_lines(line, chars_per_line))
+    return wrapped_lines * NEWS_LINE_HEIGHT_EMU + NEWS_PARAGRAPH_GAP_EMU
+
+
+def _chunk_news_lines(lines: list[str], body_shape) -> list[list[str]]:
+    if not lines:
+        return [[]]
+
+    chars_per_line, max_height = _news_body_text_metrics(body_shape)
+    chunks: list[list[str]] = []
+    current: list[str] = []
+    current_height = 0
+
+    for line in lines:
+        item_height = _estimate_news_item_height(line, chars_per_line)
+        if current and current_height + item_height > max_height:
+            chunks.append(current)
+            current = []
+            current_height = 0
+        current.append(line)
+        current_height += item_height
+
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _fill_market_news_slide_lines(slide, lines: list[str]) -> None:
     _clear_secondary_body_placeholders(slide)
     body_shape = _find_body_with_markers(slide, *MARKET_NEWS_MARKERS) or _find_main_body_shape(slide)
     if body_shape is None:
         return
-    _fill_body_lines(body_shape, _market_news_lines(sheet))
+    _fill_body_lines(body_shape, lines, bullet=True)
+
+
+def _fill_market_news_slides(prs: Presentation, sheet: ProductStatusSheetOut) -> None:
+    if len(prs.slides) <= MARKET_NEWS_SLIDE_INDEX:
+        return
+
+    lines = _market_news_lines(sheet)
+    template_slide = prs.slides[MARKET_NEWS_SLIDE_INDEX]
+    body_shape = _find_body_with_markers(template_slide, *MARKET_NEWS_MARKERS) or _find_main_body_shape(template_slide)
+    if body_shape is None:
+        return
+
+    chunks = _chunk_news_lines(lines, body_shape)
+    news_slides = [template_slide]
+    insert_at = MARKET_NEWS_SLIDE_INDEX + 1
+
+    for _ in chunks[1:]:
+        duplicated_index = len(prs.slides)
+        _duplicate_slide_safe(prs, template_slide)
+        _move_slide_to_index(prs, duplicated_index, insert_at)
+        news_slides.append(prs.slides[insert_at])
+        insert_at += 1
+
+    for slide, chunk in zip(news_slides, chunks, strict=True):
+        _fill_market_news_slide_lines(slide, chunk)
 
 
 def _try_load_market_news_sheet() -> ProductStatusSheetOut | None:
@@ -834,11 +922,6 @@ def generate_b2b_product_status_presentation(
 
     _fill_date_slide(prs.slides[0], generated_at)
 
-    if len(prs.slides) > MARKET_NEWS_SLIDE_INDEX:
-        news_sheet = _try_load_market_news_sheet()
-        if news_sheet is not None:
-            _fill_market_news_slide(prs.slides[MARKET_NEWS_SLIDE_INDEX], news_sheet)
-
     for sheet, template, chunk in specs:
         template_index = _template_index_for_sheet(sheet.name)
         source_slide = prs.slides[template_index]
@@ -853,6 +936,10 @@ def generate_b2b_product_status_presentation(
     for index in sorted(set(_SHEET_TEMPLATE_INDEX.values()), reverse=True):
         if index >= FIXED_SLIDE_COUNT:
             _delete_slide(prs, index)
+
+    news_sheet = _try_load_market_news_sheet()
+    if news_sheet is not None:
+        _fill_market_news_slides(prs, news_sheet)
 
     buffer = io.BytesIO()
     prs.save(buffer)

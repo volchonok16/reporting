@@ -1,7 +1,7 @@
-from unittest.mock import patch
-
 import io
 import re
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from pptx import Presentation
 from pptx.util import Pt
@@ -14,6 +14,7 @@ from app.product_status_presentation import (
     TABLE_FONT_SIZE_DENSE,
     TemplateCatalog,
     _cell_font_size,
+    _chunk_news_lines,
     _chunk_rows,
     _estimate_row_height,
     _estimate_text_lines,
@@ -165,6 +166,78 @@ def test_market_news_lines_formats_rows() -> None:
     ]
 
 
+def test_chunk_news_lines_splits_when_body_is_short() -> None:
+    body = SimpleNamespace(width=4_474_200, height=900_000)
+    lines = [f"01.06 | Новость {index} | " + "подробность " * 120 for index in range(6)]
+    chunks = _chunk_news_lines(lines, body)
+    assert len(chunks) >= 2
+    assert sum(len(chunk) for chunk in chunks) == 6
+
+
+@patch("app.product_status_presentation.load_b2b_news")
+@patch("app.product_status_presentation.load_b2b_product_status")
+def test_generate_presentation_splits_market_news_across_slides(mock_load, mock_news) -> None:
+    mock_load.return_value = ProductStatusB2BOut(
+        title="Статус продукта B2B",
+        sheets=[
+            ProductStatusSheetOut(
+                gid="0",
+                name="Продуктовый офис: CORE",
+                columns=["Дата запуска", "Проект", "Описание проекта", "Зачем и для чего делаем"],
+                rows=[
+                    {
+                        "Дата запуска": "",
+                        "Проект": "CORE",
+                        "Описание проекта": "Коротко",
+                        "Зачем и для чего делаем": "OK",
+                    }
+                ],
+                totalShown=1,
+            )
+        ],
+    )
+    mock_news.return_value = ProductStatusB2BOut(
+        title="Новости и запуски",
+        sheets=[
+            ProductStatusSheetOut(
+                gid="0",
+                name="Новости",
+                columns=["Дата", "Новость", "Описание"],
+                rows=[
+                    {
+                        "Дата": f"0{index}.06",
+                        "Новость": f"Новость {index}",
+                        "Описание": "подробность " * 300,
+                    }
+                    for index in range(1, 5)
+                ],
+                totalShown=4,
+            )
+        ],
+    )
+
+    content, _ = generate_b2b_product_status_presentation()
+    prs = Presentation(io.BytesIO(content))
+
+    news_slide_count = 0
+    for index in range(MARKET_NEWS_SLIDE_INDEX, len(prs.slides)):
+        slide = prs.slides[index]
+        if any(shape.has_table for shape in slide.shapes):
+            break
+        joined = "".join(
+            shape.text_frame.text for shape in slide.shapes if shape.has_text_frame
+        )
+        if "<$start>" in joined:
+            break
+        if " | " in joined and "<$date>" not in joined:
+            news_slide_count += 1
+        else:
+            break
+
+    assert news_slide_count >= 2
+    assert len(prs.slides) > FIXED_SLIDE_COUNT + 1
+
+
 @patch("app.product_status_presentation.load_b2b_news")
 @patch("app.product_status_presentation.load_b2b_product_status")
 def test_generate_presentation_fills_market_news_slide(mock_load, mock_news) -> None:
@@ -233,6 +306,11 @@ def test_generate_presentation_fills_market_news_slide(mock_load, mock_news) -> 
     assert len(paragraphs) == 2
     assert paragraphs[0] == "08.06 | МТС изменил тариф | Подробности"
     assert paragraphs[1] == "09.06 | Yota обновила планы | Стоимость выросла"
+
+    slide_xml = slide.part.blob.decode()
+    first_paragraph_start = slide_xml.index("<a:t>08.06 | МТС изменил тариф | Подробности</a:t>")
+    first_paragraph_block = slide_xml[max(0, first_paragraph_start - 800):first_paragraph_start]
+    assert 'char="•"' in first_paragraph_block or "<a:buChar" in first_paragraph_block
 
 
 @patch("app.product_status_presentation.load_b2b_product_status")
