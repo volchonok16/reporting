@@ -21,6 +21,7 @@ import {
   writeProductStatusCache,
 } from './productStatusClientCache'
 import type { ChangeRequest, TaskLookupResponse } from './zniTypes'
+import ZniDetailModal from './ZniDetailModal'
 
 type ProductStatusSheet = {
   gid: string

@@ -12,6 +12,7 @@ from app.tag_filters import (
 def test_tag_filter_for_single_boards() -> None:
     assert tag_filter_supported_for_board(DIGITAL_BOARD_CODE)
     assert tag_filter_supported_for_board("b2b_product_core")
+    assert tag_filter_supported_for_board("tele2_products")
     assert tag_filter_supported_for_board("be_t2_team")
     assert not tag_filter_supported_for_board("all")
     assert not tag_filter_supported_for_board(None)

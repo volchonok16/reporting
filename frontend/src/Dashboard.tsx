@@ -7,6 +7,7 @@ const ALL_BOARDS = 'all'
 const BOARD_LABELS: Record<string, string> = {
   all: 'Все доски',
   digital_streams_b2b: 'Digital',
+  tele2_products: 'Продукты',
   b2b_product_core: 'CORE',
   b2b_product_partners: 'КАТС',
   b2b_voice_products: 'Голосовые продукты',

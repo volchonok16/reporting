@@ -44,6 +44,7 @@
 | Код | AreaPath | Теги ЗНИ | Теги ошибок | Отображаемое имя |
 |-----|----------|----------|-------------|------------------|
 | `digital_streams_b2b` | `Tele2\Digital\Streams\B2b` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | Digital |
+| `tele2_products` | `Tele2\Продукты` | `b2b_product` (без `EFO`) | без фильтра по тегам (без `EFO`) | Продукты |
 | `b2b_product_core` | `Tele2\B2B Product` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | CORE |
 | `b2b_product_partners` | `Tele2\B2B Product Partners` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | КАТС |
 | `b2b_voice_products` | `Tele2\B2B Product\B2B Voice Products` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | Голосовые продукты |
@@ -61,8 +62,8 @@
 | Карточка | Источник | Примечание |
 |----------|----------|------------|
 | Всего задач | `task` где `task_type = change_request` | По выбранной доске |
-| Скоро запуск | Digital и B2B Product (*): `UAT`; BE Analytics / ESB: `UAT Prod`, `Implementation Prod` или Triage `в Работе` | `System.State` / `Triage` |
-| Запущено | Digital и B2B Product (*): `Pilot`; BE Analytics / ESB: `Closed` | workflow |
+| Скоро запуск | Digital, Продукты и B2B Product (*): `UAT`; BE Analytics / ESB: `UAT Prod`, `Implementation Prod` или Triage `в Работе` | `System.State` / `Triage` |
+| Запущено | Digital, Продукты и B2B Product (*): `Pilot`; BE Analytics / ESB: `Closed` | workflow |
 | Ошибки | ЗНИ с привязанными `error` (без Closed) | Клик по карточке — фильтр таблицы |
 
 ### REST API (основное)

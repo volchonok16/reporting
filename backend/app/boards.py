@@ -47,6 +47,7 @@ def _tele2_digital_style_board(
     name: str,
     display_name: str,
     area_path: str,
+    sync_tags: tuple[str, ...] = (),
 ) -> BoardConfig:
     return BoardConfig(
         code=code,
@@ -56,6 +57,7 @@ def _tele2_digital_style_board(
         project_id=_TELE2_PROJECT_ID,
         team_id=_TELE2_TEAM_ID,
         area_path=area_path,
+        sync_tags=sync_tags,
         exclude_sync_tags=("EFO", "not_product"),
         launching_soon_states=("UAT",),
         launched_states=("Pilot", "Пилот"),
@@ -68,6 +70,13 @@ BOARDS: list[BoardConfig] = [
         name="Digital Streams B2b",
         display_name="Digital Streams B2b",
         area_path=r"Tele2\Digital\Streams\B2b",
+    ),
+    _tele2_digital_style_board(
+        code="tele2_products",
+        name="Продукты",
+        display_name="Продукты",
+        area_path=r"Tele2\Продукты",
+        sync_tags=("b2b_product",),
     ),
     _tele2_digital_style_board(
         code="b2b_product_core",
