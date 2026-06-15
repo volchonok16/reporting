@@ -102,9 +102,9 @@ function resolveColumnClass(column: string): string | undefined {
   if (key === 'дата' || key.startsWith('дата')) return 'col-date'
   if (key === 'новость') return 'col-news'
   if (key === 'проект') return 'col-project'
+  if (key.includes('зачем')) return 'col-why'
   if (key.includes('полное описание') || key.includes('для презентации')) return 'col-description'
   if (key.includes('описание')) return 'col-description'
-  if (key.includes('зачем')) return 'col-why'
   return undefined
 }
 

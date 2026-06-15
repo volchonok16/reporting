@@ -19,6 +19,7 @@ from app.product_status_presentation import (
     _chunk_news_lines,
     _chunk_rows,
     _description_value_column,
+    _why_value_column,
     _estimate_row_height,
     _estimate_text_lines,
     _filter_presentation_rows,
@@ -112,6 +113,8 @@ def test_row_values_uses_presentation_description_column() -> None:
         "Полное Описание проекта и статус",
         "Для презентации Описание проекта и статус",
         "Описание проекта и статус",
+        "Зачем и для чего делаем полное описание",
+        "Зачем и для чего делаем для презентации",
         "Зачем и для чего делаем",
     ]
     row = {
@@ -120,14 +123,17 @@ def test_row_values_uses_presentation_description_column() -> None:
         "Полное Описание проекта и статус": "Полный текст",
         "Для презентации Описание проекта и статус": "Коротко для слайда",
         "Описание проекта и статус": "Не использовать",
-        "Зачем и для чего делаем": "Комментарий",
+        "Зачем и для чего делаем полное описание": "Полный зачем",
+        "Зачем и для чего делаем для презентации": "Короткий зачем",
+        "Зачем и для чего делаем": "Не использовать",
     }
     assert _description_value_column(columns) == "Для презентации Описание проекта и статус"
+    assert _why_value_column(columns) == "Зачем и для чего делаем для презентации"
     assert _row_values(row, columns, 4) == [
         "01.06",
         "SMS Hub",
         "Коротко для слайда",
-        "Комментарий",
+        "Короткий зачем",
     ]
     assert _presentation_headers(columns)[2] == DESCRIPTION_HEADER
 
@@ -170,6 +176,35 @@ def test_slide_notes_blocks_splits_multiline_descriptions() -> None:
     assert _slide_notes_blocks(rows, columns) == [
         ["SMS Hub", "Первый абзац", "Второй абзац"],
     ]
+
+
+def test_slide_notes_blocks_include_full_why_text() -> None:
+    columns = [
+        "Проект",
+        "Полное Описание проекта и статус",
+        "Зачем и для чего делаем полное описание",
+    ]
+    rows = [
+        {
+            "Проект": "CORE",
+            "Полное Описание проекта и статус": "Полный статус",
+            "Зачем и для чего делаем полное описание": "Полный зачем",
+        },
+    ]
+    assert _slide_notes_blocks(rows, columns) == [
+        ["CORE", "Полный статус", "Полный зачем"],
+    ]
+
+
+def test_slide_notes_blocks_support_why_only_rows() -> None:
+    columns = ["Проект", "Зачем и для чего делаем полное описание"]
+    rows = [
+        {
+            "Проект": "SMS",
+            "Зачем и для чего делаем полное описание": "Только зачем в заметках",
+        },
+    ]
+    assert _slide_notes_text(rows, columns) == "SMS\n\nТолько зачем в заметках"
 
 
 def test_slide_notes_blocks_one_table_row_per_block() -> None:

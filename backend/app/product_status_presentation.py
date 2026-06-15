@@ -46,6 +46,8 @@ DESCRIPTION_HEADER = "Описание проекта и статус"
 PRESENTATION_FLAG_PATTERN = r"идет в презентацию"
 PRESENTATION_DESCRIPTION_PATTERN = r"для презентации"
 FULL_DESCRIPTION_PATTERN = r"полное описание"
+WHY_PATTERN = r"зачем"
+DESCRIPTION_PATTERN = r"описан"
 
 TABLE_FONT_NAME = "T2 Rooftop"
 TITLE_FONT_NAME = "T2 Halvar Breit ExtraBold"
@@ -272,6 +274,40 @@ def _find_column(
     return ""
 
 
+def _is_description_presentation_column(column: str) -> bool:
+    key = column.strip().casefold()
+    return (
+        re.search(PRESENTATION_DESCRIPTION_PATTERN, key) is not None
+        and re.search(DESCRIPTION_PATTERN, key) is not None
+        and re.search(WHY_PATTERN, key) is None
+    )
+
+
+def _is_why_presentation_column(column: str) -> bool:
+    key = column.strip().casefold()
+    return (
+        re.search(PRESENTATION_DESCRIPTION_PATTERN, key) is not None
+        and re.search(WHY_PATTERN, key) is not None
+    )
+
+
+def _is_full_description_notes_column(column: str) -> bool:
+    key = column.strip().casefold()
+    return (
+        re.search(FULL_DESCRIPTION_PATTERN, key) is not None
+        and re.search(DESCRIPTION_PATTERN, key) is not None
+        and re.search(WHY_PATTERN, key) is None
+    )
+
+
+def _is_full_why_notes_column(column: str) -> bool:
+    key = column.strip().casefold()
+    return (
+        re.search(FULL_DESCRIPTION_PATTERN, key) is not None
+        and re.search(WHY_PATTERN, key) is not None
+    )
+
+
 def _is_presentation_internal_column(column: str) -> bool:
     key = column.strip().casefold()
     if key == "зни":
@@ -280,23 +316,44 @@ def _is_presentation_internal_column(column: str) -> bool:
         return True
     if re.search(r"обратить.*вним", key):
         return True
-    if re.search(FULL_DESCRIPTION_PATTERN, key):
+    if _is_full_description_notes_column(column):
+        return True
+    if _is_full_why_notes_column(column):
         return True
     return False
 
 
 def _description_value_column(columns: list[str]) -> str:
-    presentation_col = _find_column(columns, PRESENTATION_DESCRIPTION_PATTERN)
-    if presentation_col:
-        return presentation_col
+    for column in columns:
+        if _is_description_presentation_column(column):
+            return column
 
     excluded = {column for column in columns if _is_presentation_internal_column(column)}
-    excluded.update(
-        column
-        for column in columns
-        if re.search(PRESENTATION_DESCRIPTION_PATTERN, column.strip(), re.IGNORECASE)
-    )
-    return _find_column(columns, r"Описание", exclude=excluded)
+    excluded.update(column for column in columns if _is_description_presentation_column(column))
+    excluded.update(column for column in columns if _is_why_presentation_column(column))
+    for column in columns:
+        if column in excluded:
+            continue
+        key = column.strip().casefold()
+        if re.search(DESCRIPTION_PATTERN, key) and not re.search(WHY_PATTERN, key):
+            return column
+    return ""
+
+
+def _why_value_column(columns: list[str]) -> str:
+    for column in columns:
+        if _is_why_presentation_column(column):
+            return column
+
+    excluded = {column for column in columns if _is_presentation_internal_column(column)}
+    excluded.update(column for column in columns if _is_why_presentation_column(column))
+    excluded.update(column for column in columns if _is_description_presentation_column(column))
+    for column in columns:
+        if column in excluded:
+            continue
+        if re.search(WHY_PATTERN, column.strip(), re.IGNORECASE):
+            return column
+    return ""
 
 
 def _mapped_columns(columns: list[str]) -> list[str]:
@@ -305,7 +362,7 @@ def _mapped_columns(columns: list[str]) -> list[str]:
         _find_column(columns, r"^Дата"),
         _find_column(columns, r"^Проект"),
         _description_value_column(columns),
-        _find_column(columns, r"Зачем"),
+        _why_value_column(columns),
     ]
 
     used = {column for column in mapped if column}
@@ -358,15 +415,19 @@ def _description_paragraphs(text: str) -> list[str]:
 
 
 def _slide_notes_blocks(rows: list[dict[str, str]], columns: list[str]) -> list[list[str]]:
-    full_column = _find_column(columns, FULL_DESCRIPTION_PATTERN)
+    full_column = next((column for column in columns if _is_full_description_notes_column(column)), "")
+    full_why_column = next((column for column in columns if _is_full_why_notes_column(column)), "")
     project_column = _find_column(columns, r"^Проект")
-    if not full_column:
+    if not full_column and not full_why_column:
         return []
 
     blocks: list[list[str]] = []
     for row in rows:
-        text = display_cell_text(row.get(full_column, "")).strip()
-        if not text:
+        description_text = (
+            display_cell_text(row.get(full_column, "")).strip() if full_column else ""
+        )
+        why_text = display_cell_text(row.get(full_why_column, "")).strip() if full_why_column else ""
+        if not description_text and not why_text:
             continue
         project = (
             display_cell_text(row.get(project_column, "")).strip()
@@ -376,7 +437,8 @@ def _slide_notes_blocks(rows: list[dict[str, str]], columns: list[str]) -> list[
         block: list[str] = []
         if project:
             block.append(project)
-        block.extend(_description_paragraphs(text))
+        block.extend(_description_paragraphs(description_text))
+        block.extend(_description_paragraphs(why_text))
         blocks.append(block)
     return blocks
 
