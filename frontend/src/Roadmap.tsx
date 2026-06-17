@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { getJson } from './api'
-import type { ChangeRequest } from './zniTypes'
+import { getJson, patchJson } from './api'
+import type { ChangeRequest, RoadmapPriority } from './zniTypes'
 import { columnBarClass } from './roadmap/kanbanColumns'
+import {
+  RoadmapPriorityPicker,
+  roadmapPriorityBarClass,
+  ROADMAP_PRIORITY_OPTIONS,
+} from './roadmap/RoadmapPriorityPicker'
 import {
   currentQuarter,
   formatRuDate,
@@ -69,6 +74,8 @@ export default function Roadmap() {
   const [items, setItems] = useState<ChangeRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [savingPriority, setSavingPriority] = useState<string | null>(null)
+  const [priorityError, setPriorityError] = useState<string | null>(null)
 
   const { from, to } = useMemo(() => quarterRange(year, quarter), [year, quarter])
   const fromDate = useMemo(() => parseDateInput(from), [from])
@@ -104,6 +111,32 @@ export default function Roadmap() {
   useEffect(() => {
     void loadItems()
   }, [loadItems])
+
+  const updateRoadmapPriority = useCallback(
+    async (item: ChangeRequest, priority: RoadmapPriority | null) => {
+      if (item.roadmapPriority === priority) return
+      setSavingPriority(item.number)
+      setPriorityError(null)
+      try {
+        const updated = await patchJson<ChangeRequest>(
+          `/api/tasks/${encodeURIComponent(item.number)}/roadmap-priority`,
+          { priority },
+        )
+        setItems((current) =>
+          current.map((row) =>
+            row.number === updated.number
+              ? { ...row, roadmapPriority: updated.roadmapPriority ?? null }
+              : row,
+          ),
+        )
+      } catch (err) {
+        setPriorityError(err instanceof Error ? err.message : 'Не удалось сохранить приоритет')
+      } finally {
+        setSavingPriority(null)
+      }
+    },
+    [],
+  )
 
   const months = useMemo(() => monthTicks(fromDate, toDate), [fromDate, toDate])
   const days = useMemo(() => dayTicks(fromDate, toDate), [fromDate, toDate])
@@ -151,8 +184,18 @@ export default function Roadmap() {
             {formatRuDate(from)} — {formatRuDate(to)}
           </span>
         </div>
+
+        <div className="roadmap-priority-legend" aria-label="Легенда приоритетов">
+          {ROADMAP_PRIORITY_OPTIONS.map((option) => (
+            <span key={option.value} className={`roadmap-priority-legend-item is-${option.value}`}>
+              <span className="roadmap-priority-dot" aria-hidden="true" />
+              {option.label}
+            </span>
+          ))}
+        </div>
       </div>
 
+      {priorityError ? <div className="roadmap-error">{priorityError}</div> : null}
       {error ? <div className="roadmap-error">{error}</div> : null}
 
       <div className="roadmap-workspace">
@@ -211,6 +254,8 @@ export default function Roadmap() {
             const visual = barVisual(startDate, to, fromDate, toDate)
             const column = item.boardColumn?.trim() || item.status?.trim() || '—'
             const statusClass = columnBarClass(column)
+            const priorityClass = roadmapPriorityBarClass(item.roadmapPriority)
+            const barClassName = ['roadmap-bar', statusClass, priorityClass].filter(Boolean).join(' ')
 
             return (
               <div key={item.number} className="roadmap-data-row">
@@ -235,13 +280,18 @@ export default function Roadmap() {
                       <span className="roadmap-task-column">{column}</span>
                       <span>Старт {formatRuDate(startDate)}</span>
                     </div>
+                    <RoadmapPriorityPicker
+                      value={item.roadmapPriority}
+                      saving={savingPriority === item.number}
+                      onChange={(priority) => void updateRoadmapPriority(item, priority)}
+                    />
                   </div>
                 </div>
                 <div className="roadmap-col-timeline">
                   <div className="roadmap-zoom-track">
                     <div className="roadmap-row-track">
                       <div
-                        className={`roadmap-bar ${statusClass}`}
+                        className={barClassName}
                         style={{
                           left: `${visual.leftPct}%`,
                           width: `${visual.widthPct}%`,

@@ -24,6 +24,7 @@ from app.iteration_plan import (
     quarter_label_from_key,
 )
 from app.models import Task
+from app.roadmap_priority_service import roadmap_priority_from_task
 from app.completed_metrics import has_customer_name
 from app.resource_reservation import ect_resource_reservation_label
 from app.zni_description import tfs_identity_display_name
@@ -279,6 +280,7 @@ def _change_request_to_out(row: Task, linked_errors: list[Task]) -> ChangeReques
         customerName=_customer_name(row),
         businessGoal=_business_goal(row),
         businessValue=_business_value(row),
+        roadmapPriority=roadmap_priority_from_task(row),
         ectResourceReservation=_ect_resource_reservation(row),
         errors=[
             LinkedErrorOut(

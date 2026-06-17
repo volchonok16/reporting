@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -78,6 +79,7 @@ class ChangeRequestOut(BaseModel):
     customerName: str | None = None
     businessGoal: str | None = None
     businessValue: int | None = None
+    roadmapPriority: Literal["red", "yellow", "green"] | None = None
     ectResourceReservation: bool = False
     errors: list[LinkedErrorOut] = Field(default_factory=list)
 
@@ -130,6 +132,13 @@ class BusinessValueUpdateIn(BaseModel):
         default=None,
         ge=1,
         description="Целое число; null — очистить поле в TFS",
+    )
+
+
+class RoadmapPriorityUpdateIn(BaseModel):
+    priority: Literal["red", "yellow", "green"] | None = Field(
+        default=None,
+        description="Приоритет колбаски на Roadmap: red — обязательно, yellow — средний, green — можно пропустить; null — сброс",
     )
 
 

@@ -84,3 +84,15 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
   }
   return (await response.json()) as T
 }
+
+export async function patchJson<T>(path: string, body: unknown): Promise<T> {
+  const response = await apiFetch(path, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    throw new Error(await readApiError(response))
+  }
+  return (await response.json()) as T
+}

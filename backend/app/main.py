@@ -23,11 +23,13 @@ from app.product_status_sheets_write import (
 )
 from app.report_service import export_csv, load_change_requests, load_change_requests_by_numbers
 from app.business_value_service import update_business_value
+from app.roadmap_priority_service import update_roadmap_priority
 from app.schemas import (
     AuthDefaultsOut,
     AuthLoginOut,
     BoardOut,
     BusinessValueUpdateIn,
+    RoadmapPriorityUpdateIn,
     ChangeRequestOut,
     DashboardOut,
     ProductStatusB2BOut,
@@ -63,6 +65,11 @@ def require_pat(x_session_id: str | None = Header(default=None, alias="X-Session
     if auth is None or not auth.pat:
         raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
     return auth.pat
+
+
+def require_session(x_session_id: str | None = Header(default=None, alias="X-Session-Id")) -> None:
+    if get_session(x_session_id) is None:
+        raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
 
 
 @app.get("/api/health")
@@ -194,6 +201,29 @@ async def patch_business_value(
             pat=pat,
             external_id=external_id,
             value=payload.value,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    dashboard = load_change_requests(db, board_code=ALL_BOARDS_CODE, search=external_id)
+    item = next((row for row in dashboard.items if row.number == external_id), None)
+    if item is None:
+        raise HTTPException(status_code=404, detail="ЗНИ не найден после обновления")
+    return item
+
+
+@app.patch("/api/tasks/{external_id}/roadmap-priority", response_model=ChangeRequestOut)
+def patch_roadmap_priority(
+    external_id: str,
+    payload: RoadmapPriorityUpdateIn,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_session),
+) -> ChangeRequestOut:
+    try:
+        update_roadmap_priority(
+            db,
+            external_id=external_id,
+            priority=payload.priority,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -5,6 +5,8 @@ export type LinkedError = {
   status?: string | null
 }
 
+export type RoadmapPriority = 'red' | 'yellow' | 'green'
+
 export type ChangeRequest = {
   number: string
   rowType?: 'change_request' | 'error'
@@ -23,6 +25,7 @@ export type ChangeRequest = {
   customerName?: string | null
   businessGoal?: string | null
   businessValue?: number | null
+  roadmapPriority?: RoadmapPriority | null
   ectResourceReservation?: boolean
   errors: LinkedError[]
 }
