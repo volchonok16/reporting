@@ -26,6 +26,7 @@ export type ChangeRequest = {
   businessGoal?: string | null
   businessValue?: number | null
   roadmapPriority?: RoadmapPriority | null
+  roadmapComment?: string | null
   ectResourceReservation?: boolean
   errors: LinkedError[]
 }

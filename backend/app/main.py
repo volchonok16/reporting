@@ -24,12 +24,13 @@ from app.product_status_sheets_write import (
 )
 from app.report_service import export_csv, load_change_requests, load_change_requests_by_numbers
 from app.business_value_service import update_business_value
-from app.roadmap_priority_service import update_roadmap_priority
+from app.roadmap_priority_service import update_roadmap_comment, update_roadmap_priority
 from app.schemas import (
     AuthDefaultsOut,
     AuthLoginOut,
     BoardOut,
     BusinessValueUpdateIn,
+    RoadmapCommentUpdateIn,
     RoadmapPriorityUpdateIn,
     ChangeRequestOut,
     DashboardOut,
@@ -244,6 +245,29 @@ def patch_roadmap_priority(
             db,
             external_id=external_id,
             priority=payload.priority,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    dashboard = load_change_requests(db, board_code=ALL_BOARDS_CODE, search=external_id)
+    item = next((row for row in dashboard.items if row.number == external_id), None)
+    if item is None:
+        raise HTTPException(status_code=404, detail="ЗНИ не найден после обновления")
+    return item
+
+
+@app.patch("/api/tasks/{external_id}/roadmap-comment", response_model=ChangeRequestOut)
+def patch_roadmap_comment(
+    external_id: str,
+    payload: RoadmapCommentUpdateIn,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_session),
+) -> ChangeRequestOut:
+    try:
+        update_roadmap_comment(
+            db,
+            external_id=external_id,
+            comment=payload.comment,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

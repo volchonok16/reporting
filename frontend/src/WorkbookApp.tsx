@@ -73,7 +73,7 @@ export default function WorkbookApp({ appRole, canSyncTfs, onLogout }: WorkbookA
                 Выйти
               </button>
             </header>
-            <Roadmap canSyncTfs={canSyncTfs} canEditPriority={appRole === 'full'} />
+            <Roadmap canSyncTfs={canSyncTfs} canEditPriority={appRole === 'full'} canEditComment />
           </div>
         ) : (
           <div className="app">

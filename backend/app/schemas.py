@@ -83,6 +83,7 @@ class ChangeRequestOut(BaseModel):
     businessGoal: str | None = None
     businessValue: int | None = None
     roadmapPriority: Literal["red", "yellow", "green"] | None = None
+    roadmapComment: str | None = None
     ectResourceReservation: bool = False
     errors: list[LinkedErrorOut] = Field(default_factory=list)
 
@@ -142,6 +143,14 @@ class RoadmapPriorityUpdateIn(BaseModel):
     priority: Literal["red", "yellow", "green"] | None = Field(
         default=None,
         description="Приоритет колбаски на Roadmap: red — обязательно, yellow — средний, green — можно пропустить; null — сброс",
+    )
+
+
+class RoadmapCommentUpdateIn(BaseModel):
+    comment: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Локальный комментарий колбаски Roadmap (не в TFS); null или пустая строка — сброс",
     )
 
 

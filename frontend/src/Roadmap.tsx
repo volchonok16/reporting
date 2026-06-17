@@ -26,6 +26,7 @@ const dayMs = 24 * 60 * 60 * 1000
 type RoadmapProps = {
   canSyncTfs?: boolean
   canEditPriority?: boolean
+  canEditComment?: boolean
 }
 
 type DashboardPayload = {
@@ -72,7 +73,11 @@ function dayTicks(from: Date, to: Date): { label: string; left: number; isFirstO
   return ticks
 }
 
-export default function Roadmap({ canSyncTfs = false, canEditPriority = true }: RoadmapProps) {
+export default function Roadmap({
+  canSyncTfs = false,
+  canEditPriority = true,
+  canEditComment = true,
+}: RoadmapProps) {
   const saved = useMemo(() => loadRoadmapUiState(), [])
   const [year, setYear] = useState(saved.year ?? new Date().getFullYear())
   const [quarter, setQuarter] = useState(saved.quarter ?? currentQuarter())
@@ -81,6 +86,9 @@ export default function Roadmap({ canSyncTfs = false, canEditPriority = true }: 
   const [error, setError] = useState<string | null>(null)
   const [savingPriority, setSavingPriority] = useState<string | null>(null)
   const [priorityError, setPriorityError] = useState<string | null>(null)
+  const [savingComment, setSavingComment] = useState<string | null>(null)
+  const [commentError, setCommentError] = useState<string | null>(null)
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({})
   const [syncing, setSyncing] = useState(false)
   const [syncProgress, setSyncProgress] = useState<string | null>(null)
 
@@ -189,6 +197,49 @@ export default function Roadmap({ canSyncTfs = false, canEditPriority = true }: 
     [],
   )
 
+  const saveRoadmapComment = useCallback(
+    async (item: ChangeRequest, comment: string) => {
+      const normalized = comment.trim()
+      const current = (item.roadmapComment ?? '').trim()
+      if (normalized === current) {
+        setCommentDrafts((drafts) => {
+          if (!(item.number in drafts)) return drafts
+          const next = { ...drafts }
+          delete next[item.number]
+          return next
+        })
+        return
+      }
+
+      setSavingComment(item.number)
+      setCommentError(null)
+      try {
+        const updated = await patchJson<ChangeRequest>(
+          `/api/tasks/${encodeURIComponent(item.number)}/roadmap-comment`,
+          { comment: normalized || null },
+        )
+        setItems((currentItems) =>
+          currentItems.map((row) =>
+            row.number === updated.number
+              ? { ...row, roadmapComment: updated.roadmapComment ?? null }
+              : row,
+          ),
+        )
+        setCommentDrafts((drafts) => {
+          if (!(item.number in drafts)) return drafts
+          const next = { ...drafts }
+          delete next[item.number]
+          return next
+        })
+      } catch (err) {
+        setCommentError(err instanceof Error ? err.message : 'Не удалось сохранить комментарий')
+      } finally {
+        setSavingComment(null)
+      }
+    },
+    [],
+  )
+
   const months = useMemo(() => monthTicks(fromDate, toDate), [fromDate, toDate])
   const days = useMemo(() => dayTicks(fromDate, toDate), [fromDate, toDate])
   const todayLeft = timelinePercent(new Date(), fromDate, toDate)
@@ -260,6 +311,7 @@ export default function Roadmap({ canSyncTfs = false, canEditPriority = true }: 
       {syncProgress ? <div className="roadmap-sync-progress">{syncProgress}</div> : null}
 
       {priorityError ? <div className="roadmap-error">{priorityError}</div> : null}
+      {commentError ? <div className="roadmap-error">{commentError}</div> : null}
       {error ? <div className="roadmap-error">{error}</div> : null}
 
       <div className="roadmap-workspace">
@@ -320,6 +372,8 @@ export default function Roadmap({ canSyncTfs = false, canEditPriority = true }: 
             const statusClass = columnBarClass(column)
             const priorityClass = roadmapPriorityBarClass(item.roadmapPriority)
             const barClassName = ['roadmap-bar', statusClass, priorityClass].filter(Boolean).join(' ')
+            const commentValue = commentDrafts[item.number] ?? item.roadmapComment ?? ''
+            const commentSaving = savingComment === item.number
 
             return (
               <div key={item.number} className="roadmap-data-row">
@@ -369,6 +423,27 @@ export default function Roadmap({ canSyncTfs = false, canEditPriority = true }: 
                             <b>#{item.number}</b> {item.title}
                           </span>
                         </div>
+                        {canEditComment ? (
+                          <textarea
+                            className="roadmap-bar-comment"
+                            value={commentValue}
+                            placeholder="Комментарий"
+                            rows={2}
+                            maxLength={500}
+                            disabled={commentSaving}
+                            onClick={(event) => event.stopPropagation()}
+                            onChange={(event) => {
+                              const nextValue = event.target.value
+                              setCommentDrafts((drafts) => ({
+                                ...drafts,
+                                [item.number]: nextValue,
+                              }))
+                            }}
+                            onBlur={() => void saveRoadmapComment(item, commentValue)}
+                          />
+                        ) : commentValue ? (
+                          <p className="roadmap-bar-comment-readonly">{commentValue}</p>
+                        ) : null}
                       </div>
                     </div>
                   </div>

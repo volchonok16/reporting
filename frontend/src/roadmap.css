@@ -460,7 +460,7 @@
   position: absolute;
   top: 5px;
   bottom: 5px;
-  min-height: 98px;
+  min-height: 128px;
   border-radius: 11px;
   padding: 8px 10px 8px 14px;
   color: var(--c-default-text);
@@ -473,7 +473,10 @@
     0 3px 10px rgba(61, 71, 86, 0.12);
   z-index: 2;
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 6px;
   overflow: hidden;
 }
 
@@ -505,6 +508,51 @@
 
 .roadmap-bar-label b {
   font-weight: 900;
+}
+
+.roadmap-bar-comment {
+  width: 100%;
+  min-height: 42px;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid rgba(61, 71, 86, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  resize: none;
+  box-sizing: border-box;
+}
+
+.roadmap-bar-comment::placeholder {
+  color: rgba(61, 71, 86, 0.55);
+  font-weight: 600;
+}
+
+.roadmap-bar-comment:focus {
+  outline: 2px solid rgba(124, 58, 237, 0.35);
+  border-color: rgba(124, 58, 237, 0.45);
+}
+
+.roadmap-bar-comment:disabled {
+  opacity: 0.7;
+}
+
+.roadmap-bar-comment-readonly {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .roadmap-bar.new {
