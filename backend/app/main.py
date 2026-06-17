@@ -237,7 +237,7 @@ def patch_roadmap_priority(
     external_id: str,
     payload: RoadmapPriorityUpdateIn,
     db: Session = Depends(get_db),
-    _: None = Depends(require_session),
+    _: None = Depends(require_full_app_access),
 ) -> ChangeRequestOut:
     try:
         update_roadmap_priority(

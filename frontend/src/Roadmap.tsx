@@ -25,6 +25,7 @@ const dayMs = 24 * 60 * 60 * 1000
 
 type RoadmapProps = {
   canSyncTfs?: boolean
+  canEditPriority?: boolean
 }
 
 type DashboardPayload = {
@@ -71,7 +72,7 @@ function dayTicks(from: Date, to: Date): { label: string; left: number; isFirstO
   return ticks
 }
 
-export default function Roadmap({ canSyncTfs = false }: RoadmapProps) {
+export default function Roadmap({ canSyncTfs = false, canEditPriority = true }: RoadmapProps) {
   const saved = useMemo(() => loadRoadmapUiState(), [])
   const [year, setYear] = useState(saved.year ?? new Date().getFullYear())
   const [quarter, setQuarter] = useState(saved.quarter ?? currentQuarter())
@@ -346,6 +347,7 @@ export default function Roadmap({ canSyncTfs = false }: RoadmapProps) {
                     <RoadmapPriorityPicker
                       value={item.roadmapPriority}
                       saving={savingPriority === item.number}
+                      disabled={!canEditPriority}
                       onChange={(priority) => void updateRoadmapPriority(item, priority)}
                     />
                   </div>
