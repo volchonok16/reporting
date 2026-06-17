@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy.orm import Session
 
+from app.app_access import is_roadmap_role, sync_board_denied_reason
 from app.auth_service import login_with_app_user, login_with_pat
 from app.auth_sessions import delete_session, get_session, get_session_with_meta
 from app.boards import ALL_BOARDS_CODE, BOARDS, boards_for_sync
@@ -72,6 +73,16 @@ def require_session(x_session_id: str | None = Header(default=None, alias="X-Ses
         raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
 
 
+def require_full_app_access(
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+) -> None:
+    _, meta = get_session_with_meta(x_session_id)
+    if get_session(x_session_id) is None:
+        raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
+    if is_roadmap_role(meta.get("app_role")):
+        raise HTTPException(status_code=403, detail="Недостаточно прав.")
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -92,12 +103,16 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
     auth, meta = get_session_with_meta(x_session_id)
     if auth is None:
         return TfsAuthStatusOut(authenticated=False)
+    app_role = meta.get("app_role") or "full"
+    can_sync_tfs = bool(auth.pat)
     return TfsAuthStatusOut(
         authenticated=True,
         baseUrl=auth.base_url,
         project=auth.project,
         authMode=meta.get("auth_mode"),
         username=meta.get("app_login"),
+        appRole=app_role,  # type: ignore[arg-type]
+        canSyncTfs=can_sync_tfs,
     )
 
 
@@ -184,7 +199,11 @@ def dashboard(
 
 
 @app.post("/api/tasks/lookup", response_model=TaskLookupOut)
-def tasks_lookup(payload: TaskLookupIn, db: Session = Depends(get_db)) -> TaskLookupOut:
+def tasks_lookup(
+    payload: TaskLookupIn,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_full_app_access),
+) -> TaskLookupOut:
     return TaskLookupOut(items=load_change_requests_by_numbers(db, payload.numbers))
 
 
@@ -194,6 +213,7 @@ async def patch_business_value(
     payload: BusinessValueUpdateIn,
     db: Session = Depends(get_db),
     pat: str = Depends(require_pat),
+    _: None = Depends(require_full_app_access),
 ) -> ChangeRequestOut:
     try:
         await update_business_value(
@@ -240,6 +260,7 @@ def product_status_b2b(
     gid: str | None = Query(default=None),
     meta_only: bool = Query(default=False),
     refresh: bool = Query(default=False),
+    _: None = Depends(require_full_app_access),
 ) -> ProductStatusB2BOut:
     return load_b2b_product_status(
         gid=gid,
@@ -249,7 +270,7 @@ def product_status_b2b(
 
 
 @app.get("/api/product-status/b2b/presentation")
-def product_status_b2b_presentation() -> Response:
+def product_status_b2b_presentation(_: None = Depends(require_full_app_access)) -> Response:
     content, filename = generate_b2b_product_status_presentation()
     return Response(
         content=content,
@@ -259,7 +280,7 @@ def product_status_b2b_presentation() -> Response:
 
 
 @app.get("/api/product-status/b2b/excel")
-def product_status_b2b_excel() -> Response:
+def product_status_b2b_excel(_: None = Depends(require_full_app_access)) -> Response:
     content, filename = generate_b2b_product_status_excel(load_b2b_product_status())
     return Response(
         content=content,
@@ -269,7 +290,10 @@ def product_status_b2b_excel() -> Response:
 
 
 @app.post("/api/product-status/b2b/excel")
-def product_status_b2b_excel_from_payload(payload: ProductStatusB2BOut) -> Response:
+def product_status_b2b_excel_from_payload(
+    payload: ProductStatusB2BOut,
+    _: None = Depends(require_full_app_access),
+) -> Response:
     content, filename = generate_b2b_product_status_excel(payload)
     return Response(
         content=content,
@@ -279,7 +303,10 @@ def product_status_b2b_excel_from_payload(payload: ProductStatusB2BOut) -> Respo
 
 
 @app.post("/api/product-status/b2b/presentation")
-def product_status_b2b_presentation_from_payload(payload: ProductStatusB2BOut) -> Response:
+def product_status_b2b_presentation_from_payload(
+    payload: ProductStatusB2BOut,
+    _: None = Depends(require_full_app_access),
+) -> Response:
     content, filename = generate_b2b_product_status_presentation(payload)
     return Response(
         content=content,
@@ -289,7 +316,10 @@ def product_status_b2b_presentation_from_payload(payload: ProductStatusB2BOut) -
 
 
 @app.post("/api/product-status/b2b/save")
-def product_status_b2b_save(payload: ProductStatusB2BOut) -> dict[str, str]:
+def product_status_b2b_save(
+    payload: ProductStatusB2BOut,
+    _: None = Depends(require_full_app_access),
+) -> dict[str, str]:
     save_b2b_product_status_to_google(payload)
     invalidate_workbook_cache(settings.b2b_product_status_spreadsheet_id)
     return {"status": "ok"}
@@ -300,6 +330,7 @@ def b2b_news(
     gid: str | None = Query(default=None),
     meta_only: bool = Query(default=False),
     refresh: bool = Query(default=False),
+    _: None = Depends(require_full_app_access),
 ) -> ProductStatusB2BOut:
     return load_b2b_news(
         gid=gid,
@@ -309,7 +340,10 @@ def b2b_news(
 
 
 @app.post("/api/b2b-news/save")
-def b2b_news_save(payload: ProductStatusB2BOut) -> dict[str, str]:
+def b2b_news_save(
+    payload: ProductStatusB2BOut,
+    _: None = Depends(require_full_app_access),
+) -> dict[str, str]:
     save_b2b_news_to_google(payload)
     invalidate_workbook_cache(settings.b2b_news_spreadsheet_id)
     return {"status": "ok"}
@@ -320,6 +354,7 @@ def export_report(
     db: Session = Depends(get_db),
     board: str | None = Query(default=None),
     _: str = Depends(require_pat),
+    __: None = Depends(require_full_app_access),
 ) -> PlainTextResponse:
     content = export_csv(db, board_code=board)
     return PlainTextResponse(
@@ -342,7 +377,17 @@ async def start_sync(
     db: Session = Depends(get_db),
     pat: str = Depends(require_pat),
     board: str | None = Query(default=None),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
 ) -> SyncRunOut:
+    _, meta = get_session_with_meta(x_session_id)
+    denied = sync_board_denied_reason(meta.get("app_role"), board)
+    if denied:
+        raise HTTPException(status_code=403, detail=denied)
+    if is_roadmap_role(meta.get("app_role")) and not board:
+        raise HTTPException(
+            status_code=400,
+            detail="Укажите доску digital_streams_b2b для синхронизации.",
+        )
     from app.models import SourceSystem
 
     tfs = db.query(SourceSystem).filter(SourceSystem.code == "tfs").first()

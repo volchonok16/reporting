@@ -397,10 +397,12 @@
 
 Пользователи приложения задаются в `APP_AUTH_USERS` (`login:password`, по строке). Секреты — только в `.env`, не в репозитории.
 
+Пользователи с ограниченным доступом — `APP_AUTH_ROADMAP_USERS`: только вкладка **Roadmap**, синхронизация TFS только по доске `digital_streams_b2b` (кнопка «Выгрузить из TFS»). Роль в сессии: `app_role` = `roadmap` (остальные — `full`).
+
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `id` | varchar(64) | Идентификатор сессии |
-| `payload` | jsonb | `base_url`, `project`, `pat` и др. (не отдаётся в API) |
+| `payload` | jsonb | `base_url`, `project`, `pat`, `auth_mode`, `app_login`, `app_role` и др. (не отдаётся в API) |
 | `created_at` | timestamptz | Время создания сессии |
 
 ---

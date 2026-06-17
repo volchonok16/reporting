@@ -43,12 +43,14 @@ def test_probe_tfs_rejects_401_without_wiql() -> None:
 def test_login_with_app_user_skips_tfs_probe() -> None:
     with (
         patch("app.auth_service.settings") as settings,
-        patch("app.auth_service.verify_app_user", return_value=True),
+        patch("app.auth_service.verify_app_user") as verify_user,
         patch("app.auth_service.create_session", return_value="session-1") as create_session,
         patch("app.auth_service.resolve_working_auth", new_callable=AsyncMock) as resolve_auth,
     ):
         settings.app_auth_users_map = {"alice": "hash"}
+        settings.app_auth_roadmap_users_map = {}
         settings.tfs_sync_pat = "sync-pat"
+        verify_user.side_effect = lambda users, login, password: users is settings.app_auth_users_map
 
         result = asyncio.run(
             login_with_app_user(
@@ -60,8 +62,33 @@ def test_login_with_app_user_skips_tfs_probe() -> None:
 
     assert result.sessionId == "session-1"
     assert result.authMode == "app_user"
+    assert result.appRole == "full"
     resolve_auth.assert_not_awaited()
     create_session.assert_called_once()
+
+
+def test_login_with_roadmap_app_user() -> None:
+    with (
+        patch("app.auth_service.settings") as settings,
+        patch("app.auth_service.verify_app_user") as verify_user,
+        patch("app.auth_service.create_session", return_value="session-roadmap") as create_session,
+    ):
+        settings.app_auth_users_map = {}
+        settings.app_auth_roadmap_users_map = {"bob": "hash"}
+        settings.tfs_sync_pat = "sync-pat"
+        verify_user.side_effect = lambda users, login, password: users is settings.app_auth_roadmap_users_map
+
+        result = asyncio.run(
+            login_with_app_user(
+                username="bob",
+                password="secret",
+                project="Tele2",
+            )
+        )
+
+    assert result.appRole == "roadmap"
+    create_session.assert_called_once()
+    assert create_session.call_args.kwargs["app_role"] == "roadmap"
 
 
 def test_resolve_working_auth_uses_short_timeout_client() -> None:

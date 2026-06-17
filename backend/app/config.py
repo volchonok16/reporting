@@ -86,6 +86,14 @@ class Settings(BaseSettings):
         alias="APP_AUTH_USERS",
         description="Пользователи приложения: login:password (по одному на строку).",
     )
+    app_auth_roadmap_users: str = Field(
+        default="",
+        alias="APP_AUTH_ROADMAP_USERS",
+        description=(
+            "Пользователи только Roadmap: login:password. "
+            "Доступ к вкладке Roadmap и синхронизации доски Digital Streams B2b."
+        ),
+    )
     b2b_product_status_spreadsheet_id: str = Field(
         default="1zTxzUqa1p6wFUjmk-8_2czfsJaSm3eTrNGazN0oFKqI",
         alias="B2B_PRODUCT_STATUS_SPREADSHEET_ID",
@@ -261,6 +269,11 @@ class Settings(BaseSettings):
     @property
     def app_auth_users_map(self) -> dict[str, str]:
         return parse_app_users(self.app_auth_users)
+
+    @computed_field
+    @property
+    def app_auth_roadmap_users_map(self) -> dict[str, str]:
+        return parse_app_users(self.app_auth_roadmap_users)
 
 
 settings = Settings()

@@ -1,6 +1,7 @@
 import httpx
 from fastapi import HTTPException
 
+from app.app_access import FULL_APP_ROLE, ROADMAP_APP_ROLE
 from app.app_users import verify_app_user
 from app.auth_sessions import create_session
 from app.config import settings
@@ -79,10 +80,20 @@ async def login_with_app_user(
     if not login or not password:
         raise HTTPException(status_code=400, detail="Укажите логин и пароль.")
 
+    roadmap_users = settings.app_auth_roadmap_users_map
     users = settings.app_auth_users_map
-    if not users:
-        raise HTTPException(status_code=500, detail="Пользователи приложения не настроены (APP_AUTH_USERS).")
-    if not verify_app_user(users, login, password):
+    if not users and not roadmap_users:
+        raise HTTPException(
+            status_code=500,
+            detail="Пользователи приложения не настроены (APP_AUTH_USERS / APP_AUTH_ROADMAP_USERS).",
+        )
+
+    app_role = FULL_APP_ROLE
+    if verify_app_user(roadmap_users, login, password):
+        app_role = ROADMAP_APP_ROLE
+    elif verify_app_user(users, login, password):
+        app_role = FULL_APP_ROLE
+    else:
         raise HTTPException(status_code=401, detail="Неверный логин или пароль.")
 
     sync_pat = settings.tfs_sync_pat.strip()
@@ -95,5 +106,10 @@ async def login_with_app_user(
         project_id=project_id,
         pat=sync_pat,
     )
-    session_id = create_session(auth, auth_mode="app_user", app_login=login)
-    return AuthLoginOut(sessionId=session_id, authMode="app_user", username=login)
+    session_id = create_session(auth, auth_mode="app_user", app_login=login, app_role=app_role)
+    return AuthLoginOut(
+        sessionId=session_id,
+        authMode="app_user",
+        username=login,
+        appRole=app_role,
+    )

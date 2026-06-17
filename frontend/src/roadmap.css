@@ -52,6 +52,19 @@
   color: var(--text-muted);
 }
 
+.roadmap-sync-btn {
+  flex-shrink: 0;
+}
+
+.roadmap-sync-progress {
+  margin: 0;
+  padding: 8px var(--page-gutter);
+  background: #f0f7ff;
+  border-bottom: 1px solid var(--border);
+  color: #2c5282;
+  font-size: 14px;
+}
+
 .roadmap-period {
   display: flex;
   align-items: center;

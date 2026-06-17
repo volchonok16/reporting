@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { getJson, patchJson } from './api'
+import { apiFetch, getJson, patchJson } from './api'
 import type { ChangeRequest, RoadmapPriority } from './zniTypes'
 import { columnBarClass } from './roadmap/kanbanColumns'
 import {
@@ -22,6 +22,10 @@ import './roadmap.css'
 
 const DIGITAL_BOARD = 'digital_streams_b2b'
 const dayMs = 24 * 60 * 60 * 1000
+
+type RoadmapProps = {
+  canSyncTfs?: boolean
+}
 
 type DashboardPayload = {
   items: ChangeRequest[]
@@ -67,7 +71,7 @@ function dayTicks(from: Date, to: Date): { label: string; left: number; isFirstO
   return ticks
 }
 
-export default function Roadmap() {
+export default function Roadmap({ canSyncTfs = false }: RoadmapProps) {
   const saved = useMemo(() => loadRoadmapUiState(), [])
   const [year, setYear] = useState(saved.year ?? new Date().getFullYear())
   const [quarter, setQuarter] = useState(saved.quarter ?? currentQuarter())
@@ -76,6 +80,8 @@ export default function Roadmap() {
   const [error, setError] = useState<string | null>(null)
   const [savingPriority, setSavingPriority] = useState<string | null>(null)
   const [priorityError, setPriorityError] = useState<string | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [syncProgress, setSyncProgress] = useState<string | null>(null)
 
   const { from, to } = useMemo(() => quarterRange(year, quarter), [year, quarter])
   const fromDate = useMemo(() => parseDateInput(from), [from])
@@ -111,6 +117,50 @@ export default function Roadmap() {
   useEffect(() => {
     void loadItems()
   }, [loadItems])
+
+  const waitForSync = useCallback(async () => {
+    const params = `?board=${encodeURIComponent(DIGITAL_BOARD)}`
+    const response = await apiFetch(`/api/sync${params}`, { method: 'POST' })
+    if (!response.ok) {
+      const text = await response.text()
+      throw new Error(text || 'Ошибка синхронизации')
+    }
+    const sync = (await response.json()) as { id: number }
+    for (;;) {
+      const status = await getJson<{
+        status: string
+        errorMessage?: string | null
+        progressMessage?: string | null
+      }>(`/api/sync/${sync.id}`)
+      if (status.progressMessage) {
+        setSyncProgress(status.progressMessage)
+      }
+      if (status.status === 'running') {
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+        continue
+      }
+      if (status.status === 'failed') {
+        throw new Error(status.errorMessage || 'Синхронизация не удалась')
+      }
+      return
+    }
+  }, [])
+
+  const handleSyncFromTfs = async () => {
+    setSyncing(true)
+    setSyncProgress('Старт…')
+    setError(null)
+    try {
+      await waitForSync()
+      setSyncProgress(null)
+      await loadItems()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка синхронизации')
+      setSyncProgress(null)
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   const updateRoadmapPriority = useCallback(
     async (item: ChangeRequest, priority: RoadmapPriority | null) => {
@@ -193,7 +243,20 @@ export default function Roadmap() {
             </span>
           ))}
         </div>
+
+        {canSyncTfs ? (
+          <button
+            type="button"
+            className="btn-secondary roadmap-sync-btn"
+            onClick={() => void handleSyncFromTfs()}
+            disabled={syncing || loading}
+          >
+            {syncing ? 'Выгрузка…' : 'Выгрузить из TFS'}
+          </button>
+        ) : null}
       </div>
+
+      {syncProgress ? <div className="roadmap-sync-progress">{syncProgress}</div> : null}
 
       {priorityError ? <div className="roadmap-error">{priorityError}</div> : null}
       {error ? <div className="roadmap-error">{error}</div> : null}

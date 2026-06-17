@@ -3,6 +3,7 @@ import { apiFetch, clearSessionId } from './api'
 import Dashboard from './Dashboard'
 import ProductStatusB2B from './ProductStatusB2B'
 import Roadmap from './Roadmap'
+import type { AppRole } from './App'
 import { loadActiveSheet, saveActiveSheet, type SheetId } from './uiState'
 
 type SheetTab = {
@@ -17,11 +18,22 @@ const SHEETS: SheetTab[] = [
 ]
 
 type WorkbookAppProps = {
+  appRole: AppRole
+  canSyncTfs: boolean
   onLogout: () => void
 }
 
-export default function WorkbookApp({ onLogout }: WorkbookAppProps) {
-  const [activeSheet, setActiveSheet] = useState<SheetId>(() => loadActiveSheet())
+export default function WorkbookApp({ appRole, canSyncTfs, onLogout }: WorkbookAppProps) {
+  const visibleSheets = appRole === 'roadmap' ? SHEETS.filter((sheet) => sheet.id === 'roadmap') : SHEETS
+  const [activeSheet, setActiveSheet] = useState<SheetId>(() =>
+    appRole === 'roadmap' ? 'roadmap' : loadActiveSheet(),
+  )
+
+  useEffect(() => {
+    if (appRole === 'roadmap') {
+      setActiveSheet('roadmap')
+    }
+  }, [appRole])
 
   useEffect(() => {
     saveActiveSheet(activeSheet)
@@ -37,7 +49,7 @@ export default function WorkbookApp({ onLogout }: WorkbookAppProps) {
     <div className="workbook">
       <header className="workbook-header">
         <nav className="workbook-tabs" aria-label="Вкладки книги">
-          {SHEETS.map((sheet) => (
+          {visibleSheets.map((sheet) => (
             <button
               key={sheet.id}
               type="button"
@@ -61,7 +73,7 @@ export default function WorkbookApp({ onLogout }: WorkbookAppProps) {
                 Выйти
               </button>
             </header>
-            <Roadmap />
+            <Roadmap canSyncTfs={appRole === 'roadmap' && canSyncTfs} />
           </div>
         ) : (
           <div className="app">

@@ -17,6 +17,7 @@ class AuthLoginOut(BaseModel):
     sessionId: str
     authMode: str | None = None
     username: str | None = None
+    appRole: Literal["full", "roadmap"] = "full"
 
 
 class AuthDefaultsOut(BaseModel):
@@ -31,6 +32,8 @@ class TfsAuthStatusOut(BaseModel):
     project: str | None = None
     authMode: str | None = None
     username: str | None = None
+    appRole: Literal["full", "roadmap"] = "full"
+    canSyncTfs: bool = False
 
 
 class BoardOut(BaseModel):
