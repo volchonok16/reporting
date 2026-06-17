@@ -1,6 +1,11 @@
 const STORAGE_KEY = 'reporting.uiState'
 
-export type SheetId = 'zni' | 'product-status-b2b'
+export type SheetId = 'zni' | 'product-status-b2b' | 'roadmap'
+
+export type RoadmapUiState = {
+  year: number
+  quarter: number
+}
 
 export type B2bPanelId = 'status' | 'news'
 
@@ -20,6 +25,7 @@ export type DashboardUiState = {
 type UiState = {
   activeSheet?: SheetId
   dashboard?: Partial<DashboardUiState>
+  roadmap?: Partial<RoadmapUiState>
   productStatusB2bGid?: string | null
   b2bNewsGid?: string | null
   b2bPanel?: B2bPanelId
@@ -40,7 +46,7 @@ function writeUiState(patch: UiState): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...patch }))
 }
 
-const WORKBOOK_SHEETS: SheetId[] = ['product-status-b2b']
+const WORKBOOK_SHEETS: SheetId[] = ['product-status-b2b', 'roadmap']
 
 export function loadActiveSheet(): SheetId {
   const sheet = readUiState().activeSheet as string | undefined
@@ -96,4 +102,12 @@ export function loadB2bPanel(): B2bPanelId {
 
 export function saveB2bPanel(panel: B2bPanelId): void {
   writeUiState({ b2bPanel: panel })
+}
+
+export function loadRoadmapUiState(): Partial<RoadmapUiState> {
+  return readUiState().roadmap ?? {}
+}
+
+export function saveRoadmapUiState(state: RoadmapUiState): void {
+  writeUiState({ roadmap: state })
 }
