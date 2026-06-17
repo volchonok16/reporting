@@ -18,7 +18,6 @@ import {
   loadRoadmapUiState,
   saveRoadmapUiState,
 } from './uiState'
-import { formatEctReservation } from './zniDisplay'
 import './roadmap.css'
 
 const DIGITAL_BOARD = 'digital_streams_b2b'
@@ -419,19 +418,17 @@ export default function Roadmap({
                         title={`#${item.number} ${item.title}\nСтарт ${formatRuDate(startDate)} → конец квартала ${formatRuDate(to)}`}
                       >
                         <div className="roadmap-bar-text">
-                          <div className="roadmap-bar-top">
-                            <span className="roadmap-bar-status">{column}</span>
-                            <span
-                              className={`roadmap-bar-ect${
-                                item.ectResourceReservation ? ' is-yes' : ' is-no'
-                              }`}
-                            >
-                              Бронь ЕЦТ {formatEctReservation(item.ectResourceReservation)}
-                            </span>
-                          </div>
+                          <span className="roadmap-bar-status">{column}</span>
                           <span className="roadmap-bar-label">
                             <b>#{item.number}</b> {item.title}
                           </span>
+                        </div>
+                        <div
+                          className={`roadmap-bar-ect${
+                            item.ectResourceReservation ? ' is-yes' : ' is-no'
+                          }`}
+                        >
+                          {item.ectResourceReservation ? 'Бронь ЕЦТ — ДА' : 'Бронь ЕЦТ — НЕТ'}
                         </div>
                         {canEditComment ? (
                           <textarea
