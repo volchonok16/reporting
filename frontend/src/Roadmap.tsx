@@ -233,6 +233,17 @@ export default function Roadmap({ canSyncTfs = false }: RoadmapProps) {
           <span className="roadmap-period-range">
             {formatRuDate(from)} — {formatRuDate(to)}
           </span>
+
+          {canSyncTfs ? (
+            <button
+              type="button"
+              className="btn-secondary roadmap-sync-btn"
+              onClick={() => void handleSyncFromTfs()}
+              disabled={syncing || loading}
+            >
+              {syncing ? 'Обновление…' : 'Обновить из TFS'}
+            </button>
+          ) : null}
         </div>
 
         <div className="roadmap-priority-legend" aria-label="Легенда приоритетов">
@@ -243,17 +254,6 @@ export default function Roadmap({ canSyncTfs = false }: RoadmapProps) {
             </span>
           ))}
         </div>
-
-        {canSyncTfs ? (
-          <button
-            type="button"
-            className="btn-secondary roadmap-sync-btn"
-            onClick={() => void handleSyncFromTfs()}
-            disabled={syncing || loading}
-          >
-            {syncing ? 'Выгрузка…' : 'Выгрузить из TFS'}
-          </button>
-        ) : null}
       </div>
 
       {syncProgress ? <div className="roadmap-sync-progress">{syncProgress}</div> : null}
