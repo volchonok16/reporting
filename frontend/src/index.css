@@ -561,8 +561,8 @@ body {
   width: 32%;
 }
 
-.zni-table col.col-date {
-  width: 88px;
+.zni-table col.col-status {
+  width: 100px;
 }
 
 .zni-table col.col-quarter {

@@ -109,6 +109,10 @@ function formatPlannedDate(item: ChangeRequest): string {
   return formatDate(item.plannedDate)
 }
 
+function hasPlannedDate(item: ChangeRequest): boolean {
+  return Boolean(item.plannedLabel || item.plannedDate)
+}
+
 function formatEctReservation(value?: boolean): string {
   return value ? 'ДА' : 'НЕТ'
 }
@@ -308,13 +312,11 @@ function visibleWorkflowStatus(item: ChangeRequest, metricFilter: MetricFilter):
   return status
 }
 
-function rowHasExpandDetails(item: ChangeRequest, metricFilter: MetricFilter): boolean {
+function rowHasExpandDetails(item: ChangeRequest): boolean {
   if (isErrorRow(item)) {
-    return Boolean(visibleBoardStatus(item, metricFilter) || visibleWorkflowStatus(item, metricFilter))
+    return hasPlannedDate(item)
   }
-  return Boolean(
-    item.customerName?.trim() || visibleBoardStatus(item, metricFilter) || visibleWorkflowStatus(item, metricFilter),
-  )
+  return Boolean(item.customerName?.trim() || hasPlannedDate(item))
 }
 
 type MetricFilter = '' | 'in_progress' | 'launching_soon' | 'launched' | 'completed' | 'errors'
@@ -813,7 +815,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                 <col className="col-title" />
                 <col className="col-goal" />
                 <col className="col-business-value" />
-                <col className="col-date" />
+                <col className="col-status" />
                 <col className="col-quarter" />
                 <col className="col-reservation" />
               </colgroup>
@@ -849,16 +851,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                       { value: 'business_value_desc', label: 'Пустые в начале, больше → меньше' },
                     ]}
                   />
-                  <ColumnHeader
-                    label="План. дата"
-                    sort={sort}
-                    onSortChange={setSort}
-                    sortOptions={[
-                      { value: 'planned_date_upcoming', label: 'Ближайшие' },
-                      { value: 'planned_date_asc', label: 'По возрастанию' },
-                      { value: 'planned_date_desc', label: 'По убыванию' },
-                    ]}
-                  />
+                  <th>Статус</th>
                   <ColumnHeader
                     label="План квартала"
                     filterOptions={quarterFilterOptions()}
@@ -877,7 +870,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                 {data?.items.flatMap((item) => {
                   const key = itemRowKey(item)
                   const expanded = expandedKeys.has(key)
-                  const hasDetails = rowHasExpandDetails(item, metricFilter)
+                  const hasDetails = rowHasExpandDetails(item)
                   const boardStatus = visibleBoardStatus(item, metricFilter)
                   const workflowStatus = visibleWorkflowStatus(item, metricFilter)
                   const customerParts = customerNameParts(item.customerName)
@@ -899,7 +892,9 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                             className="row-expand-btn"
                             aria-expanded={expanded}
                             aria-label={
-                              expanded ? 'Скрыть заказчика и статус' : 'Показать заказчика и статус'
+                              expanded
+                                ? 'Скрыть заказчика и плановую дату'
+                                : 'Показать заказчика и плановую дату'
                             }
                             onClick={() => toggleExpanded(key)}
                             onKeyDown={(event) => handleExpandKeyDown(event, key)}
@@ -949,7 +944,14 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                           '—'
                         )}
                       </td>
-                      <td className="cell-date">{formatPlannedDate(item)}</td>
+                      <td className="cell-status">
+                        <span className="status-board">
+                          {boardStatus || workflowStatus || '—'}
+                        </span>
+                        {boardStatus && workflowStatus && boardStatus !== workflowStatus && (
+                          <span className="status-workflow">{workflowStatus}</span>
+                        )}
+                      </td>
                       <td className="cell-quarter">{item.planQuarter || '—'}</td>
                       <td
                         className={`cell-reservation${item.ectResourceReservation ? ' cell-reservation-yes' : ' cell-reservation-no'}`}
@@ -978,15 +980,8 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                               </div>
                             </div>
                             <div className="zni-detail-field">
-                              <div className="zni-detail-label">Статус</div>
-                              <div className="zni-detail-value cell-status">
-                                <span className="status-board">
-                                  {boardStatus || workflowStatus || '—'}
-                                </span>
-                                {boardStatus && workflowStatus && boardStatus !== workflowStatus && (
-                                  <span className="status-workflow">{workflowStatus}</span>
-                                )}
-                              </div>
+                              <div className="zni-detail-label">План. дата</div>
+                              <div className="zni-detail-value cell-date">{formatPlannedDate(item)}</div>
                             </div>
                           </div>
                         </td>
