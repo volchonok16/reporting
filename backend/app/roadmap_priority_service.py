@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -9,6 +9,18 @@ RoadmapPriority = Literal["red", "yellow", "green"]
 VALID_ROADMAP_PRIORITIES: frozenset[str] = frozenset(
     {"red", "yellow", "green"}
 )
+
+
+def preserve_roadmap_priority_in_extra(
+    new_extra: dict[str, Any],
+    existing_extra: dict[str, Any] | None,
+) -> None:
+    """Локальный приоритет Roadmap не приходит из TFS — сохраняем при upsert."""
+    if not isinstance(existing_extra, dict):
+        return
+    value = existing_extra.get("roadmap_priority")
+    if isinstance(value, str) and value in VALID_ROADMAP_PRIORITIES:
+        new_extra["roadmap_priority"] = value
 
 
 def _extra(task: Task) -> dict:

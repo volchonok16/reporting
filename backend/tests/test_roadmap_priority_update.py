@@ -2,6 +2,7 @@ from unittest.mock import MagicMock
 
 from app.models import Task
 from app.roadmap_priority_service import (
+    preserve_roadmap_priority_in_extra,
     roadmap_priority_from_task,
     update_roadmap_priority,
 )
@@ -39,6 +40,19 @@ def test_update_roadmap_priority_sets_value() -> None:
     updated = update_roadmap_priority(db, external_id="1115252", priority="yellow")
     assert updated.extra_json["roadmap_priority"] == "yellow"
     db.commit.assert_called_once()
+
+
+def test_preserve_roadmap_priority_in_extra() -> None:
+    new_extra: dict[str, str] = {"board_code": "digital_streams_b2b"}
+    preserve_roadmap_priority_in_extra(new_extra, {"roadmap_priority": "green"})
+    assert new_extra["roadmap_priority"] == "green"
+
+    new_extra = {"board_code": "digital_streams_b2b"}
+    preserve_roadmap_priority_in_extra(new_extra, {"roadmap_priority": "invalid"})
+    assert "roadmap_priority" not in new_extra
+
+    preserve_roadmap_priority_in_extra(new_extra, None)
+    assert "roadmap_priority" not in new_extra
 
 
 def test_update_roadmap_priority_clears_value() -> None:

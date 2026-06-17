@@ -18,6 +18,7 @@ from app.resource_reservation import compute_ect_resource_reservation
 from app.completed_metrics import effective_closed_date, effective_closed_date_from_fields
 from app.zni_description import extract_business_goal_from_description, tfs_identity_display_name
 from app.zni_title_filters import is_excluded_zni_title
+from app.roadmap_priority_service import preserve_roadmap_priority_in_extra
 from app.models import Project, SourceSystem, SyncRun, Task, Team
 from app.tfs_client import TfsClient, date_from_field_list, parse_tfs_datetime
 
@@ -371,6 +372,13 @@ async def sync_board(
                 str(iteration_path) if iteration_path not in (None, "") else None
             )
             triage = fields.get("Microsoft.VSTS.Common.Triage")
+            existing = db.scalar(
+                select(Task).where(
+                    Task.source_system_id == source_system_id,
+                    Task.external_id == str(item["id"]),
+                )
+            )
+            existing_extra = existing.extra_json if existing and isinstance(existing.extra_json, dict) else None
             extra_json: dict[str, Any] = {
                 "area_path": fields.get("System.AreaPath"),
                 "board_column": fields.get("System.BoardColumn"),
@@ -413,23 +421,19 @@ async def sync_board(
                 except (TypeError, ValueError):
                     pass
 
+            preserve_roadmap_priority_in_extra(extra_json, existing_extra)
+
             if settings.tfs_fetch_pilot_history:
-                existing = db.scalar(
-                    select(Task).where(
-                        Task.source_system_id == source_system_id,
-                        Task.external_id == str(item["id"]),
-                    )
-                )
                 cached = (
                     existing is not None
                     and existing.updated_at == updated
-                    and isinstance(existing.extra_json, dict)
-                    and isinstance(existing.extra_json.get("pilot_transitions"), list)
-                    and isinstance(existing.extra_json.get("closed_transitions"), list)
+                    and isinstance(existing_extra, dict)
+                    and isinstance(existing_extra.get("pilot_transitions"), list)
+                    and isinstance(existing_extra.get("closed_transitions"), list)
                 )
-                if cached and isinstance(existing.extra_json, dict):
-                    extra_json["pilot_transitions"] = existing.extra_json["pilot_transitions"]
-                    extra_json["closed_transitions"] = existing.extra_json["closed_transitions"]
+                if cached:
+                    extra_json["pilot_transitions"] = existing_extra["pilot_transitions"]
+                    extra_json["closed_transitions"] = existing_extra["closed_transitions"]
                 else:
                     extra_json["pilot_transitions"] = await client.extract_pilot_transitions(item["id"])
                     await asyncio.sleep(settings.tfs_request_delay_seconds)
