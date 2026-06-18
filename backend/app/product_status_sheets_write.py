@@ -8,10 +8,10 @@ import httpx
 from fastapi import HTTPException
 
 from app.config import settings
-from app.product_status_google_encode import sheet_grid_to_google_rows
+from app.product_status_google_encode import encoded_cell_to_google, sheet_grid_to_google_rows
 from app.product_status_sheets_api import _resolve_sheet_title
 from app.google_sheets_workbook import normalize_google_sheets_api_key
-from app.schemas import ProductStatusB2BOut, ProductStatusSheetOut
+from app.schemas import ProductStatusB2BOut, ProductStatusCellUpdate, ProductStatusSaveIn, ProductStatusSheetOut
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +102,41 @@ def _access_token() -> str:
     return token
 
 
+def _google_cell_data(*, value: str, is_header: bool) -> dict:
+    if is_header:
+        return {
+            "userEnteredValue": {"stringValue": value},
+            "userEnteredFormat": {"textFormat": {"bold": True}},
+        }
+    return encoded_cell_to_google(value)
+
+
+def _cell_update_requests(*, sheet_gid: int, updates: list[ProductStatusCellUpdate]) -> list[dict]:
+    requests: list[dict] = []
+    for update in updates:
+        is_header = update.rowIndex == 0
+        requests.append(
+            {
+                "updateCells": {
+                    "range": {
+                        "sheetId": sheet_gid,
+                        "startRowIndex": update.rowIndex,
+                        "endRowIndex": update.rowIndex + 1,
+                        "startColumnIndex": update.columnIndex,
+                        "endColumnIndex": update.columnIndex + 1,
+                    },
+                    "rows": [{"values": [_google_cell_data(value=update.value, is_header=is_header)]}],
+                    "fields": (
+                        "userEnteredValue,userEnteredFormat"
+                        if is_header
+                        else "userEnteredValue,userEnteredFormat,textFormatRuns"
+                    ),
+                }
+            }
+        )
+    return requests
+
+
 def _sheet_write_requests(
     *,
     sheet: ProductStatusSheetOut,
@@ -142,6 +177,71 @@ def _sheet_write_requests(
             }
         }
     ]
+
+
+def save_workbook_cells_to_google(*, spreadsheet_id: str, data: ProductStatusSaveIn) -> None:
+    spreadsheet_id = spreadsheet_id.strip()
+    if not spreadsheet_id:
+        raise HTTPException(
+            status_code=503,
+            detail="ID Google Sheets не настроен.",
+        )
+
+    if not data.updates:
+        raise HTTPException(status_code=400, detail="Нет изменений для сохранения.")
+
+    api_key = normalize_google_sheets_api_key(settings.google_sheets_api_key)
+    if not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "GOOGLE_SHEETS_API_KEY нужен для определения листов при записи "
+                "(ключ вида AIza…, не ссылка на таблицу)."
+            ),
+        )
+
+    token = _access_token()
+    updates_by_gid: dict[str, list[ProductStatusCellUpdate]] = {}
+    for update in data.updates:
+        updates_by_gid.setdefault(update.gid, []).append(update)
+
+    requests: list[dict] = []
+    with httpx.Client(timeout=60.0) as client:
+        for gid, sheet_updates in updates_by_gid.items():
+            resolved_title = _resolve_sheet_title(
+                spreadsheet_id=spreadsheet_id,
+                gid=gid,
+                api_key=api_key,
+                client=client,
+            )
+            if not resolved_title:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Не удалось определить лист для gid={gid}.",
+                )
+            requests.extend(_cell_update_requests(sheet_gid=int(gid), updates=sheet_updates))
+
+        response = client.post(
+            f"{_SHEETS_API}/{spreadsheet_id}:batchUpdate",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"requests": requests},
+        )
+        if response.status_code >= 400:
+            logger.warning(
+                "product_status_sheets_save_failed status=%s body=%s",
+                response.status_code,
+                response.text[:500],
+            )
+            google_error = _google_sheets_error_message(response)
+            detail = "Google Sheets отклонил сохранение."
+            if google_error:
+                detail = f"{detail} {google_error}"
+            else:
+                detail = f"{detail} Проверьте доступ сервисного аккаунта."
+            raise HTTPException(
+                status_code=502,
+                detail=detail,
+            )
 
 
 def save_workbook_to_google(*, spreadsheet_id: str, data: ProductStatusB2BOut) -> None:
@@ -204,15 +304,15 @@ def save_workbook_to_google(*, spreadsheet_id: str, data: ProductStatusB2BOut) -
             )
 
 
-def save_b2b_product_status_to_google(data: ProductStatusB2BOut) -> None:
-    save_workbook_to_google(
+def save_b2b_product_status_to_google(data: ProductStatusSaveIn) -> None:
+    save_workbook_cells_to_google(
         spreadsheet_id=settings.b2b_product_status_spreadsheet_id,
         data=data,
     )
 
 
-def save_b2b_news_to_google(data: ProductStatusB2BOut) -> None:
-    save_workbook_to_google(
+def save_b2b_news_to_google(data: ProductStatusSaveIn) -> None:
+    save_workbook_cells_to_google(
         spreadsheet_id=settings.b2b_news_spreadsheet_id,
         data=data,
     )

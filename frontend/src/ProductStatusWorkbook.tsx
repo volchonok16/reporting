@@ -37,6 +37,17 @@ type ProductStatusData = {
   sheets: ProductStatusSheet[]
 }
 
+type ProductStatusCellUpdate = {
+  gid: string
+  rowIndex: number
+  columnIndex: number
+  value: string
+}
+
+type ProductStatusSavePayload = {
+  updates: ProductStatusCellUpdate[]
+}
+
 type ActiveCell = {
   rowIndex: number
   column: string
@@ -94,6 +105,79 @@ function buildPayload(data: ProductStatusData | null, sheets: ProductStatusSheet
     presentationReferenceUrl: data?.presentationReferenceUrl,
     sheets,
   }
+}
+
+function diffSheetToUpdates(baseline: ProductStatusSheet, current: ProductStatusSheet): ProductStatusCellUpdate[] {
+  const updates: ProductStatusCellUpdate[] = []
+
+  for (let columnIndex = baseline.columns.length; columnIndex < current.columns.length; columnIndex += 1) {
+    const column = current.columns[columnIndex]
+    updates.push({
+      gid: current.gid,
+      rowIndex: 0,
+      columnIndex,
+      value: column,
+    })
+    for (let rowIndex = 0; rowIndex < current.rows.length; rowIndex += 1) {
+      updates.push({
+        gid: current.gid,
+        rowIndex: rowIndex + 1,
+        columnIndex,
+        value: current.rows[rowIndex][column] ?? '',
+      })
+    }
+  }
+
+  const sharedColumnCount = Math.min(baseline.columns.length, current.columns.length)
+  const sharedRowCount = Math.min(baseline.rows.length, current.rows.length)
+  for (let rowIndex = 0; rowIndex < sharedRowCount; rowIndex += 1) {
+    for (let columnIndex = 0; columnIndex < sharedColumnCount; columnIndex += 1) {
+      const column = current.columns[columnIndex]
+      const previousValue = baseline.rows[rowIndex]?.[column] ?? ''
+      const nextValue = current.rows[rowIndex]?.[column] ?? ''
+      if (previousValue !== nextValue) {
+        updates.push({
+          gid: current.gid,
+          rowIndex: rowIndex + 1,
+          columnIndex,
+          value: nextValue,
+        })
+      }
+    }
+  }
+
+  for (let rowIndex = baseline.rows.length; rowIndex < current.rows.length; rowIndex += 1) {
+    for (let columnIndex = 0; columnIndex < current.columns.length; columnIndex += 1) {
+      const column = current.columns[columnIndex]
+      updates.push({
+        gid: current.gid,
+        rowIndex: rowIndex + 1,
+        columnIndex,
+        value: current.rows[rowIndex][column] ?? '',
+      })
+    }
+  }
+
+  return updates
+}
+
+function collectSheetUpdates(
+  baselineByGid: Map<string, ProductStatusSheet>,
+  sheets: ProductStatusSheet[],
+  loadedGids: Set<string>,
+): ProductStatusSavePayload {
+  const updates: ProductStatusCellUpdate[] = []
+  for (const sheet of sheets) {
+    if (!loadedGids.has(sheet.gid) || sheet.columns.length === 0) {
+      continue
+    }
+    const baseline = baselineByGid.get(sheet.gid)
+    if (!baseline || baseline.columns.length === 0) {
+      continue
+    }
+    updates.push(...diffSheetToUpdates(baseline, sheet))
+  }
+  return { updates }
 }
 
 function isPresentationFlagColumn(column: string): boolean {
@@ -168,6 +252,23 @@ export default function ProductStatusWorkbook({
   const [loadedGids, setLoadedGids] = useState<Set<string>>(() => new Set())
   const [sheetLoadingGid, setSheetLoadingGid] = useState<string | null>(null)
   const activeCellRef = useRef<ProductStatusCellHandle | null>(null)
+  const baselineByGidRef = useRef<Map<string, ProductStatusSheet>>(new Map())
+
+  const rememberBaseline = useCallback((sheet: ProductStatusSheet) => {
+    baselineByGidRef.current.set(sheet.gid, cloneSheet(sheet))
+  }, [])
+
+  const resetBaselines = useCallback(() => {
+    baselineByGidRef.current = new Map()
+  }, [])
+
+  const syncBaselinesFromSheets = useCallback((nextSheets: ProductStatusSheet[], gids: Set<string>) => {
+    for (const sheet of nextSheets) {
+      if (gids.has(sheet.gid) && sheet.columns.length > 0) {
+        rememberBaseline(sheet)
+      }
+    }
+  }, [rememberBaseline])
 
   const loadSheetData = useCallback(
     async (gid: string, options?: { refresh?: boolean }) => {
@@ -178,6 +279,7 @@ export default function ProductStatusWorkbook({
           if (sheet) {
             setSheets((current) => current.map((item) => (item.gid === gid ? cloneSheet(sheet) : item)))
             setLoadedGids((current) => new Set(current).add(gid))
+            rememberBaseline(sheet)
             setData((current) => ({
               title: cached.title ?? current?.title ?? defaultTitle,
               sourceUrl: cached.sourceUrl ?? current?.sourceUrl,
@@ -202,6 +304,7 @@ export default function ProductStatusWorkbook({
       }
       setSheets((current) => current.map((item) => (item.gid === gid ? cloneSheet(sheet) : item)))
       setLoadedGids((current) => new Set(current).add(gid))
+      rememberBaseline(sheet)
       setData((current) => ({
         title: payload.title ?? current?.title ?? defaultTitle,
         sourceUrl: payload.sourceUrl ?? current?.sourceUrl,
@@ -210,7 +313,7 @@ export default function ProductStatusWorkbook({
         sheets: current?.sheets ?? payload.sheets,
       }))
     },
-    [apiBase, defaultTitle],
+    [apiBase, defaultTitle, rememberBaseline],
   )
 
   const ensureSheetLoaded = useCallback(
@@ -239,6 +342,7 @@ export default function ProductStatusWorkbook({
       try {
         if (options?.refresh) {
           clearProductStatusCache(apiBase)
+          resetBaselines()
         }
 
         if (lazySheets) {
@@ -248,6 +352,7 @@ export default function ProductStatusWorkbook({
               setData(cachedMeta)
               setSheets(cloneSheets(cachedMeta.sheets))
               setLoadedGids(new Set())
+              resetBaselines()
               setDirty(false)
 
               const savedGid = loadGid()
@@ -281,6 +386,7 @@ export default function ProductStatusWorkbook({
           setData(meta)
           setSheets(cloneSheets(meta.sheets))
           setLoadedGids(new Set())
+          resetBaselines()
           setDirty(false)
 
           const savedGid = loadGid()
@@ -310,6 +416,12 @@ export default function ProductStatusWorkbook({
             setData(cached)
             setSheets(cloneSheets(cached.sheets))
             setLoadedGids(new Set(cached.sheets.map((sheet) => sheet.gid)))
+            resetBaselines()
+            for (const sheet of cached.sheets) {
+              if (sheet.columns.length > 0) {
+                rememberBaseline(sheet)
+              }
+            }
             setDirty(false)
             setActiveGid((current) => {
               const savedGid = loadGid()
@@ -331,6 +443,12 @@ export default function ProductStatusWorkbook({
         setData(payload)
         setSheets(cloneSheets(payload.sheets))
         setLoadedGids(new Set(payload.sheets.map((sheet) => sheet.gid)))
+        resetBaselines()
+        for (const sheet of payload.sheets) {
+          if (sheet.columns.length > 0) {
+            rememberBaseline(sheet)
+          }
+        }
         setDirty(false)
         setActiveGid((current) => {
           const savedGid = loadGid()
@@ -348,22 +466,28 @@ export default function ProductStatusWorkbook({
         setLoading(false)
       }
     },
-    [apiBase, lazySheets, loadGid, loadSheetData],
+    [apiBase, lazySheets, loadGid, loadSheetData, rememberBaseline, resetBaselines],
   )
 
   const handleSave = useCallback(async () => {
     if (sheets.length === 0) return
+    const payload = collectSheetUpdates(baselineByGidRef.current, sheets, loadedGids)
+    if (payload.updates.length === 0) {
+      setDirty(false)
+      return
+    }
     setSaving(true)
     setError(null)
     try {
       const response = await apiFetch(`${apiBase}/save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildPayload(data, sheets, defaultTitle)),
+        body: JSON.stringify(payload),
       })
       if (!response.ok) {
         throw new Error(await readApiError(response))
       }
+      syncBaselinesFromSheets(sheets, loadedGids)
       setDirty(false)
       clearProductStatusCache(apiBase)
     } catch (err) {
@@ -371,7 +495,7 @@ export default function ProductStatusWorkbook({
     } finally {
       setSaving(false)
     }
-  }, [apiBase, data, defaultTitle, sheets])
+  }, [apiBase, loadedGids, sheets, syncBaselinesFromSheets])
 
   const handleExportPresentation = useCallback(async () => {
     if (!enablePresentationExport || sheets.length === 0) return

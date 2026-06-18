@@ -123,6 +123,20 @@ class ProductStatusB2BOut(BaseModel):
     sheets: list[ProductStatusSheetOut]
 
 
+class ProductStatusCellUpdate(BaseModel):
+    gid: str
+    rowIndex: int = Field(ge=0, description="0 — заголовок, 1+ — данные")
+    columnIndex: int = Field(ge=0)
+    value: str = ""
+
+
+class ProductStatusSaveIn(BaseModel):
+    updates: list[ProductStatusCellUpdate] = Field(
+        default_factory=list,
+        max_length=50_000,
+    )
+
+
 class TaskLookupIn(BaseModel):
     numbers: list[str] = Field(default_factory=list, max_length=200)
 

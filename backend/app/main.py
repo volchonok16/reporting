@@ -35,6 +35,7 @@ from app.schemas import (
     ChangeRequestOut,
     DashboardOut,
     ProductStatusB2BOut,
+    ProductStatusSaveIn,
     SyncRunOut,
     TaskLookupIn,
     TaskLookupOut,
@@ -341,7 +342,7 @@ def product_status_b2b_presentation_from_payload(
 
 @app.post("/api/product-status/b2b/save")
 def product_status_b2b_save(
-    payload: ProductStatusB2BOut,
+    payload: ProductStatusSaveIn,
     _: None = Depends(require_full_app_access),
 ) -> dict[str, str]:
     save_b2b_product_status_to_google(payload)
@@ -365,7 +366,7 @@ def b2b_news(
 
 @app.post("/api/b2b-news/save")
 def b2b_news_save(
-    payload: ProductStatusB2BOut,
+    payload: ProductStatusSaveIn,
     _: None = Depends(require_full_app_access),
 ) -> dict[str, str]:
     save_b2b_news_to_google(payload)
