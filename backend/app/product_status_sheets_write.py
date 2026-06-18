@@ -102,13 +102,13 @@ def _access_token() -> str:
     return token
 
 
-def _google_cell_data(*, value: str, is_header: bool) -> dict:
+def _google_cell_data(*, value: str, is_header: bool, column: str | None = None) -> dict:
     if is_header:
         return {
             "userEnteredValue": {"stringValue": value},
             "userEnteredFormat": {"textFormat": {"bold": True}},
         }
-    return encoded_cell_to_google(value)
+    return encoded_cell_to_google(value, column=column)
 
 
 def _cell_update_requests(*, sheet_gid: int, updates: list[ProductStatusCellUpdate]) -> list[dict]:
@@ -125,7 +125,17 @@ def _cell_update_requests(*, sheet_gid: int, updates: list[ProductStatusCellUpda
                         "startColumnIndex": update.columnIndex,
                         "endColumnIndex": update.columnIndex + 1,
                     },
-                    "rows": [{"values": [_google_cell_data(value=update.value, is_header=is_header)]}],
+                    "rows": [
+                        {
+                            "values": [
+                                _google_cell_data(
+                                    value=update.value,
+                                    is_header=is_header,
+                                    column=update.column,
+                                )
+                            ]
+                        }
+                    ],
                     "fields": (
                         "userEnteredValue,userEnteredFormat"
                         if is_header

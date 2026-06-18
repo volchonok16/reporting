@@ -51,6 +51,21 @@ def test_load_service_account_info_missing_reports_reason(monkeypatch, tmp_path:
     assert "не найден" in error
 
 
+def test_cell_update_requests_zni_column_uses_number_value() -> None:
+    updates = [
+        ProductStatusCellUpdate(
+            gid="102191664",
+            rowIndex=2,
+            columnIndex=6,
+            value="441181",
+            column="ЗНИ",
+        ),
+    ]
+    requests = _cell_update_requests(sheet_gid=102191664, updates=updates)
+    cell = requests[0]["updateCells"]["rows"][0]["values"][0]
+    assert cell["userEnteredValue"] == {"numberValue": 441181}
+
+
 def test_cell_update_requests_single_data_cell() -> None:
     updates = [
         ProductStatusCellUpdate(gid="102191664", rowIndex=2, columnIndex=3, value="новое значение"),

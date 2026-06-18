@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from app.product_status_rich_text import (
     CellStyle,
     TextStyleSegment,
@@ -100,12 +102,52 @@ def cell_style_to_google_format(cell_style: CellStyle) -> dict:
     return fmt
 
 
-def encoded_cell_to_google(encoded: str) -> dict:
+def _is_zni_column(column: str) -> bool:
+    return column.strip().casefold() == "зни"
+
+
+def _parse_integer_text(text: str) -> int | None:
+    stripped = text.strip()
+    if not stripped:
+        return None
+    if re.fullmatch(r"\d+\.0+", stripped):
+        stripped = re.sub(r"\.0+$", "", stripped)
+    if not re.fullmatch(r"\d+", stripped):
+        return None
+    return int(stripped)
+
+
+def _segments_are_unstyled(segments: list[TextStyleSegment]) -> bool:
+    for segment in segments:
+        if segment.fg or segment.strike or segment.bold or segment.italic or segment.bg:
+            return False
+    return True
+
+
+def _user_entered_value(
+    plain_text: str,
+    segments: list[TextStyleSegment],
+    *,
+    column: str | None,
+) -> dict:
+    use_integer = bool(column and _is_zni_column(column))
+    if not use_integer and column is None:
+        use_integer = _segments_are_unstyled(segments) and _parse_integer_text(plain_text) is not None
+    if use_integer:
+        number = _parse_integer_text(plain_text)
+        if number is not None:
+            return {"numberValue": number}
+    return {"stringValue": plain_text}
+
+
+def encoded_cell_to_google(encoded: str, *, column: str | None = None) -> dict:
     cell_style, inner = split_cell_wrapper(encoded or "")
     segments = split_style_segments(inner)
     plain_text = "".join(segment.text for segment in segments)
 
-    cell_data: dict = {"userEnteredValue": {"stringValue": plain_text}}
+    cell_data: dict = {
+        "userEnteredValue": _user_entered_value(plain_text, segments, column=column),
+    }
 
     resolved_cell_style = cell_style
     uniform_bg = _full_cell_highlight_bg(segments)
@@ -136,7 +178,10 @@ def sheet_grid_to_google_rows(
     grid_rows.append({"values": header_cells})
 
     for row in rows:
-        values = [encoded_cell_to_google((row.get(column) or "").strip()) for column in columns]
+        values = [
+            encoded_cell_to_google((row.get(column) or "").strip(), column=column)
+            for column in columns
+        ]
         grid_rows.append({"values": values})
 
     return grid_rows

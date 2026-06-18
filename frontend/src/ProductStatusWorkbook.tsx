@@ -42,6 +42,7 @@ type ProductStatusCellUpdate = {
   rowIndex: number
   columnIndex: number
   value: string
+  column?: string
 }
 
 type ProductStatusSavePayload = {
@@ -117,6 +118,7 @@ function diffSheetToUpdates(baseline: ProductStatusSheet, current: ProductStatus
       rowIndex: 0,
       columnIndex,
       value: column,
+      column,
     })
     for (let rowIndex = 0; rowIndex < current.rows.length; rowIndex += 1) {
       updates.push({
@@ -124,6 +126,7 @@ function diffSheetToUpdates(baseline: ProductStatusSheet, current: ProductStatus
         rowIndex: rowIndex + 1,
         columnIndex,
         value: current.rows[rowIndex][column] ?? '',
+        column,
       })
     }
   }
@@ -141,6 +144,7 @@ function diffSheetToUpdates(baseline: ProductStatusSheet, current: ProductStatus
           rowIndex: rowIndex + 1,
           columnIndex,
           value: nextValue,
+          column,
         })
       }
     }
@@ -154,6 +158,7 @@ function diffSheetToUpdates(baseline: ProductStatusSheet, current: ProductStatus
         rowIndex: rowIndex + 1,
         columnIndex,
         value: current.rows[rowIndex][column] ?? '',
+        column,
       })
     }
   }

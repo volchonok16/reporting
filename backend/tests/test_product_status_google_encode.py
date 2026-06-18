@@ -50,3 +50,33 @@ def test_sheet_grid_to_google_rows_includes_header() -> None:
     assert rows[0]["values"][0]["userEnteredValue"] == {"stringValue": "Дата"}
     assert rows[1]["values"][1]["userEnteredValue"] == {"stringValue": "CORE"}
     assert rows[1]["values"][1]["textFormatRuns"][0]["format"]["foregroundColor"]["red"] == 1.0
+
+
+def test_encoded_cell_to_google_zni_column_uses_number_value() -> None:
+    cell = encoded_cell_to_google("441181", column="ЗНИ")
+    assert cell["userEnteredValue"] == {"numberValue": 441181}
+    assert "textFormatRuns" not in cell
+
+
+def test_encoded_cell_to_google_zni_column_normalizes_trailing_zeroes() -> None:
+    cell = encoded_cell_to_google("1097564.0", column="ЗНИ")
+    assert cell["userEnteredValue"] == {"numberValue": 1097564}
+
+
+def test_encoded_cell_to_google_plain_integer_without_column_uses_number_value() -> None:
+    cell = encoded_cell_to_google("1200320")
+    assert cell["userEnteredValue"] == {"numberValue": 1200320}
+
+
+def test_encoded_cell_to_google_styled_integer_stays_string() -> None:
+    cell = encoded_cell_to_google("[[fg:FF0000::300]]")
+    assert cell["userEnteredValue"] == {"stringValue": "300"}
+
+
+def test_sheet_grid_to_google_rows_zni_column_uses_number_value() -> None:
+    rows = sheet_grid_to_google_rows(
+        ["ЗНИ", "Проект"],
+        [{"ЗНИ": "441181", "Проект": "CORE"}],
+    )
+    assert rows[1]["values"][0]["userEnteredValue"] == {"numberValue": 441181}
+    assert rows[1]["values"][1]["userEnteredValue"] == {"stringValue": "CORE"}

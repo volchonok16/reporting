@@ -128,6 +128,7 @@ class ProductStatusCellUpdate(BaseModel):
     rowIndex: int = Field(ge=0, description="0 — заголовок, 1+ — данные")
     columnIndex: int = Field(ge=0)
     value: str = ""
+    column: str | None = None
 
 
 class ProductStatusSaveIn(BaseModel):
