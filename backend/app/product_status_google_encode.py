@@ -102,6 +102,19 @@ def cell_style_to_google_format(cell_style: CellStyle) -> dict:
     return fmt
 
 
+def is_date_column(column: str | None) -> bool:
+    if not column:
+        return False
+    key = column.strip().casefold()
+    return key == "дата" or key.startswith("дата")
+
+
+def plain_cell_text(encoded: str) -> str:
+    _, inner = split_cell_wrapper(encoded or "")
+    segments = split_style_segments(inner)
+    return "".join(segment.text for segment in segments)
+
+
 def _is_zni_column(column: str) -> bool:
     return column.strip().casefold() == "зни"
 
@@ -130,6 +143,8 @@ def _user_entered_value(
     *,
     column: str | None,
 ) -> dict:
+    if column and is_date_column(column):
+        return {"stringValue": plain_text}
     use_integer = bool(column and _is_zni_column(column))
     if not use_integer and column is None:
         use_integer = _segments_are_unstyled(segments) and _parse_integer_text(plain_text) is not None

@@ -1,9 +1,35 @@
 from app.product_status_google_encode import (
     encoded_cell_to_google,
+    is_date_column,
     segments_to_text_format_runs,
     sheet_grid_to_google_rows,
 )
 from app.product_status_rich_text import TextStyleSegment, split_style_segments
+
+
+def test_is_date_column_matches_launch_date_header() -> None:
+    assert is_date_column("Дата запуска")
+    assert is_date_column("Дата")
+    assert not is_date_column("Проект")
+
+
+def test_encoded_cell_to_google_date_column_always_uses_string_value() -> None:
+    cell = encoded_cell_to_google("09.06", column="Дата запуска")
+    assert cell["userEnteredValue"] == {"stringValue": "09.06"}
+
+    cell = encoded_cell_to_google("июль", column="Дата запуска")
+    assert cell["userEnteredValue"] == {"stringValue": "июль"}
+
+    cell = encoded_cell_to_google("6", column="Дата запуска")
+    assert cell["userEnteredValue"] == {"stringValue": "6"}
+
+
+def test_sheet_grid_to_google_rows_date_column_uses_string_value() -> None:
+    rows = sheet_grid_to_google_rows(
+        ["Дата запуска", "Проект"],
+        [{"Дата запуска": "09.06", "Проект": "CORE"}],
+    )
+    assert rows[1]["values"][0]["userEnteredValue"] == {"stringValue": "09.06"}
 
 
 def test_encoded_cell_to_google_plain_text() -> None:

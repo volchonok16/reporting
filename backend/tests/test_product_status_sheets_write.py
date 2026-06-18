@@ -7,6 +7,7 @@ from fastapi import HTTPException
 
 from app.product_status_sheets_write import (
     _cell_update_requests,
+    _date_column_value_updates,
     _load_service_account_info,
     _service_account_json_candidates,
     save_workbook_cells_to_google,
@@ -99,6 +100,85 @@ def test_save_workbook_cells_to_google_rejects_empty_payload() -> None:
             data=ProductStatusSaveIn(updates=[]),
         )
     assert exc.value.status_code == 400
+
+
+def test_date_column_value_updates_use_raw_a1_range() -> None:
+    updates = [
+        ProductStatusCellUpdate(
+            gid="0",
+            rowIndex=5,
+            columnIndex=0,
+            value="09.06",
+            column="Дата запуска",
+        ),
+    ]
+    data = _date_column_value_updates(sheet_title="Продуктовый офис: CORE", updates=updates)
+    assert data == [{"range": "'Продуктовый офис: CORE'!A6", "values": [["09.06"]]}]
+
+
+@patch("app.product_status_sheets_write._access_token", return_value="token")
+@patch("app.product_status_sheets_write.normalize_google_sheets_api_key", return_value="api-key")
+@patch("app.product_status_sheets_write._resolve_sheet_title", return_value="Лист 1")
+def test_save_workbook_cells_to_google_writes_date_column_via_values_api(
+    mock_resolve_title: MagicMock,
+    _mock_api_key: MagicMock,
+    _mock_token: MagicMock,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json() -> dict:
+            return {}
+
+    class FakeClient:
+        def __enter__(self) -> "FakeClient":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def post(self, url: str, *, headers: dict, json: dict) -> FakeResponse:
+            if url.endswith("/values:batchUpdate"):
+                captured["values_json"] = json
+            elif url.endswith(":batchUpdate"):
+                captured["cells_json"] = json
+            return FakeResponse()
+
+    with patch("app.product_status_sheets_write.httpx.Client", return_value=FakeClient()):
+        save_workbook_cells_to_google(
+            spreadsheet_id="spreadsheet-id",
+            data=ProductStatusSaveIn(
+                updates=[
+                    ProductStatusCellUpdate(
+                        gid="42",
+                        rowIndex=5,
+                        columnIndex=0,
+                        value="июль",
+                        column="Дата запуска",
+                    ),
+                    ProductStatusCellUpdate(
+                        gid="42",
+                        rowIndex=5,
+                        columnIndex=1,
+                        value="CORE",
+                        column="Проект",
+                    ),
+                ]
+            ),
+        )
+
+    values_json = captured["values_json"]
+    assert values_json == {
+        "valueInputOption": "RAW",
+        "data": [{"range": "'Лист 1'!A6", "values": [["июль"]]}],
+    }
+    cells_json = captured["cells_json"]
+    assert len(cells_json["requests"]) == 1
+    assert cells_json["requests"][0]["updateCells"]["range"]["startColumnIndex"] == 1
+    mock_resolve_title.assert_called()
 
 
 @patch("app.product_status_sheets_write._access_token", return_value="token")

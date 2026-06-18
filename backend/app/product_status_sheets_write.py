@@ -8,8 +8,13 @@ import httpx
 from fastapi import HTTPException
 
 from app.config import settings
-from app.product_status_google_encode import encoded_cell_to_google, sheet_grid_to_google_rows
-from app.product_status_sheets_api import _resolve_sheet_title
+from app.product_status_google_encode import (
+    encoded_cell_to_google,
+    is_date_column,
+    plain_cell_text,
+    sheet_grid_to_google_rows,
+)
+from app.product_status_sheets_api import _quote_sheet_range, _resolve_sheet_title
 from app.google_sheets_workbook import normalize_google_sheets_api_key
 from app.schemas import ProductStatusB2BOut, ProductStatusCellUpdate, ProductStatusSaveIn, ProductStatusSheetOut
 
@@ -109,6 +114,76 @@ def _google_cell_data(*, value: str, is_header: bool, column: str | None = None)
             "userEnteredFormat": {"textFormat": {"bold": True}},
         }
     return encoded_cell_to_google(value, column=column)
+
+
+def _column_index_to_a1(column_index: int) -> str:
+    letters = ""
+    index = column_index + 1
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        letters = chr(65 + remainder) + letters
+    return letters
+
+
+def _cell_a1_range(*, sheet_title: str, row_index: int, column_index: int) -> str:
+    return (
+        f"{_quote_sheet_range(sheet_title)}!"
+        f"{_column_index_to_a1(column_index)}{row_index + 1}"
+    )
+
+
+def _values_batch_update(
+    *,
+    client: httpx.Client,
+    token: str,
+    spreadsheet_id: str,
+    data: list[dict],
+) -> None:
+    if not data:
+        return
+    response = client.post(
+        f"{_SHEETS_API}/{spreadsheet_id}/values:batchUpdate",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"valueInputOption": "RAW", "data": data},
+    )
+    if response.status_code >= 400:
+        logger.warning(
+            "product_status_sheets_values_save_failed status=%s body=%s",
+            response.status_code,
+            response.text[:500],
+        )
+        google_error = _google_sheets_error_message(response)
+        detail = "Google Sheets отклонил сохранение."
+        if google_error:
+            detail = f"{detail} {google_error}"
+        else:
+            detail = f"{detail} Проверьте доступ сервисного аккаунта."
+        raise HTTPException(
+            status_code=502,
+            detail=detail,
+        )
+
+
+def _date_column_value_updates(
+    *,
+    sheet_title: str,
+    updates: list[ProductStatusCellUpdate],
+) -> list[dict]:
+    data: list[dict] = []
+    for update in updates:
+        if update.rowIndex == 0 or not is_date_column(update.column):
+            continue
+        data.append(
+            {
+                "range": _cell_a1_range(
+                    sheet_title=sheet_title,
+                    row_index=update.rowIndex,
+                    column_index=update.columnIndex,
+                ),
+                "values": [[plain_cell_text(update.value)]],
+            }
+        )
+    return data
 
 
 def _cell_update_requests(*, sheet_gid: int, updates: list[ProductStatusCellUpdate]) -> list[dict]:
@@ -216,6 +291,7 @@ def save_workbook_cells_to_google(*, spreadsheet_id: str, data: ProductStatusSav
         updates_by_gid.setdefault(update.gid, []).append(update)
 
     requests: list[dict] = []
+    date_value_data: list[dict] = []
     with httpx.Client(timeout=60.0) as client:
         for gid, sheet_updates in updates_by_gid.items():
             resolved_title = _resolve_sheet_title(
@@ -229,7 +305,25 @@ def save_workbook_cells_to_google(*, spreadsheet_id: str, data: ProductStatusSav
                     status_code=502,
                     detail=f"Не удалось определить лист для gid={gid}.",
                 )
-            requests.extend(_cell_update_requests(sheet_gid=int(gid), updates=sheet_updates))
+            date_value_data.extend(
+                _date_column_value_updates(sheet_title=resolved_title, updates=sheet_updates)
+            )
+            non_date_updates = [
+                update
+                for update in sheet_updates
+                if update.rowIndex == 0 or not is_date_column(update.column)
+            ]
+            requests.extend(_cell_update_requests(sheet_gid=int(gid), updates=non_date_updates))
+
+        _values_batch_update(
+            client=client,
+            token=token,
+            spreadsheet_id=spreadsheet_id,
+            data=date_value_data,
+        )
+
+        if not requests:
+            return
 
         response = client.post(
             f"{_SHEETS_API}/{spreadsheet_id}:batchUpdate",
