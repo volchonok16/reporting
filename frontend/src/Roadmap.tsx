@@ -18,6 +18,7 @@ import {
   loadRoadmapUiState,
   saveRoadmapUiState,
 } from './uiState'
+import { formatEctReservation } from './zniDisplay'
 import './roadmap.css'
 
 const DIGITAL_BOARD = 'digital_streams_b2b'
@@ -410,20 +411,24 @@ export default function Roadmap({
                   <div className="roadmap-zoom-track">
                     <div className="roadmap-row-track">
                       <div
-                        className={barClassName}
+                        className="roadmap-bar-wrap"
                         style={{
                           left: `${visual.leftPct}%`,
                           width: `${visual.widthPct}%`,
                         }}
-                        title={`#${item.number} ${item.title}\nСтарт ${formatRuDate(startDate)} → конец квартала ${formatRuDate(to)}`}
                       >
-                        <div
-                          className={`roadmap-bar-ect${
+                        <span
+                          className={`roadmap-ect-badge${
                             item.ectResourceReservation ? ' is-yes' : ' is-no'
                           }`}
+                          title={`Бронь ресурса ЕЦТ: ${formatEctReservation(item.ectResourceReservation)}`}
                         >
-                          {item.ectResourceReservation ? 'Бронь ЕЦТ — ДА' : 'Бронь ЕЦТ — НЕТ'}
-                        </div>
+                          ЕЦТ {formatEctReservation(item.ectResourceReservation)}
+                        </span>
+                        <div
+                          className={barClassName}
+                          title={`#${item.number} ${item.title}\nСтарт ${formatRuDate(startDate)} → конец квартала ${formatRuDate(to)}`}
+                        >
                         <div className="roadmap-bar-text">
                           <span className="roadmap-bar-status">{column}</span>
                           <span className="roadmap-bar-label">
@@ -451,6 +456,7 @@ export default function Roadmap({
                         ) : commentValue ? (
                           <p className="roadmap-bar-comment-readonly">{commentValue}</p>
                         ) : null}
+                        </div>
                       </div>
                     </div>
                   </div>

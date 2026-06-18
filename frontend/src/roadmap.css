@@ -456,10 +456,17 @@
   background: rgba(255, 255, 255, 0.35);
 }
 
-.roadmap-bar {
+.roadmap-bar-wrap {
   position: absolute;
   top: 5px;
   bottom: 5px;
+  min-height: 128px;
+  z-index: 2;
+}
+
+.roadmap-bar {
+  position: absolute;
+  inset: 0;
   min-height: 128px;
   border-radius: 11px;
   padding: 8px 10px 8px 14px;
@@ -486,7 +493,7 @@
   gap: 4px;
   min-width: 0;
   flex: 1;
-  padding-right: 108px;
+  padding-right: 72px;
 }
 
 .roadmap-bar-status {
@@ -497,7 +504,7 @@
   white-space: nowrap;
 }
 
-.roadmap-bar-ect {
+.roadmap-ect-badge {
   position: absolute;
   top: 8px;
   right: 8px;
@@ -517,14 +524,14 @@
   text-overflow: ellipsis;
 }
 
-.roadmap-bar-ect.is-yes {
+.roadmap-ect-badge.is-yes {
   background: #bbf7d0;
   color: #14532d;
   border: 1.5px solid #16a34a;
   box-shadow: 0 1px 3px rgba(22, 101, 52, 0.16);
 }
 
-.roadmap-bar-ect.is-no {
+.roadmap-ect-badge.is-no {
   background: #fecaca;
   color: #7f1d1d;
   border: 1.5px solid #dc2626;
