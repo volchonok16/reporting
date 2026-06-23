@@ -7,6 +7,7 @@ import {
   roadmapPriorityBarClass,
   ROADMAP_PRIORITY_OPTIONS,
 } from './roadmap/RoadmapPriorityPicker'
+import { RoadmapUseCaseField } from './roadmap/RoadmapUseCaseField'
 import {
   currentQuarter,
   formatRuDate,
@@ -29,6 +30,7 @@ type RoadmapProps = {
   canEditPriority?: boolean
   canEditComment?: boolean
   canEditBusinessValue?: boolean
+  canEditUseCase?: boolean
 }
 
 function businessValueText(item: ChangeRequest): string {
@@ -63,7 +65,7 @@ function RoadmapBusinessValueField({
   if (!editable) {
     return (
       <div className="roadmap-bar-bv">
-        <span className="roadmap-bar-bv-label">Бизнес-вэлью</span>
+        <span className="roadmap-bar-bv-label">Ценность для бизнеса</span>
         <span className="roadmap-bar-bv-value">{item.businessValue ?? '—'}</span>
       </div>
     )
@@ -71,7 +73,7 @@ function RoadmapBusinessValueField({
 
   return (
     <div className="roadmap-bar-bv">
-      <span className="roadmap-bar-bv-label">Бизнес-вэлью</span>
+      <span className="roadmap-bar-bv-label">Ценность для бизнеса</span>
       <input
         type="number"
         min={1}
@@ -143,6 +145,7 @@ export default function Roadmap({
   canEditPriority = true,
   canEditComment = true,
   canEditBusinessValue = false,
+  canEditUseCase = true,
 }: RoadmapProps) {
   const saved = useMemo(() => loadRoadmapUiState(), [])
   const [year, setYear] = useState(saved.year ?? new Date().getFullYear())
@@ -156,6 +159,8 @@ export default function Roadmap({
   const [commentError, setCommentError] = useState<string | null>(null)
   const [savingBusinessValue, setSavingBusinessValue] = useState<string | null>(null)
   const [businessValueError, setBusinessValueError] = useState<string | null>(null)
+  const [savingUseCase, setSavingUseCase] = useState<string | null>(null)
+  const [useCaseError, setUseCaseError] = useState<string | null>(null)
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({})
   const [syncing, setSyncing] = useState(false)
   const [syncProgress, setSyncProgress] = useState<string | null>(null)
@@ -312,7 +317,7 @@ export default function Roadmap({
     const trimmed = rawValue.trim()
     const parsed = trimmed === '' ? null : Number.parseInt(trimmed, 10)
     if (trimmed !== '' && (!Number.isFinite(parsed) || parsed! < 1)) {
-      setBusinessValueError('Бизнес-вэлью — целое число от 1')
+      setBusinessValueError('Ценность для бизнеса — целое число от 1')
       return
     }
     if (parsed === item.businessValue) return
@@ -331,10 +336,33 @@ export default function Roadmap({
       )
     } catch (err) {
       setBusinessValueError(
-        err instanceof Error ? err.message : 'Не удалось сохранить бизнес-вэлью',
+        err instanceof Error ? err.message : 'Не удалось сохранить ценность для бизнеса',
       )
     } finally {
       setSavingBusinessValue(null)
+    }
+  }, [])
+
+  const saveUseCase = useCallback(async (item: ChangeRequest, hasUc: boolean) => {
+    const current = item.hasUc === true
+    if (hasUc === current) return
+
+    setSavingUseCase(item.number)
+    setUseCaseError(null)
+    try {
+      const updated = await patchJson<ChangeRequest>(
+        `/api/tasks/${encodeURIComponent(item.number)}/digital-plan-uc`,
+        { hasUc },
+      )
+      setItems((currentItems) =>
+        currentItems.map((row) =>
+          row.number === updated.number ? { ...row, hasUc: updated.hasUc === true } : row,
+        ),
+      )
+    } catch (err) {
+      setUseCaseError(err instanceof Error ? err.message : 'Не удалось сохранить Use Case')
+    } finally {
+      setSavingUseCase(null)
     }
   }, [])
 
@@ -411,6 +439,7 @@ export default function Roadmap({
       {priorityError ? <div className="roadmap-error">{priorityError}</div> : null}
       {commentError ? <div className="roadmap-error">{commentError}</div> : null}
       {businessValueError ? <div className="roadmap-error">{businessValueError}</div> : null}
+      {useCaseError ? <div className="roadmap-error">{useCaseError}</div> : null}
       {error ? <div className="roadmap-error">{error}</div> : null}
 
       <div className="roadmap-workspace">
@@ -474,6 +503,8 @@ export default function Roadmap({
             const commentValue = commentDrafts[item.number] ?? item.roadmapComment ?? ''
             const commentSaving = savingComment === item.number
             const businessValueSaving = savingBusinessValue === item.number
+            const useCaseSaving = savingUseCase === item.number
+            const hasUseCase = item.hasUc === true
 
             return (
               <div key={item.number} className="roadmap-data-row">
@@ -539,6 +570,12 @@ export default function Roadmap({
                           editable={canEditBusinessValue}
                           saving={businessValueSaving}
                           onSave={(row, value) => void saveBusinessValue(row, value)}
+                        />
+                        <RoadmapUseCaseField
+                          value={hasUseCase}
+                          disabled={!canEditUseCase}
+                          saving={useCaseSaving}
+                          onChange={(hasUc) => void saveUseCase(item, hasUc)}
                         />
                         {canEditComment ? (
                           <textarea

@@ -29,7 +29,7 @@ export type ChangeRequest = {
   roadmapComment?: string | null
   ectResourceReservation?: boolean
   ectAcceptance?: boolean
-  hasUc?: boolean | null
+  hasUc?: boolean
   errors: LinkedError[]
 }
 

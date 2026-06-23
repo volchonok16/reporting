@@ -33,4 +33,4 @@ def test_has_uc_from_task() -> None:
     task.extra_json = {"has_uc": False}
     assert has_uc_from_task(task) is False
     task.extra_json = {}
-    assert has_uc_from_task(task) is None
+    assert has_uc_from_task(task) is False

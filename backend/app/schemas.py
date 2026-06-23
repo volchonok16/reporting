@@ -86,7 +86,7 @@ class ChangeRequestOut(BaseModel):
     roadmapComment: str | None = None
     ectResourceReservation: bool = False
     ectAcceptance: bool = False
-    hasUc: bool | None = None
+    hasUc: bool = False
     errors: list[LinkedErrorOut] = Field(default_factory=list)
 
 

@@ -37,13 +37,9 @@ def ect_acceptance_from_task(task: Task) -> bool:
     return _extra(task).get("ect_acceptance") is True
 
 
-def has_uc_from_task(task: Task) -> bool | None:
-    value = _extra(task).get("has_uc")
-    if value is True:
-        return True
-    if value is False:
-        return False
-    return None
+def has_uc_from_task(task: Task) -> bool:
+    """По умолчанию «нет»; «да» только если явно сохранено в extra_json.has_uc."""
+    return _extra(task).get("has_uc") is True
 
 
 def plan_period_from_tag(plan_tag: str, year: int) -> tuple[date, date]:
