@@ -179,6 +179,10 @@ def dashboard(
         default=None,
         description="Фильтр брони ЕЦТ: yes или no",
     ),
+    linked_environment: str | None = Query(
+        default=None,
+        description="Только Digital: yes — ЗНИ со связью CRM / Bercut / ESB",
+    ),
     metric: str | None = Query(
         default=None,
         description="Фильтр таблицы: in_progress, launching_soon, launched, completed, errors",
@@ -198,6 +202,7 @@ def dashboard(
         status=status,
         quarter=quarter,
         ect_reservation=ect_reservation,
+        linked_environment=linked_environment,
         metric=metric,
         tag_groups=tag_group,
     )

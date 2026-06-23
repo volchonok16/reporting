@@ -1,4 +1,4 @@
-"""Связанные окружения Digital ЗНИ: CRM (Продукты) и Bercut (BE Analytics)."""
+"""Связанные окружения Digital ЗНИ: CRM (Продукты), Bercut и ESB."""
 
 from __future__ import annotations
 
@@ -24,7 +24,12 @@ class LinkedEnvironmentTarget:
 DIGITAL_LINKED_ENVIRONMENT_TARGETS: tuple[LinkedEnvironmentTarget, ...] = (
     LinkedEnvironmentTarget(key="crm", label="CRM", board_code="tele2_products"),
     LinkedEnvironmentTarget(key="bercut", label="Bercut", board_code="be_t2_team"),
+    LinkedEnvironmentTarget(key="esb", label="ESB", board_code="esb_analytics"),
 )
+
+
+def has_linked_environment(extra: dict[str, Any] | None) -> bool:
+    return bool(linked_environment_records_from_extra(extra))
 
 
 def linked_environment_records_from_extra(extra: dict[str, Any] | None) -> list[dict[str, Any]]:

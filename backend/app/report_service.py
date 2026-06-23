@@ -39,7 +39,7 @@ from app.schemas import (
     QuarterOptionOut,
     TagFilterGroupOut,
 )
-from app.zni_linked_environments import linked_environment_records_from_extra
+from app.zni_linked_environments import has_linked_environment, linked_environment_records_from_extra
 from app.tag_filters import (
     DIGITAL_BOARD_CODE,
     normalize_tag_group_keys,
@@ -230,6 +230,12 @@ def _matches_ect_reservation(task: Task, ect_reservation: str | None) -> bool:
     if ect_reservation == "no":
         return not has
     return True
+
+
+def _matches_linked_environment(task: Task, linked_environment: str | None) -> bool:
+    if linked_environment != "yes":
+        return True
+    return has_linked_environment(_extra(task))
 
 
 def _matches_status(task: Task, status: str | None) -> bool:
@@ -642,6 +648,7 @@ def load_change_requests(
     status: str | None = None,
     quarter: str | None = None,
     ect_reservation: str | None = None,
+    linked_environment: str | None = None,
     metric: str | None = None,
     tag_groups: list[str] | None = None,
 ) -> DashboardOut:
@@ -689,6 +696,7 @@ def load_change_requests(
         and _matches_status(row, status)
         and _matches_quarter(row, quarter)
         and _matches_ect_reservation(row, ect_reservation)
+        and _matches_linked_environment(row, linked_environment)
         and _matches_dashboard_row(
             row,
             metric,

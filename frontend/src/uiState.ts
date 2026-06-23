@@ -18,6 +18,7 @@ export type DashboardUiState = {
   statusFilter: string
   quarterFilter: string
   ectReservationFilter: string
+  linkedEnvironmentFilter: boolean
   tagGroupFilter: string[]
   metricFilter: string
 }

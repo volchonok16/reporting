@@ -403,6 +403,9 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const [statusFilter, setStatusFilter] = useState(savedUi.statusFilter ?? '')
   const [quarterFilter, setQuarterFilter] = useState(savedUi.quarterFilter ?? '')
   const [ectReservationFilter, setEctReservationFilter] = useState(savedUi.ectReservationFilter ?? '')
+  const [linkedEnvironmentFilter, setLinkedEnvironmentFilter] = useState(
+    savedUi.linkedEnvironmentFilter ?? false,
+  )
   const [tagGroupFilter, setTagGroupFilter] = useState<string[]>(savedUi.tagGroupFilter ?? [])
   const [metricFilter, setMetricFilter] = useState<MetricFilter>(
     isMetricFilter(savedUi.metricFilter) ? savedUi.metricFilter : '',
@@ -428,6 +431,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
       setStatusFilter('')
       setQuarterFilter('')
       setEctReservationFilter('')
+      setLinkedEnvironmentFilter(false)
       setTagGroupFilter([])
       setMetricFilter('')
     }
@@ -444,6 +448,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
       statusFilter,
       quarterFilter,
       ectReservationFilter,
+      linkedEnvironmentFilter,
       tagGroupFilter,
       metricFilter,
     })
@@ -456,6 +461,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     statusFilter,
     quarterFilter,
     ectReservationFilter,
+    linkedEnvironmentFilter,
     tagGroupFilter,
     metricFilter,
   ])
@@ -471,6 +477,9 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     if (statusFilter) params.set('status', statusFilter)
     if (quarterFilter) params.set('quarter', quarterFilter)
     if (ectReservationFilter) params.set('ect_reservation', ectReservationFilter)
+    if (boardCode === DIGITAL_BOARD && linkedEnvironmentFilter) {
+      params.set('linked_environment', 'yes')
+    }
     if (boardCode !== ALL_BOARDS) {
       for (const group of tagGroupFilter) {
         params.append('tag_group', group)
@@ -494,6 +503,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     statusFilter,
     quarterFilter,
     ectReservationFilter,
+    linkedEnvironmentFilter,
     tagGroupFilter,
     metricFilter,
   ])
@@ -750,6 +760,18 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             </div>
           )}
 
+          {boardCode === DIGITAL_BOARD ? (
+            <button
+              type="button"
+              className={`linked-env-filter-btn${linkedEnvironmentFilter ? ' linked-env-filter-btn-active' : ''}`}
+              aria-pressed={linkedEnvironmentFilter}
+              title="Показать только ЗНИ со связью CRM, Bercut или ESB"
+              onClick={() => setLinkedEnvironmentFilter((current) => !current)}
+            >
+              Требует доп. доработок
+            </button>
+          ) : null}
+
         </div>
 
         <div className="toolbar-right">
@@ -823,6 +845,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         <p className="table-meta">
           Показано строк {data?.totalShown ?? 0}
           {metricFilter ? ` · фильтр: ${METRIC_LABELS[metricFilter]}` : ''}
+          {linkedEnvironmentFilter && boardCode === DIGITAL_BOARD ? ' · требует доп. доработок' : ''}
           {tagGroupFilter.length ? ` · область: ${tagGroupFilterLabel()}` : ''}
           {boardLabel ? ` · ${boardLabel}` : ''}
           {loading ? ' · загрузка…' : ''}
