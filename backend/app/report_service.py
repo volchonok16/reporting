@@ -25,6 +25,7 @@ from app.iteration_plan import (
 )
 from app.models import Task
 from app.roadmap_priority_service import roadmap_comment_from_task, roadmap_priority_from_task
+from app.digital_plan_service import ect_acceptance_from_task, has_uc_from_task
 from app.completed_metrics import has_customer_name
 from app.resource_reservation import ect_resource_reservation_label
 from app.zni_description import tfs_identity_display_name
@@ -283,6 +284,8 @@ def _change_request_to_out(row: Task, linked_errors: list[Task]) -> ChangeReques
         roadmapPriority=roadmap_priority_from_task(row),
         roadmapComment=roadmap_comment_from_task(row),
         ectResourceReservation=_ect_resource_reservation(row),
+        ectAcceptance=ect_acceptance_from_task(row),
+        hasUc=has_uc_from_task(row),
         errors=[
             LinkedErrorOut(
                 id=error.external_id,

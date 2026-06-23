@@ -14,7 +14,7 @@ type SheetTab = {
 const SHEETS: SheetTab[] = [
   { id: 'zni', label: 'ЗНИ' },
   { id: 'product-status-b2b', label: 'Статус продукта B2B' },
-  { id: 'roadmap', label: 'Roadmap' },
+  { id: 'roadmap', label: 'Планы' },
 ]
 
 type WorkbookAppProps = {
@@ -24,7 +24,8 @@ type WorkbookAppProps = {
 }
 
 export default function WorkbookApp({ appRole, canSyncTfs, onLogout }: WorkbookAppProps) {
-  const visibleSheets = appRole === 'roadmap' ? SHEETS.filter((sheet) => sheet.id === 'roadmap') : SHEETS
+  const visibleSheets =
+    appRole === 'roadmap' ? SHEETS.filter((sheet) => sheet.id === 'roadmap') : SHEETS
   const [activeSheet, setActiveSheet] = useState<SheetId>(() =>
     appRole === 'roadmap' ? 'roadmap' : loadActiveSheet(),
   )
@@ -73,7 +74,12 @@ export default function WorkbookApp({ appRole, canSyncTfs, onLogout }: WorkbookA
                 Выйти
               </button>
             </header>
-            <Roadmap canSyncTfs={canSyncTfs} canEditPriority={appRole === 'full'} canEditComment />
+            <Roadmap
+              canSyncTfs={canSyncTfs}
+              canEditPriority={appRole === 'full'}
+              canEditComment
+              canEditBusinessValue={appRole === 'full'}
+            />
           </div>
         ) : (
           <div className="app">

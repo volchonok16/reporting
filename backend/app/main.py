@@ -25,6 +25,7 @@ from app.product_status_sheets_write import (
 from app.report_service import export_csv, load_change_requests, load_change_requests_by_numbers
 from app.business_value_service import update_business_value
 from app.roadmap_priority_service import update_roadmap_comment, update_roadmap_priority
+from app.digital_plan_service import load_digital_plan, update_digital_plan_has_uc
 from app.schemas import (
     AuthDefaultsOut,
     AuthLoginOut,
@@ -32,6 +33,8 @@ from app.schemas import (
     BusinessValueUpdateIn,
     RoadmapCommentUpdateIn,
     RoadmapPriorityUpdateIn,
+    DigitalPlanOut,
+    DigitalPlanUcUpdateIn,
     ChangeRequestOut,
     DashboardOut,
     ProductStatusB2BOut,
@@ -223,6 +226,42 @@ async def patch_business_value(
             pat=pat,
             external_id=external_id,
             value=payload.value,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    dashboard = load_change_requests(db, board_code=ALL_BOARDS_CODE, search=external_id)
+    item = next((row for row in dashboard.items if row.number == external_id), None)
+    if item is None:
+        raise HTTPException(status_code=404, detail="ЗНИ не найден после обновления")
+    return item
+
+
+@app.get("/api/digital-plan", response_model=DigitalPlanOut)
+def digital_plan(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_session),
+    year: int = Query(default=2026, ge=2020, le=2100),
+    plan_tag: str = Query(default="Q3-Q4'26"),
+) -> DigitalPlanOut:
+    try:
+        return load_digital_plan(db, plan_tag=plan_tag, year=year)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.patch("/api/tasks/{external_id}/digital-plan-uc", response_model=ChangeRequestOut)
+def patch_digital_plan_uc(
+    external_id: str,
+    payload: DigitalPlanUcUpdateIn,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_session),
+) -> ChangeRequestOut:
+    try:
+        update_digital_plan_has_uc(
+            db,
+            external_id=external_id,
+            has_uc=payload.hasUc,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

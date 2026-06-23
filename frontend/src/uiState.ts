@@ -53,6 +53,9 @@ export function loadActiveSheet(): SheetId {
   if (sheet === 'b2b-news') {
     return 'product-status-b2b'
   }
+  if (sheet === 'digital-plan') {
+    return 'roadmap'
+  }
   if (sheet && WORKBOOK_SHEETS.includes(sheet as SheetId)) {
     return sheet as SheetId
   }

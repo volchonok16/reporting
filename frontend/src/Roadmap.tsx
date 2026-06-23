@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import { apiFetch, getJson, patchJson } from './api'
 import type { ChangeRequest, RoadmapPriority } from './zniTypes'
 import { columnBarClass } from './roadmap/kanbanColumns'
@@ -28,11 +28,70 @@ type RoadmapProps = {
   canSyncTfs?: boolean
   canEditPriority?: boolean
   canEditComment?: boolean
+  canEditBusinessValue?: boolean
 }
 
-type DashboardPayload = {
-  items: ChangeRequest[]
-  totalShown: number
+function businessValueText(item: ChangeRequest): string {
+  return item.businessValue != null ? String(item.businessValue) : ''
+}
+
+type RoadmapBusinessValueFieldProps = {
+  item: ChangeRequest
+  editable: boolean
+  saving: boolean
+  onSave: (item: ChangeRequest, value: string) => void
+}
+
+function RoadmapBusinessValueField({
+  item,
+  editable,
+  saving,
+  onSave,
+}: RoadmapBusinessValueFieldProps) {
+  const [draft, setDraft] = useState(businessValueText(item))
+
+  useEffect(() => {
+    setDraft(businessValueText(item))
+  }, [item.number, item.businessValue])
+
+  const commit = () => {
+    const current = businessValueText(item)
+    if (draft === current) return
+    onSave(item, draft)
+  }
+
+  if (!editable) {
+    return (
+      <div className="roadmap-bar-bv">
+        <span className="roadmap-bar-bv-label">Бизнес-вэлью</span>
+        <span className="roadmap-bar-bv-value">{item.businessValue ?? '—'}</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="roadmap-bar-bv">
+      <span className="roadmap-bar-bv-label">Бизнес-вэлью</span>
+      <input
+        type="number"
+        min={1}
+        step={1}
+        className="roadmap-bar-bv-input"
+        value={draft}
+        disabled={saving}
+        placeholder="—"
+        title="Ценность для бизнеса (Microsoft.VSTS.Common.BusinessValue в TFS)"
+        onClick={(event) => event.stopPropagation()}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+          if (event.key === 'Enter') {
+            event.currentTarget.blur()
+          }
+        }}
+      />
+    </div>
+  )
 }
 
 function startOfLocalDay(date = new Date()): Date {
@@ -74,10 +133,16 @@ function dayTicks(from: Date, to: Date): { label: string; left: number; isFirstO
   return ticks
 }
 
+type DashboardPayload = {
+  items: ChangeRequest[]
+  totalShown: number
+}
+
 export default function Roadmap({
   canSyncTfs = false,
   canEditPriority = true,
   canEditComment = true,
+  canEditBusinessValue = false,
 }: RoadmapProps) {
   const saved = useMemo(() => loadRoadmapUiState(), [])
   const [year, setYear] = useState(saved.year ?? new Date().getFullYear())
@@ -89,6 +154,8 @@ export default function Roadmap({
   const [priorityError, setPriorityError] = useState<string | null>(null)
   const [savingComment, setSavingComment] = useState<string | null>(null)
   const [commentError, setCommentError] = useState<string | null>(null)
+  const [savingBusinessValue, setSavingBusinessValue] = useState<string | null>(null)
+  const [businessValueError, setBusinessValueError] = useState<string | null>(null)
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({})
   const [syncing, setSyncing] = useState(false)
   const [syncProgress, setSyncProgress] = useState<string | null>(null)
@@ -117,7 +184,7 @@ export default function Roadmap({
       )
       setItems(visible)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось загрузить roadmap')
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить планы')
       setItems([])
     } finally {
       setLoading(false)
@@ -241,6 +308,36 @@ export default function Roadmap({
     [],
   )
 
+  const saveBusinessValue = useCallback(async (item: ChangeRequest, rawValue: string) => {
+    const trimmed = rawValue.trim()
+    const parsed = trimmed === '' ? null : Number.parseInt(trimmed, 10)
+    if (trimmed !== '' && (!Number.isFinite(parsed) || parsed! < 1)) {
+      setBusinessValueError('Бизнес-вэлью — целое число от 1')
+      return
+    }
+    if (parsed === item.businessValue) return
+
+    setSavingBusinessValue(item.number)
+    setBusinessValueError(null)
+    try {
+      const updated = await patchJson<ChangeRequest>(
+        `/api/tasks/${encodeURIComponent(item.number)}/business-value`,
+        { value: parsed },
+      )
+      setItems((current) =>
+        current.map((row) =>
+          row.number === updated.number ? { ...row, businessValue: updated.businessValue } : row,
+        ),
+      )
+    } catch (err) {
+      setBusinessValueError(
+        err instanceof Error ? err.message : 'Не удалось сохранить бизнес-вэлью',
+      )
+    } finally {
+      setSavingBusinessValue(null)
+    }
+  }, [])
+
   const months = useMemo(() => monthTicks(fromDate, toDate), [fromDate, toDate])
   const days = useMemo(() => dayTicks(fromDate, toDate), [fromDate, toDate])
   const todayLeft = timelinePercent(new Date(), fromDate, toDate)
@@ -251,7 +348,7 @@ export default function Roadmap({
     <div className="roadmap-page">
       <div className="roadmap-toolbar">
         <div className="roadmap-toolbar-title">
-          <h1>Roadmap</h1>
+          <h1>Планы</h1>
           <p>Digital · планирование по Start Date</p>
         </div>
 
@@ -313,6 +410,7 @@ export default function Roadmap({
 
       {priorityError ? <div className="roadmap-error">{priorityError}</div> : null}
       {commentError ? <div className="roadmap-error">{commentError}</div> : null}
+      {businessValueError ? <div className="roadmap-error">{businessValueError}</div> : null}
       {error ? <div className="roadmap-error">{error}</div> : null}
 
       <div className="roadmap-workspace">
@@ -375,6 +473,7 @@ export default function Roadmap({
             const barClassName = ['roadmap-bar', statusClass, priorityClass].filter(Boolean).join(' ')
             const commentValue = commentDrafts[item.number] ?? item.roadmapComment ?? ''
             const commentSaving = savingComment === item.number
+            const businessValueSaving = savingBusinessValue === item.number
 
             return (
               <div key={item.number} className="roadmap-data-row">
@@ -435,6 +534,12 @@ export default function Roadmap({
                             <b>#{item.number}</b> {item.title}
                           </span>
                         </div>
+                        <RoadmapBusinessValueField
+                          item={item}
+                          editable={canEditBusinessValue}
+                          saving={businessValueSaving}
+                          onSave={(row, value) => void saveBusinessValue(row, value)}
+                        />
                         {canEditComment ? (
                           <textarea
                             className="roadmap-bar-comment"

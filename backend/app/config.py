@@ -54,6 +54,11 @@ class Settings(BaseSettings):
         alias="TFS_RESOURCE_RESERVATION_TYPE_VALUES",
         description="Тип TFS «Бронь ресурсов» для колонки «Бронь ресурса ЕЦТ».",
     )
+    tfs_ect_acceptance_type_values: str = Field(
+        default="Приемка ЕЦТ",
+        alias="TFS_ECT_ACCEPTANCE_TYPE_VALUES",
+        description="Тип TFS «Приемка ЕЦТ» для колонки «Приемка ЕЦТ» на План digital.",
+    )
     tfs_pilot_state_values: str = Field(
         default="Пилот,Pilot",
         alias="TFS_PILOT_STATE_VALUES",
@@ -90,8 +95,8 @@ class Settings(BaseSettings):
         default="",
         alias="APP_AUTH_ROADMAP_USERS",
         description=(
-            "Пользователи только Roadmap: login:password. "
-            "Доступ к вкладке Roadmap и синхронизации доски Digital Streams B2b."
+            "Пользователи только Планы: login:password. "
+            "Доступ к вкладке Планы и синхронизации доски Digital Streams B2b."
         ),
     )
     b2b_product_status_spreadsheet_id: str = Field(
@@ -252,6 +257,15 @@ class Settings(BaseSettings):
         return [
             item.strip()
             for item in self.tfs_resource_reservation_type_values.split(",")
+            if item.strip()
+        ]
+
+    @computed_field
+    @property
+    def ect_acceptance_type_list(self) -> list[str]:
+        return [
+            item.strip()
+            for item in self.tfs_ect_acceptance_type_values.split(",")
             if item.strip()
         ]
 

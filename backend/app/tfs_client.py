@@ -585,6 +585,58 @@ class TfsClient:
             result.add(target_id)
         return result
 
+    async def get_zni_ect_acceptance_links(
+        self,
+        area_path: str,
+        *,
+        zni_tags: Iterable[str] | None = None,
+        exclude_zni_states: Iterable[str] | None = None,
+        exclude_zni_tags: Iterable[str] | None = None,
+    ) -> set[int]:
+        """ID ЗНИ с Related на тип «Приемка ЕЦТ» (прямая связь, оба направления WIQL)."""
+        acceptance_types = settings.ect_acceptance_type_list
+        if not acceptance_types:
+            return set()
+
+        acceptance = ", ".join(wiql_quote(item) for item in acceptance_types)
+        source_clause = self._zni_area_link_clauses(
+            side="Source",
+            area_path=area_path,
+            zni_tags=zni_tags,
+            exclude_zni_states=exclude_zni_states,
+            exclude_zni_tags=exclude_zni_tags,
+        )
+        target_clause = self._zni_area_link_clauses(
+            side="Target",
+            area_path=area_path,
+            zni_tags=zni_tags,
+            exclude_zni_states=exclude_zni_states,
+            exclude_zni_tags=exclude_zni_tags,
+        )
+        forward_query = (
+            f"SELECT [System.Id] FROM WorkItemLinks "
+            f"WHERE {source_clause} "
+            f"AND [System.Links.LinkType] = 'System.LinkTypes.Related' "
+            f"AND [Target].[System.WorkItemType] IN ({acceptance}) "
+            f"MODE (MustContain)"
+        )
+        reverse_query = (
+            f"SELECT [System.Id] FROM WorkItemLinks "
+            f"WHERE [Source].[System.WorkItemType] IN ({acceptance}) "
+            f"AND [System.Links.LinkType] = 'System.LinkTypes.Related' "
+            f"AND {target_clause} "
+            f"MODE (MustContain)"
+        )
+
+        result: set[int] = set()
+        forward_payload = await self.run_wiql(forward_query)
+        for source_id, _target_id in self._work_item_link_pairs(forward_payload):
+            result.add(source_id)
+        reverse_payload = await self.run_wiql(reverse_query)
+        for _source_id, target_id in self._work_item_link_pairs(reverse_payload):
+            result.add(target_id)
+        return result
+
     async def _fetch_work_items_chunk(
         self,
         ids: list[int],

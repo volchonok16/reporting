@@ -77,7 +77,7 @@
 | payload | jsonb | `pat`, `base_url`, `project`, `auth_mode` (`pat` / `app_user`), `app_login` |
 | created_at | timestamptz | Время создания |
 
-Переменные окружения: `APP_AUTH_USERS` (полный доступ), `APP_AUTH_ROADMAP_USERS` (только Roadmap + sync Digital), `TFS_SYNC_PAT` (PAT для входа по логину).
+Переменные окружения: `APP_AUTH_USERS` (полный доступ), `APP_AUTH_ROADMAP_USERS` (только Планы + sync Digital), `TFS_SYNC_PAT` (PAT для входа по логину).
 
 ## project — команда по умолчанию
 

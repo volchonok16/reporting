@@ -85,6 +85,8 @@ class ChangeRequestOut(BaseModel):
     roadmapPriority: Literal["red", "yellow", "green"] | None = None
     roadmapComment: str | None = None
     ectResourceReservation: bool = False
+    ectAcceptance: bool = False
+    hasUc: bool | None = None
     errors: list[LinkedErrorOut] = Field(default_factory=list)
 
 
@@ -157,7 +159,7 @@ class BusinessValueUpdateIn(BaseModel):
 class RoadmapPriorityUpdateIn(BaseModel):
     priority: Literal["red", "yellow", "green"] | None = Field(
         default=None,
-        description="Приоритет колбаски на Roadmap: red — обязательно, yellow — средний, green — можно пропустить; null — сброс",
+        description="Приоритет колбаски на Планы: red — обязательно, yellow — средний, green — можно пропустить; null — сброс",
     )
 
 
@@ -165,7 +167,22 @@ class RoadmapCommentUpdateIn(BaseModel):
     comment: str | None = Field(
         default=None,
         max_length=500,
-        description="Локальный комментарий колбаски Roadmap (не в TFS); null или пустая строка — сброс",
+        description="Локальный комментарий колбаски Планы (не в TFS); null или пустая строка — сброс",
+    )
+
+
+class DigitalPlanOut(BaseModel):
+    planTag: str
+    periodFrom: date
+    periodTo: date
+    items: list[ChangeRequestOut]
+    totalShown: int
+
+
+class DigitalPlanUcUpdateIn(BaseModel):
+    hasUc: bool | None = Field(
+        default=None,
+        description="UC есть (true) / нет (false); null — сброс",
     )
 
 

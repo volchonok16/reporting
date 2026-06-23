@@ -28,6 +28,8 @@ export type ChangeRequest = {
   roadmapPriority?: RoadmapPriority | null
   roadmapComment?: string | null
   ectResourceReservation?: boolean
+  ectAcceptance?: boolean
+  hasUc?: boolean | null
   errors: LinkedError[]
 }
 

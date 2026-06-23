@@ -397,7 +397,7 @@
 
 Пользователи приложения задаются в `APP_AUTH_USERS` (`login:password`, по строке). Секреты — только в `.env`, не в репозитории.
 
-Пользователи с ограниченным доступом — `APP_AUTH_ROADMAP_USERS`: только вкладка **Roadmap**, синхронизация TFS только по доске `digital_streams_b2b` (кнопка «Обновить из TFS»), **без редактирования** приоритета колбаски (Обязательно / Средний / Можно пропустить — `extra_json.roadmap_priority`). Роль в сессии: `app_role` = `roadmap` (остальные — `full`).
+Пользователи с ограниченным доступом — `APP_AUTH_ROADMAP_USERS`: только вкладка **Планы**, синхронизация TFS только по доске `digital_streams_b2b` (кнопка «Обновить из TFS»), **без редактирования** приоритета колбаски (Обязательно / Средний / Можно пропустить — `extra_json.roadmap_priority`) и бизнес-вэлью. Роль в сессии: `app_role` = `roadmap` (остальные — `full`).
 
 | Поле | Тип | Описание |
 |------|-----|----------|
@@ -426,9 +426,9 @@
 | `Logrocon.Release` | `extra_json.planned_release` | Привязанный релиз (имя, напр. `Bercut InVoice 4.7.90.0 (1034184)`) |
 | `Logrocon.PO` | `extra_json.customer_name` | Заказчик ЗНИ (ФИО из поля TFS) |
 | `System.Description` | `extra_json.business_goal` | Текст секции «Цель и бизнес-смысл доработки*» (до следующего заголовка `<b>…</b>`) |
-| `Microsoft.VSTS.Common.BusinessValue` | `extra_json.business_value` | Ценность для бизнеса (целое число; колонка дашборда, редактирование через `PATCH /api/tasks/{id}/business-value`) |
-| Roadmap приоритет | `extra_json.roadmap_priority` | Локальное поле (не в TFS): цвет колбаски на Roadmap — `red` / `yellow` / `green`; `PATCH /api/tasks/{id}/roadmap-priority` (только `app_role` = `full`); при синхронизации TFS сохраняется в БД |
-| Roadmap комментарий | `extra_json.roadmap_comment` | Локальное поле (не в TFS): текст внизу колбаски на Roadmap; `PATCH /api/tasks/{id}/roadmap-comment` (любой авторизованный пользователь); при синхронизации TFS сохраняется в БД |
+| `Microsoft.VSTS.Common.BusinessValue` | `extra_json.business_value` | Ценность для бизнеса (целое число; колонка дашборда ЗНИ и поле «Бизнес-вэлью» на колбаске Планы; редактирование через `PATCH /api/tasks/{id}/business-value`, только `app_role` = `full`) |
+| Планы приоритет | `extra_json.roadmap_priority` | Локальное поле (не в TFS): цвет колбаски на вкладке **Планы** — `red` / `yellow` / `green`; `PATCH /api/tasks/{id}/roadmap-priority` (только `app_role` = `full`); при синхронизации TFS сохраняется в БД |
+| Планы комментарий | `extra_json.roadmap_comment` | Локальное поле (не в TFS): текст внизу колбаски на вкладке **Планы**; `PATCH /api/tasks/{id}/roadmap-comment` (любой авторизованный пользователь); при синхронизации TFS сохраняется в БД |
 | Related → «Бронь ресурсов» | `extra_json.ect_resource_reservation` | `true` / `false`: у ЗНИ есть Related на элемент типа «Бронь ресурсов» (колонка «Бронь ресурса ЕЦТ») |
 
 **Планируемая дата** — из листа `System.IterationPath`: `2026.08.11.0-R` → `2026-08-11`; если в пути есть **TBD** — в UI выводится `TBD`; если дата из итерации не определена — подставляется **Целевая дата** (`Microsoft.VSTS.Scheduling.TargetDate`, поле `task.release_date`, напр. ЗНИ 1071033 → `03.12.2025`). **План квартала** — `Q3 2026` или `TBD`; фильтр `quarter` в API (`TBD`, `2026-Q3`, …). В выпадающем списке фильтра — только кварталы **текущего года** плюс отдельные пункты TBD и «Без квартала». **Плановый релиз** — из `Logrocon.FoundinRelease` или `Logrocon.Release`, если поле проставлено или релиз привязан; колонка «План. релиз» в дашборде и CSV. **Бронь ресурса ЕЦТ** — `ДА` / `НЕТ`: прямая Related-связь ЗНИ с элементом «Бронь ресурсов» (`TFS_RESOURCE_RESERVATION_TYPE_VALUES`, по умолчанию `Бронь ресурсов`).

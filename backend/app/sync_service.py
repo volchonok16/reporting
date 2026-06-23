@@ -15,10 +15,12 @@ from app.iteration_plan import parse_iteration_plan, quarter_key_from_date
 from app.release_fields import work_item_planned_release
 from app.linked_errors import is_error_work_item_type, parent_zni_id_from_error_payload
 from app.resource_reservation import compute_ect_resource_reservation
+from app.ect_acceptance import compute_ect_acceptance
 from app.completed_metrics import effective_closed_date, effective_closed_date_from_fields
 from app.zni_description import extract_business_goal_from_description, tfs_identity_display_name
 from app.zni_title_filters import is_excluded_zni_title
 from app.roadmap_priority_service import preserve_roadmap_priority_in_extra
+from app.digital_plan_service import preserve_digital_plan_fields_in_extra
 from app.models import Project, SourceSystem, SyncRun, Task, Team
 from app.tfs_client import TfsClient, date_from_field_list, parse_tfs_datetime
 
@@ -422,6 +424,7 @@ async def sync_board(
                     pass
 
             preserve_roadmap_priority_in_extra(extra_json, existing_extra)
+            preserve_digital_plan_fields_in_extra(extra_json, existing_extra)
 
             if settings.tfs_fetch_pilot_history:
                 cached = (
@@ -485,6 +488,31 @@ async def sync_board(
                     continue
                 extra = dict(row.extra_json) if isinstance(row.extra_json, dict) else {}
                 extra["ect_resource_reservation"] = reservation_flags.get(external_id, False)
+                row.extra_json = extra
+                db.add(row)
+
+            if sync_run:
+                touch_sync_progress(
+                    db,
+                    sync_run,
+                    f"{board.display_name}: связи «Приемка ЕЦТ»…",
+                )
+            acceptance_zni_ids = await client.get_zni_ect_acceptance_links(
+                board.area_path,
+                zni_tags=board.sync_tags or None,
+                exclude_zni_states=board.exclude_sync_states or None,
+                exclude_zni_tags=board.exclude_sync_tags or None,
+            )
+            acceptance_flags = compute_ect_acceptance(
+                zni_db_ids.keys(),
+                acceptance_zni_ids=acceptance_zni_ids,
+            )
+            for external_id, task_id in zni_db_ids.items():
+                row = db.get(Task, task_id)
+                if row is None:
+                    continue
+                extra = dict(row.extra_json) if isinstance(row.extra_json, dict) else {}
+                extra["ect_acceptance"] = acceptance_flags.get(external_id, False)
                 row.extra_json = extra
                 db.add(row)
 
