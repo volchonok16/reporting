@@ -875,7 +875,20 @@ body {
 .zni-detail-panel-compact .customer-name-line {
   white-space: normal;
   overflow: visible;
-  text-overflow: unset;
+}
+
+.zni-linked-environments {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.zni-linked-environments li + li {
+  margin-top: 0.35rem;
+}
+
+.zni-linked-environment-label {
+  font-weight: 600;
 }
 
 .cell-errors {

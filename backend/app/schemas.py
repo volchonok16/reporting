@@ -50,6 +50,15 @@ class LinkedErrorOut(BaseModel):
     url: str | None = None
 
 
+class LinkedEnvironmentOut(BaseModel):
+    key: str
+    label: str
+    zniId: str
+    status: str | None = None
+    boardColumn: str | None = None
+    url: str | None = None
+
+
 class QuarterOptionOut(BaseModel):
     key: str
     label: str
@@ -87,6 +96,7 @@ class ChangeRequestOut(BaseModel):
     ectResourceReservation: bool = False
     ectAcceptance: bool = False
     hasUc: bool = False
+    linkedEnvironments: list[LinkedEnvironmentOut] = Field(default_factory=list)
     errors: list[LinkedErrorOut] = Field(default_factory=list)
 
 

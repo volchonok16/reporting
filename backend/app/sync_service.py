@@ -516,6 +516,23 @@ async def sync_board(
                 row.extra_json = extra
                 db.add(row)
 
+            if board.code == "digital_streams_b2b":
+                from app.linked_environments import sync_digital_linked_environments
+
+                if sync_run:
+                    touch_sync_progress(
+                        db,
+                        sync_run,
+                        f"{board.display_name}: связи CRM / Bercut…",
+                    )
+                await sync_digital_linked_environments(
+                    db,
+                    client,
+                    digital_board=board,
+                    zni_db_ids=zni_db_ids,
+                    pat=pat,
+                )
+
         db.commit()
 
         if sync_run:

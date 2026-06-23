@@ -5,6 +5,15 @@ export type LinkedError = {
   status?: string | null
 }
 
+export type LinkedEnvironment = {
+  key: string
+  label: string
+  zniId: string
+  status?: string | null
+  boardColumn?: string | null
+  url?: string | null
+}
+
 export type RoadmapPriority = 'red' | 'yellow' | 'green'
 
 export type ChangeRequest = {
@@ -30,6 +39,7 @@ export type ChangeRequest = {
   ectResourceReservation?: boolean
   ectAcceptance?: boolean
   hasUc?: boolean
+  linkedEnvironments?: LinkedEnvironment[]
   errors: LinkedError[]
 }
 

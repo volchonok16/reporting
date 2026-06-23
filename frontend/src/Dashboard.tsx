@@ -3,6 +3,7 @@ import { apiFetch, clearSessionId, getJson } from './api'
 import { loadDashboardUiState, saveDashboardUiState } from './uiState'
 
 const ALL_BOARDS = 'all'
+const DIGITAL_BOARD = 'digital_streams_b2b'
 
 const BOARD_LABELS: Record<string, string> = {
   all: 'Все доски',
@@ -45,6 +46,15 @@ type LinkedError = {
   url?: string | null
 }
 
+type LinkedEnvironment = {
+  key: string
+  label: string
+  zniId: string
+  status?: string | null
+  boardColumn?: string | null
+  url?: string | null
+}
+
 type QuarterOption = {
   key: string
   label: string
@@ -76,6 +86,7 @@ type ChangeRequest = {
   businessGoal?: string | null
   businessValue?: number | null
   ectResourceReservation?: boolean
+  linkedEnvironments?: LinkedEnvironment[]
   errors: LinkedError[]
 }
 
@@ -115,6 +126,15 @@ function hasPlannedDate(item: ChangeRequest): boolean {
 
 function formatEctReservation(value?: boolean): string {
   return value ? 'ДА' : 'НЕТ'
+}
+
+function formatLinkedEnvironmentStatus(env: LinkedEnvironment): string {
+  const column = env.boardColumn?.trim()
+  const status = env.status?.trim()
+  if (column && status && column !== status) {
+    return `${column} (${status})`
+  }
+  return column || status || '—'
 }
 
 function businessGoalParagraphs(text: string): string[] {
@@ -316,7 +336,9 @@ function rowHasExpandDetails(item: ChangeRequest): boolean {
   if (isErrorRow(item)) {
     return hasPlannedDate(item)
   }
-  return Boolean(item.customerName?.trim() || hasPlannedDate(item))
+  const hasLinkedEnvironments =
+    item.boardCode === DIGITAL_BOARD && (item.linkedEnvironments?.length ?? 0) > 0
+  return Boolean(item.customerName?.trim() || hasPlannedDate(item) || hasLinkedEnvironments)
 }
 
 type MetricFilter = '' | 'in_progress' | 'launching_soon' | 'launched' | 'completed' | 'errors'
@@ -893,8 +915,8 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                             aria-expanded={expanded}
                             aria-label={
                               expanded
-                                ? 'Скрыть заказчика и плановую дату'
-                                : 'Показать заказчика и плановую дату'
+                                ? 'Скрыть детали'
+                                : 'Показать детали'
                             }
                             onClick={() => toggleExpanded(key)}
                             onKeyDown={(event) => handleExpandKeyDown(event, key)}
@@ -983,6 +1005,29 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                               <div className="zni-detail-label">План. дата</div>
                               <div className="zni-detail-value cell-date">{formatPlannedDate(item)}</div>
                             </div>
+                            {item.boardCode === DIGITAL_BOARD && (item.linkedEnvironments?.length ?? 0) > 0 ? (
+                              <div className="zni-detail-field zni-detail-field-wide">
+                                <div className="zni-detail-label">Окружения</div>
+                                <div className="zni-detail-value">
+                                  <ul className="zni-linked-environments">
+                                    {item.linkedEnvironments!.map((env) => (
+                                      <li key={`${env.key}-${env.zniId}`}>
+                                        <span className="zni-linked-environment-label">{env.label}:</span>{' '}
+                                        {env.url ? (
+                                          <a className="zni-link" href={env.url} target="_blank" rel="noreferrer">
+                                            {env.zniId}
+                                          </a>
+                                        ) : (
+                                          env.zniId
+                                        )}
+                                        {' — '}
+                                        {formatLinkedEnvironmentStatus(env)}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              </div>
+                            ) : null}
                           </div>
                         </td>
                       </tr>,

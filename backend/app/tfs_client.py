@@ -637,6 +637,60 @@ class TfsClient:
             result.add(target_id)
         return result
 
+    async def get_related_change_request_links_between_areas(
+        self,
+        *,
+        source_area_path: str,
+        source_project: str | None = None,
+        target_area_path: str,
+        target_project: str,
+    ) -> dict[int, list[int]]:
+        """source_zni_id -> [linked_zni_id] через Related между областями (оба направления WIQL)."""
+        types = ", ".join(wiql_quote(item) for item in settings.change_type_list)
+        src_project = wiql_quote(source_project or self.project)
+        tgt_project = wiql_quote(target_project)
+        src_area = wiql_quote(source_area_path)
+        tgt_area = wiql_quote(target_area_path)
+        result: dict[int, set[int]] = {}
+
+        forward_query = (
+            f"SELECT [System.Id] FROM WorkItemLinks "
+            f"WHERE [Source].[System.TeamProject] = {src_project} "
+            f"AND [Source].[System.WorkItemType] IN ({types}) "
+            f"AND [Source].[System.AreaPath] UNDER {src_area} "
+            f"AND [System.Links.LinkType] = 'System.LinkTypes.Related' "
+            f"AND [Target].[System.TeamProject] = {tgt_project} "
+            f"AND [Target].[System.WorkItemType] IN ({types}) "
+            f"AND [Target].[System.AreaPath] UNDER {tgt_area} "
+            f"MODE (MustContain)"
+        )
+        reverse_query = (
+            f"SELECT [System.Id] FROM WorkItemLinks "
+            f"WHERE [Target].[System.TeamProject] = {src_project} "
+            f"AND [Target].[System.WorkItemType] IN ({types}) "
+            f"AND [Target].[System.AreaPath] UNDER {src_area} "
+            f"AND [System.Links.LinkType] = 'System.LinkTypes.Related' "
+            f"AND [Source].[System.TeamProject] = {tgt_project} "
+            f"AND [Source].[System.WorkItemType] IN ({types}) "
+            f"AND [Source].[System.AreaPath] UNDER {tgt_area} "
+            f"MODE (MustContain)"
+        )
+
+        for payload, forward in (
+            (await self.run_wiql(forward_query), True),
+            (await self.run_wiql(reverse_query), False),
+        ):
+            for source_id, target_id in self._work_item_link_pairs(payload):
+                if forward:
+                    result.setdefault(source_id, set()).add(target_id)
+                else:
+                    result.setdefault(target_id, set()).add(source_id)
+
+        return {
+            source_id: sorted(linked_ids)
+            for source_id, linked_ids in sorted(result.items())
+        }
+
     async def _fetch_work_items_chunk(
         self,
         ids: list[int],

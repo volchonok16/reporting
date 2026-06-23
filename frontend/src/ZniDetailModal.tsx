@@ -4,6 +4,7 @@ import {
   businessGoalParagraphs,
   customerNameParts,
   formatEctReservation,
+  formatLinkedEnvironmentStatus,
   formatPlannedDate,
 } from './zniDisplay'
 import type { ChangeRequest } from './zniTypes'
@@ -136,6 +137,29 @@ export default function ZniDetailModal({ item, onClose }: ZniDetailModalProps) {
                 ) : null}
               </div>
             </div>
+            {(item.linkedEnvironments?.length ?? 0) > 0 ? (
+              <div className="zni-modal-field zni-modal-field-wide">
+                <div className="zni-detail-label">Окружения</div>
+                <div className="zni-detail-value">
+                  <ul className="zni-linked-environments">
+                    {item.linkedEnvironments!.map((env) => (
+                      <li key={`${env.key}-${env.zniId}`}>
+                        <span className="zni-linked-environment-label">{env.label}:</span>{' '}
+                        {env.url ? (
+                          <a className="zni-link" href={env.url} target="_blank" rel="noreferrer">
+                            {env.zniId}
+                          </a>
+                        ) : (
+                          env.zniId
+                        )}
+                        {' — '}
+                        {formatLinkedEnvironmentStatus(env)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {item.errors.length > 0 ? (

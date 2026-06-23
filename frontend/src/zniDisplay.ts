@@ -40,6 +40,18 @@ export function formatEctReservation(value?: boolean): string {
   return value ? 'ДА' : 'НЕТ'
 }
 
+export function formatLinkedEnvironmentStatus(env: {
+  boardColumn?: string | null
+  status?: string | null
+}): string {
+  const column = env.boardColumn?.trim()
+  const status = env.status?.trim()
+  if (column && status && column !== status) {
+    return `${column} (${status})`
+  }
+  return column || status || '—'
+}
+
 export function businessGoalParagraphs(text: string): string[] {
   const paragraphs: string[] = []
   let current: string[] = []

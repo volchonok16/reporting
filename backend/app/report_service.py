@@ -34,10 +34,12 @@ from app.schemas import (
     ChangeRequestOut,
     DashboardMetricsOut,
     DashboardOut,
+    LinkedEnvironmentOut,
     LinkedErrorOut,
     QuarterOptionOut,
     TagFilterGroupOut,
 )
+from app.zni_linked_environments import linked_environment_records_from_extra
 from app.tag_filters import (
     DIGITAL_BOARD_CODE,
     normalize_tag_group_keys,
@@ -97,6 +99,30 @@ def _planned_release(task: Task) -> str | None:
 def _ect_resource_reservation(task: Task) -> bool:
     value = _extra(task).get("ect_resource_reservation")
     return value is True
+
+
+def _linked_environments(task: Task) -> list[LinkedEnvironmentOut]:
+    items: list[LinkedEnvironmentOut] = []
+    for record in linked_environment_records_from_extra(_extra(task)):
+        zni_id = str(record.get("zni_id") or record.get("zniId") or "").strip()
+        if not zni_id:
+            continue
+        key = str(record.get("key") or "").strip()
+        label = str(record.get("label") or key or "").strip() or key
+        status = record.get("status")
+        board_column = record.get("board_column") or record.get("boardColumn")
+        url = record.get("url")
+        items.append(
+            LinkedEnvironmentOut(
+                key=key,
+                label=label,
+                zniId=zni_id,
+                status=str(status).strip() if status not in (None, "") else None,
+                boardColumn=str(board_column).strip() if board_column not in (None, "") else None,
+                url=str(url).strip() if url not in (None, "") else None,
+            )
+        )
+    return items
 
 
 def _customer_name(task: Task) -> str | None:
@@ -286,6 +312,7 @@ def _change_request_to_out(row: Task, linked_errors: list[Task]) -> ChangeReques
         ectResourceReservation=_ect_resource_reservation(row),
         ectAcceptance=ect_acceptance_from_task(row),
         hasUc=has_uc_from_task(row),
+        linkedEnvironments=_linked_environments(row),
         errors=[
             LinkedErrorOut(
                 id=error.external_id,
