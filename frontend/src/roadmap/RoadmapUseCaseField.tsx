@@ -1,4 +1,5 @@
 type RoadmapUseCaseFieldProps = {
+  itemNumber: string
   value: boolean
   disabled?: boolean
   saving?: boolean
@@ -6,42 +7,36 @@ type RoadmapUseCaseFieldProps = {
 }
 
 export function RoadmapUseCaseField({
+  itemNumber,
   value,
   disabled = false,
   saving = false,
   onChange,
 }: RoadmapUseCaseFieldProps) {
+  const selectId = `roadmap-uc-${itemNumber}`
+
   return (
-    <div className="roadmap-bar-uc" role="group" aria-label="Use Case">
-      <span className="roadmap-bar-uc-label">Use Case</span>
-      <div className="roadmap-bar-uc-options">
-        <button
-          type="button"
-          className={`roadmap-bar-uc-btn${!value ? ' is-active' : ''}`}
-          aria-pressed={!value}
-          disabled={disabled || saving}
-          onClick={(event) => {
-            event.stopPropagation()
-            if (!value) return
-            onChange(false)
-          }}
-        >
-          Нет
-        </button>
-        <button
-          type="button"
-          className={`roadmap-bar-uc-btn is-yes${value ? ' is-active' : ''}`}
-          aria-pressed={value}
-          disabled={disabled || saving}
-          onClick={(event) => {
-            event.stopPropagation()
-            if (value) return
-            onChange(true)
-          }}
-        >
-          Да
-        </button>
-      </div>
+    <div className="roadmap-bar-uc">
+      <label className="roadmap-bar-uc-label" htmlFor={selectId}>
+        Use Case
+      </label>
+      <select
+        id={selectId}
+        className="roadmap-bar-uc-select"
+        value={value ? 'yes' : 'no'}
+        disabled={disabled || saving}
+        aria-label="Use Case"
+        onClick={(event) => event.stopPropagation()}
+        onChange={(event) => {
+          const next = event.target.value === 'yes'
+          if (next !== value) {
+            onChange(next)
+          }
+        }}
+      >
+        <option value="no">Нет</option>
+        <option value="yes">Да</option>
+      </select>
     </div>
   )
 }

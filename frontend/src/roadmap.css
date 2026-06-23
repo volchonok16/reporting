@@ -613,48 +613,27 @@
   opacity: 0.85;
 }
 
-.roadmap-bar-uc-options {
-  display: inline-flex;
-  gap: 4px;
-}
-
-.roadmap-bar-uc-btn {
-  min-width: 40px;
+.roadmap-bar-uc-select {
+  min-width: 72px;
   margin: 0;
-  padding: 4px 8px;
+  padding: 4px 6px;
   border: 1px solid rgba(61, 71, 86, 0.22);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.82);
   color: inherit;
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
-  cursor: pointer;
   box-sizing: border-box;
+  cursor: pointer;
 }
 
-.roadmap-bar-uc-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.88);
-  border-color: rgba(61, 71, 86, 0.35);
+.roadmap-bar-uc-select:focus {
+  outline: 2px solid rgba(124, 58, 237, 0.35);
+  border-color: rgba(124, 58, 237, 0.45);
 }
 
-.roadmap-bar-uc-btn.is-active {
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: inset 0 0 0 1px rgba(17, 17, 17, 0.1);
-}
-
-.roadmap-bar-uc-btn.is-active:not(.is-yes) {
-  border-color: rgba(107, 114, 128, 0.45);
-  color: #374151;
-}
-
-.roadmap-bar-uc-btn.is-yes.is-active {
-  border-color: rgba(22, 163, 74, 0.45);
-  background: #dcfce7;
-  color: #14532d;
-}
-
-.roadmap-bar-uc-btn:disabled {
+.roadmap-bar-uc-select:disabled {
   opacity: 0.7;
   cursor: wait;
 }

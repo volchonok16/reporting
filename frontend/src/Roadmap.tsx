@@ -572,6 +572,7 @@ export default function Roadmap({
                           onSave={(row, value) => void saveBusinessValue(row, value)}
                         />
                         <RoadmapUseCaseField
+                          itemNumber={item.number}
                           value={hasUseCase}
                           disabled={!canEditUseCase}
                           saving={useCaseSaving}
