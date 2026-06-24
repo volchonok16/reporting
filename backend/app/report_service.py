@@ -26,7 +26,7 @@ from app.iteration_plan import (
 from app.models import Task
 from app.roadmap_priority_service import roadmap_comment_from_task, roadmap_priority_from_task
 from app.digital_plan_service import ect_acceptance_from_task, has_uc_from_task
-from app.completed_metrics import has_customer_name
+from app.completed_metrics import effective_closed_date, has_customer_name
 from app.resource_reservation import ect_resource_reservation_label
 from app.zni_description import tfs_identity_display_name
 from app.schemas import (
@@ -510,6 +510,23 @@ def _is_closed_zni(task: Task) -> bool:
     return bool(task_status_tokens(task) & _closed_states_lower())
 
 
+def _is_dashboard_archived_zni(task: Task, *, visible_since_year: int | None = None) -> bool:
+    """Closed ЗНИ из архива: остаются в БД, но не показываются в дашборде и CSV."""
+    if task.task_type != "change_request":
+        return False
+    if not _is_closed_zni(task):
+        return False
+    closed_date = effective_closed_date(task)
+    if closed_date is None:
+        return False
+    threshold = (
+        visible_since_year
+        if visible_since_year is not None
+        else settings.dashboard_closed_visible_since_year()
+    )
+    return closed_date.year < threshold
+
+
 def _build_errors_by_parent(zni_rows: list[Task], error_rows: list[Task]) -> dict[int, list[Task]]:
     zni_id_by_external = {row.external_id: row.id for row in zni_rows}
     zni_db_ids = {row.id for row in zni_rows}
@@ -686,12 +703,15 @@ def load_change_requests(
     error_rows = active_errors(list(db.scalars(error_query)))
 
     rows_with_customer = [row for row in rows if has_customer_name(row)]
+    rows_for_dashboard = [
+        row for row in rows_with_customer if not _is_dashboard_archived_zni(row)
+    ]
 
-    errors_by_parent = _build_errors_by_parent(rows, error_rows)
+    errors_by_parent = _build_errors_by_parent(rows_for_dashboard, error_rows)
 
     filtered = [
         row
-        for row in rows_with_customer
+        for row in rows_for_dashboard
         if _matches_search(row, search or "")
         and _matches_status(row, status)
         and _matches_quarter(row, quarter)
@@ -748,7 +768,7 @@ def load_change_requests(
         board=_board_out(board) if board and not all_boards else None,
         allBoards=all_boards,
         metrics=_compute_metrics(
-            rows_with_customer,
+            rows_for_dashboard,
             board_code=board_code,
             error_rows=error_rows,
             errors_by_parent=errors_by_parent,
@@ -758,14 +778,14 @@ def load_change_requests(
         items=items,
         totalShown=len(items),
         availableStatuses=_collect_available_statuses(
-            rows_with_customer + (
+            rows_for_dashboard + (
                 _standalone_incident_errors(error_rows)
                 if is_all_boards(board_code)
                 or (board_code or "").strip().lower() == BERCUT_BOARD_CODE
                 else []
             )
         ),
-        availableQuarters=_collect_available_quarters(rows_with_customer),
+        availableQuarters=_collect_available_quarters(rows_for_dashboard),
         availableTagGroups=(
             _tag_filter_groups_out(board_code)
             if tag_filter_supported_for_board(board_code)
