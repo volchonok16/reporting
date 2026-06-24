@@ -1,5 +1,3 @@
-from datetime import date
-
 from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -77,24 +75,6 @@ class Settings(BaseSettings):
         default=365,
         alias="TFS_EXCLUDE_CLOSED_OLDER_THAN_DAYS",
         description="Не загружать ЗНИ в статусе Closed, если ChangedDate старше N дней.",
-    )
-    tfs_sync_closed_retain_years: int = Field(
-        default=1,
-        alias="TFS_SYNC_CLOSED_RETAIN_YEARS",
-        ge=1,
-        description=(
-            "Сколько последних календарных лет Closed ЗНИ хранить в БД "
-            "(1 — только текущий год; 3 — текущий и два предыдущих, напр. 2024–2026)."
-        ),
-    )
-    dashboard_closed_visible_years: int = Field(
-        default=1,
-        alias="DASHBOARD_CLOSED_VISIBLE_YEARS",
-        ge=1,
-        description=(
-            "Сколько последних календарных лет Closed ЗНИ показывать в дашборде и CSV "
-            "(архив старше окна остаётся в БД для SQL-отчётов)."
-        ),
     )
     launching_soon_days: int = Field(default=60, alias="LAUNCHING_SOON_DAYS")
     sync_button_cooldown_seconds: int = Field(default=30, alias="SYNC_BUTTON_COOLDOWN_SECONDS")
@@ -298,16 +278,6 @@ class Settings(BaseSettings):
     @property
     def closed_state_list(self) -> list[str]:
         return [item.strip() for item in self.tfs_closed_state_values.split(",") if item.strip()]
-
-    def sync_closed_retain_since_year(self, *, today: date | None = None) -> int:
-        """Первый календарный год окна хранения Closed ЗНИ (включительно)."""
-        today_value = today or date.today()
-        return today_value.year - self.tfs_sync_closed_retain_years + 1
-
-    def dashboard_closed_visible_since_year(self, *, today: date | None = None) -> int:
-        """Первый календарный год Closed ЗНИ, видимых в дашборде (включительно)."""
-        today_value = today or date.today()
-        return today_value.year - self.dashboard_closed_visible_years + 1
 
     @computed_field
     @property

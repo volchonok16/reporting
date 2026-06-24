@@ -66,27 +66,6 @@ def test_is_closed_before_current_year() -> None:
     )
     open_task = _closed_task(external_id="100002", source_status="UAT")
 
-    assert is_closed_before_current_year(old_task)
-    assert not is_closed_before_current_year(fresh_task)
-    assert not is_closed_before_current_year(open_task)
-
-
-def test_is_closed_before_current_year_with_extended_retain_window() -> None:
-    current_year = date.today().year
-    old_task = _closed_task(
-        external_id="999516",
-        closed_at=datetime(current_year - 1, 8, 28, tzinfo=timezone.utc),
-    )
-    very_old_task = _closed_task(
-        external_id="999515",
-        closed_at=datetime(current_year - 3, 8, 28, tzinfo=timezone.utc),
-    )
-
-    assert not is_closed_before_current_year(
-        old_task,
-        retain_since_year=current_year - 2,
-    )
-    assert is_closed_before_current_year(
-        very_old_task,
-        retain_since_year=current_year - 2,
-    )
+    assert is_closed_before_current_year(old_task, current_year=current_year)
+    assert not is_closed_before_current_year(fresh_task, current_year=current_year)
+    assert not is_closed_before_current_year(open_task, current_year=current_year)

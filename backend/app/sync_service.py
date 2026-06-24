@@ -86,12 +86,8 @@ def should_skip_closed_zni(fields: dict[str, Any]) -> bool:
         return False
 
     closed_date = effective_closed_date_from_fields(fields)
-    retain_since_year = settings.sync_closed_retain_since_year()
-    if closed_date is not None and closed_date.year < retain_since_year:
+    if closed_date is not None and closed_date.year < date.today().year:
         return True
-
-    if settings.tfs_sync_closed_retain_years > 1:
-        return False
 
     if settings.tfs_exclude_closed_older_than_days <= 0:
         return False
@@ -146,7 +142,7 @@ def prune_stale_board_tasks(
     return removed
 
 
-def is_closed_before_current_year(task: Task, *, retain_since_year: int | None = None) -> bool:
+def is_closed_before_current_year(task: Task, *, current_year: int | None = None) -> bool:
     if not settings.closed_state_list:
         return False
     closed_lower = {value.lower() for value in settings.closed_state_list}
@@ -155,12 +151,8 @@ def is_closed_before_current_year(task: Task, *, retain_since_year: int | None =
     closed_date = effective_closed_date(task)
     if closed_date is None:
         return False
-    threshold = (
-        retain_since_year
-        if retain_since_year is not None
-        else settings.sync_closed_retain_since_year()
-    )
-    return closed_date.year < threshold
+    year_threshold = current_year if current_year is not None else date.today().year
+    return closed_date.year < year_threshold
 
 
 def prune_closed_before_current_year(
@@ -169,7 +161,7 @@ def prune_closed_before_current_year(
     board: BoardConfig,
     source_system_id: int,
 ) -> int:
-    """Удаляет Closed ЗНИ доски, закрытые раньше окна `TFS_SYNC_CLOSED_RETAIN_YEARS`."""
+    """Удаляет Closed ЗНИ доски, закрытые до текущего календарного года."""
     if not settings.closed_state_list:
         return 0
 

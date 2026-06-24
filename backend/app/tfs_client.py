@@ -276,20 +276,13 @@ class TfsClient:
         exclude_title_clause = wiql_exclude_title_patterns_clause(exclude_title_patterns)
 
         closed_exclude_clause = ""
-        if settings.closed_state_list:
+        if settings.closed_state_list and settings.tfs_exclude_closed_older_than_days > 0:
             closed_states = ", ".join(wiql_quote(state) for state in settings.closed_state_list)
-            if settings.tfs_sync_closed_retain_years > 1:
-                cutoff = date(settings.sync_closed_retain_since_year(), 1, 1)
-                closed_exclude_clause = (
-                    f" AND ([System.State] NOT IN ({closed_states})"
-                    f" OR [Microsoft.VSTS.Common.ClosedDate] >= {wiql_date(cutoff)})"
-                )
-            elif settings.tfs_exclude_closed_older_than_days > 0:
-                cutoff = date.today() - timedelta(days=settings.tfs_exclude_closed_older_than_days)
-                closed_exclude_clause = (
-                    f" AND ([System.State] NOT IN ({closed_states})"
-                    f" OR [System.ChangedDate] >= {wiql_date(cutoff)})"
-                )
+            cutoff = date.today() - timedelta(days=settings.tfs_exclude_closed_older_than_days)
+            closed_exclude_clause = (
+                f" AND ([System.State] NOT IN ({closed_states})"
+                f" OR [System.ChangedDate] >= {wiql_date(cutoff)})"
+            )
 
         queries = [
             (

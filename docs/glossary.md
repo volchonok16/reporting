@@ -450,9 +450,7 @@
 
 После синхронизации доски записи `task` с тем же `board_code`, не попавшие в выгрузку, удаляются (очистка устаревших ЗНИ/ошибок).
 
-**Фильтр синхронизации:** при `TFS_SYNC_CLOSED_RETAIN_YEARS=1` (по умолчанию) Closed ЗНИ с датой закрытия в прошлых календарных годах не загружаются и удаляются из БД. При значении `3` хранятся Closed за текущий и два предыдущих года (напр. в 2026 — 2024–2026); WIQL фильтрует по `ClosedDate`, а не по `ChangedDate` за 365 дней. Дополнительно при `RETAIN_YEARS=1` действует `TFS_EXCLUDE_CLOSED_OLDER_THAN_DAYS` (по умолчанию 365).
-
-**Дашборд vs архив в БД:** `DASHBOARD_CLOSED_VISIBLE_YEARS` (по умолчанию `1`) — в панели и CSV видны только Closed ЗНИ за последние N календарных лет; более старые Closed остаются в `task` для SQL-отчётов. Вкладка **Планы** и поиск ЗНИ по номеру архив не скрывают.
+**Фильтр синхронизации:** ЗНИ в статусе `Closed` с `ChangedDate` / `ClosedDate` старше 365 дней не загружаются (`TFS_EXCLUDE_CLOSED_OLDER_THAN_DAYS`).
 
 ---
 
@@ -629,15 +627,13 @@
 | `TFS_FETCH_RELATIONS` | `false` | Не использовать `$expand` Relations на ЗНИ |
 | `TFS_BATCH_SIZE` | `200` | Размер batch workItems |
 | `TFS_LINKED_BATCH_SIZE` | `200` | Порция ошибок (лимит TFS workItemsBatch = 200) |
-| `TFS_EXCLUDE_CLOSED_OLDER_THAN_DAYS` | `365` | При `TFS_SYNC_CLOSED_RETAIN_YEARS=1`: пропуск Closed ЗНИ старше N дней по `ChangedDate` |
-| `TFS_SYNC_CLOSED_RETAIN_YEARS` | `1` | Окно хранения Closed ЗНИ в календарных годах (`3` → текущий + 2 предыдущих) |
-| `DASHBOARD_CLOSED_VISIBLE_YEARS` | `1` | Closed ЗНИ в дашборде и CSV; старше окна — только в БД |
+| `TFS_EXCLUDE_CLOSED_OLDER_THAN_DAYS` | `365` | Пропуск Closed ЗНИ старше N дней |
 | `TFS_CLOSED_STATE_VALUES` | `Closed` | Статусы для фильтра |
 | `TFS_RESOURCE_RESERVATION_TYPE_VALUES` | `Бронь ресурсов` | Тип элемента TFS «Бронь ресурсов» для колонки «Бронь ресурса ЕЦТ» |
 
-Алгоритм: WIQL по AreaPath → `workItemsBatch` (поля) → WIQL `WorkItemLinks` (ЗНИ→Ошибка, ЗНИ→Related «Бронь ресурсов») → batch ошибок → upsert в `task` → `prune_stale` (не попали в выгрузку) → `prune_closed_before_current_year` (Closed с `ClosedDate` / валидной `closed_transitions` раньше окна `TFS_SYNC_CLOSED_RETAIN_YEARS`).
+Алгоритм: WIQL по AreaPath → `workItemsBatch` (поля) → WIQL `WorkItemLinks` (ЗНИ→Ошибка, ЗНИ→Related «Бронь ресурсов») → batch ошибок → upsert в `task` → `prune_stale` (не попали в выгрузку) → `prune_closed_before_current_year` (Closed с `ClosedDate` / валидной `closed_transitions` до текущего календарного года).
 
-При синхронизации Closed ЗНИ с датой закрытия **раньше окна** `TFS_SYNC_CLOSED_RETAIN_YEARS` **не загружаются** (`should_skip_closed_zni`) и **удаляются из БД**, если остались от старых прогонов. Дата закрытия — `task.closed_at` (`Microsoft.VSTS.Common.ClosedDate`), при её отсутствии — первая валидная дата из `extra_json.closed_transitions` (годы 2000–2100; битые даты вроде `9999-01-01` из TFS игнорируются).
+При синхронизации Closed ЗНИ с датой закрытия в прошлом календарном году **не загружаются** (`should_skip_closed_zni`) и **удаляются из БД**, если остались от старых прогонов. Дата закрытия — `task.closed_at` (`Microsoft.VSTS.Common.ClosedDate`), при её отсутствии — первая валидная дата из `extra_json.closed_transitions` (годы 2000–2100; битые даты вроде `9999-01-01` из TFS игнорируются).
 
 ### REST API
 
