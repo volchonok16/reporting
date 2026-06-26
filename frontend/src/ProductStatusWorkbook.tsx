@@ -8,11 +8,7 @@ import {
   normalizeZniCellValue,
   parseZniNumber,
 } from './productStatusZni'
-import {
-  booleanCellBackground,
-  resolveBooleanColors,
-  styledBooleanValue,
-} from './productStatusBoolean'
+import { resolveBooleanColors, styledBooleanValue } from './productStatusBoolean'
 import { displayCellText, type CellStyle, type TextStyleSegment } from './productStatusRichText'
 import {
   clearProductStatusCache,
@@ -221,6 +217,22 @@ function isYesValue(value: string): boolean {
     return false
   }
   return normalized === 'да' || normalized === 'yes' || normalized === '1' || normalized === 'true'
+}
+
+function findColumn(columns: string[], matcher: (column: string) => boolean): string | undefined {
+  return columns.find(matcher)
+}
+
+function resolveRowHighlight(
+  row: Record<string, string>,
+  columns: string[],
+): { isPresentation: boolean; isAttention: boolean } {
+  const presentationColumn = findColumn(columns, isPresentationFlagColumn)
+  const attentionColumn = findColumn(columns, isAttentionColumn)
+  return {
+    isPresentation: presentationColumn ? isYesValue(row[presentationColumn] ?? '') : false,
+    isAttention: attentionColumn ? isYesValue(row[attentionColumn] ?? '') : false,
+  }
 }
 
 export default function ProductStatusWorkbook({
@@ -871,8 +883,20 @@ export default function ProductStatusWorkbook({
                   </tr>
                 </thead>
                 <tbody>
-                  {activeSheet.rows.map((row, rowIndex) => (
-                    <tr key={`${activeSheet.gid}-${rowIndex}`}>
+                  {activeSheet.rows.map((row, rowIndex) => {
+                    const { isPresentation, isAttention } = resolveRowHighlight(
+                      row,
+                      activeSheet.columns,
+                    )
+                    const rowClassName = [
+                      isPresentation ? 'product-status-row--presentation' : '',
+                      isAttention ? 'product-status-row--attention' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')
+
+                    return (
+                    <tr key={`${activeSheet.gid}-${rowIndex}`} className={rowClassName || undefined}>
                       {activeSheet.columns.map((column) => {
                         const isActive =
                           activeCell?.rowIndex === rowIndex && activeCell.column === column
@@ -886,13 +910,10 @@ export default function ProductStatusWorkbook({
 
                         if (isBooleanColumn(column)) {
                           const cellValue = row[column] ?? ''
-                          const cellBg =
-                            isPresentationFlagColumn(column) ? null : booleanCellBackground(cellValue)
                           return (
                             <td
                               key={`${rowIndex}-${column}`}
                               className={cellClassName}
-                              style={cellBg ? { backgroundColor: `#${cellBg}` } : undefined}
                             >
                               <input
                                 type="checkbox"
@@ -980,7 +1001,8 @@ export default function ProductStatusWorkbook({
                         )
                       })}
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             ) : loading || sheetLoading ? (
