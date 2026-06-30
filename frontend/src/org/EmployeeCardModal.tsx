@@ -77,9 +77,6 @@ export default function EmployeeCardModal({
                 {employee.position ? (
                   <div className="org-employee-card-position">{employee.position}</div>
                 ) : null}
-                {employee.isOrganizationHead ? (
-                  <span className="org-badge">Директор организации</span>
-                ) : null}
                 {!employee.isActive ? <span className="org-badge org-badge-muted">Неактивен</span> : null}
               </div>
             </div>
@@ -87,14 +84,6 @@ export default function EmployeeCardModal({
             <dl className="org-readonly org-employee-card-fields">
               <dt>Email</dt>
               <dd>{employee.email ?? '—'}</dd>
-              {employee.user ? (
-                <>
-                  <dt>Учётная запись</dt>
-                  <dd>
-                    {employee.user.email} ({employee.user.role === 'admin' ? 'администратор' : 'пользователь'})
-                  </dd>
-                </>
-              ) : null}
               <dt>Руководитель</dt>
               <dd>
                 {employee.managerId && employee.managerName ? (
