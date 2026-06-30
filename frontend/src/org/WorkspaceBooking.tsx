@@ -14,6 +14,19 @@ type WorkspaceBookingProps = {
   orgEmployeeId: number | null
 }
 
+type DraftBooking = WorkspaceBookingCell | null
+
+type SaveOperation = {
+  placeId: number
+  day: string
+  action: 'book' | 'release'
+  employeeId?: number
+}
+
+function cellKey(placeId: number, day: string): string {
+  return `${placeId}:${day}`
+}
+
 function formatWorkspaceCellTip(
   placeName: string,
   day: Date,
@@ -21,23 +34,68 @@ function formatWorkspaceCellTip(
   editMode: boolean,
   canBook: boolean,
   canRelease: boolean,
+  isPending: boolean,
 ): string {
   const monthLabel = MONTH_NAMES_FULL[day.getMonth()].toLowerCase()
   const dateLabel = `${day.getDate()} ${monthLabel} ${day.getFullYear()}`
   const prefix = `${placeName} · ${dateLabel}`
+  const pendingSuffix = isPending ? ' · не сохранено' : ''
 
   if (!booking) {
     if (editMode && canBook) {
-      return `${prefix} · свободно · клик — забронировать`
+      return `${prefix} · свободно · клик — добавить в черновик${pendingSuffix}`
     }
-    return `${prefix} · свободно`
+    return `${prefix} · свободно${pendingSuffix}`
   }
 
   const who = booking.isSelf ? `${booking.employeeName} · ваша бронь` : booking.employeeName
   if (editMode && canRelease) {
-    return `${prefix} · ${who} · клик — снять бронь`
+    return `${prefix} · ${who} · клик — убрать из черновика${pendingSuffix}`
   }
-  return `${prefix} · ${who}`
+  return `${prefix} · ${who}${pendingSuffix}`
+}
+
+function isDraftCell(
+  key: string,
+  draft: Map<string, DraftBooking>,
+  serverBooking: WorkspaceBookingCell | undefined,
+): boolean {
+  if (!draft.has(key)) return false
+  const draftValue = draft.get(key)
+  if (draftValue === null) return Boolean(serverBooking)
+  if (draftValue === undefined) return false
+  if (!serverBooking) return true
+  return (
+    draftValue.employeeId !== serverBooking.employeeId || draftValue.placeId !== serverBooking.placeId
+  )
+}
+
+function collectSaveOperations(
+  draft: Map<string, DraftBooking>,
+  serverMap: Map<string, WorkspaceBookingCell>,
+): SaveOperation[] {
+  const releases: SaveOperation[] = []
+  const books: SaveOperation[] = []
+
+  for (const [key, draftValue] of draft) {
+    const serverBooking = serverMap.get(key)
+    if (draftValue === null && serverBooking) {
+      releases.push({
+        action: 'release',
+        placeId: serverBooking.placeId,
+        day: serverBooking.day,
+      })
+    } else if (draftValue && !serverBooking) {
+      books.push({
+        action: 'book',
+        placeId: draftValue.placeId,
+        day: draftValue.day,
+        employeeId: draftValue.employeeId,
+      })
+    }
+  }
+
+  return [...releases, ...books]
 }
 
 export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProps) {
@@ -51,6 +109,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editMode, setEditMode] = useState(false)
+  const [draftChanges, setDraftChanges] = useState<Map<string, DraftBooking>>(() => new Map())
   const [bookForEmployeeId, setBookForEmployeeId] = useState<number | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
@@ -58,18 +117,36 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   const holidayKeys = useMemo(() => buildHolidayKeySet(year), [year])
   const todayKey = toDayKey(currentDate)
 
-  const bookingMap = useMemo(() => {
-    const map = new Map<string, WorkspaceBookingScheduleData['bookings'][number]>()
+  const serverBookingMap = useMemo(() => {
+    const map = new Map<string, WorkspaceBookingCell>()
     for (const row of data?.bookings ?? []) {
-      map.set(`${row.placeId}:${row.day}`, row)
+      map.set(cellKey(row.placeId, row.day), row)
     }
     return map
   }, [data])
 
+  const getEffectiveBooking = useCallback(
+    (placeId: number, day: string): WorkspaceBookingCell | undefined => {
+      const key = cellKey(placeId, day)
+      if (draftChanges.has(key)) {
+        return draftChanges.get(key) ?? undefined
+      }
+      return serverBookingMap.get(key)
+    },
+    [draftChanges, serverBookingMap],
+  )
+
+  const draftCount = draftChanges.size
   const canEditAny = Boolean(data?.isAdmin || data?.actorEmployeeId != null)
 
   useEffect(() => {
     saveOrgUiState({ workspaceYear: year, workspaceMonth: month })
+  }, [year, month])
+
+  useEffect(() => {
+    setDraftChanges(new Map())
+    setEditMode(false)
+    setError(null)
   }, [year, month])
 
   useEffect(() => {
@@ -115,52 +192,112 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     }
   }, [monthDays, todayKey, year, month, currentDate])
 
-  const toggleCell = async (
-    placeId: number,
-    day: string,
-    booking: WorkspaceBookingScheduleData['bookings'][number] | undefined,
-  ) => {
-    if (!editMode || saving) return
+  const cancelEdit = () => {
+    setDraftChanges(new Map())
+    setEditMode(false)
+    setError(null)
+  }
 
-    const isAdmin = data?.isAdmin ?? false
-    const actorId = data?.actorEmployeeId ?? null
+  const toggleDraftCell = (placeId: number, day: string) => {
+    if (!editMode || saving || !data) return
 
-    if (booking) {
-      if (!booking.canRelease) return
-      setSaving(true)
+    const key = cellKey(placeId, day)
+    const serverBooking = serverBookingMap.get(key)
+    const effectiveBooking = getEffectiveBooking(placeId, day)
+    const isAdmin = data.isAdmin
+    const actorId = data.actorEmployeeId ?? null
+    const targetEmployeeId = isAdmin ? bookForEmployeeId : actorId
+
+    if (effectiveBooking) {
+      const canRelease =
+        effectiveBooking.canRelease || effectiveBooking.isSelf || isAdmin
+      if (!canRelease) return
+
+      setDraftChanges((prev) => {
+        const next = new Map(prev)
+        if (serverBooking) {
+          next.set(key, null)
+        } else {
+          next.delete(key)
+        }
+        return next
+      })
       setError(null)
-      try {
-        await putJson('/api/org/workspace/bookings/toggle', {
-          placeId,
-          day,
-          action: 'release',
-        })
-        await load()
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Ошибка сохранения')
-      } finally {
-        setSaving(false)
-      }
       return
     }
 
-    if (actorId == null && !isAdmin) return
+    if (serverBooking && draftChanges.get(key) === null) {
+      setDraftChanges((prev) => {
+        const next = new Map(prev)
+        next.delete(key)
+        return next
+      })
+      setError(null)
+      return
+    }
 
-    const employeeId = isAdmin ? bookForEmployeeId : actorId
-    if (employeeId == null) {
+    if (targetEmployeeId == null) {
       setError('Выберите сотрудника для бронирования.')
+      return
+    }
+
+    const employee = data.employees.find((item) => item.id === targetEmployeeId)
+    if (!employee) return
+
+    setDraftChanges((prev) => {
+      const next = new Map(prev)
+
+      for (const [otherKey, otherBooking] of serverBookingMap) {
+        if (
+          otherBooking.day === day &&
+          otherBooking.employeeId === targetEmployeeId &&
+          otherKey !== key
+        ) {
+          next.set(otherKey, null)
+        }
+      }
+
+      for (const [otherKey, draftValue] of next) {
+        if (
+          draftValue &&
+          draftValue.day === day &&
+          draftValue.employeeId === targetEmployeeId &&
+          otherKey !== key
+        ) {
+          next.delete(otherKey)
+        }
+      }
+
+      next.set(key, {
+        placeId,
+        day,
+        employeeId: targetEmployeeId,
+        employeeName: employee.fullName,
+        isSelf: actorId === targetEmployeeId,
+        canRelease: true,
+      })
+      return next
+    })
+    setError(null)
+  }
+
+  const saveDraft = async () => {
+    if (!data || saving || draftCount === 0) return
+
+    const operations = collectSaveOperations(draftChanges, serverBookingMap)
+    if (operations.length === 0) {
+      cancelEdit()
       return
     }
 
     setSaving(true)
     setError(null)
     try {
-      await putJson('/api/org/workspace/bookings/toggle', {
-        placeId,
-        day,
-        action: 'book',
-        employeeId,
-      })
+      for (const operation of operations) {
+        await putJson('/api/org/workspace/bookings/toggle', operation)
+      }
+      setDraftChanges(new Map())
+      setEditMode(false)
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка сохранения')
@@ -182,6 +319,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                 className={`org-vacation-year-btn${year === y ? ' org-vacation-year-btn-active' : ''}`}
                 onClick={() => setYear(y)}
                 aria-pressed={year === y}
+                disabled={editMode && draftCount > 0}
               >
                 {y}
               </button>
@@ -189,7 +327,11 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
           </div>
           <label className="org-vacation-year">
             Месяц
-            <select value={month} onChange={(e) => setMonth(Number(e.target.value))}>
+            <select
+              value={month}
+              onChange={(e) => setMonth(Number(e.target.value))}
+              disabled={editMode && draftCount > 0}
+            >
               {MONTH_NAMES_FULL.map((label, index) => (
                 <option key={label} value={index}>
                   {label}
@@ -198,15 +340,27 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
             </select>
           </label>
         </div>
-        <div className="org-vacation-toolbar-right">
+        <div className="org-vacation-toolbar-right org-workspace-toolbar-actions">
           {canEditAny ? (
-            <button
-              type="button"
-              className={editMode ? 'btn-primary' : 'btn-ghost'}
-              onClick={() => setEditMode((value) => !value)}
-            >
-              {editMode ? 'Готово' : 'Редактировать'}
-            </button>
+            editMode ? (
+              <>
+                <button type="button" className="btn-ghost" onClick={cancelEdit} disabled={saving}>
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => void saveDraft()}
+                  disabled={saving || draftCount === 0}
+                >
+                  {saving ? 'Сохранение…' : draftCount > 0 ? `Сохранить (${draftCount})` : 'Сохранить'}
+                </button>
+              </>
+            ) : (
+              <button type="button" className="btn-ghost" onClick={() => setEditMode(true)}>
+                Редактировать
+              </button>
+            )
           ) : (
             <span className="org-hint">Бронирование недоступно без карточки сотрудника</span>
           )}
@@ -242,8 +396,8 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
 
       {editMode ? (
         <p className="org-hint">
-          Свободная ячейка — забронировать{data?.isAdmin ? ' выбранному сотруднику' : ''}; занятая — снять бронь
-          (если есть права).
+          Отметьте нужные ячейки, затем нажмите «Сохранить». Изменения не отправляются сразу — сетка не
+          перезагружается при каждом клике.
         </p>
       ) : null}
 
@@ -251,14 +405,17 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
         <span className="org-vacation-legend-item org-workspace-free">Свободно</span>
         <span className="org-vacation-legend-item org-workspace-self">Ваша бронь</span>
         <span className="org-vacation-legend-item org-workspace-busy">Занято</span>
+        {editMode ? (
+          <span className="org-vacation-legend-item org-workspace-pending-legend">Не сохранено</span>
+        ) : null}
       </div>
 
       {error ? <p className="org-error">{error}</p> : null}
-      {loading ? <p>Загрузка…</p> : null}
-      {saving ? <p>Сохранение…</p> : null}
+      {loading && !data ? <p>Загрузка…</p> : null}
 
-      {data && !loading ? (
-        <div className="org-vacation-chart-wrap">
+      {data ? (
+        <div className={`org-vacation-chart-wrap${saving ? ' org-workspace-saving' : ''}`}>
+          {saving ? <p className="org-workspace-saving-label">Сохранение…</p> : null}
           <div className="org-schedule-chart">
             <div className="org-schedule-names">
               <table className="org-vacation-grid org-schedule-names-grid">
@@ -315,13 +472,20 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                     <tr key={place.id}>
                       {monthDays.map((day) => {
                         const dayKey = toDayKey(day)
-                        const booking = bookingMap.get(`${place.id}:${dayKey}`)
+                        const serverBooking = serverBookingMap.get(cellKey(place.id, dayKey))
+                        const booking = getEffectiveBooking(place.id, dayKey)
+                        const pending = isDraftCell(cellKey(place.id, dayKey), draftChanges, serverBooking)
                         const dayOff = !booking && isDayOff(day, holidayKeys)
                         const canBook =
                           editMode &&
                           !booking &&
                           (data.isAdmin ? bookForEmployeeId != null : data.actorEmployeeId != null)
-                        const canRelease = editMode && Boolean(booking?.canRelease)
+                        const canRelease =
+                          editMode &&
+                          Boolean(
+                            booking &&
+                              (booking.canRelease || booking.isSelf || data.isAdmin),
+                          )
                         const isEditable = canBook || canRelease
                         const tip = formatWorkspaceCellTip(
                           place.name,
@@ -330,6 +494,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                           editMode,
                           canBook,
                           canRelease,
+                          pending,
                         )
 
                         return (
@@ -345,13 +510,14 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                                 : 'org-workspace-free',
                               dayOff ? 'org-vacation-weekend' : '',
                               dayKey === todayKey ? 'org-vacation-today' : '',
+                              pending ? 'org-workspace-pending' : '',
                               isEditable ? 'org-vacation-editable' : '',
                             ]
                               .filter(Boolean)
                               .join(' ')}
                             data-tip={tip}
                             aria-label={tip}
-                            onClick={() => void toggleCell(place.id, dayKey, booking)}
+                            onClick={() => toggleDraftCell(place.id, dayKey)}
                           />
                         )
                       })}
