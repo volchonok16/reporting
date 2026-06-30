@@ -1212,10 +1212,16 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                       Администратор
                     </label>
                   </section>
-                ) : editingEmployee?.user ? (
+                ) : editingEmployee ? (
                   <section className="org-form-section">
                     <h4>Учётная запись</h4>
-                    <p className="org-hint org-account-email">{editingEmployee.user.email}</p>
+                    <p className="org-hint org-account-email">
+                      {editingEmployee.user
+                        ? editingEmployee.user.email
+                        : employeeForm.email.trim()
+                          ? `Учётная запись пока не создана. Будет создана с email ${employeeForm.email.trim()} при сохранении пароля.`
+                          : 'Учётная запись пока не создана. Чтобы задать пароль, укажите email сотрудника.'}
+                    </p>
                     <div className="org-form-row-2 org-form-row-align-end">
                       <label className="org-checkbox org-checkbox-field">
                         <input
@@ -1228,15 +1234,24 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                         Администратор
                       </label>
                       <label>
-                        Новый пароль
-                        <input
-                          type="password"
-                          placeholder="Необязательно"
-                          value={employeeForm.userPassword}
-                          onChange={(e) =>
-                            setEmployeeForm({ ...employeeForm, userPassword: e.target.value })
-                          }
-                        />
+                        Новый пароль (сброс)
+                        <div className="org-password-reset-actions">
+                          <input
+                            type="password"
+                            placeholder="Необязательно"
+                            value={employeeForm.userPassword}
+                            onChange={(e) =>
+                              setEmployeeForm({ ...employeeForm, userPassword: e.target.value })
+                            }
+                          />
+                          <button
+                            type="button"
+                            className="btn-ghost"
+                            onClick={() => setEmployeeForm({ ...employeeForm, userPassword: '12345678' })}
+                          >
+                            Сбросить на 12345678
+                          </button>
+                        </div>
                       </label>
                     </div>
                   </section>

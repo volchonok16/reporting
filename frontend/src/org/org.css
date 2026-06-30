@@ -1344,6 +1344,11 @@
   align-items: end;
 }
 
+.org-password-reset-actions {
+  display: grid;
+  gap: 8px;
+}
+
 @media (max-width: 640px) {
   .org-inline-form {
     grid-template-columns: 1fr;

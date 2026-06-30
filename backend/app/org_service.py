@@ -472,6 +472,21 @@ def update_employee(db: Session, employee_id: int, data: EmployeeUpdateIn) -> Em
         if len(data.userPassword) < 8:
             raise HTTPException(status_code=400, detail="Пароль должен быть не короче 8 символов.")
         emp.user.password_hash = hash_password(data.userPassword)
+    elif data.userPassword and not emp.user:
+        if not emp.email:
+            raise HTTPException(
+                status_code=400,
+                detail="Нельзя задать пароль: у сотрудника не указан email для учётной записи.",
+            )
+        if len(data.userPassword) < 8:
+            raise HTTPException(status_code=400, detail="Пароль должен быть не короче 8 символов.")
+        user = _create_org_user(
+            db,
+            email=emp.email,
+            password=data.userPassword,
+            is_admin=bool(data.userIsAdmin),
+        )
+        emp.user_id = user.id
     _sync_position_name(db, emp)
     if data.departmentIds is not None:
         _sync_employee_departments(db, employee_id, data.departmentIds)
