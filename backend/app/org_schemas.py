@@ -53,6 +53,7 @@ class OrgChartLayoutEdgeOut(BaseModel):
     id: str
     fromNodeId: str
     toNodeId: str
+    manual: bool = False
     points: list[dict[str, float]] = Field(default_factory=list)
 
 

@@ -290,7 +290,7 @@ function reconcileLayout(saved: OrgChartLayoutData | null, items: ChartItem[]): 
   })
   const knownNodeIds = new Set(nodes.map((node) => node.id))
   const edges = saved.edges.filter(
-    (edge) => knownNodeIds.has(edge.fromNodeId) && knownNodeIds.has(edge.toNodeId),
+    (edge) => edge.manual === true && knownNodeIds.has(edge.fromNodeId) && knownNodeIds.has(edge.toNodeId),
   )
   return { nodes, edges }
 }
@@ -589,7 +589,7 @@ export default function ManualOrgChartView({
       ...current,
       edges: current.edges.some((edge) => edge.id === id)
         ? current.edges
-        : [...current.edges, { id, fromNodeId, toNodeId, points: [] }],
+        : [...current.edges, { id, fromNodeId, toNodeId, manual: true, points: [] }],
     }))
     setSelectedEdgeId(id)
   }, [])
