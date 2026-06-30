@@ -797,44 +797,27 @@
   border-radius: 2px;
 }
 
-/* Masonry-раскладка веток отделов: блоки идут в более низкую колонку */
-.org-dept-branch-masonry {
+/* Горизонтальные ряды веток отделов: «шина» + ответвления к каждой рамке */
+.org-dept-branch-rows {
   --org-pyramid-branch-gap: 24px;
-  --org-masonry-item-gap: 32px;
+  --org-branch-row-gap: 32px;
   --org-branch-connector-gap: var(--org-tree-gap, 48px);
   display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  gap: var(--org-masonry-item-gap) var(--org-pyramid-branch-gap);
+  flex-direction: column;
+  align-items: center;
+  gap: var(--org-branch-row-gap);
   position: relative;
   width: max-content;
   max-width: 100%;
   margin: 0 auto;
 }
 
-/* Вложенные направления: только сетка, без линий — иначе переплетаются с деревом внутри рамки */
-.org-dept-branch-masonry.org-dept-branch-nested {
+.org-dept-branch-nested.org-dept-branch-rows {
   margin-top: 24px;
-  padding-top: 0;
-  gap: 24px var(--org-pyramid-branch-gap);
-}
-
-.org-dept-branch-masonry.org-dept-branch-nested::before,
-.org-dept-branch-masonry.org-dept-branch-nested > .org-dept-branch-masonry-column::before,
-.org-dept-branch-masonry.org-dept-branch-nested > .org-dept-branch-masonry-column::after,
-.org-dept-branch-masonry.org-dept-branch-nested .org-dept-branch-masonry-item-first > .org-dept-branch-column > .org-dept-branch > .org-chart-scroll::before,
-.org-dept-branch-masonry.org-dept-branch-nested .org-dept-branch-masonry-item-first > .org-dept-branch-column-standalone > .org-dept-branch > .org-chart-scroll::before,
-.org-dept-branch-masonry.org-dept-branch-nested .org-dept-branch-masonry-item-follow::before {
-  display: none;
-}
-
-/* Верхний уровень под директором: одна вертикаль, одна «шина», ответвления к колонкам */
-.org-company-pyramid-branches.org-dept-branch-masonry {
-  --org-branch-connector-gap: 36px;
   padding-top: var(--org-branch-connector-gap);
 }
 
-.org-company-pyramid-branches.org-dept-branch-masonry::before {
+.org-dept-branch-nested.org-dept-branch-rows::before {
   content: '';
   position: absolute;
   top: 0;
@@ -846,24 +829,97 @@
   border-radius: 2px;
 }
 
-.org-company-pyramid-branches.org-dept-branch-masonry:not(.org-dept-branch-masonry-single)::after {
-  content: '';
-  position: absolute;
-  top: var(--org-branch-connector-gap);
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: var(--org-chart-line, var(--border-strong));
-  transform: translateY(-1.5px);
+.org-company-pyramid-branches.org-dept-branch-rows {
+  --org-branch-connector-gap: 36px;
+  padding-top: var(--org-branch-connector-gap);
 }
 
-.org-company-pyramid-branches.org-dept-branch-masonry > .org-dept-branch-masonry-column::before,
-.org-company-pyramid-branches.org-dept-branch-masonry > .org-dept-branch-masonry-column::after {
+.org-company-pyramid-branches.org-dept-branch-rows::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: var(--org-branch-connector-gap);
+  background: var(--org-chart-line, var(--border-strong));
+  border-radius: 2px;
+}
+
+.org-dept-branch-row {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  flex-wrap: nowrap;
+  gap: 0;
+  padding-top: var(--org-branch-connector-gap);
+  position: relative;
+}
+
+.org-dept-branch-rows > .org-dept-branch-row:first-child {
+  padding-top: 0;
+}
+
+.org-dept-branch-rows > .org-dept-branch-row:not(:first-child) {
+  padding-top: var(--org-branch-connector-gap);
+}
+
+.org-dept-branch-rows > .org-dept-branch-row + .org-dept-branch-row::before {
+  content: '';
+  position: absolute;
+  top: calc(-1 * var(--org-branch-row-gap, 32px));
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: var(--org-branch-row-gap, 32px);
+  background: var(--org-chart-line, var(--border-strong));
+  border-radius: 2px;
+}
+
+.org-dept-branch-row:not(:has(> .org-dept-branch-row-item:only-child))::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: var(--org-branch-connector-gap);
+  background: var(--org-chart-line, var(--border-strong));
+  border-radius: 2px;
+}
+
+.org-dept-branch-row-item {
+  position: relative;
+  padding: 0 12px;
+}
+
+.org-dept-branch-row:not(:has(> .org-dept-branch-row-item:only-child)) > .org-dept-branch-row-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 50%;
+  width: calc(50% + var(--org-pyramid-branch-gap) / 2);
+  height: 3px;
+  background: var(--org-chart-line, var(--border-strong));
+}
+
+.org-dept-branch-row:not(:has(> .org-dept-branch-row-item:only-child)) > .org-dept-branch-row-item::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: calc(50% + var(--org-pyramid-branch-gap) / 2);
+  height: 3px;
+  background: var(--org-chart-line, var(--border-strong));
+}
+
+.org-dept-branch-row:not(:has(> .org-dept-branch-row-item:only-child)) > .org-dept-branch-row-item:first-child::before,
+.org-dept-branch-row:not(:has(> .org-dept-branch-row-item:only-child)) > .org-dept-branch-row-item:last-child::after {
   display: none;
 }
 
-.org-company-pyramid-branches.org-dept-branch-masonry .org-dept-branch-masonry-item-first > .org-dept-branch-column > .org-dept-branch > .org-chart-scroll::before,
-.org-company-pyramid-branches.org-dept-branch-masonry .org-dept-branch-masonry-item-first > .org-dept-branch-column-standalone > .org-dept-branch > .org-chart-scroll::before {
+.org-dept-branch-row-item > .org-dept-branch-column > .org-dept-branch > .org-chart-scroll::before,
+.org-dept-branch-row-item > .org-dept-branch-column-standalone > .org-dept-branch > .org-chart-scroll::before {
   content: '';
   position: absolute;
   top: calc(-1 * var(--org-branch-connector-gap));
@@ -876,46 +932,9 @@
   display: block;
 }
 
-.org-company-pyramid-branches.org-dept-branch-masonry .org-dept-branch-masonry-item-follow::before {
-  display: none;
-}
-
-.org-company-pyramid-branches.org-dept-branch-masonry-single {
-  padding-top: var(--org-branch-connector-gap);
-}
-
-.org-company-pyramid-branches.org-dept-branch-masonry-single::before,
-.org-company-pyramid-branches.org-dept-branch-masonry-single::after {
-  display: none;
-}
-
-.org-dept-branch-masonry-measure {
-  position: absolute;
-  visibility: hidden;
-  pointer-events: none;
-  left: -10000px;
-  top: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--org-masonry-item-gap);
-  width: max-content;
-}
-
-.org-dept-branch-masonry-measure .org-dept-branch-masonry-measure-item {
-  width: max-content;
-}
-
-.org-dept-branch-masonry-column {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--org-masonry-item-gap);
-  position: relative;
-  min-width: 0;
-}
-
-.org-dept-branch-masonry-item {
-  position: relative;
+.org-dept-branch-rows-single > .org-dept-branch-row:only-child > .org-dept-branch-row-item > .org-dept-branch-column > .org-dept-branch > .org-chart-scroll::before,
+.org-dept-branch-rows-single > .org-dept-branch-row:only-child > .org-dept-branch-row-item > .org-dept-branch-column-standalone > .org-dept-branch > .org-chart-scroll::before {
+  display: block;
 }
 
 .org-dept-branch-column {

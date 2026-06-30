@@ -1,9 +1,5 @@
-import DepartmentBranchMasonry from './DepartmentBranchMasonry'
-import {
-  ORG_TREE_MAX_SIBLINGS_PER_ROW,
-  estimateDepartmentBlockHeight,
-  estimateStandaloneRootHeight,
-} from './orgChartLayout'
+import DepartmentBranchRows from './DepartmentBranchRows'
+import { ORG_TREE_MAX_SIBLINGS_PER_ROW } from './orgChartLayout'
 import type { DepartmentBlock, OrgChartNode } from './types'
 import OrgPhoto from './OrgPhoto'
 
@@ -183,11 +179,10 @@ function NestedDepartments({
   onDepartmentClick?: (departmentId: number) => void
 }) {
   return (
-    <DepartmentBranchMasonry
-      className="org-dept-branch-masonry org-dept-branch-nested"
+    <DepartmentBranchRows
+      className="org-dept-branch-rows org-dept-branch-nested"
       items={blocks}
       getKey={(block) => block.departmentId}
-      estimateHeight={estimateDepartmentBlockHeight}
       renderItem={(nestedBlock) => (
         <DepartmentBranchColumn
           block={nestedBlock}
@@ -255,12 +250,6 @@ type CompanyBranchItem =
   | { kind: 'department'; block: DepartmentBlock }
   | { kind: 'standalone'; root: OrgChartNode }
 
-function estimateCompanyBranchHeight(item: CompanyBranchItem): number {
-  return item.kind === 'department'
-    ? estimateDepartmentBlockHeight(item.block)
-    : estimateStandaloneRootHeight(item.root)
-}
-
 function CompanyPyramid({
   organizationHead,
   departments,
@@ -290,11 +279,10 @@ function CompanyPyramid({
         </div>
       ) : null}
       {hasBranches ? (
-        <DepartmentBranchMasonry
-          className="org-dept-branch-masonry org-company-pyramid-branches"
+        <DepartmentBranchRows
+          className="org-dept-branch-rows org-company-pyramid-branches"
           items={branchItems}
           getKey={(item) => (item.kind === 'department' ? item.block.departmentId : item.root.person.employeeId)}
-          estimateHeight={estimateCompanyBranchHeight}
           renderItem={(item) =>
             item.kind === 'department' ? (
               <DepartmentBranchColumn
