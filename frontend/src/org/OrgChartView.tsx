@@ -1,9 +1,10 @@
-import type { OrgChartNode } from './types'
+import type { DepartmentBlock, OrgChartNode } from './types'
 import OrgPhoto from './OrgPhoto'
 
 type OrgChartViewProps = {
-  roots: OrgChartNode[]
+  roots?: OrgChartNode[]
   organizationHead?: OrgChartNode | null
+  departments?: DepartmentBlock[]
   departmentName?: string
   framed?: boolean
   onEmployeeClick?: (employeeId: number) => void
@@ -75,50 +76,134 @@ function OrgTreeNode({
   )
 }
 
-function OrgTree({
+function OrgTreeRoots({
   roots,
-  organizationHead,
   onEmployeeClick,
 }: {
   roots: OrgChartNode[]
-  organizationHead?: OrgChartNode | null
+  onEmployeeClick?: (employeeId: number) => void
+}) {
+  if (roots.length === 0) {
+    return null
+  }
+
+  return (
+    <ul className="org-tree">
+      {roots.map((root) => (
+        <OrgTreeNode key={root.person.employeeId} node={root} onEmployeeClick={onEmployeeClick} />
+      ))}
+    </ul>
+  )
+}
+
+function NestedDepartmentBlock({
+  block,
+  onEmployeeClick,
+}: {
+  block: DepartmentBlock
   onEmployeeClick?: (employeeId: number) => void
 }) {
   return (
-    <div className="org-tree-chart">
+    <div className="org-dept-block">
+      <h4 className="org-dept-title">{block.departmentName}</h4>
+      <OrgTreeRoots roots={block.roots} onEmployeeClick={onEmployeeClick} />
+      {block.nestedDepartments?.map((nested) => (
+        <NestedDepartmentBlock key={nested.departmentId} block={nested} onEmployeeClick={onEmployeeClick} />
+      ))}
+    </div>
+  )
+}
+
+function DepartmentBranch({
+  block,
+  onEmployeeClick,
+}: {
+  block: DepartmentBlock
+  onEmployeeClick?: (employeeId: number) => void
+}) {
+  return (
+    <div className="org-dept-branch">
+      <div className="org-chart-scroll">
+        <div className="org-dept-frame">
+          <h3 className="org-dept-frame-title">{block.departmentName}</h3>
+          <div className="org-dept-frame-body">
+            <OrgTreeRoots roots={block.roots} onEmployeeClick={onEmployeeClick} />
+            {block.nestedDepartments?.map((nested) => (
+              <NestedDepartmentBlock key={nested.departmentId} block={nested} onEmployeeClick={onEmployeeClick} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CompanyPyramid({
+  organizationHead,
+  departments,
+  onEmployeeClick,
+}: {
+  organizationHead?: OrgChartNode | null
+  departments: DepartmentBlock[]
+  onEmployeeClick?: (employeeId: number) => void
+}) {
+  return (
+    <div className="org-company-pyramid">
       {organizationHead ? (
-        <div className="org-chart-company-head">
+        <div className="org-company-pyramid-head">
           <ul className="org-tree">
             <OrgTreeNode node={organizationHead} onEmployeeClick={onEmployeeClick} />
           </ul>
         </div>
       ) : null}
-      {roots.length > 0 ? (
-        <ul className="org-tree org-tree-roots">
-          {roots.map((root) => (
-            <OrgTreeNode key={root.person.employeeId} node={root} onEmployeeClick={onEmployeeClick} />
+      {departments.length > 0 ? (
+        <div className="org-company-pyramid-branches">
+          {departments.map((block) => (
+            <DepartmentBranch key={block.departmentId} block={block} onEmployeeClick={onEmployeeClick} />
           ))}
-        </ul>
+        </div>
       ) : null}
     </div>
   )
 }
 
 export default function OrgChartView({
-  roots,
+  roots = [],
   organizationHead,
+  departments,
   departmentName,
   framed,
   onEmployeeClick,
 }: OrgChartViewProps) {
+  const isCompanyView = departments !== undefined
   const showFrame = framed ?? Boolean(departmentName)
+
+  if (isCompanyView) {
+    if (!organizationHead && departments.length === 0) {
+      return <p className="org-empty">Нет данных для построения пирамиды.</p>
+    }
+
+    return (
+      <div className="org-chart-scroll">
+        <div className="org-chart">
+          <CompanyPyramid
+            organizationHead={organizationHead}
+            departments={departments}
+            onEmployeeClick={onEmployeeClick}
+          />
+        </div>
+      </div>
+    )
+  }
 
   if (!organizationHead && roots.length === 0) {
     return <p className="org-empty">Нет данных для построения пирамиды.</p>
   }
 
   const chart = (
-    <OrgTree roots={roots} organizationHead={organizationHead} onEmployeeClick={onEmployeeClick} />
+    <div className="org-tree-chart">
+      <OrgTreeRoots roots={roots} onEmployeeClick={onEmployeeClick} />
+    </div>
   )
 
   if (showFrame && departmentName) {
