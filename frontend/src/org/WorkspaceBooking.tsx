@@ -3,8 +3,9 @@ import { getJson, putJson } from '../api'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import {
   MONTH_NAMES_FULL,
+  WEEKDAY_NAMES,
   getMonthDays,
-  isDayOff,
+  isWeekendDay,
   toDayKey,
 } from './scheduleUtils'
 import { buildHolidayKeySet } from './ruPublicHolidays'
@@ -325,9 +326,10 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
               </button>
             ))}
           </div>
-          <label className="org-vacation-year">
-            Месяц
+          <label className="org-workspace-month-picker">
+            <span className="org-workspace-month-label">Месяц</span>
             <select
+              className="org-workspace-month-select"
               value={month}
               onChange={(e) => setMonth(Number(e.target.value))}
               disabled={editMode && draftCount > 0}
@@ -379,32 +381,35 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
       ) : null}
 
       {editMode && data?.isAdmin ? (
-        <label className="org-workspace-book-for">
-          Бронировать за
-          <select
-            value={bookForEmployeeId ?? ''}
-            onChange={(e) => setBookForEmployeeId(Number(e.target.value))}
-          >
-            {data.employees.map((employee) => (
-              <option key={employee.id} value={employee.id}>
-                {employee.fullName}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
-
-      {editMode ? (
-        <p className="org-hint">
-          Отметьте нужные ячейки, затем нажмите «Сохранить». Изменения не отправляются сразу — сетка не
-          перезагружается при каждом клике.
+        <div className="org-workspace-edit-bar">
+          <label className="org-workspace-book-for">
+            <span className="org-workspace-book-for-label">Бронировать за</span>
+            <select
+              value={bookForEmployeeId ?? ''}
+              onChange={(e) => setBookForEmployeeId(Number(e.target.value))}
+            >
+              {data.employees.map((employee) => (
+                <option key={employee.id} value={employee.id}>
+                  {employee.fullName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="org-workspace-edit-hint">
+            Отметьте ячейки в сетке и нажмите «Сохранить». Повторный клик снимает отметку.
+          </p>
+        </div>
+      ) : editMode ? (
+        <p className="org-workspace-edit-hint org-workspace-edit-hint-standalone">
+          Отметьте нужные ячейки, затем нажмите «Сохранить».
         </p>
       ) : null}
 
-      <div className="org-vacation-legend">
+      <div className="org-workspace-legend">
         <span className="org-vacation-legend-item org-workspace-free">Свободно</span>
         <span className="org-vacation-legend-item org-workspace-self">Ваша бронь</span>
         <span className="org-vacation-legend-item org-workspace-busy">Занято</span>
+        <span className="org-vacation-legend-item org-workspace-weekend-legend">Выходной</span>
         {editMode ? (
           <span className="org-vacation-legend-item org-workspace-pending-legend">Не сохранено</span>
         ) : null}
@@ -416,12 +421,12 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
       {data ? (
         <div className={`org-vacation-chart-wrap${saving ? ' org-workspace-saving' : ''}`}>
           {saving ? <p className="org-workspace-saving-label">Сохранение…</p> : null}
-          <div className="org-schedule-chart">
+          <div className="org-schedule-chart org-workspace-chart">
             <div className="org-schedule-names">
-              <table className="org-vacation-grid org-schedule-names-grid">
+              <table className="org-vacation-grid org-schedule-names-grid org-workspace-names-grid">
                 <thead>
                   <tr>
-                    <th className="org-vacation-names-head" rowSpan={2}>
+                    <th className="org-vacation-names-head org-workspace-names-head" rowSpan={3}>
                       Место
                     </th>
                   </tr>
@@ -452,13 +457,42 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                   <tr>
                     {monthDays.map((day) => {
                       const key = toDayKey(day)
-                      const dayOff = isDayOff(day, holidayKeys)
+                      const isWeekend = isWeekendDay(day)
+                      const isHoliday = holidayKeys.has(key)
+                      return (
+                        <th
+                          key={`wd-${key}`}
+                          className={[
+                            'org-vacation-day-head',
+                            'org-workspace-weekday-head',
+                            isWeekend ? 'org-workspace-weekend-head' : '',
+                            isHoliday ? 'org-workspace-holiday-head' : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ')}
+                        >
+                          {WEEKDAY_NAMES[day.getDay()]}
+                        </th>
+                      )
+                    })}
+                  </tr>
+                  <tr>
+                    {monthDays.map((day) => {
+                      const key = toDayKey(day)
+                      const isWeekend = isWeekendDay(day)
+                      const isHoliday = holidayKeys.has(key)
                       return (
                         <th
                           key={key}
-                          className={`org-vacation-day-head${
-                            dayOff ? ' org-vacation-weekend' : ''
-                          }${key === todayKey ? ' org-vacation-today' : ''}`}
+                          className={[
+                            'org-vacation-day-head',
+                            'org-workspace-day-head',
+                            isWeekend ? 'org-workspace-weekend-head' : '',
+                            isHoliday ? 'org-workspace-holiday-head' : '',
+                            key === todayKey ? 'org-vacation-today' : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ')}
                           title={key}
                         >
                           {day.getDate()}
@@ -475,7 +509,8 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                         const serverBooking = serverBookingMap.get(cellKey(place.id, dayKey))
                         const booking = getEffectiveBooking(place.id, dayKey)
                         const pending = isDraftCell(cellKey(place.id, dayKey), draftChanges, serverBooking)
-                        const dayOff = !booking && isDayOff(day, holidayKeys)
+                        const isWeekend = isWeekendDay(day)
+                        const isHoliday = holidayKeys.has(dayKey)
                         const canBook =
                           editMode &&
                           !booking &&
@@ -508,7 +543,8 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                                   ? 'org-workspace-self'
                                   : 'org-workspace-busy'
                                 : 'org-workspace-free',
-                              dayOff ? 'org-vacation-weekend' : '',
+                              isWeekend ? 'org-workspace-weekend' : '',
+                              isHoliday ? 'org-workspace-holiday' : '',
                               dayKey === todayKey ? 'org-vacation-today' : '',
                               pending ? 'org-workspace-pending' : '',
                               isEditable ? 'org-vacation-editable' : '',
