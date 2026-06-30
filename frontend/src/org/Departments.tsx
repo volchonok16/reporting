@@ -3,7 +3,7 @@ import { deleteJson, getJson, patchJson, postForm, postJson, putJson, resolvePho
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgChartCanvas from './OrgChartCanvas'
 import OrgChartView from './OrgChartView'
-import VacationSchedule from './VacationSchedule'
+import VacationsPanel from './VacationsPanel'
 import EmployeeCardModal from './EmployeeCardModal'
 import OrgPhoto from './OrgPhoto'
 import type {
@@ -740,7 +740,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       ) : null}
 
       {panel === 'vacations' ? (
-        <VacationSchedule orgEmployeeId={orgEmployeeId} canManage={canManage} />
+        <VacationsPanel orgEmployeeId={orgEmployeeId} canManage={canManage} />
       ) : null}
 
       {panel === 'manage' ? (

@@ -34,6 +34,12 @@ from app.org_schemas import (
     VacationRangeIn,
     VacationRangeOut,
     VacationScheduleOut,
+    WorkspaceBookingScheduleOut,
+    WorkspaceBookingToggleIn,
+    WorkspaceBookingToggleOut,
+    WorkspacePlaceIn,
+    WorkspacePlaceOut,
+    WorkspacePlaceUpdateIn,
 )
 from app.org_service import (
     add_department_member,
@@ -71,6 +77,14 @@ from app.org_service import (
 from app.org_service import update_profile_photo as update_profile_photo_service
 
 from app.org_vacation_service import get_vacation_schedule, upsert_vacation_range
+from app.org_workspace_service import (
+    create_workspace_place,
+    delete_workspace_place,
+    get_workspace_booking_schedule,
+    list_workspace_places,
+    toggle_workspace_booking,
+    update_workspace_place,
+)
 
 router = APIRouter(prefix="/api/org", tags=["org"])
 
@@ -342,6 +356,62 @@ def api_vacation_range(
     meta: dict = Depends(_load_session_meta),
 ) -> VacationRangeOut:
     return upsert_vacation_range(db, data, meta)
+
+
+@router.get("/workspace/bookings", response_model=WorkspaceBookingScheduleOut)
+def api_workspace_bookings(
+    year: int = Query(default=date.today().year),
+    month: int = Query(default=date.today().month, ge=1, le=12),
+    db: Session = Depends(get_db),
+    meta: dict = Depends(_load_session_meta),
+) -> WorkspaceBookingScheduleOut:
+    return get_workspace_booking_schedule(db, year=year, month=month, meta=meta)
+
+
+@router.put("/workspace/bookings/toggle", response_model=WorkspaceBookingToggleOut)
+def api_workspace_booking_toggle(
+    data: WorkspaceBookingToggleIn,
+    db: Session = Depends(get_db),
+    meta: dict = Depends(_load_session_meta),
+) -> WorkspaceBookingToggleOut:
+    return toggle_workspace_booking(db, data, meta)
+
+
+@router.get("/workspace/places", response_model=list[WorkspacePlaceOut])
+def api_workspace_places(
+    db: Session = Depends(get_db),
+    _: dict = Depends(_load_session_meta),
+) -> list[WorkspacePlaceOut]:
+    return list_workspace_places(db)
+
+
+@router.post("/workspace/places", response_model=WorkspacePlaceOut)
+def api_create_workspace_place(
+    data: WorkspacePlaceIn,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_org_admin),
+) -> WorkspacePlaceOut:
+    return create_workspace_place(db, data)
+
+
+@router.patch("/workspace/places/{place_id}", response_model=WorkspacePlaceOut)
+def api_update_workspace_place(
+    place_id: int,
+    data: WorkspacePlaceUpdateIn,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_org_admin),
+) -> WorkspacePlaceOut:
+    return update_workspace_place(db, place_id, data)
+
+
+@router.delete("/workspace/places/{place_id}")
+def api_delete_workspace_place(
+    place_id: int,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_org_admin),
+) -> dict[str, bool]:
+    delete_workspace_place(db, place_id)
+    return {"ok": True}
 
 
 @router.get("/photos/{photo_path:path}")

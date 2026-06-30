@@ -1231,8 +1231,38 @@
   flex-wrap: wrap;
 }
 
-.org-vacation-year select {
-  margin-left: 8px;
+.org-vacation-year-picker {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 3px;
+  background: var(--surface-2);
+  gap: 2px;
+}
+
+.org-vacation-year-btn {
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  line-height: 1.2;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.org-vacation-year-btn:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--surface-1) 70%, transparent);
+}
+
+.org-vacation-year-btn-active {
+  background: var(--surface-1);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
 }
 
 .org-vacation-brushes {
@@ -1271,72 +1301,72 @@
   font-size: 12px;
 }
 
-.org-vacation-chart {
-  --vac-cell-size: 24px;
-  display: flex;
-  align-items: stretch;
+.org-vacation-chart-wrap {
   max-width: 100%;
 }
 
-.org-vacation-names {
-  flex: 0 0 auto;
+.org-vacation-scroll {
+  overflow: auto;
+  max-width: 100%;
   border: 1px solid var(--border);
-  border-right: none;
-  border-radius: 12px 0 0 12px;
+  border-radius: 12px;
   background: var(--surface-1);
 }
 
-.org-vacation-names-grid {
-  border-collapse: collapse;
-}
-
-.org-vacation-names-head {
-  min-width: 200px;
-  max-width: 240px;
-  padding: 8px 12px !important;
-  text-align: left;
-  font-weight: 600;
-  vertical-align: bottom;
-  background: var(--table-head-bg);
-  border-bottom: 1px solid var(--border);
-}
-
-.org-vacation-names-grid tbody tr {
-  height: calc(var(--vac-cell-size) + 6px);
-}
-
-.org-vacation-names-grid td {
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--border);
-  vertical-align: middle;
-}
-
-.org-vacation-dates-scroll {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  border: 2px solid var(--border);
-  border-radius: 0 12px 12px 0;
-  background: var(--surface-1);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface-1) 80%, var(--text-muted) 20%);
-}
-
-.org-vacation-dates-grid {
+.org-vacation-grid {
+  --vac-cell-size: 26px;
   border-collapse: separate;
   border-spacing: 0;
   min-width: max-content;
 }
 
-.org-vacation-dates-grid th,
-.org-vacation-dates-grid td {
+.org-vacation-grid th,
+.org-vacation-grid td {
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   padding: 0;
 }
 
+.org-vacation-sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--surface-1);
+  box-shadow: 1px 0 0 var(--border);
+}
+
+.org-vacation-grid thead .org-vacation-sticky-col {
+  z-index: 3;
+  background: var(--table-head-bg);
+}
+
+.org-vacation-names-head {
+  min-width: 220px;
+  max-width: 260px;
+  padding: 8px 12px !important;
+  text-align: left;
+  font-weight: 600;
+  vertical-align: bottom;
+  background: var(--table-head-bg);
+}
+
 .org-vacation-name {
+  min-width: 220px;
+  max-width: 260px;
+  padding: 6px 12px !important;
   font-weight: 500;
+  vertical-align: middle;
+}
+
+.org-vacation-name-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.org-vacation-grid tbody tr {
+  height: calc(var(--vac-cell-size) + 10px);
 }
 
 .org-vacation-self-badge {
@@ -1346,7 +1376,8 @@
   font-weight: 700;
 }
 
-.org-vacation-row-self .org-vacation-name {
+.org-vacation-row-self .org-vacation-name,
+.org-vacation-row-self .org-vacation-sticky-col.org-vacation-name {
   background: var(--t2-lime-soft);
 }
 
@@ -1375,6 +1406,7 @@
   height: var(--vac-cell-size);
   background: var(--surface-1);
   box-sizing: border-box;
+  vertical-align: middle;
 }
 
 .org-vacation-weekend {
@@ -1436,4 +1468,98 @@
 
 [data-theme='dark'] .vac-kind-sick {
   background: #92400e !important;
+}
+
+.org-schedule-page {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.org-workspace-panel {
+  overflow: hidden;
+}
+
+.org-workspace-book-for {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.org-workspace-book-for select {
+  margin-left: 4px;
+}
+
+.org-workspace-place-name {
+  font-size: 13px;
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.org-workspace-weekday {
+  font-size: 9px;
+  text-transform: lowercase;
+}
+
+.org-workspace-cell {
+  text-align: center;
+  padding: 0 !important;
+}
+
+.org-workspace-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--vac-cell-size) - 4px);
+  height: calc(var(--vac-cell-size) - 4px);
+  margin: 2px auto;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.org-workspace-free {
+  background: var(--surface-1) !important;
+}
+
+.org-workspace-self,
+.org-workspace-self .org-workspace-mark {
+  background: #86efac !important;
+}
+
+.org-workspace-busy,
+.org-workspace-busy .org-workspace-mark {
+  background: color-mix(in srgb, var(--surface-2) 80%, var(--text-muted) 20%) !important;
+  color: var(--text-muted);
+}
+
+.org-vacation-legend-item.org-workspace-free {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+}
+
+.org-vacation-legend-item.org-workspace-self {
+  background: #86efac;
+}
+
+.org-vacation-legend-item.org-workspace-busy {
+  background: color-mix(in srgb, var(--surface-2) 80%, var(--text-muted) 20%);
+}
+
+[data-theme='dark'] .org-workspace-self,
+[data-theme='dark'] .org-workspace-self .org-workspace-mark,
+[data-theme='dark'] .org-vacation-legend-item.org-workspace-self {
+  background: #166534 !important;
+}
+
+@media (min-width: 1280px) {
+  .org-schedule-page {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+    gap: 20px;
+  }
 }

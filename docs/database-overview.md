@@ -97,6 +97,8 @@
 | `employee` | Сотрудники организации |
 | `employee_expertise` | Экспертиза сотрудника |
 | `employee_time_off_day` | График отпусков (день + тип) |
+| `workspace_place` | Справочник рабочих мест |
+| `workspace_booking` | Бронь места на календарный день |
 | `department` | Отделы |
 | `department_member` | Состав отдела |
 | `person` | Человек |

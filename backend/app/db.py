@@ -85,7 +85,7 @@ def _ensure_app_user_grants(conn) -> None:
 
 def ensure_startup_schema() -> None:
     """Idempotent DDL on app startup. Safe with multiple uvicorn workers."""
-    org_migration_names = ("005_org_structure.sql", "006_vacation_schedule.sql")
+    org_migration_names = ("005_org_structure.sql", "006_vacation_schedule.sql", "008_workspace_booking.sql")
     org_migrations: list[str] = []
     for migration_name in org_migration_names:
         candidates = [

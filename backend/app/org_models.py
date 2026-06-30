@@ -93,6 +93,44 @@ class Employee(Base):
         back_populates="employee",
         foreign_keys="EmployeeTimeOffDay.employee_id",
     )
+    workspace_bookings: Mapped[list["WorkspaceBooking"]] = relationship(
+        back_populates="employee",
+        foreign_keys="WorkspaceBooking.employee_id",
+    )
+
+
+class WorkspacePlace(Base):
+    __tablename__ = "workspace_place"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    bookings: Mapped[list["WorkspaceBooking"]] = relationship(back_populates="place")
+
+
+class WorkspaceBooking(Base):
+    __tablename__ = "workspace_booking"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    place_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("workspace_place.id", ondelete="CASCADE"), nullable=False
+    )
+    employee_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("employee.id", ondelete="CASCADE"), nullable=False
+    )
+    day: Mapped[date] = mapped_column(Date, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    place: Mapped[WorkspacePlace] = relationship(back_populates="bookings")
+    employee: Mapped[Employee] = relationship(
+        back_populates="workspace_bookings",
+        foreign_keys=[employee_id],
+    )
 
 
 class EmployeeTimeOffDay(Base):

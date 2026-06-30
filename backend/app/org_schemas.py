@@ -309,4 +309,58 @@ class VacationRangeOut(BaseModel):
     affectedDays: int
 
 
+class WorkspacePlaceOut(BaseModel):
+    id: int
+    name: str
+    sortOrder: int
+    isActive: bool
+
+
+class WorkspacePlaceIn(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    sortOrder: int = 0
+    isActive: bool = True
+
+
+class WorkspacePlaceUpdateIn(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    sortOrder: int | None = None
+    isActive: bool | None = None
+
+
+class WorkspaceBookingCellOut(BaseModel):
+    placeId: int
+    day: str
+    employeeId: int
+    employeeName: str
+    isSelf: bool = False
+    canRelease: bool = False
+
+
+class WorkspaceBookingScheduleOut(BaseModel):
+    year: int
+    month: int
+    actorEmployeeId: int | None = None
+    isAdmin: bool = False
+    places: list[WorkspacePlaceOut] = Field(default_factory=list)
+    bookings: list[WorkspaceBookingCellOut] = Field(default_factory=list)
+    employees: list[VacationEmployeeOut] = Field(default_factory=list)
+
+
+WorkspaceBookingAction = Literal["book", "release"]
+
+
+class WorkspaceBookingToggleIn(BaseModel):
+    placeId: int
+    day: str
+    action: WorkspaceBookingAction
+    employeeId: int | None = None
+
+
+class WorkspaceBookingToggleOut(BaseModel):
+    action: WorkspaceBookingAction
+    booked: bool
+    employeeId: int | None = None
+
+
 OrgChartNodeOut.model_rebuild()

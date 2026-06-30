@@ -2,27 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getJson, putJson } from '../api'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgPhoto from './OrgPhoto'
+import { getMonthGroups, getYearDays, toDayKey } from './scheduleUtils'
 import type { EditableTimeOffKind, TimeOffKind, VacationScheduleData } from './types'
 
 type VacationScheduleProps = {
   orgEmployeeId: number | null
   canManage: boolean
+  year?: number
+  onYearChange?: (year: number) => void
 }
-
-const MONTH_NAMES = [
-  'Янв',
-  'Фев',
-  'Мар',
-  'Апр',
-  'Май',
-  'Июн',
-  'Июл',
-  'Авг',
-  'Сен',
-  'Окт',
-  'Ноя',
-  'Дек',
-]
 
 const KIND_META: Record<TimeOffKind, { label: string; className: string }> = {
   vacation: { label: 'Отпуск', className: 'vac-kind-vacation' },
@@ -36,24 +24,6 @@ const BRUSHES: Array<{ id: EditableTimeOffKind; label: string; className: string
   { id: 'sick_leave', label: 'Больничный', className: 'vac-kind-sick' },
   { id: 'erase', label: 'Рабочий', className: 'vac-kind-erase' },
 ]
-
-function getYearDays(year: number): Date[] {
-  const days: Date[] = []
-  const cursor = new Date(year, 0, 1)
-  const end = new Date(year + 1, 0, 1)
-  while (cursor < end) {
-    days.push(new Date(cursor))
-    cursor.setDate(cursor.getDate() + 1)
-  }
-  return days
-}
-
-function toDayKey(date: Date): string {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
 
 function buildRangeDays(fromDay: string, toDay: string): string[] {
   const from = new Date(`${fromDay}T12:00:00`)
@@ -70,32 +40,16 @@ function buildRangeDays(fromDay: string, toDay: string): string[] {
   return days
 }
 
-function getMonthGroups(days: Date[]) {
-  const groups: Array<{ label: string; length: number }> = []
-  let currentMonth = -1
-  let currentLength = 0
-  for (const day of days) {
-    const month = day.getMonth()
-    if (month !== currentMonth) {
-      if (currentMonth !== -1) {
-        groups.push({ label: MONTH_NAMES[currentMonth], length: currentLength })
-      }
-      currentMonth = month
-      currentLength = 1
-    } else {
-      currentLength += 1
-    }
-  }
-  if (currentMonth !== -1) {
-    groups.push({ label: MONTH_NAMES[currentMonth], length: currentLength })
-  }
-  return groups
-}
-
-export default function VacationSchedule({ orgEmployeeId, canManage }: VacationScheduleProps) {
+export default function VacationSchedule({
+  orgEmployeeId,
+  canManage,
+  year: yearProp,
+  onYearChange,
+}: VacationScheduleProps) {
   const currentYear = new Date().getFullYear()
   const savedOrgUi = loadOrgUiState()
-  const [year, setYear] = useState(savedOrgUi.vacationYear)
+  const [internalYear, setInternalYear] = useState(savedOrgUi.vacationYear)
+  const year = yearProp ?? internalYear
   const [data, setData] = useState<VacationScheduleData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -119,8 +73,18 @@ export default function VacationSchedule({ orgEmployeeId, canManage }: VacationS
   }, [data])
 
   useEffect(() => {
-    saveOrgUiState({ vacationYear: year })
-  }, [year])
+    if (yearProp == null) {
+      saveOrgUiState({ vacationYear: year })
+    }
+  }, [year, yearProp])
+
+  const setYear = (nextYear: number) => {
+    if (onYearChange) {
+      onYearChange(nextYear)
+      return
+    }
+    setInternalYear(nextYear)
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -145,7 +109,7 @@ export default function VacationSchedule({ orgEmployeeId, canManage }: VacationS
     if (scrollRef.current && year === currentYear) {
       const todayIndex = yearDays.findIndex((day) => toDayKey(day) === todayKey)
       if (todayIndex > 0) {
-        scrollRef.current.scrollLeft = Math.max(0, todayIndex * 24 - 120)
+        scrollRef.current.scrollLeft = Math.max(0, todayIndex * 26 - 120)
       }
     }
   }, [year, yearDays, todayKey, currentYear])
@@ -195,16 +159,19 @@ export default function VacationSchedule({ orgEmployeeId, canManage }: VacationS
       <div className="org-panel-toolbar org-vacation-toolbar">
         <div className="org-vacation-toolbar-left">
           <h2>График отпусков</h2>
-          <label className="org-vacation-year">
-            Год
-            <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
-              {[currentYear - 1, currentYear, currentYear + 1].map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="org-vacation-year-picker" role="group" aria-label="Год">
+            {[currentYear - 1, currentYear, currentYear + 1].map((y) => (
+              <button
+                key={y}
+                type="button"
+                className={`org-vacation-year-btn${year === y ? ' org-vacation-year-btn-active' : ''}`}
+                onClick={() => setYear(y)}
+                aria-pressed={year === y}
+              >
+                {y}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="org-vacation-toolbar-right">
           {hasEditableRows ? (
@@ -249,67 +216,39 @@ export default function VacationSchedule({ orgEmployeeId, canManage }: VacationS
           ))}
           <span className="org-hint">Клик по началу и концу диапазона в строке сотрудника</span>
         </div>
-      ) : null}
-
-      <div className="org-vacation-legend">
-        {Object.entries(KIND_META).map(([kind, meta]) => (
-          <span key={kind} className={`org-vacation-legend-item ${meta.className}`}>
-            {meta.label}
-          </span>
-        ))}
-      </div>
+      ) : (
+        <div className="org-vacation-legend">
+          {Object.entries(KIND_META).map(([kind, meta]) => (
+            <span key={kind} className={`org-vacation-legend-item ${meta.className}`}>
+              {meta.label}
+            </span>
+          ))}
+        </div>
+      )}
 
       {error ? <p className="org-error">{error}</p> : null}
       {loading ? <p>Загрузка…</p> : null}
       {saving ? <p>Сохранение…</p> : null}
 
       {data && !loading ? (
-        <div className="org-vacation-chart">
-          <div className="org-vacation-names">
-            <table className="org-vacation-names-grid">
-              <thead>
-                <tr>
-                  <th className="org-vacation-names-head" rowSpan={2}>
-                    Сотрудник
-                  </th>
-                </tr>
-                <tr aria-hidden="true" />
-              </thead>
-              <tbody>
-                {data.employees.map((employee) => (
-                  <tr
-                    key={employee.id}
-                    className={employee.isSelf ? 'org-vacation-row-self' : undefined}
-                  >
-                    <td className="org-vacation-name" title={employee.position ?? undefined}>
-                      <span className="org-person-cell">
-                        <OrgPhoto
-                          url={employee.photoUrl}
-                          name={employee.fullName}
-                          className="org-table-avatar-img"
-                          placeholderClassName="org-table-avatar"
-                        />
-                        <span>
-                          {employee.fullName}
-                          {employee.isSelf ? <span className="org-vacation-self-badge">вы</span> : null}
-                        </span>
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <div className="org-vacation-chart-wrap">
           <div
-            className="org-vacation-dates-scroll"
+            className="org-vacation-scroll"
             ref={scrollRef}
             aria-label="Календарь — прокрутка влево и вправо"
           >
-            <table className="org-vacation-dates-grid">
+            <table className="org-vacation-grid">
               <thead>
                 <tr>
-                  {monthGroups.map((group) => (
-                    <th key={group.label} colSpan={group.length} className="org-vacation-month">
+                  <th className="org-vacation-sticky-col org-vacation-names-head" rowSpan={2}>
+                    Сотрудник
+                  </th>
+                  {monthGroups.map((group, index) => (
+                    <th
+                      key={`${group.label}-${index}`}
+                      colSpan={group.length}
+                      className="org-vacation-month"
+                    >
                       {group.label}
                     </th>
                   ))}
@@ -338,6 +277,20 @@ export default function VacationSchedule({ orgEmployeeId, canManage }: VacationS
                     key={employee.id}
                     className={employee.isSelf ? 'org-vacation-row-self' : undefined}
                   >
+                    <td className="org-vacation-sticky-col org-vacation-name" title={employee.position ?? undefined}>
+                      <span className="org-person-cell">
+                        <OrgPhoto
+                          url={employee.photoUrl}
+                          name={employee.fullName}
+                          className="org-table-avatar-img"
+                          placeholderClassName="org-table-avatar"
+                        />
+                        <span className="org-vacation-name-text">
+                          {employee.fullName}
+                          {employee.isSelf ? <span className="org-vacation-self-badge">вы</span> : null}
+                        </span>
+                      </span>
+                    </td>
                     {yearDays.map((day) => {
                       const dayKey = toDayKey(day)
                       const kind = dayKindMap.get(`${employee.id}:${dayKey}`)

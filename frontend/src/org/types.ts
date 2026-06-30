@@ -178,3 +178,29 @@ export type VacationScheduleData = {
   employees: VacationEmployee[]
   timeOffDays: VacationTimeOffDay[]
 }
+
+export type WorkspacePlace = {
+  id: number
+  name: string
+  sortOrder: number
+  isActive: boolean
+}
+
+export type WorkspaceBookingCell = {
+  placeId: number
+  day: string
+  employeeId: number
+  employeeName: string
+  isSelf: boolean
+  canRelease: boolean
+}
+
+export type WorkspaceBookingScheduleData = {
+  year: number
+  month: number
+  actorEmployeeId?: number | null
+  isAdmin: boolean
+  places: WorkspacePlace[]
+  bookings: WorkspaceBookingCell[]
+  employees: VacationEmployee[]
+}

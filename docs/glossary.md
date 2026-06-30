@@ -735,6 +735,31 @@
 
 ---
 
+## workspace_place — справочник рабочих мест
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigint | PK |
+| `name` | varchar(255) | Название (`Место 23`, …) |
+| `sort_order` | int | Порядок в сетке |
+| `is_active` | boolean | Показывать в брони |
+
+---
+
+## workspace_booking — бронь места на день
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `place_id` | bigint | FK → `workspace_place` |
+| `employee_id` | bigint | FK → `employee` |
+| `day` | date | Календарный день |
+
+Уникальность: `(place_id, day)` и `(employee_id, day)` — одно место в день, один сотрудник — одно место в день.
+
+Права: админ / PAT / legacy full — бронь за любого; пользователь — только за себя. Просмотр занятости — все авторизованные.
+
+---
+
 ## Вкладка «Отделы» (UI)
 
 | Раздел | API |
@@ -743,4 +768,5 @@
 | Пирамида | `GET /api/org/org-chart?department_id=` — без `department_id`: директор; отделы — отдельные рамки (подчинённый отдел head→head — колонкой под отделом руководителя); сотрудники без отдела — отдельная ветка на уровне отделов; для одного отдела — дерево по составу |
 | Сотрудники | `GET/POST/PATCH /api/org/employees` |
 | График отпусков | `GET /api/org/vacations?year=&department_id=`, `PUT /api/org/vacations/range` |
+| Бронь мест | `GET /api/org/workspace/bookings?year=&month=`, `PUT /api/org/workspace/bookings/toggle`; справочник мест: `GET/POST/PATCH/DELETE /api/org/workspace/places` (изменение — админ) |
 | Личный кабинет | `GET/PATCH /api/profile`, `POST /api/profile/password` |
