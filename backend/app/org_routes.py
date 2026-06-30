@@ -391,7 +391,7 @@ def api_vacation_range(
 @router.get("/workspace/bookings", response_model=WorkspaceBookingScheduleOut)
 def api_workspace_bookings(
     year: int = Query(default=date.today().year),
-    month: int = Query(default=date.today().month, ge=1, le=12),
+    month: int | None = Query(default=None, ge=1, le=12),
     db: Session = Depends(get_db),
     meta: dict = Depends(_load_session_meta),
 ) -> WorkspaceBookingScheduleOut:

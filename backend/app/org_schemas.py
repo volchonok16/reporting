@@ -344,7 +344,7 @@ class WorkspaceBookingCellOut(BaseModel):
 
 class WorkspaceBookingScheduleOut(BaseModel):
     year: int
-    month: int
+    month: int | None = None
     actorEmployeeId: int | None = None
     isAdmin: bool = False
     places: list[WorkspacePlaceOut] = Field(default_factory=list)

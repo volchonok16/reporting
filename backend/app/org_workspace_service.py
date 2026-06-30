@@ -81,13 +81,16 @@ def get_workspace_booking_schedule(
     db: Session,
     *,
     year: int,
-    month: int,
+    month: int | None,
     meta: dict,
 ) -> WorkspaceBookingScheduleOut:
     if year < 2000 or year > 2100:
         raise HTTPException(status_code=400, detail="Некорректный год.")
 
-    day_from, day_to = _month_bounds(year, month)
+    if month is not None:
+        day_from, day_to = _month_bounds(year, month)
+    else:
+        day_from, day_to = _year_bounds(year)
     actor_employee_id = _actor_employee_id(db, meta)
     is_admin = _is_org_admin(meta)
     places = _load_active_places(db)

@@ -47,6 +47,7 @@ export default function VacationSchedule({
   year: yearProp,
   onYearChange,
 }: VacationScheduleProps) {
+  const currentDate = new Date()
   const currentYear = new Date().getFullYear()
   const savedOrgUi = loadOrgUiState()
   const [internalYear, setInternalYear] = useState(savedOrgUi.vacationYear)
@@ -109,12 +110,14 @@ export default function VacationSchedule({
 
   useEffect(() => {
     if (scrollRef.current && year === currentYear) {
-      const todayIndex = yearDays.findIndex((day) => toDayKey(day) === todayKey)
-      if (todayIndex > 0) {
-        scrollRef.current.scrollLeft = Math.max(0, todayIndex * 26 - 120)
+      const monthStartIndex = yearDays.findIndex(
+        (day) => day.getMonth() === currentDate.getMonth() && day.getDate() === 1,
+      )
+      if (monthStartIndex >= 0) {
+        scrollRef.current.scrollLeft = Math.max(0, monthStartIndex * 26 - 80)
       }
     }
-  }, [year, yearDays, todayKey, currentYear])
+  }, [year, yearDays, todayKey, currentYear, currentDate])
 
   const applyRange = async (employeeId: number, fromDay: string, toDay: string) => {
     setSaving(true)
@@ -311,7 +314,6 @@ export default function VacationSchedule({
                             'org-vacation-cell',
                             kind ? KIND_META[kind].className : '',
                             dayOff ? 'org-vacation-weekend' : '',
-                            dayKey === todayKey ? 'org-vacation-today' : '',
                             inPreview ? 'org-vacation-preview' : '',
                             isSelecting ? 'org-vacation-selecting' : '',
                             editMode && employee.canEdit ? 'org-vacation-editable' : '',

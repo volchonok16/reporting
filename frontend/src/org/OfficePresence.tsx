@@ -87,12 +87,14 @@ export default function OfficePresence() {
 
   useEffect(() => {
     if (scrollRef.current && year === currentYear) {
-      const todayIndex = yearDays.findIndex((day) => toDayKey(day) === todayKey)
-      if (todayIndex > 0) {
-        scrollRef.current.scrollLeft = Math.max(0, todayIndex * 26 - 100)
+      const monthStartIndex = yearDays.findIndex(
+        (day) => day.getMonth() === currentDate.getMonth() && day.getDate() === 1,
+      )
+      if (monthStartIndex >= 0) {
+        scrollRef.current.scrollLeft = Math.max(0, monthStartIndex * 26 - 80)
       }
     }
-  }, [year, yearDays, todayKey, currentYear])
+  }, [year, yearDays, currentYear, currentDate])
 
   const finishDragScroll = (pointerId?: number) => {
     const scrollEl = scrollRef.current
@@ -247,7 +249,6 @@ export default function OfficePresence() {
                             'org-office-presence-cell',
                             placeName || officeMarked ? 'org-office-presence-in' : 'org-workspace-free',
                             dayOff ? 'org-vacation-weekend' : '',
-                            dayKey === todayKey ? 'org-vacation-today' : '',
                           ]
                             .filter(Boolean)
                             .join(' ')}

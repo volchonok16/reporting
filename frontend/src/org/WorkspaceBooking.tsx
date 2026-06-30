@@ -4,7 +4,9 @@ import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import {
   MONTH_NAMES_FULL,
   WEEKDAY_NAMES,
-  getMonthDays,
+  getMonthGroups,
+  getYearDays,
+  isDayOff,
   isWeekendDay,
   toDayKey,
 } from './scheduleUtils'
@@ -104,7 +106,6 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   const currentYear = currentDate.getFullYear()
   const savedOrgUi = loadOrgUiState()
   const [year, setYear] = useState(savedOrgUi.workspaceYear)
-  const [month, setMonth] = useState(savedOrgUi.workspaceMonth)
   const [data, setData] = useState<WorkspaceBookingScheduleData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -122,7 +123,8 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   } | null>(null)
   const suppressCellClickRef = useRef(false)
 
-  const monthDays = useMemo(() => getMonthDays(year, month), [year, month])
+  const yearDays = useMemo(() => getYearDays(year), [year])
+  const monthGroups = useMemo(() => getMonthGroups(yearDays), [yearDays])
   const holidayKeys = useMemo(() => buildHolidayKeySet(year), [year])
   const todayKey = toDayKey(currentDate)
 
@@ -149,14 +151,14 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   const canEditAny = Boolean(data?.isAdmin || data?.actorEmployeeId != null)
 
   useEffect(() => {
-    saveOrgUiState({ workspaceYear: year, workspaceMonth: month })
-  }, [year, month])
+    saveOrgUiState({ workspaceYear: year, workspaceMonth: currentDate.getMonth() })
+  }, [year, currentDate])
 
   useEffect(() => {
     setDraftChanges(new Map())
     setEditMode(false)
     setError(null)
-  }, [year, month])
+  }, [year])
 
   useEffect(() => {
     if (!data?.isAdmin || bookForEmployeeId != null) return
@@ -175,7 +177,6 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     try {
       const query = new URLSearchParams({
         year: String(year),
-        month: String(month + 1),
       })
       const response = await getJson<WorkspaceBookingScheduleData>(
         `/api/org/workspace/bookings?${query.toString()}`,
@@ -186,20 +187,22 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     } finally {
       setLoading(false)
     }
-  }, [year, month])
+  }, [year])
 
   useEffect(() => {
     void load()
   }, [load])
 
   useEffect(() => {
-    if (scrollRef.current && year === currentDate.getFullYear() && month === currentDate.getMonth()) {
-      const todayIndex = monthDays.findIndex((day) => toDayKey(day) === todayKey)
-      if (todayIndex > 0) {
-        scrollRef.current.scrollLeft = Math.max(0, todayIndex * 26 - 80)
+    if (scrollRef.current && year === currentDate.getFullYear()) {
+      const monthStartIndex = yearDays.findIndex(
+        (day) => day.getMonth() === currentDate.getMonth() && day.getDate() === 1,
+      )
+      if (monthStartIndex >= 0) {
+        scrollRef.current.scrollLeft = Math.max(0, monthStartIndex * 26 - 80)
       }
     }
-  }, [monthDays, todayKey, year, month, currentDate])
+  }, [yearDays, todayKey, year, currentDate])
 
   const cancelEdit = () => {
     setDraftChanges(new Map())
@@ -388,21 +391,6 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
               </button>
             ))}
           </div>
-          <label className="org-workspace-month-picker">
-            <span className="org-workspace-month-label">Месяц</span>
-            <select
-              className="org-workspace-month-select"
-              value={month}
-              onChange={(e) => setMonth(Number(e.target.value))}
-              disabled={editMode && draftCount > 0}
-            >
-              {MONTH_NAMES_FULL.map((label, index) => (
-                <option key={label} value={index}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
         <div className="org-vacation-toolbar-right org-workspace-toolbar-actions">
           {canEditAny ? (
@@ -518,23 +506,27 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
               <table className="org-vacation-grid org-schedule-dates-grid org-workspace-grid">
                 <thead>
                   <tr>
-                    <th colSpan={monthDays.length} className="org-vacation-month">
-                      {MONTH_NAMES_FULL[month]} {year}
-                    </th>
+                    {monthGroups.map((group, index) => (
+                      <th
+                        key={`${group.label}-${index}`}
+                        colSpan={group.length}
+                        className="org-vacation-month"
+                      >
+                        {group.label}
+                      </th>
+                    ))}
                   </tr>
                   <tr>
-                    {monthDays.map((day) => {
+                    {yearDays.map((day) => {
                       const key = toDayKey(day)
-                      const isWeekend = isWeekendDay(day)
-                      const isHoliday = holidayKeys.has(key)
+                      const dayOff = isDayOff(day, holidayKeys)
                       return (
                         <th
                           key={`wd-${key}`}
                           className={[
                             'org-vacation-day-head',
                             'org-workspace-weekday-head',
-                            isWeekend ? 'org-workspace-weekend-head' : '',
-                            isHoliday ? 'org-workspace-holiday-head' : '',
+                            dayOff ? 'org-workspace-weekend-head' : '',
                           ]
                             .filter(Boolean)
                             .join(' ')}
@@ -545,18 +537,16 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                     })}
                   </tr>
                   <tr>
-                    {monthDays.map((day) => {
+                    {yearDays.map((day) => {
                       const key = toDayKey(day)
-                      const isWeekend = isWeekendDay(day)
-                      const isHoliday = holidayKeys.has(key)
+                      const dayOff = isDayOff(day, holidayKeys)
                       return (
                         <th
                           key={key}
                           className={[
                             'org-vacation-day-head',
                             'org-workspace-day-head',
-                            isWeekend ? 'org-workspace-weekend-head' : '',
-                            isHoliday ? 'org-workspace-holiday-head' : '',
+                            dayOff ? 'org-workspace-weekend-head' : '',
                             key === todayKey ? 'org-workspace-today-head' : '',
                           ]
                             .filter(Boolean)
@@ -572,13 +562,12 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                 <tbody>
                   {data.places.map((place) => (
                     <tr key={place.id}>
-                      {monthDays.map((day) => {
+                      {yearDays.map((day) => {
                         const dayKey = toDayKey(day)
                         const serverBooking = serverBookingMap.get(cellKey(place.id, dayKey))
                         const booking = getEffectiveBooking(place.id, dayKey)
                         const pending = isDraftCell(cellKey(place.id, dayKey), draftChanges, serverBooking)
-                        const isWeekend = isWeekendDay(day)
-                        const isHoliday = holidayKeys.has(dayKey)
+                        const dayOff = isDayOff(day, holidayKeys)
                         const canBook =
                           editMode &&
                           !booking &&
@@ -611,8 +600,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                                   ? 'org-workspace-self'
                                   : 'org-workspace-busy'
                                 : 'org-workspace-free',
-                              isWeekend ? 'org-workspace-weekend' : '',
-                              isHoliday ? 'org-workspace-holiday' : '',
+                              dayOff ? 'org-workspace-weekend' : '',
                               pending ? 'org-workspace-pending' : '',
                               isEditable ? 'org-vacation-editable' : '',
                             ]

@@ -209,7 +209,7 @@ export type WorkspaceBookingCell = {
 
 export type WorkspaceBookingScheduleData = {
   year: number
-  month: number
+  month?: number | null
   actorEmployeeId?: number | null
   isAdmin: boolean
   places: WorkspacePlace[]
