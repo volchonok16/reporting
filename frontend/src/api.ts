@@ -22,6 +22,29 @@ function resolveApiBase(): string {
 
 const apiBase = resolveApiBase()
 
+/** Публичный URL фото сотрудника (через API, не через localhost MinIO). */
+export function resolvePhotoUrl(url: string | null | undefined): string | null {
+  if (!url) return null
+  const trimmed = url.trim()
+  if (!trimmed) return null
+
+  const rewriteMinioPath = (path: string) => `${apiBase}/api/org/photos/${path.replace(/^\/+/, '')}`
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    const localMinio = trimmed.match(/^https?:\/\/(?:localhost|127\.0\.0\.1|minio)(?::\d+)?\/([^/]+)\/(.+)$/i)
+    if (localMinio) {
+      return rewriteMinioPath(localMinio[2])
+    }
+    return trimmed
+  }
+
+  if (trimmed.startsWith('/api/')) {
+    return `${apiBase}${trimmed}`
+  }
+
+  return rewriteMinioPath(trimmed)
+}
+
 export function getSessionId(): string | null {
   return localStorage.getItem(SESSION_KEY)
 }

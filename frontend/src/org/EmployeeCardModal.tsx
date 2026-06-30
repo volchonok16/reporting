@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getJson } from '../api'
 import type { EmployeeDetail } from './types'
+import OrgPhoto from './OrgPhoto'
 
 type EmployeeCardModalProps = {
   employeeId: number
@@ -8,14 +9,6 @@ type EmployeeCardModalProps = {
   onClose: () => void
   onEdit?: (employee: EmployeeDetail) => void
   onOpenEmployee: (employeeId: number) => void
-}
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('')
 }
 
 export default function EmployeeCardModal({
@@ -72,11 +65,12 @@ export default function EmployeeCardModal({
           <div className="org-employee-card">
             <div className="org-employee-card-header">
               <div className="org-employee-card-photo">
-                {employee.photoUrl ? (
-                  <img src={employee.photoUrl} alt="" />
-                ) : (
-                  <div className="org-profile-photo-placeholder">{initials(employee.fullName)}</div>
-                )}
+                <OrgPhoto
+                  url={employee.photoUrl}
+                  name={employee.fullName}
+                  className="org-employee-card-photo-img"
+                  placeholderClassName="org-profile-photo-placeholder"
+                />
               </div>
               <div className="org-employee-card-summary">
                 <div className="org-employee-card-name">{employee.fullName}</div>

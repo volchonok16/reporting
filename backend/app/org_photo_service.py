@@ -10,7 +10,6 @@ from app.org_s3_storage import (
     delete_object,
     get_object_bytes,
     minio_configured,
-    public_url as minio_public_url,
     put_object,
 )
 
@@ -62,12 +61,24 @@ async def save_employee_photo(employee_id: int, file: UploadFile) -> str:
     return rel_path
 
 
+def _use_direct_minio_url() -> bool:
+    public_base = settings.minio_public_url.strip().rstrip("/")
+    if not public_base:
+        return False
+    lowered = public_base.lower()
+    if any(token in lowered for token in ("localhost", "127.0.0.1", "://minio", "://minio:")):
+        return False
+    return True
+
+
 def photo_public_url(photo_path: str | None) -> str | None:
     if not photo_path:
         return None
-    if minio_configured():
-        return minio_public_url(photo_path)
-    return f"/api/org/photos/{photo_path}"
+    normalized = photo_path.lstrip("/")
+    if _use_direct_minio_url():
+        public_base = settings.minio_public_url.rstrip("/")
+        return f"{public_base}/{settings.minio_bucket}/{normalized}"
+    return f"/api/org/photos/{normalized}"
 
 
 def delete_photo_file(photo_path: str | None) -> None:

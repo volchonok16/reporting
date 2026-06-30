@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
-import { deleteJson, getJson, patchJson, postForm, postJson, putJson } from '../api'
+import { deleteJson, getJson, patchJson, postForm, postJson, putJson, resolvePhotoUrl } from '../api'
 import OrgChartView from './OrgChartView'
 import VacationSchedule from './VacationSchedule'
 import EmployeeCardModal from './EmployeeCardModal'
@@ -246,7 +246,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
     setEditingEmployeeId(emp.id)
     setExpertiseDirectionId('')
     setExpertiseLevel('')
-    resetPhotoState(emp.photoUrl ?? null)
+    resetPhotoState(resolvePhotoUrl(emp.photoUrl))
     setEmployeeForm({
       fullName: emp.fullName,
       email: emp.email ?? '',
@@ -614,6 +614,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                   <OrgChartView
                     roots={block.roots}
                     departmentName={block.departmentName}
+                    framed
                     onEmployeeClick={openEmployeeCard}
                   />
                 </div>
@@ -625,6 +626,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
             <OrgChartView
               roots={orgChart?.departmentTree ?? []}
               departmentName={selectedDepartment?.name}
+              framed
               onEmployeeClick={openEmployeeCard}
             />
           )}
@@ -754,9 +756,9 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                 ✕
               </button>
             </header>
-            <form className="org-form org-employee-form" onSubmit={(e) => void saveEmployee(e)}>
-              <div className="org-employee-form-layout">
-                <div className="org-employee-photo-field">
+            <form className="org-employee-form" onSubmit={(e) => void saveEmployee(e)}>
+              <div className="org-employee-modal-body org-form">
+                <section className="org-employee-hero">
                   <div className="org-employee-photo-preview">
                     {photoPreviewUrl ? (
                       <img src={photoPreviewUrl} alt="" />
@@ -766,19 +768,21 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                       </div>
                     )}
                   </div>
-                  <label className="org-photo-upload-btn">
-                    {photoPreviewUrl ? 'Сменить фото' : 'Добавить фото'}
-                    <input
-                      ref={photoInputRef}
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp"
-                      onChange={handlePhotoPick}
-                    />
-                  </label>
-                  <p className="org-hint org-photo-hint">PNG, JPEG или WebP</p>
-                </div>
+                  <div className="org-employee-photo-actions">
+                    <label className="org-photo-upload-btn">
+                      {photoPreviewUrl ? 'Сменить фото' : 'Добавить фото'}
+                      <input
+                        ref={photoInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={handlePhotoPick}
+                      />
+                    </label>
+                    <p className="org-hint">PNG, JPEG или WebP, до 5 МБ</p>
+                  </div>
+                </section>
 
-                <div className="org-employee-form-fields">
+                <section className="org-employee-fields">
                   <label>
                     ФИО
                     <input
@@ -841,117 +845,134 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                         ))}
                     </select>
                   </label>
-                </div>
-              </div>
+                </section>
 
-              {editingEmployeeId && editingEmployee ? (
-                <div className="org-form-section">
-                  <div className="org-form-section-header">
-                    <h4>Экспертиза</h4>
-                    {canManage ? (
-                      <button type="button" className="btn-ghost" onClick={() => void addExpertiseDirection()}>
-                        + Направление
-                      </button>
-                    ) : null}
-                  </div>
-                  {editingEmployee.expertises.length > 0 ? (
-                    <ul className="org-expertise-list">
-                      {editingEmployee.expertises.map((item) => (
-                        <li key={item.id}>
-                          <span>
-                            {item.directionName}
-                            {item.level ? ` (${item.level})` : ''}
-                          </span>
-                          {canManage ? (
-                            <button
-                              type="button"
-                              className="btn-ghost org-expertise-remove"
-                              onClick={() => void removeEmployeeExpertise(item.id)}
-                            >
-                              ✕
-                            </button>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="org-hint">Экспертиза не указана</p>
-                  )}
-                  {canManage ? (
-                    <div className="org-inline-form">
-                      <select
-                        value={expertiseDirectionId}
-                        onChange={(e) => setExpertiseDirectionId(e.target.value)}
-                      >
-                        <option value="">— направление —</option>
-                        {expertiseDirections.map((direction) => (
-                          <option key={direction.id} value={direction.id}>
-                            {direction.name}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        value={expertiseLevel}
-                        onChange={(e) => setExpertiseLevel(e.target.value)}
-                        placeholder="Уровень, например senior"
-                      />
-                      <button type="button" className="btn-primary" onClick={() => void addEmployeeExpertise()}>
-                        Добавить
-                      </button>
+                {editingEmployeeId && editingEmployee ? (
+                  <section className="org-form-section">
+                    <div className="org-form-section-header">
+                      <h4>Экспертиза</h4>
+                      {canManage ? (
+                        <button type="button" className="btn-ghost" onClick={() => void addExpertiseDirection()}>
+                          + Направление
+                        </button>
+                      ) : null}
                     </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              <div className="org-form-section">
-                <h4>Статус</h4>
-                <div className="org-form-checkboxes">
-                  <label className="org-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={employeeForm.isActive}
-                      onChange={(e) => setEmployeeForm({ ...employeeForm, isActive: e.target.checked })}
-                    />
-                    Активен
-                  </label>
-                  <label className="org-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={employeeForm.isOrganizationHead}
-                      onChange={(e) =>
-                        setEmployeeForm({ ...employeeForm, isOrganizationHead: e.target.checked })
-                      }
-                    />
-                    Директор организации
-                  </label>
-                </div>
-              </div>
-
-              {!editingEmployeeId ? (
-                <div className="org-form-section">
-                  <h4>Учётная запись</h4>
-                  <label className="org-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={employeeForm.createUserAccount}
-                      onChange={(e) =>
-                        setEmployeeForm({ ...employeeForm, createUserAccount: e.target.checked })
-                      }
-                    />
-                    Создать учётную запись для входа
-                  </label>
-                  {employeeForm.createUserAccount ? (
-                    <div className="org-form-row-2">
-                      <label>
-                        Пароль для входа
+                    {editingEmployee.expertises.length > 0 ? (
+                      <ul className="org-expertise-list">
+                        {editingEmployee.expertises.map((item) => (
+                          <li key={item.id}>
+                            <span>
+                              {item.directionName}
+                              {item.level ? ` (${item.level})` : ''}
+                            </span>
+                            {canManage ? (
+                              <button
+                                type="button"
+                                className="btn-ghost org-expertise-remove"
+                                onClick={() => void removeEmployeeExpertise(item.id)}
+                              >
+                                ✕
+                              </button>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="org-hint">Экспертиза не указана</p>
+                    )}
+                    {canManage ? (
+                      <div className="org-inline-form org-employee-expertise-form">
+                        <select
+                          value={expertiseDirectionId}
+                          onChange={(e) => setExpertiseDirectionId(e.target.value)}
+                        >
+                          <option value="">— направление —</option>
+                          {expertiseDirections.map((direction) => (
+                            <option key={direction.id} value={direction.id}>
+                              {direction.name}
+                            </option>
+                          ))}
+                        </select>
                         <input
-                          type="password"
-                          value={employeeForm.userPassword}
-                          onChange={(e) =>
-                            setEmployeeForm({ ...employeeForm, userPassword: e.target.value })
-                          }
+                          value={expertiseLevel}
+                          onChange={(e) => setExpertiseLevel(e.target.value)}
+                          placeholder="Уровень, например senior"
                         />
-                      </label>
+                        <button type="button" className="btn-primary" onClick={() => void addEmployeeExpertise()}>
+                          Добавить
+                        </button>
+                      </div>
+                    ) : null}
+                  </section>
+                ) : null}
+
+                <section className="org-form-section">
+                  <h4>Статус</h4>
+                  <div className="org-form-checkboxes">
+                    <label className="org-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={employeeForm.isActive}
+                        onChange={(e) => setEmployeeForm({ ...employeeForm, isActive: e.target.checked })}
+                      />
+                      Активен
+                    </label>
+                    <label className="org-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={employeeForm.isOrganizationHead}
+                        onChange={(e) =>
+                          setEmployeeForm({ ...employeeForm, isOrganizationHead: e.target.checked })
+                        }
+                      />
+                      Директор организации
+                    </label>
+                  </div>
+                </section>
+
+                {!editingEmployeeId ? (
+                  <section className="org-form-section">
+                    <h4>Учётная запись</h4>
+                    <label className="org-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={employeeForm.createUserAccount}
+                        onChange={(e) =>
+                          setEmployeeForm({ ...employeeForm, createUserAccount: e.target.checked })
+                        }
+                      />
+                      Создать учётную запись для входа
+                    </label>
+                    {employeeForm.createUserAccount ? (
+                      <div className="org-form-row-2 org-form-row-align-end">
+                        <label>
+                          Пароль для входа
+                          <input
+                            type="password"
+                            value={employeeForm.userPassword}
+                            onChange={(e) =>
+                              setEmployeeForm({ ...employeeForm, userPassword: e.target.value })
+                            }
+                          />
+                        </label>
+                        <label className="org-checkbox org-checkbox-field">
+                          <input
+                            type="checkbox"
+                            checked={employeeForm.userIsAdmin}
+                            onChange={(e) =>
+                              setEmployeeForm({ ...employeeForm, userIsAdmin: e.target.checked })
+                            }
+                          />
+                          Администратор
+                        </label>
+                      </div>
+                    ) : null}
+                  </section>
+                ) : editingEmployee?.user ? (
+                  <section className="org-form-section">
+                    <h4>Учётная запись</h4>
+                    <p className="org-hint org-account-email">{editingEmployee.user.email}</p>
+                    <div className="org-form-row-2 org-form-row-align-end">
                       <label className="org-checkbox org-checkbox-field">
                         <input
                           type="checkbox"
@@ -962,47 +983,30 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                         />
                         Администратор
                       </label>
+                      <label>
+                        Новый пароль
+                        <input
+                          type="password"
+                          placeholder="Необязательно"
+                          value={employeeForm.userPassword}
+                          onChange={(e) =>
+                            setEmployeeForm({ ...employeeForm, userPassword: e.target.value })
+                          }
+                        />
+                      </label>
                     </div>
-                  ) : null}
-                </div>
-              ) : editingEmployee?.user ? (
-                <div className="org-form-section">
-                  <h4>Учётная запись</h4>
-                  <p className="org-hint">{editingEmployee.user.email}</p>
-                  <div className="org-form-row-2">
-                    <label className="org-checkbox org-checkbox-field">
-                      <input
-                        type="checkbox"
-                        checked={employeeForm.userIsAdmin}
-                        onChange={(e) =>
-                          setEmployeeForm({ ...employeeForm, userIsAdmin: e.target.checked })
-                        }
-                      />
-                      Администратор
-                    </label>
-                    <label>
-                      Новый пароль
-                      <input
-                        type="password"
-                        placeholder="Необязательно"
-                        value={employeeForm.userPassword}
-                        onChange={(e) =>
-                          setEmployeeForm({ ...employeeForm, userPassword: e.target.value })
-                        }
-                      />
-                    </label>
-                  </div>
-                </div>
-              ) : null}
+                  </section>
+                ) : null}
+              </div>
 
-              <div className="org-modal-actions">
+              <footer className="org-employee-modal-footer org-modal-actions">
                 <button type="submit" className="btn-primary" disabled={savingEmployee}>
                   {savingEmployee ? 'Сохранение…' : 'Сохранить'}
                 </button>
                 <button type="button" className="btn-ghost" onClick={closeEmployeeModal} disabled={savingEmployee}>
                   Отмена
                 </button>
-              </div>
+              </footer>
             </form>
           </div>
         </div>

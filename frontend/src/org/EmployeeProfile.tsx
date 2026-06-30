@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getJson, patchJson, postForm, postJson } from '../api'
 import type { ProfileData } from './types'
+import OrgPhoto from './OrgPhoto'
 
 type EmployeeProfileProps = {
   onClose: () => void
@@ -82,15 +83,6 @@ export default function EmployeeProfile({ onClose }: EmployeeProfileProps) {
     }
   }
 
-  const initials =
-    profile?.employee?.fullName
-      ?.split(/\s+/)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase() ?? '')
-      .join('') ||
-    profile?.email.slice(0, 2).toUpperCase() ||
-    '?'
-
   return (
     <div className="org-modal-backdrop" onClick={onClose}>
       <div className="org-modal org-profile-modal" onClick={(e) => e.stopPropagation()}>
@@ -110,11 +102,12 @@ export default function EmployeeProfile({ onClose }: EmployeeProfileProps) {
             <section className="org-panel">
               <h3>Профиль</h3>
               <div className="org-profile-photo">
-                {profile.employee?.photoUrl ? (
-                  <img src={profile.employee.photoUrl} alt="" />
-                ) : (
-                  <div className="org-profile-photo-placeholder">{initials}</div>
-                )}
+                <OrgPhoto
+                  url={profile.employee?.photoUrl}
+                  name={profile.employee?.fullName ?? profile.email}
+                  className="org-profile-photo-img"
+                  placeholderClassName="org-profile-photo-placeholder"
+                />
               </div>
 
               {profile.employee ? (

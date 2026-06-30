@@ -64,7 +64,9 @@ def get_object_bytes(key: str) -> tuple[bytes, str] | None:
 
 def public_url(key: str) -> str:
     normalized = key.lstrip("/")
-    public_base = settings.minio_public_url.rstrip("/")
-    if public_base:
+    public_base = settings.minio_public_url.strip().rstrip("/")
+    if public_base and not any(
+        token in public_base.lower() for token in ("localhost", "127.0.0.1", "://minio")
+    ):
         return f"{public_base}/{settings.minio_bucket}/{normalized}"
     return f"/api/org/photos/{normalized}"
