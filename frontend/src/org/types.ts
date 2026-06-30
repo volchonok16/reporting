@@ -35,6 +35,7 @@ export type OrgChartLayoutNode = {
   id: string
   kind: OrgChartLayoutNodeKind
   refId: number
+  parentNodeId?: string | null
   x: number
   y: number
   width: number

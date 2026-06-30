@@ -595,22 +595,22 @@
 }
 
 .org-chart {
-  --org-tree-gap: 48px;
-  --org-tree-card-line-gap: 12px;
+  --org-tree-gap: var(--space-3xl, 48px);
+  --org-tree-card-line-gap: var(--space-md, 12px);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 32px;
+  gap: var(--space-2xl);
   min-width: max-content;
 }
 
 .org-tree-chart {
-  --org-tree-gap: 48px;
-  --org-tree-card-line-gap: 12px;
+  --org-tree-gap: var(--space-3xl, 48px);
+  --org-tree-card-line-gap: var(--space-md, 12px);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 48px;
+  gap: var(--space-3xl);
   min-width: max-content;
 }
 
@@ -630,7 +630,7 @@
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 12px 0;
+  gap: var(--space-md) 0;
 }
 
 .org-tree-children {
@@ -643,7 +643,7 @@
 }
 
 .org-tree-children-stacked {
-  --org-tree-row-gap: 40px;
+  --org-tree-row-gap: var(--space-2xl);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -841,6 +841,15 @@
   touch-action: none;
 }
 
+.org-manual-node-department {
+  z-index: 1;
+}
+
+.org-manual-node-employee {
+  z-index: 3;
+  align-items: flex-start;
+}
+
 .org-manual-node-editing {
   cursor: grab;
 }
@@ -857,6 +866,7 @@
 
 .org-manual-dept-card {
   width: 100%;
+  height: 100%;
   min-height: 240px;
   border: 2px solid var(--org-chart-line-soft, var(--border));
   border-radius: 16px;
@@ -955,20 +965,20 @@
 
 .org-dept-frame {
   border: 2px solid var(--org-chart-line-soft, var(--border));
-  border-radius: 16px;
-  padding: 20px 28px 28px;
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl) var(--space-2xl) var(--space-2xl);
   background: var(--surface-2, var(--bg-hover));
   box-shadow: var(--shadow-sm);
   min-width: min(100%, 360px);
 }
 
 .org-dept-frame-title {
-  margin: 0 0 20px;
+  margin: 0 0 var(--space-xl);
   text-align: center;
   font-size: 1rem;
   font-weight: 700;
   color: var(--text-primary);
-  padding-bottom: 14px;
+  padding-bottom: var(--space-md);
   border-bottom: 1px solid var(--border);
 }
 
@@ -984,11 +994,11 @@
 }
 
 .org-dept-frame-body {
-  --org-tree-gap: 48px;
-  --org-tree-card-line-gap: 12px;
+  --org-tree-gap: var(--space-3xl, 48px);
+  --org-tree-card-line-gap: var(--space-md, 12px);
   display: flex;
   justify-content: center;
-  padding: 8px 12px 4px;
+  padding: var(--space-sm) var(--space-md) var(--space-xs);
 }
 
 .org-dept-block {
@@ -1013,15 +1023,21 @@
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 8px;
+  gap: var(--space-sm);
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px 10px;
-  width: 168px;
-  max-width: 168px;
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg) var(--space-md);
+  width: 180px;
+  max-width: 180px;
   box-sizing: border-box;
   box-shadow: var(--shadow-sm);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.org-person-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 .org-person-card-head {
@@ -1030,9 +1046,9 @@
 }
 
 .org-person-avatar {
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--avatar-gradient);
   color: var(--text-inverse);

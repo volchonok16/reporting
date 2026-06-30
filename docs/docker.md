@@ -201,6 +201,8 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 
 После каждой миграции `migrate.sh` автоматически выдаёт **alex** и **ivan** права на все таблицы и sequences.
 
+Для ручной оргсхемы добавлена миграция `db/migrations/010_org_chart_layout.sql`: таблица `org_chart_layout` хранит координаты карточек и линии вкладки «Пирамида».
+
 Если права нужно обновить вручную (новые таблицы org/vacation, backend создал таблицы от alex):
 
 ```bash

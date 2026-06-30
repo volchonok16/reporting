@@ -160,6 +160,21 @@ package "Приложение и синхронизация" #F0E8FC {
     created_at : timestamptz
   }
 
+  class department <<table>> {
+    +id : bigserial PK
+    name : varchar
+    head_employee_id : FK
+    is_active : boolean
+  }
+
+  class org_chart_layout <<table>> {
+    +id : bigserial PK
+    scope : varchar
+    department_id : FK
+    layout_json : jsonb
+    updated_at : timestamptz
+  }
+
   class sync_run <<table>> {
     +id : bigserial PK
     source_system_id : FK
@@ -227,6 +242,8 @@ task_status_duration ..> v_task_backlog_duration : feeds
 task_status_duration ..> v_task_status_time : feeds
 task ..> v_tasks_by_release : feeds
 team ..> v_team_open_tasks : feeds
+
+org_chart_layout "0..*" -- "0..1" department
 
 note right of source_system
   **Коды источников:**

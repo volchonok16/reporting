@@ -102,6 +102,7 @@
 | `employee_office_day` | Дни присутствия сотрудника в офисе без привязки к месту |
 | `department` | Отделы |
 | `department_member` | Состав отдела |
+| `org_chart_layout` | Сохранённая ручная раскладка оргсхемы (координаты карточек и линии) |
 | `person` | Человек |
 | `person_external` | ID пользователя в Jira/TFS/Trello |
 

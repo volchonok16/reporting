@@ -852,6 +852,11 @@ def _validate_org_chart_layout_nodes(
         if node.kind == "department" and node.refId not in department_ids:
             raise HTTPException(status_code=400, detail="В схеме есть несуществующий отдел.")
 
+    for node in data.layout.nodes:
+        if node.parentNodeId is not None:
+            if node.parentNodeId == node.id or node.parentNodeId not in node_ids:
+                raise HTTPException(status_code=400, detail="Узел ссылается на несуществующий контейнер.")
+
     for edge in data.layout.edges:
         if edge.fromNodeId not in node_ids or edge.toNodeId not in node_ids:
             raise HTTPException(status_code=400, detail="Линия ссылается на несуществующий узел.")

@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { getJson, putJson } from '../api'
 import type {
   DepartmentBlock,
@@ -19,19 +27,40 @@ type ManualOrgChartViewProps = {
 }
 
 type ChartItem =
-  | { id: string; kind: 'employee'; refId: number; node: OrgChartNode; parentId?: string | null }
-  | { id: string; kind: 'department'; refId: number; block: DepartmentBlock; parentId?: string | null }
+  | {
+      id: string
+      kind: 'employee'
+      refId: number
+      node: OrgChartNode
+      parentId?: string | null
+      parentNodeId?: string | null
+    }
+  | {
+      id: string
+      kind: 'department'
+      refId: number
+      block: DepartmentBlock
+      parentId?: string | null
+      parentNodeId?: string | null
+    }
 
 const EMPLOYEE_NODE_WIDTH = 180
 const EMPLOYEE_NODE_HEIGHT = 190
-const DEPARTMENT_NODE_WIDTH = 420
-const DEPARTMENT_NODE_HEIGHT = 280
+const DEPARTMENT_NODE_WIDTH = 520
+const DEPARTMENT_TITLE_HEIGHT = 52
+const DEPARTMENT_PADDING = 24
+const DEPARTMENT_EMPLOYEE_GAP = 18
+const DEPARTMENT_EMPLOYEES_PER_ROW = 3
 const NODE_GAP_X = 36
-const NODE_GAP_Y = 48
-const NODES_PER_ROW = 4
+const NODE_GAP_Y = 56
+const NODES_PER_ROW = 3
 
 function employeeNodeId(employeeId: number): string {
   return `employee:${employeeId}`
+}
+
+function departmentEmployeeNodeId(departmentId: number, employeeId: number): string {
+  return `department:${departmentId}:employee:${employeeId}`
 }
 
 function departmentNodeId(departmentId: number): string {
@@ -42,18 +71,81 @@ function edgeId(fromNodeId: string, toNodeId: string): string {
   return `${fromNodeId}->${toNodeId}`
 }
 
-function flattenDepartments(blocks: DepartmentBlock[], parentId: string | null = null): ChartItem[] {
+function flattenEmployeeTree(root: OrgChartNode): OrgChartNode[] {
+  return [root, ...root.children.flatMap(flattenEmployeeTree)]
+}
+
+function uniqueEmployees(roots: OrgChartNode[]): OrgChartNode[] {
+  const seen = new Set<number>()
+  const employees: OrgChartNode[] = []
+  for (const root of roots) {
+    for (const node of flattenEmployeeTree(root)) {
+      if (seen.has(node.person.employeeId)) continue
+      seen.add(node.person.employeeId)
+      employees.push(node)
+    }
+  }
+  return employees
+}
+
+function departmentHeight(block: DepartmentBlock): number {
+  const employeeCount = Math.max(1, uniqueEmployees(block.roots).length)
+  const rows = Math.ceil(employeeCount / DEPARTMENT_EMPLOYEES_PER_ROW)
+  return (
+    DEPARTMENT_TITLE_HEIGHT +
+    DEPARTMENT_PADDING * 2 +
+    rows * EMPLOYEE_NODE_HEIGHT +
+    Math.max(0, rows - 1) * DEPARTMENT_EMPLOYEE_GAP
+  )
+}
+
+function flattenDepartments(
+  blocks: DepartmentBlock[],
+  parentId: string | null = null,
+): ChartItem[] {
   return blocks.flatMap((block) => {
     const id = departmentNodeId(block.departmentId)
+    const departmentItem: ChartItem = {
+      id,
+      kind: 'department',
+      refId: block.departmentId,
+      block,
+      parentId,
+    }
+    const employeeItems: ChartItem[] = uniqueEmployees(block.roots).map((node) => ({
+      id: departmentEmployeeNodeId(block.departmentId, node.person.employeeId),
+      kind: 'employee',
+      refId: node.person.employeeId,
+      node,
+      parentNodeId: id,
+    }))
     return [
-      { id, kind: 'department' as const, refId: block.departmentId, block, parentId },
+      departmentItem,
+      ...employeeItems,
       ...flattenDepartments(block.nestedDepartments ?? [], id),
     ]
   })
 }
 
-function flattenEmployeeTree(root: OrgChartNode): OrgChartNode[] {
-  return [root, ...root.children.flatMap(flattenEmployeeTree)]
+function buildStandaloneItems(
+  roots: OrgChartNode[],
+  organizationHead?: OrgChartNode | null,
+): ChartItem[] {
+  const build = (node: OrgChartNode, parentId: string | null): ChartItem[] => {
+    const id = employeeNodeId(node.person.employeeId)
+    return [
+      {
+        id,
+        kind: 'employee' as const,
+        refId: node.person.employeeId,
+        node,
+        parentId,
+      },
+      ...node.children.flatMap((child) => build(child, id)),
+    ]
+  }
+  const rootParent = organizationHead ? employeeNodeId(organizationHead.person.employeeId) : null
+  return roots.flatMap((root) => build(root, rootParent))
 }
 
 function buildChartItems(
@@ -70,26 +162,30 @@ function buildChartItems(
         parentId: null,
       }]
     : []
-  const deptItems = flattenDepartments(departments, organizationHead ? employeeNodeId(organizationHead.person.employeeId) : null)
-  const standaloneItems = standaloneRoots.flatMap((root) =>
-    flattenEmployeeTree(root).map((node) => ({
-      id: employeeNodeId(node.person.employeeId),
-      kind: 'employee' as const,
-      refId: node.person.employeeId,
-      node,
-      parentId: node.person.employeeId === root.person.employeeId && organizationHead
-        ? employeeNodeId(organizationHead.person.employeeId)
-        : null,
-    })),
-  )
-  return [...headItem, ...deptItems, ...standaloneItems]
+  const topParent = organizationHead ? employeeNodeId(organizationHead.person.employeeId) : null
+  return [
+    ...headItem,
+    ...flattenDepartments(departments, topParent),
+    ...buildStandaloneItems(standaloneRoots, organizationHead),
+  ]
+}
+
+function defaultEmployeePositionInDepartment(
+  departmentNode: OrgChartLayoutNode,
+  employeeIndex: number,
+): { x: number; y: number } {
+  const col = employeeIndex % DEPARTMENT_EMPLOYEES_PER_ROW
+  const row = Math.floor(employeeIndex / DEPARTMENT_EMPLOYEES_PER_ROW)
+  return {
+    x: departmentNode.x + DEPARTMENT_PADDING + col * (EMPLOYEE_NODE_WIDTH + DEPARTMENT_EMPLOYEE_GAP),
+    y: departmentNode.y + DEPARTMENT_TITLE_HEIGHT + DEPARTMENT_PADDING + row * (EMPLOYEE_NODE_HEIGHT + DEPARTMENT_EMPLOYEE_GAP),
+  }
 }
 
 function defaultLayout(items: ChartItem[]): OrgChartLayoutData {
-  const head = items.find((item) => item.kind === 'employee' && item.parentId == null)
-  const rest = items.filter((item) => item.id !== head?.id)
-  const maxNodeWidth = DEPARTMENT_NODE_WIDTH
-  const rowWidth = NODES_PER_ROW * maxNodeWidth + (NODES_PER_ROW - 1) * NODE_GAP_X
+  const head = items.find((item) => item.kind === 'employee' && item.parentId == null && !item.parentNodeId)
+  const freeItems = items.filter((item) => item.id !== head?.id && !item.parentNodeId)
+  const rowWidth = NODES_PER_ROW * DEPARTMENT_NODE_WIDTH + (NODES_PER_ROW - 1) * NODE_GAP_X
   const nodes: OrgChartLayoutNode[] = []
 
   if (head) {
@@ -104,21 +200,48 @@ function defaultLayout(items: ChartItem[]): OrgChartLayoutData {
     })
   }
 
-  rest.forEach((item, index) => {
-    const row = Math.floor(index / NODES_PER_ROW)
-    const col = index % NODES_PER_ROW
-    const width = item.kind === 'department' ? DEPARTMENT_NODE_WIDTH : EMPLOYEE_NODE_WIDTH
-    const height = item.kind === 'department' ? DEPARTMENT_NODE_HEIGHT : EMPLOYEE_NODE_HEIGHT
+  const freeRows: ChartItem[][] = []
+  for (let i = 0; i < freeItems.length; i += NODES_PER_ROW) {
+    freeRows.push(freeItems.slice(i, i + NODES_PER_ROW))
+  }
+  let rowY = EMPLOYEE_NODE_HEIGHT + NODE_GAP_Y
+  freeRows.forEach((rowItems) => {
+    const rowHeights = rowItems.map((item) => item.kind === 'department' ? departmentHeight(item.block) : EMPLOYEE_NODE_HEIGHT)
+    rowItems.forEach((item, col) => {
+      const width = item.kind === 'department' ? DEPARTMENT_NODE_WIDTH : EMPLOYEE_NODE_WIDTH
+      const height = item.kind === 'department' ? departmentHeight(item.block) : EMPLOYEE_NODE_HEIGHT
+      nodes.push({
+        id: item.id,
+        kind: item.kind,
+        refId: item.refId,
+        x: col * (DEPARTMENT_NODE_WIDTH + NODE_GAP_X) + (DEPARTMENT_NODE_WIDTH - width) / 2,
+        y: rowY,
+        width,
+        height,
+      })
+    })
+    rowY += Math.max(...rowHeights) + NODE_GAP_Y
+  })
+
+  const departmentEmployeeIndex = new Map<string, number>()
+  for (const item of items) {
+    if (!item.parentNodeId) continue
+    const departmentNode = nodes.find((node) => node.id === item.parentNodeId)
+    if (!departmentNode) continue
+    const index = departmentEmployeeIndex.get(item.parentNodeId) ?? 0
+    departmentEmployeeIndex.set(item.parentNodeId, index + 1)
+    const position = defaultEmployeePositionInDepartment(departmentNode, index)
     nodes.push({
       id: item.id,
       kind: item.kind,
       refId: item.refId,
-      x: col * (maxNodeWidth + NODE_GAP_X) + (maxNodeWidth - width) / 2,
-      y: EMPLOYEE_NODE_HEIGHT + NODE_GAP_Y + row * (DEPARTMENT_NODE_HEIGHT + NODE_GAP_Y),
-      width,
-      height,
+      parentNodeId: item.parentNodeId,
+      x: position.x,
+      y: position.y,
+      width: EMPLOYEE_NODE_WIDTH,
+      height: EMPLOYEE_NODE_HEIGHT,
     })
-  })
+  }
 
   const knownNodeIds = new Set(nodes.map((node) => node.id))
   const edges = items
@@ -141,12 +264,33 @@ function reconcileLayout(saved: OrgChartLayoutData | null, items: ChartItem[]): 
   const generatedById = new Map(generated.nodes.map((node) => [node.id, node]))
   const savedById = new Map(saved.nodes.map((node) => [node.id, node]))
   const nodes = generated.nodes.map((generatedNode) => {
-    const savedNode = savedById.get(generatedNode.id)
     const item = itemById.get(generatedNode.id)
-    if (!savedNode || !item) return generatedNode
+    const savedNode = savedById.get(generatedNode.id)
+    if (!item) return generatedNode
     const width = item.kind === 'department' ? DEPARTMENT_NODE_WIDTH : EMPLOYEE_NODE_WIDTH
-    const height = item.kind === 'department' ? DEPARTMENT_NODE_HEIGHT : EMPLOYEE_NODE_HEIGHT
-    return { ...savedNode, kind: item.kind, refId: item.refId, width, height }
+    const height = item.kind === 'department' ? departmentHeight(item.block) : EMPLOYEE_NODE_HEIGHT
+    if (!savedNode) {
+      if (generatedNode.parentNodeId) {
+        const savedParent = savedById.get(generatedNode.parentNodeId)
+        const generatedParent = generatedById.get(generatedNode.parentNodeId)
+        if (savedParent && generatedParent) {
+          return {
+            ...generatedNode,
+            x: savedParent.x + (generatedNode.x - generatedParent.x),
+            y: savedParent.y + (generatedNode.y - generatedParent.y),
+          }
+        }
+      }
+      return generatedNode
+    }
+    return {
+      ...savedNode,
+      kind: item.kind,
+      refId: item.refId,
+      parentNodeId: item.parentNodeId ?? null,
+      width,
+      height,
+    }
   })
   const knownNodeIds = new Set(nodes.map((node) => node.id))
   const edges = saved.edges.filter(
@@ -154,11 +298,7 @@ function reconcileLayout(saved: OrgChartLayoutData | null, items: ChartItem[]): 
   )
   for (const generatedEdge of generated.edges) {
     if (!edges.some((edge) => edge.id === generatedEdge.id)) {
-      const fromMoved = savedById.has(generatedEdge.fromNodeId)
-      const toMoved = savedById.has(generatedEdge.toNodeId)
-      if (!fromMoved || !toMoved || generatedById.has(generatedEdge.toNodeId)) {
-        edges.push(generatedEdge)
-      }
+      edges.push(generatedEdge)
     }
   }
   return { nodes, edges }
@@ -221,14 +361,9 @@ function DepartmentCard({
   ) : (
     <div className="org-manual-dept-title">{block.departmentName}</div>
   )
-  const head = block.roots[0]
   return (
     <div className="org-manual-dept-card">
       {title}
-      {head ? <PersonCard node={head} /> : <div className="org-empty">Нет руководителя</div>}
-      <div className="org-manual-dept-count">
-        {block.roots.flatMap(flattenEmployeeTree).length} сотрудн.
-      </div>
     </div>
   )
 }
@@ -242,6 +377,10 @@ function edgePath(from: OrgChartLayoutNode, to: OrgChartLayoutNode): string {
   return `M ${startX} ${startY} V ${middleY} H ${endX} V ${endY}`
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
 export default function ManualOrgChartView({
   organizationHead,
   departments,
@@ -251,6 +390,7 @@ export default function ManualOrgChartView({
   onDepartmentClick,
 }: ManualOrgChartViewProps) {
   const canvasRef = useRef<HTMLDivElement>(null)
+  const dragMovedRef = useRef(false)
   const items = useMemo(
     () => buildChartItems(organizationHead, departments, standaloneRoots),
     [organizationHead, departments, standaloneRoots],
@@ -282,14 +422,38 @@ export default function ManualOrgChartView({
   const canvasWidth = Math.max(1200, ...layout.nodes.map((node) => node.x + node.width + 80), 0)
   const canvasHeight = Math.max(600, ...layout.nodes.map((node) => node.y + node.height + 80), 0)
 
-  const updateNodePosition = useCallback((nodeId: string, x: number, y: number) => {
-    setLayout((current) => ({
-      ...current,
-      nodes: current.nodes.map((node) => node.id === nodeId ? { ...node, x, y } : node),
-    }))
+  const moveNode = useCallback((nodeId: string, nextX: number, nextY: number) => {
+    setLayout((current) => {
+      const currentNode = current.nodes.find((node) => node.id === nodeId)
+      if (!currentNode) return current
+      const parentNode = currentNode.parentNodeId
+        ? current.nodes.find((node) => node.id === currentNode.parentNodeId)
+        : null
+      const x = parentNode
+        ? clamp(nextX, parentNode.x + DEPARTMENT_PADDING, parentNode.x + parentNode.width - currentNode.width - DEPARTMENT_PADDING)
+        : Math.max(0, nextX)
+      const y = parentNode
+        ? clamp(nextY, parentNode.y + DEPARTMENT_TITLE_HEIGHT, parentNode.y + parentNode.height - currentNode.height - DEPARTMENT_PADDING)
+        : Math.max(0, nextY)
+      const dx = x - currentNode.x
+      const dy = y - currentNode.y
+      return {
+        ...current,
+        nodes: current.nodes.map((node) => {
+          if (node.id === nodeId) {
+            return { ...node, x, y }
+          }
+          if (currentNode.kind === 'department' && node.parentNodeId === nodeId) {
+            return { ...node, x: node.x + dx, y: node.y + dy }
+          }
+          return node
+        }),
+      }
+    })
   }, [])
 
   const handleNodePointerDown = (event: ReactPointerEvent<HTMLDivElement>, node: OrgChartLayoutNode) => {
+    event.stopPropagation()
     if (!editing || event.button !== 0) return
     if ((event.target as Element).closest('button')) return
     event.preventDefault()
@@ -302,12 +466,16 @@ export default function ManualOrgChartView({
     const startY = event.clientY
     const initialX = node.x
     const initialY = node.y
+    dragMovedRef.current = false
 
     const onMove = (moveEvent: PointerEvent) => {
-      updateNodePosition(
+      if (Math.abs(moveEvent.clientX - startX) > 3 || Math.abs(moveEvent.clientY - startY) > 3) {
+        dragMovedRef.current = true
+      }
+      moveNode(
         node.id,
-        Math.max(0, initialX + (moveEvent.clientX - startX) / scale),
-        Math.max(0, initialY + (moveEvent.clientY - startY) / scale),
+        initialX + (moveEvent.clientX - startX) / scale,
+        initialY + (moveEvent.clientY - startY) / scale,
       )
     }
     const onUp = () => {
@@ -319,8 +487,13 @@ export default function ManualOrgChartView({
     window.addEventListener('pointerup', onUp)
   }
 
-  const handleNodeClick = (nodeId: string) => {
+  const handleNodeClick = (event: ReactMouseEvent<HTMLDivElement>, nodeId: string) => {
     if (!editing) return
+    event.stopPropagation()
+    if (dragMovedRef.current) {
+      dragMovedRef.current = false
+      return
+    }
     setSelectedEdgeId(null)
     if (!connectFrom) {
       setConnectFrom(nodeId)
@@ -371,7 +544,7 @@ export default function ManualOrgChartView({
   return (
     <div className="org-manual-chart-wrap">
       {canManage ? (
-        <div className="org-manual-toolbar">
+        <div className="org-manual-toolbar" onPointerDown={(event) => event.stopPropagation()}>
           <button type="button" className="btn-ghost" onClick={() => setEditing((value) => !value)}>
             {editing ? 'Просмотр' : 'Редактировать схему'}
           </button>
@@ -399,7 +572,12 @@ export default function ManualOrgChartView({
         className={`org-manual-chart${editing ? ' org-manual-chart-editing' : ''}`}
         style={{ width: canvasWidth, height: canvasHeight }}
       >
-        <svg className="org-manual-lines" width={canvasWidth} height={canvasHeight}>
+        <svg
+          className="org-manual-lines"
+          width={canvasWidth}
+          height={canvasHeight}
+          onPointerDown={(event) => editing && event.stopPropagation()}
+        >
           {layout.edges.map((edge) => {
             const from = nodeById.get(edge.fromNodeId)
             const to = nodeById.get(edge.toNodeId)
@@ -409,7 +587,11 @@ export default function ManualOrgChartView({
                 key={edge.id}
                 d={edgePath(from, to)}
                 className={`org-manual-line${selectedEdgeId === edge.id ? ' org-manual-line-selected' : ''}`}
-                onClick={() => editing && setSelectedEdgeId(edge.id)}
+                onClick={(event) => {
+                  if (!editing) return
+                  event.stopPropagation()
+                  setSelectedEdgeId(edge.id)
+                }}
               />
             )
           })}
@@ -421,15 +603,15 @@ export default function ManualOrgChartView({
           return (
             <div
               key={node.id}
-              className={`org-manual-node${editing ? ' org-manual-node-editing' : ''}${isConnecting ? ' org-manual-node-connecting' : ''}`}
-              style={{ left: node.x, top: node.y, width: node.width }}
+              className={`org-manual-node org-manual-node-${node.kind}${editing ? ' org-manual-node-editing' : ''}${isConnecting ? ' org-manual-node-connecting' : ''}`}
+              style={{ left: node.x, top: node.y, width: node.width, height: node.height }}
               onPointerDown={(event) => handleNodePointerDown(event, node)}
-              onClick={() => handleNodeClick(node.id)}
+              onClick={(event) => handleNodeClick(event, node.id)}
             >
               {item.kind === 'department' ? (
-                <DepartmentCard block={item.block} onDepartmentClick={onDepartmentClick} />
+                <DepartmentCard block={item.block} onDepartmentClick={editing ? undefined : onDepartmentClick} />
               ) : (
-                <PersonCard node={item.node} onEmployeeClick={onEmployeeClick} />
+                <PersonCard node={item.node} onEmployeeClick={editing ? undefined : onEmployeeClick} />
               )}
             </div>
           )

@@ -42,6 +42,7 @@ class OrgChartLayoutNodeOut(BaseModel):
     id: str
     kind: Literal["employee", "department"]
     refId: int
+    parentNodeId: str | None = None
     x: float
     y: float
     width: float = 180
