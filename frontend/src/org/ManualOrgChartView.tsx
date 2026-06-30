@@ -59,6 +59,7 @@ const MIN_DEPARTMENT_WIDTH = DEPARTMENT_PADDING * 2 + EMPLOYEE_NODE_WIDTH
 const MIN_DEPARTMENT_HEIGHT = DEPARTMENT_TITLE_HEIGHT + DEPARTMENT_PADDING * 2 + EMPLOYEE_NODE_HEIGHT
 
 type Point = { x: number; y: number }
+type EdgeAnchor = 'top' | 'bottom'
 
 function employeeNodeId(employeeId: number): string {
   return `employee:${employeeId}`
@@ -74,6 +75,10 @@ function departmentNodeId(departmentId: number): string {
 
 function edgeId(fromNodeId: string, toNodeId: string): string {
   return `${fromNodeId}->${toNodeId}`
+}
+
+function anchoredEdgeId(fromNodeId: string, toNodeId: string, fromAnchor: EdgeAnchor, toAnchor: EdgeAnchor): string {
+  return `${fromNodeId}:${fromAnchor}->${toNodeId}:${toAnchor}`
 }
 
 function flattenEmployeeTree(root: OrgChartNode): OrgChartNode[] {
@@ -263,8 +268,12 @@ function reconcileLayout(saved: OrgChartLayoutData | null, items: ChartItem[]): 
     const item = itemById.get(generatedNode.id)
     const savedNode = savedById.get(generatedNode.id)
     if (!item) return generatedNode
-    const width = item.kind === 'department' ? DEPARTMENT_NODE_WIDTH : EMPLOYEE_NODE_WIDTH
-    const height = item.kind === 'department' ? departmentHeight(item.block) : EMPLOYEE_NODE_HEIGHT
+    const width = item.kind === 'department'
+      ? Math.max(MIN_DEPARTMENT_WIDTH, savedNode?.width ?? DEPARTMENT_NODE_WIDTH)
+      : EMPLOYEE_NODE_WIDTH
+    const height = item.kind === 'department'
+      ? Math.max(MIN_DEPARTMENT_HEIGHT, savedNode?.height ?? departmentHeight(item.block))
+      : EMPLOYEE_NODE_HEIGHT
     if (!savedNode) {
       if (generatedNode.parentNodeId) {
         const savedParent = savedById.get(generatedNode.parentNodeId)
@@ -359,20 +368,25 @@ function DepartmentCard({
   )
 }
 
+function anchorPoint(node: OrgChartLayoutNode, anchor: EdgeAnchor = 'bottom'): Point {
+  return {
+    x: node.x + node.width / 2,
+    y: anchor === 'top' ? node.y : node.y + node.height,
+  }
+}
+
 function edgePath(edge: OrgChartLayoutEdge, from: OrgChartLayoutNode, to: OrgChartLayoutNode): string {
-  const startX = from.x + from.width / 2
-  const startY = from.y + from.height
-  const endX = to.x + to.width / 2
-  const endY = to.y
+  const start = anchorPoint(from, edge.fromAnchor ?? 'bottom')
+  const end = anchorPoint(to, edge.toAnchor ?? 'top')
   if (edge.points?.length) {
     return [
-      `M ${startX} ${startY}`,
+      `M ${start.x} ${start.y}`,
       ...edge.points.map((point) => `L ${point.x} ${point.y}`),
-      `L ${endX} ${endY}`,
+      `L ${end.x} ${end.y}`,
     ].join(' ')
   }
-  const middleY = startY + Math.max(24, (endY - startY) / 2)
-  return `M ${startX} ${startY} V ${middleY} H ${endX} V ${endY}`
+  const middleY = start.y + (end.y - start.y) / 2
+  return `M ${start.x} ${start.y} V ${middleY} H ${end.x} V ${end.y}`
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -398,7 +412,11 @@ export default function ManualOrgChartView({
   const [layout, setLayout] = useState<OrgChartLayoutData>(() => defaultLayout(items))
   const [editing, setEditing] = useState(false)
   const [connectFrom, setConnectFrom] = useState<string | null>(null)
-  const [dragConnection, setDragConnection] = useState<{ fromNodeId: string; point: Point } | null>(null)
+  const [dragConnection, setDragConnection] = useState<{
+    fromNodeId: string
+    fromAnchor: EdgeAnchor
+    point: Point
+  } | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
 
@@ -572,29 +590,46 @@ export default function ManualOrgChartView({
       setConnectFrom(null)
       return
     }
-    const id = edgeId(connectFrom, nodeId)
+    const id = anchoredEdgeId(connectFrom, nodeId, 'bottom', 'top')
     setLayout((current) => ({
       ...current,
       edges: current.edges.some((edge) => edge.id === id)
         ? current.edges
-        : [...current.edges, { id, fromNodeId: connectFrom, toNodeId: nodeId }],
+        : [...current.edges, {
+            id,
+            fromNodeId: connectFrom,
+            toNodeId: nodeId,
+            fromAnchor: 'bottom',
+            toAnchor: 'top',
+            manual: true,
+            points: [],
+          }],
     }))
     setConnectFrom(null)
   }
 
-  const createEdge = useCallback((fromNodeId: string, toNodeId: string) => {
+  const createEdge = useCallback((
+    fromNodeId: string,
+    toNodeId: string,
+    fromAnchor: EdgeAnchor,
+    toAnchor: EdgeAnchor,
+  ) => {
     if (fromNodeId === toNodeId) return
-    const id = edgeId(fromNodeId, toNodeId)
+    const id = anchoredEdgeId(fromNodeId, toNodeId, fromAnchor, toAnchor)
     setLayout((current) => ({
       ...current,
       edges: current.edges.some((edge) => edge.id === id)
         ? current.edges
-        : [...current.edges, { id, fromNodeId, toNodeId, manual: true, points: [] }],
+        : [...current.edges, { id, fromNodeId, toNodeId, fromAnchor, toAnchor, manual: true, points: [] }],
     }))
     setSelectedEdgeId(id)
   }, [])
 
-  const handleConnectorPointerDown = (event: ReactPointerEvent<HTMLButtonElement>, fromNodeId: string) => {
+  const handleConnectorPointerDown = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    fromNodeId: string,
+    fromAnchor: EdgeAnchor,
+  ) => {
     event.stopPropagation()
     if (!editing) return
     event.preventDefault()
@@ -602,12 +637,12 @@ export default function ManualOrgChartView({
     element.setPointerCapture(event.pointerId)
     const initialPoint = eventToCanvasPoint(event)
     if (!initialPoint) return
-    setDragConnection({ fromNodeId, point: initialPoint })
+    setDragConnection({ fromNodeId, fromAnchor, point: initialPoint })
 
     const onMove = (moveEvent: PointerEvent) => {
       const point = eventToCanvasPoint(moveEvent)
       if (point) {
-        setDragConnection({ fromNodeId, point })
+        setDragConnection({ fromNodeId, fromAnchor, point })
       }
     }
     const onUp = (upEvent: PointerEvent) => {
@@ -618,8 +653,12 @@ export default function ManualOrgChartView({
         .elementFromPoint(upEvent.clientX, upEvent.clientY)
         ?.closest<HTMLElement>('[data-node-id]')
       const toNodeId = target?.dataset.nodeId
+      const toAnchor = (target?.dataset.anchor as EdgeAnchor | undefined)
+        ?? (target && upEvent.clientY < target.getBoundingClientRect().top + target.getBoundingClientRect().height / 2
+          ? 'top'
+          : 'bottom')
       if (toNodeId) {
-        createEdge(fromNodeId, toNodeId)
+        createEdge(fromNodeId, toNodeId, fromAnchor, toAnchor)
       }
       setDragConnection(null)
     }
@@ -788,12 +827,11 @@ export default function ManualOrgChartView({
           {dragConnection ? (() => {
             const from = nodeById.get(dragConnection.fromNodeId)
             if (!from) return null
-            const startX = from.x + from.width / 2
-            const startY = from.y + from.height
+            const start = anchorPoint(from, dragConnection.fromAnchor)
             return (
               <path
                 className="org-manual-line org-manual-line-preview"
-                d={`M ${startX} ${startY} L ${dragConnection.point.x} ${dragConnection.point.y}`}
+                d={`M ${start.x} ${start.y} L ${dragConnection.point.x} ${dragConnection.point.y}`}
               />
             )
           })() : null}
@@ -830,9 +868,20 @@ export default function ManualOrgChartView({
                     <>
                       <button
                         type="button"
-                        className="org-manual-connector-handle"
-                        aria-label="Протянуть линию от отдела"
-                        onPointerDown={(event) => handleConnectorPointerDown(event, node.id)}
+                        className="org-manual-connector-handle org-manual-connector-handle-top"
+                        aria-label="Протянуть линию от верхней точки отдела"
+                        data-node-id={node.id}
+                        data-anchor="top"
+                        onPointerDown={(event) => handleConnectorPointerDown(event, node.id, 'top')}
+                        onClick={(event) => event.stopPropagation()}
+                      />
+                      <button
+                        type="button"
+                        className="org-manual-connector-handle org-manual-connector-handle-bottom"
+                        aria-label="Протянуть линию от нижней точки отдела"
+                        data-node-id={node.id}
+                        data-anchor="bottom"
+                        onPointerDown={(event) => handleConnectorPointerDown(event, node.id, 'bottom')}
                         onClick={(event) => event.stopPropagation()}
                       />
                       <button
@@ -851,9 +900,20 @@ export default function ManualOrgChartView({
                   {editing ? (
                     <button
                       type="button"
-                      className="org-manual-connector-handle"
-                      aria-label="Протянуть линию от сотрудника"
-                      onPointerDown={(event) => handleConnectorPointerDown(event, node.id)}
+                      className="org-manual-connector-handle org-manual-connector-handle-top"
+                      aria-label="Протянуть линию от верхней точки сотрудника"
+                      data-node-id={node.id}
+                      data-anchor="top"
+                      onPointerDown={(event) => handleConnectorPointerDown(event, node.id, 'top')}
+                      onClick={(event) => event.stopPropagation()}
+                    />
+                    <button
+                      type="button"
+                      className="org-manual-connector-handle org-manual-connector-handle-bottom"
+                      aria-label="Протянуть линию от нижней точки сотрудника"
+                      data-node-id={node.id}
+                      data-anchor="bottom"
+                      onPointerDown={(event) => handleConnectorPointerDown(event, node.id, 'bottom')}
                       onClick={(event) => event.stopPropagation()}
                     />
                   ) : null}

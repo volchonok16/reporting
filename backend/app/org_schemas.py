@@ -53,6 +53,8 @@ class OrgChartLayoutEdgeOut(BaseModel):
     id: str
     fromNodeId: str
     toNodeId: str
+    fromAnchor: Literal["top", "bottom"] = "bottom"
+    toAnchor: Literal["top", "bottom"] = "top"
     manual: bool = False
     points: list[dict[str, float]] = Field(default_factory=list)
 

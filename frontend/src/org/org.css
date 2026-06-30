@@ -912,7 +912,6 @@
 .org-manual-connector-handle {
   position: absolute;
   left: 50%;
-  bottom: -11px;
   transform: translateX(-50%);
   width: 18px;
   height: 18px;
@@ -924,9 +923,12 @@
   z-index: 6;
 }
 
-.org-manual-node-department > .org-manual-connector-handle {
-  top: 38px;
-  bottom: auto;
+.org-manual-connector-handle-top {
+  top: -11px;
+}
+
+.org-manual-connector-handle-bottom {
+  bottom: -11px;
 }
 
 .org-manual-dept-title {

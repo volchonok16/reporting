@@ -46,6 +46,8 @@ export type OrgChartLayoutEdge = {
   id: string
   fromNodeId: string
   toNodeId: string
+  fromAnchor?: 'top' | 'bottom'
+  toAnchor?: 'top' | 'bottom'
   manual?: boolean
   points?: Array<{ x: number; y: number }>
 }
