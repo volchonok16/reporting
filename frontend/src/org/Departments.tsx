@@ -141,6 +141,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const [showDepartmentModal, setShowDepartmentModal] = useState(false)
   const [showMemberModal, setShowMemberModal] = useState(false)
   const [cardEmployeeId, setCardEmployeeId] = useState<number | null>(null)
+  const [cardDepartmentId, setCardDepartmentId] = useState<number | null>(null)
   const [expertiseDirectionId, setExpertiseDirectionId] = useState('')
   const [expertiseLevel, setExpertiseLevel] = useState('')
   const [employeeDepartmentIds, setEmployeeDepartmentIds] = useState<number[]>([])
@@ -157,12 +158,18 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
 
   const openEmployeeCard = (employeeId: number) => setCardEmployeeId(employeeId)
   const closeEmployeeCard = () => setCardEmployeeId(null)
+  const openDepartmentCard = (departmentId: number) => setCardDepartmentId(departmentId)
+  const closeDepartmentCard = () => setCardDepartmentId(null)
 
   const isAllCompanyView = selectedDepartmentId === null && userPickedAllCompany.current
 
   const selectedDepartment = useMemo(
     () => departments.find((d) => d.id === selectedDepartmentId) ?? null,
     [departments, selectedDepartmentId],
+  )
+  const cardDepartment = useMemo(
+    () => departments.find((dept) => dept.id === cardDepartmentId) ?? null,
+    [departments, cardDepartmentId],
   )
 
   const positionNames = useMemo(() => positions.map((p) => p.name), [positions])
@@ -172,6 +179,18 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
     for (const emp of employees) map.set(emp.id, emp)
     return map
   }, [employees])
+  const cardDepartmentEmployees = useMemo(() => {
+    if (cardDepartmentId === null) return []
+    return employees
+      .filter((employee) =>
+        employee.departments.some((department) => department.departmentId === cardDepartmentId),
+      )
+      .sort((a, b) => a.fullName.localeCompare(b.fullName, 'ru'))
+  }, [employees, cardDepartmentId])
+  const cardDepartmentHead = useMemo(() => {
+    if (!cardDepartment?.headEmployeeId) return null
+    return employeeById.get(cardDepartment.headEmployeeId) ?? null
+  }, [cardDepartment, employeeById])
 
   const editingEmployee = useMemo(
     () => (editingEmployeeId ? employeeById.get(editingEmployeeId) ?? null : null),
@@ -762,13 +781,16 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                 departments={orgChart?.departments ?? []}
                 standaloneRoots={orgChart?.standaloneRoots ?? []}
                 onEmployeeClick={openEmployeeCard}
+                onDepartmentClick={openDepartmentCard}
               />
             ) : (
               <OrgChartView
                 roots={orgChart?.departmentTree ?? []}
                 departmentName={selectedDepartment?.name}
+                departmentId={selectedDepartmentId}
                 framed
                 onEmployeeClick={openEmployeeCard}
+                onDepartmentClick={openDepartmentCard}
               />
             )}
           </OrgChartCanvas>
@@ -1426,6 +1448,81 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
             openEditEmployee(employee)
           }}
         />
+      ) : null}
+
+      {cardDepartment !== null ? (
+        <div className="org-modal-backdrop" onClick={closeDepartmentCard}>
+          <div className="org-modal org-department-card-modal" onClick={(e) => e.stopPropagation()}>
+            <header className="org-modal-header">
+              <h3>{cardDepartment.name}</h3>
+              <button type="button" className="btn-ghost" onClick={closeDepartmentCard} aria-label="Закрыть">
+                ✕
+              </button>
+            </header>
+            <div className="org-department-card-grid">
+              <section className="org-department-card-section">
+                <h4>Описание</h4>
+                <p className="org-hint">
+                  {cardDepartment.description?.trim() ? cardDepartment.description : 'Описание не заполнено.'}
+                </p>
+              </section>
+
+              <section className="org-department-card-section">
+                <h4>Руководитель</h4>
+                {cardDepartmentHead ? (
+                  <button
+                    type="button"
+                    className="org-department-card-person"
+                    onClick={() => {
+                      closeDepartmentCard()
+                      openEmployeeCard(cardDepartmentHead.id)
+                    }}
+                  >
+                    <OrgPhoto
+                      url={cardDepartmentHead.photoUrl}
+                      name={cardDepartmentHead.fullName}
+                      className="org-table-avatar-img"
+                      placeholderClassName="org-table-avatar"
+                    />
+                    <span>{cardDepartmentHead.fullName}</span>
+                  </button>
+                ) : (
+                  <p className="org-hint">{cardDepartment.headEmployeeName ?? 'Не назначен.'}</p>
+                )}
+              </section>
+
+              <section className="org-department-card-section">
+                <h4>Сотрудники ({cardDepartmentEmployees.length})</h4>
+                {cardDepartmentEmployees.length > 0 ? (
+                  <ul className="org-department-card-members">
+                    {cardDepartmentEmployees.map((employee) => (
+                      <li key={employee.id}>
+                        <button
+                          type="button"
+                          className="org-department-card-person"
+                          onClick={() => {
+                            closeDepartmentCard()
+                            openEmployeeCard(employee.id)
+                          }}
+                        >
+                          <OrgPhoto
+                            url={employee.photoUrl}
+                            name={employee.fullName}
+                            className="org-table-avatar-img"
+                            placeholderClassName="org-table-avatar"
+                          />
+                          <span>{employee.fullName}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="org-hint">Нет сотрудников в этом отделе.</p>
+                )}
+              </section>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   )

@@ -200,18 +200,6 @@ export default function OfficePresence() {
             ))}
           </div>
         </div>
-        <div className="org-vacation-toolbar-right">
-          <label className="org-vacation-focus-date">
-            <span>Дата</span>
-            <input
-              type="date"
-              value={selectedDayKey}
-              min={`${year}-01-01`}
-              max={`${year}-12-31`}
-              onChange={(event) => setSelectedDayKey(event.target.value)}
-            />
-          </label>
-        </div>
       </div>
 
       <div className="org-vacation-legend">
@@ -261,6 +249,7 @@ export default function OfficePresence() {
                           key === selectedDayKey ? ' org-vacation-day-selected' : ''
                         }`}
                         title={key}
+                        onClick={() => setSelectedDayKey(key)}
                       >
                         {day.getDate()}
                       </th>

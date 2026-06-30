@@ -221,16 +221,6 @@ export default function VacationSchedule({
           </div>
         </div>
         <div className="org-vacation-toolbar-right">
-          <label className="org-vacation-focus-date">
-            <span>Дата</span>
-            <input
-              type="date"
-              value={selectedDayKey}
-              min={`${year}-01-01`}
-              max={`${year}-12-31`}
-              onChange={(event) => setSelectedDayKey(event.target.value)}
-            />
-          </label>
           {hasEditableRows ? (
             <button
               type="button"
@@ -325,6 +315,7 @@ export default function VacationSchedule({
                           key === selectedDayKey ? ' org-vacation-day-selected' : ''
                         }`}
                         title={key}
+                        onClick={() => setSelectedDayKey(key)}
                       >
                         {day.getDate()}
                       </th>
