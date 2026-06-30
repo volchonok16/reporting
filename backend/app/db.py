@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from pathlib import Path
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -34,6 +35,16 @@ def ensure_auth_session_table() -> None:
                 """
             )
         )
+        conn.commit()
+
+
+def ensure_org_tables() -> None:
+    migration_path = Path(__file__).resolve().parents[2] / "db" / "migrations" / "005_org_structure.sql"
+    if not migration_path.is_file():
+        return
+    sql = migration_path.read_text(encoding="utf-8")
+    with engine.connect() as conn:
+        conn.execute(text(sql))
         conn.commit()
 
 

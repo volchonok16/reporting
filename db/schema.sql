@@ -301,6 +301,104 @@ CREATE TABLE auth_session (
 COMMENT ON TABLE auth_session IS 'Серверные сессии TFS: PAT и параметры подключения';
 
 -- -----------------------------------------------------------------------------
+-- Организационная структура (отделы, сотрудники)
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE org_user (
+    id              BIGSERIAL PRIMARY KEY,
+    email           VARCHAR(255) NOT NULL UNIQUE,
+    password_hash   TEXT         NOT NULL,
+    role            SMALLINT     NOT NULL DEFAULT 10,
+    status          SMALLINT     NOT NULL DEFAULT 10,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE job_position (
+    id              BIGSERIAL PRIMARY KEY,
+    name            VARCHAR(255) NOT NULL UNIQUE,
+    sort_order      INT          NOT NULL DEFAULT 0,
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE team_role (
+    id              BIGSERIAL PRIMARY KEY,
+    name            VARCHAR(255) NOT NULL,
+    sort_order      INT          NOT NULL DEFAULT 0,
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE expertise_direction (
+    id              BIGSERIAL PRIMARY KEY,
+    name            VARCHAR(255) NOT NULL,
+    description     TEXT,
+    sort_order      INT          NOT NULL DEFAULT 0,
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE employee (
+    id                      BIGSERIAL PRIMARY KEY,
+    user_id                 BIGINT       REFERENCES org_user(id) ON DELETE SET NULL,
+    full_name               VARCHAR(255) NOT NULL,
+    email                   VARCHAR(255),
+    position_id             BIGINT       REFERENCES job_position(id) ON DELETE SET NULL,
+    position                VARCHAR(255),
+    manager_id              BIGINT       REFERENCES employee(id) ON DELETE SET NULL,
+    photo_path              VARCHAR(512),
+    daily_work_hours        NUMERIC(4, 2) NOT NULL DEFAULT 8,
+    is_active               BOOLEAN      NOT NULL DEFAULT TRUE,
+    is_organization_head    BOOLEAN      NOT NULL DEFAULT FALSE,
+    created_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE employee_expertise (
+    id                      BIGSERIAL PRIMARY KEY,
+    employee_id             BIGINT NOT NULL REFERENCES employee(id) ON DELETE CASCADE,
+    expertise_direction_id  BIGINT NOT NULL REFERENCES expertise_direction(id) ON DELETE CASCADE,
+    level                   VARCHAR(64),
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (employee_id, expertise_direction_id)
+);
+
+CREATE TABLE department (
+    id                  BIGSERIAL PRIMARY KEY,
+    name                VARCHAR(255) NOT NULL,
+    description         TEXT,
+    head_employee_id    BIGINT REFERENCES employee(id) ON DELETE SET NULL,
+    sort_order          INT NOT NULL DEFAULT 0,
+    is_active           BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE department_member (
+    id              BIGSERIAL PRIMARY KEY,
+    department_id   BIGINT NOT NULL REFERENCES department(id) ON DELETE CASCADE,
+    employee_id     BIGINT NOT NULL REFERENCES employee(id) ON DELETE CASCADE,
+    team_role_id    BIGINT REFERENCES team_role(id) ON DELETE SET NULL,
+    position        VARCHAR(255),
+    manager_id      BIGINT REFERENCES employee(id) ON DELETE SET NULL,
+    email           VARCHAR(255),
+    sort_order      INT NOT NULL DEFAULT 0,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (department_id, employee_id)
+);
+
+COMMENT ON TABLE org_user IS 'Учётные записи сотрудников';
+COMMENT ON TABLE employee IS 'Сотрудники организации';
+COMMENT ON TABLE department IS 'Отделы';
+COMMENT ON TABLE department_member IS 'Состав отдела';
+
+-- -----------------------------------------------------------------------------
 -- Синхронизация (аудит ETL)
 -- -----------------------------------------------------------------------------
 

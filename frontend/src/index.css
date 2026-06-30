@@ -162,6 +162,10 @@ body {
   padding: 10px var(--page-gutter) 0;
 }
 
+.workbook-profile-btn {
+  margin-left: auto;
+}
+
 .workbook-tab {
   padding: 9px 20px 10px;
   border: 1px solid transparent;

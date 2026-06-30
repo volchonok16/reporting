@@ -77,7 +77,7 @@
 | GET | `/api/sync/status` | Прогресс синхронизации |
 | GET | `/api/export/csv` | Экспорт ЗНИ + ошибки |
 
-## Таблицы (23) + представления (4)
+## Таблицы (31) + представления (4)
 
 ### Справочники и маппинг
 
@@ -90,6 +90,14 @@
 | `field_mapping` | Поле источника → поле `task` |
 | `team` | Канонические команды (коды досок из `boards.py`, напр. `digital_streams_b2b`, `b2b_product_core`, `be_t2_team`) |
 | `auth_session` | Сессии PAT для веб-приложения |
+| `org_user` | Учётные записи сотрудников (email/пароль) |
+| `job_position` | Справочник должностей |
+| `team_role` | Роли в составе отдела |
+| `expertise_direction` | Направления экспертизы |
+| `employee` | Сотрудники организации |
+| `employee_expertise` | Экспертиза сотрудника |
+| `department` | Отделы |
+| `department_member` | Состав отдела |
 | `person` | Человек |
 | `person_external` | ID пользователя в Jira/TFS/Trello |
 

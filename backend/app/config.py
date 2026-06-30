@@ -195,6 +195,11 @@ class Settings(BaseSettings):
         alias="OUTBOUND_HTTP_PROXY",
         description="HTTP(S)-прокси для запросов к Google Sheets (если с сервера нет прямого доступа).",
     )
+    org_uploads_dir: str = Field(
+        default="/app/uploads",
+        alias="ORG_UPLOADS_DIR",
+        description="Каталог загрузок фото сотрудников.",
+    )
 
     @computed_field
     @property

@@ -3,6 +3,8 @@ import { apiFetch, clearSessionId } from './api'
 import Dashboard from './Dashboard'
 import ProductStatusB2B from './ProductStatusB2B'
 import Roadmap from './Roadmap'
+import Departments from './org/Departments'
+import EmployeeProfile from './org/EmployeeProfile'
 import type { AppRole } from './App'
 import { loadActiveSheet, saveActiveSheet, type SheetId } from './uiState'
 
@@ -15,26 +17,36 @@ const SHEETS: SheetTab[] = [
   { id: 'zni', label: 'ЗНИ' },
   { id: 'product-status-b2b', label: 'Статус продукта B2B' },
   { id: 'roadmap', label: 'Планы' },
+  { id: 'departments', label: 'Отделы' },
 ]
 
 type WorkbookAppProps = {
   appRole: AppRole
   canSyncTfs: boolean
+  canManageOrg: boolean
   onLogout: () => void
 }
 
-export default function WorkbookApp({ appRole, canSyncTfs, onLogout }: WorkbookAppProps) {
+export default function WorkbookApp({
+  appRole,
+  canSyncTfs,
+  canManageOrg,
+  onLogout,
+}: WorkbookAppProps) {
   const visibleSheets =
-    appRole === 'roadmap' ? SHEETS.filter((sheet) => sheet.id === 'roadmap') : SHEETS
+    appRole === 'roadmap'
+      ? SHEETS.filter((sheet) => sheet.id === 'roadmap' || sheet.id === 'departments')
+      : SHEETS
   const [activeSheet, setActiveSheet] = useState<SheetId>(() =>
     appRole === 'roadmap' ? 'roadmap' : loadActiveSheet(),
   )
+  const [profileOpen, setProfileOpen] = useState(false)
 
   useEffect(() => {
-    if (appRole === 'roadmap') {
+    if (appRole === 'roadmap' && activeSheet !== 'roadmap' && activeSheet !== 'departments') {
       setActiveSheet('roadmap')
     }
-  }, [appRole])
+  }, [appRole, activeSheet])
 
   useEffect(() => {
     saveActiveSheet(activeSheet)
@@ -61,6 +73,13 @@ export default function WorkbookApp({ appRole, canSyncTfs, onLogout }: WorkbookA
               {sheet.label}
             </button>
           ))}
+          <button
+            type="button"
+            className="workbook-tab workbook-profile-btn"
+            onClick={() => setProfileOpen(true)}
+          >
+            Личный кабинет
+          </button>
         </nav>
       </header>
 
@@ -81,6 +100,15 @@ export default function WorkbookApp({ appRole, canSyncTfs, onLogout }: WorkbookA
               canEditBusinessValue={appRole === 'full'}
             />
           </div>
+        ) : activeSheet === 'departments' ? (
+          <div className="app">
+            <header className="workbook-page-toolbar">
+              <button type="button" className="btn-ghost" onClick={() => void handleLogout()}>
+                Выйти
+              </button>
+            </header>
+            <Departments canManage={canManageOrg} />
+          </div>
         ) : (
           <div className="app">
             <header className="workbook-page-toolbar">
@@ -92,6 +120,8 @@ export default function WorkbookApp({ appRole, canSyncTfs, onLogout }: WorkbookA
           </div>
         )}
       </div>
+
+      {profileOpen ? <EmployeeProfile onClose={() => setProfileOpen(false)} /> : null}
     </div>
   )
 }

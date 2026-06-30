@@ -11,7 +11,7 @@ from app.auth_service import login_with_app_user, login_with_pat
 from app.auth_sessions import delete_session, get_session, get_session_with_meta
 from app.boards import ALL_BOARDS_CODE, BOARDS, boards_for_sync
 from app.config import settings
-from app.db import ensure_auth_session_table, get_db
+from app.db import ensure_auth_session_table, ensure_org_tables, get_db
 from app.models import SyncRun
 from app.b2b_news_service import load_b2b_news
 from app.product_status_service import load_b2b_product_status
@@ -47,6 +47,7 @@ from app.schemas import (
 )
 from app.sync_service import run_sync
 from app.tfs_auth import TfsAuth, build_tfs_auth
+from app.org_routes import profile_router, router as org_router, users_router
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,12 @@ app.add_middleware(
 @app.on_event("startup")
 def startup() -> None:
     ensure_auth_session_table()
+    ensure_org_tables()
+
+
+app.include_router(org_router)
+app.include_router(profile_router)
+app.include_router(users_router)
 
 
 def require_pat(x_session_id: str | None = Header(default=None, alias="X-Session-Id")) -> str:
@@ -110,14 +117,24 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
         return TfsAuthStatusOut(authenticated=False)
     app_role = meta.get("app_role") or "full"
     can_sync_tfs = bool(auth.pat)
+    org_user_role = meta.get("org_user_role")
+    auth_mode = meta.get("auth_mode")
+    can_manage_org = (
+        auth_mode == "pat"
+        or (auth_mode == "app_user" and app_role == "full" and org_user_role is None)
+        or org_user_role == "admin"
+    )
+    org_user_id = int(meta["org_user_id"]) if meta.get("org_user_id") else None
     return TfsAuthStatusOut(
         authenticated=True,
         baseUrl=auth.base_url,
         project=auth.project,
-        authMode=meta.get("auth_mode"),
+        authMode=auth_mode,
         username=meta.get("app_login"),
         appRole=app_role,  # type: ignore[arg-type]
         canSyncTfs=can_sync_tfs,
+        canManageOrg=can_manage_org,
+        orgUserId=org_user_id,
     )
 
 

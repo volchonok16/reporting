@@ -1,6 +1,6 @@
 const STORAGE_KEY = 'reporting.uiState'
 
-export type SheetId = 'zni' | 'product-status-b2b' | 'roadmap'
+export type SheetId = 'zni' | 'product-status-b2b' | 'roadmap' | 'departments'
 
 export type RoadmapUiState = {
   year: number
@@ -47,7 +47,7 @@ function writeUiState(patch: UiState): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...patch }))
 }
 
-const WORKBOOK_SHEETS: SheetId[] = ['product-status-b2b', 'roadmap']
+const WORKBOOK_SHEETS: SheetId[] = ['product-status-b2b', 'roadmap', 'departments']
 
 export function loadActiveSheet(): SheetId {
   const sheet = readUiState().activeSheet as string | undefined

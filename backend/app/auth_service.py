@@ -5,7 +5,10 @@ from app.app_access import FULL_APP_ROLE, ROADMAP_APP_ROLE
 from app.app_users import verify_app_user
 from app.auth_sessions import create_session
 from app.config import settings
+from app.db import SessionLocal
 from app.http_auth import auth_attempts
+from app.org_models import ORG_USER_ROLE_ADMIN
+from app.org_service import find_org_user_by_email, verify_org_user_password
 from app.schemas import AuthLoginOut
 from app.tfs_auth import TfsAuth, build_tfs_auth
 from app.tfs_client import TfsClient
@@ -80,21 +83,32 @@ async def login_with_app_user(
     if not login or not password:
         raise HTTPException(status_code=400, detail="Укажите логин и пароль.")
 
-    roadmap_users = settings.app_auth_roadmap_users_map
-    users = settings.app_auth_users_map
-    if not users and not roadmap_users:
-        raise HTTPException(
-            status_code=500,
-            detail="Пользователи приложения не настроены (APP_AUTH_USERS / APP_AUTH_ROADMAP_USERS).",
-        )
-
+    org_user_id: int | None = None
+    org_user_role: str | None = None
     app_role = FULL_APP_ROLE
-    if verify_app_user(roadmap_users, login, password):
-        app_role = ROADMAP_APP_ROLE
-    elif verify_app_user(users, login, password):
-        app_role = FULL_APP_ROLE
-    else:
-        raise HTTPException(status_code=401, detail="Неверный логин или пароль.")
+    app_login = login
+
+    db = SessionLocal()
+    try:
+        org_user = find_org_user_by_email(db, login)
+        if org_user is not None:
+            if not verify_org_user_password(org_user, password):
+                raise HTTPException(status_code=401, detail="Неверный логин или пароль.")
+            org_user_id = org_user.id
+            org_user_role = "admin" if org_user.role == ORG_USER_ROLE_ADMIN else "user"
+            app_login = org_user.email
+            app_role = FULL_APP_ROLE
+        else:
+            roadmap_users = settings.app_auth_roadmap_users_map
+            users = settings.app_auth_users_map
+            if verify_app_user(roadmap_users, login, password):
+                app_role = ROADMAP_APP_ROLE
+            elif verify_app_user(users, login, password):
+                app_role = FULL_APP_ROLE
+            else:
+                raise HTTPException(status_code=401, detail="Неверный логин или пароль.")
+    finally:
+        db.close()
 
     sync_pat = settings.tfs_sync_pat.strip()
     if not sync_pat:
@@ -106,10 +120,17 @@ async def login_with_app_user(
         project_id=project_id,
         pat=sync_pat,
     )
-    session_id = create_session(auth, auth_mode="app_user", app_login=login, app_role=app_role)
+    session_id = create_session(
+        auth,
+        auth_mode="app_user",
+        app_login=app_login,
+        app_role=app_role,
+        org_user_id=org_user_id,
+        org_user_role=org_user_role,
+    )
     return AuthLoginOut(
         sessionId=session_id,
         authMode="app_user",
-        username=login,
+        username=app_login,
         appRole=app_role,
     )

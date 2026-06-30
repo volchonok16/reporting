@@ -34,6 +34,8 @@ class TfsAuthStatusOut(BaseModel):
     username: str | None = None
     appRole: Literal["full", "roadmap"] = "full"
     canSyncTfs: bool = False
+    canManageOrg: bool = False
+    orgUserId: int | None = None
 
 
 class BoardOut(BaseModel):

@@ -13,8 +13,10 @@ def _auth_to_payload(
     auth_mode: str = "pat",
     app_login: str | None = None,
     app_role: str = "full",
+    org_user_id: int | None = None,
+    org_user_role: str | None = None,
 ) -> dict:
-    return {
+    payload = {
         "base_url": auth.base_url,
         "project": auth.project,
         "project_id": auth.project_id,
@@ -25,6 +27,11 @@ def _auth_to_payload(
         "app_login": app_login,
         "app_role": app_role,
     }
+    if org_user_id is not None:
+        payload["org_user_id"] = org_user_id
+    if org_user_role is not None:
+        payload["org_user_role"] = org_user_role
+    return payload
 
 
 def _auth_from_payload(payload: dict) -> TfsAuth | None:
@@ -51,10 +58,14 @@ def _session_meta_from_payload(payload: dict) -> dict[str, str | None]:
     auth_mode = payload.get("auth_mode")
     app_login = payload.get("app_login")
     app_role = payload.get("app_role")
+    org_user_id = payload.get("org_user_id")
+    org_user_role = payload.get("org_user_role")
     return {
         "auth_mode": str(auth_mode) if auth_mode else None,
         "app_login": str(app_login) if app_login else None,
         "app_role": normalize_app_role(str(app_role) if app_role else None),
+        "org_user_id": str(org_user_id) if org_user_id is not None else None,
+        "org_user_role": str(org_user_role) if org_user_role else None,
     }
 
 
@@ -77,6 +88,8 @@ def create_session(
     auth_mode: str = "pat",
     app_login: str | None = None,
     app_role: str = "full",
+    org_user_id: int | None = None,
+    org_user_role: str | None = None,
 ) -> str:
     session_id = secrets.token_urlsafe(32)
     db = SessionLocal()
@@ -89,6 +102,8 @@ def create_session(
                     auth_mode=auth_mode,
                     app_login=app_login,
                     app_role=app_role,
+                    org_user_id=org_user_id,
+                    org_user_role=org_user_role,
                 ),
             )
         )
@@ -101,7 +116,13 @@ def create_session(
 def get_session_meta(session_id: str | None) -> dict[str, str | None]:
     payload = _load_session_payload(session_id)
     if payload is None:
-        return {"auth_mode": None, "app_login": None, "app_role": "full"}
+        return {
+            "auth_mode": None,
+            "app_login": None,
+            "app_role": "full",
+            "org_user_id": None,
+            "org_user_role": None,
+        }
     return _session_meta_from_payload(payload)
 
 
@@ -115,7 +136,13 @@ def get_session(session_id: str | None) -> TfsAuth | None:
 def get_session_with_meta(session_id: str | None) -> tuple[TfsAuth | None, dict[str, str | None]]:
     payload = _load_session_payload(session_id)
     if payload is None:
-        return None, {"auth_mode": None, "app_login": None, "app_role": "full"}
+        return None, {
+            "auth_mode": None,
+            "app_login": None,
+            "app_role": "full",
+            "org_user_id": None,
+            "org_user_role": None,
+        }
     return _auth_from_payload(payload), _session_meta_from_payload(payload)
 
 

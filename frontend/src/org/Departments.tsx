@@ -1,0 +1,926 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { deleteJson, getJson, patchJson, postJson, putJson } from '../api'
+import OrgChartView from './OrgChartView'
+import EmployeeCardModal from './EmployeeCardModal'
+import type {
+  Department,
+  DepartmentMember,
+  Employee,
+  EmployeeDetail,
+  JobPosition,
+  OrgChartData,
+  OrgPanel,
+  SelectOption,
+  TeamRole,
+} from './types'
+import './org.css'
+
+type DepartmentsProps = {
+  canManage: boolean
+}
+
+function EmployeeNameButton({
+  employeeId,
+  name,
+  onOpen,
+}: {
+  employeeId: number
+  name: string
+  onOpen: (employeeId: number) => void
+}) {
+  return (
+    <button type="button" className="org-employee-link" onClick={() => onOpen(employeeId)}>
+      {name}
+    </button>
+  )
+}
+
+const EMPTY_EMPLOYEE = {
+  fullName: '',
+  email: '',
+  positionId: '',
+  managerId: '',
+  dailyWorkHours: '8',
+  isActive: true,
+  isOrganizationHead: false,
+  createUserAccount: false,
+  userPassword: '',
+  userIsAdmin: false,
+}
+
+const EMPTY_DEPARTMENT = {
+  name: '',
+  description: '',
+  headEmployeeId: '',
+  sortOrder: '0',
+  isActive: true,
+}
+
+const EMPTY_MEMBER = {
+  employeeId: '',
+  teamRoleId: '',
+  position: '',
+  managerId: '',
+  email: '',
+  sortOrder: '0',
+}
+
+export default function Departments({ canManage }: DepartmentsProps) {
+  const [panel, setPanel] = useState<OrgPanel>('roster')
+  const [departments, setDepartments] = useState<Department[]>([])
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<number | null>(null)
+  const [members, setMembers] = useState<DepartmentMember[]>([])
+  const [employees, setEmployees] = useState<Employee[]>([])
+  const [positions, setPositions] = useState<JobPosition[]>([])
+  const [teamRoles, setTeamRoles] = useState<TeamRole[]>([])
+  const [employeeOptions, setEmployeeOptions] = useState<SelectOption[]>([])
+  const [orgChart, setOrgChart] = useState<OrgChartData | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const [employeeForm, setEmployeeForm] = useState({ ...EMPTY_EMPLOYEE })
+  const [editingEmployeeId, setEditingEmployeeId] = useState<number | null>(null)
+  const [departmentForm, setDepartmentForm] = useState({ ...EMPTY_DEPARTMENT })
+  const [editingDepartmentId, setEditingDepartmentId] = useState<number | null>(null)
+  const [memberForm, setMemberForm] = useState({ ...EMPTY_MEMBER })
+  const [editingMemberId, setEditingMemberId] = useState<number | null>(null)
+  const [showEmployeeModal, setShowEmployeeModal] = useState(false)
+  const [showDepartmentModal, setShowDepartmentModal] = useState(false)
+  const [showMemberModal, setShowMemberModal] = useState(false)
+  const [cardEmployeeId, setCardEmployeeId] = useState<number | null>(null)
+
+  const openEmployeeCard = (employeeId: number) => setCardEmployeeId(employeeId)
+  const closeEmployeeCard = () => setCardEmployeeId(null)
+
+  const selectedDepartment = useMemo(
+    () => departments.find((d) => d.id === selectedDepartmentId) ?? null,
+    [departments, selectedDepartmentId],
+  )
+
+  const positionNames = useMemo(() => positions.map((p) => p.name), [positions])
+
+  const loadBase = useCallback(async () => {
+    setError(null)
+    try {
+      const [deptData, empData, posData, roleData, optData] = await Promise.all([
+        getJson<Department[]>('/api/org/departments'),
+        getJson<Employee[]>('/api/org/employees'),
+        getJson<JobPosition[]>('/api/org/job-positions'),
+        getJson<TeamRole[]>('/api/org/team-roles'),
+        getJson<SelectOption[]>('/api/org/employee-options'),
+      ])
+      setDepartments(deptData)
+      setEmployees(empData)
+      setPositions(posData)
+      setTeamRoles(roleData)
+      setEmployeeOptions(optData)
+      if (deptData.length > 0 && selectedDepartmentId === null) {
+        setSelectedDepartmentId(deptData[0].id)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка загрузки')
+    }
+  }, [selectedDepartmentId])
+
+  const loadMembers = useCallback(async (departmentId: number) => {
+    const data = await getJson<DepartmentMember[]>(`/api/org/departments/${departmentId}/members`)
+    setMembers(data)
+  }, [])
+
+  const loadChart = useCallback(async (departmentId: number | null) => {
+    const query = departmentId ? `?department_id=${departmentId}` : ''
+    const data = await getJson<OrgChartData>(`/api/org/org-chart${query}`)
+    setOrgChart(data)
+  }, [])
+
+  useEffect(() => {
+    void loadBase()
+  }, [loadBase])
+
+  useEffect(() => {
+    if (selectedDepartmentId === null) return
+    if (panel === 'roster') {
+      void loadMembers(selectedDepartmentId).catch((err) =>
+        setError(err instanceof Error ? err.message : 'Ошибка'),
+      )
+    }
+    if (panel === 'pyramid') {
+      void loadChart(selectedDepartmentId).catch((err) =>
+        setError(err instanceof Error ? err.message : 'Ошибка'),
+      )
+    }
+  }, [panel, selectedDepartmentId, loadMembers, loadChart])
+
+  useEffect(() => {
+    if (panel === 'pyramid' && selectedDepartmentId === null) {
+      void loadChart(null).catch((err) => setError(err instanceof Error ? err.message : 'Ошибка'))
+    }
+  }, [panel, selectedDepartmentId, loadChart])
+
+  const refreshAll = async () => {
+    setLoading(true)
+    await loadBase()
+    if (selectedDepartmentId !== null) {
+      await loadMembers(selectedDepartmentId)
+      if (panel === 'pyramid') await loadChart(selectedDepartmentId)
+    }
+    setLoading(false)
+  }
+
+  const openCreateEmployee = () => {
+    setEditingEmployeeId(null)
+    setEmployeeForm({ ...EMPTY_EMPLOYEE })
+    setShowEmployeeModal(true)
+  }
+
+  const openEditEmployee = (emp: Employee) => {
+    setEditingEmployeeId(emp.id)
+    setEmployeeForm({
+      fullName: emp.fullName,
+      email: emp.email ?? '',
+      positionId: emp.positionId ? String(emp.positionId) : '',
+      managerId: emp.managerId ? String(emp.managerId) : '',
+      dailyWorkHours: String(emp.dailyWorkHours),
+      isActive: emp.isActive,
+      isOrganizationHead: emp.isOrganizationHead,
+      createUserAccount: false,
+      userPassword: '',
+      userIsAdmin: emp.user?.role === 'admin',
+    })
+    setShowEmployeeModal(true)
+  }
+
+  const saveEmployee = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!canManage) return
+    setError(null)
+    const body = {
+      fullName: employeeForm.fullName.trim(),
+      email: employeeForm.email.trim() || null,
+      positionId: employeeForm.positionId ? Number(employeeForm.positionId) : null,
+      managerId: employeeForm.managerId ? Number(employeeForm.managerId) : null,
+      dailyWorkHours: Number(employeeForm.dailyWorkHours),
+      isActive: employeeForm.isActive,
+      isOrganizationHead: employeeForm.isOrganizationHead,
+      createUserAccount: employeeForm.createUserAccount,
+      userPassword: employeeForm.userPassword || null,
+      userIsAdmin: employeeForm.userIsAdmin,
+    }
+    try {
+      if (editingEmployeeId) {
+        await patchJson(`/api/org/employees/${editingEmployeeId}`, {
+          fullName: body.fullName,
+          email: body.email,
+          positionId: body.positionId,
+          managerId: body.managerId,
+          dailyWorkHours: body.dailyWorkHours,
+          isActive: body.isActive,
+          isOrganizationHead: body.isOrganizationHead,
+          userIsAdmin: body.userIsAdmin,
+          userPassword: body.userPassword,
+        })
+      } else {
+        await postJson('/api/org/employees', body)
+      }
+      setShowEmployeeModal(false)
+      await refreshAll()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка сохранения сотрудника')
+    }
+  }
+
+  const removeEmployee = async (id: number) => {
+    if (!canManage || !window.confirm('Удалить сотрудника?')) return
+    try {
+      await deleteJson(`/api/org/employees/${id}`)
+      await refreshAll()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка удаления')
+    }
+  }
+
+  const openCreateDepartment = () => {
+    setEditingDepartmentId(null)
+    setDepartmentForm({ ...EMPTY_DEPARTMENT })
+    setShowDepartmentModal(true)
+  }
+
+  const openEditDepartment = (dept: Department) => {
+    setEditingDepartmentId(dept.id)
+    setDepartmentForm({
+      name: dept.name,
+      description: dept.description ?? '',
+      headEmployeeId: dept.headEmployeeId ? String(dept.headEmployeeId) : '',
+      sortOrder: String(dept.sortOrder),
+      isActive: dept.isActive,
+    })
+    setShowDepartmentModal(true)
+  }
+
+  const saveDepartment = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!canManage) return
+    const body = {
+      name: departmentForm.name.trim(),
+      description: departmentForm.description.trim() || null,
+      headEmployeeId: departmentForm.headEmployeeId ? Number(departmentForm.headEmployeeId) : null,
+      sortOrder: Number(departmentForm.sortOrder),
+      isActive: departmentForm.isActive,
+    }
+    try {
+      if (editingDepartmentId) {
+        await putJson(`/api/org/departments/${editingDepartmentId}`, body)
+      } else {
+        await postJson('/api/org/departments', body)
+      }
+      setShowDepartmentModal(false)
+      await refreshAll()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка сохранения отдела')
+    }
+  }
+
+  const removeDepartment = async (id: number) => {
+    if (!canManage || !window.confirm('Удалить отдел?')) return
+    try {
+      await deleteJson(`/api/org/departments/${id}`)
+      if (selectedDepartmentId === id) setSelectedDepartmentId(null)
+      await refreshAll()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка удаления')
+    }
+  }
+
+  const openCreateMember = () => {
+    setEditingMemberId(null)
+    setMemberForm({ ...EMPTY_MEMBER })
+    setShowMemberModal(true)
+  }
+
+  const openEditMember = (member: DepartmentMember) => {
+    setEditingMemberId(member.id)
+    setMemberForm({
+      employeeId: String(member.employeeId),
+      teamRoleId: member.teamRoleId ? String(member.teamRoleId) : '',
+      position: member.position ?? '',
+      managerId: member.managerId ? String(member.managerId) : '',
+      email: member.email ?? '',
+      sortOrder: String(member.sortOrder),
+    })
+    setShowMemberModal(true)
+  }
+
+  const saveMember = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!canManage || selectedDepartmentId === null) return
+    const body = {
+      employeeId: Number(memberForm.employeeId),
+      teamRoleId: memberForm.teamRoleId ? Number(memberForm.teamRoleId) : null,
+      position: memberForm.position.trim() || null,
+      managerId: memberForm.managerId ? Number(memberForm.managerId) : null,
+      email: memberForm.email.trim() || null,
+      sortOrder: Number(memberForm.sortOrder),
+    }
+    try {
+      if (editingMemberId) {
+        await patchJson(`/api/org/departments/${selectedDepartmentId}/members/${editingMemberId}`, body)
+      } else {
+        await postJson(`/api/org/departments/${selectedDepartmentId}/members`, body)
+      }
+      setShowMemberModal(false)
+      await loadMembers(selectedDepartmentId)
+      await loadBase()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка сохранения участника')
+    }
+  }
+
+  const removeMember = async (memberId: number) => {
+    if (!canManage || selectedDepartmentId === null || !window.confirm('Удалить из состава?')) return
+    try {
+      await deleteJson(`/api/org/departments/${selectedDepartmentId}/members/${memberId}`)
+      await loadMembers(selectedDepartmentId)
+      await loadBase()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка удаления')
+    }
+  }
+
+  const addPosition = async () => {
+    const name = window.prompt('Название должности')
+    if (!name?.trim() || !canManage) return
+    try {
+      await postJson('/api/org/job-positions', { name: name.trim() })
+      await loadBase()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка')
+    }
+  }
+
+  return (
+    <div className="org-page">
+      <div className="dept-hero">
+        <div className="dept-hero-content">
+          <div>
+            <h1 className="dept-hero-title">Отделы</h1>
+            <p className="dept-hero-subtitle">Состав, пирамида и справочник сотрудников</p>
+          </div>
+          <div className="dept-hero-actions">
+            <select
+              value={selectedDepartmentId ?? ''}
+              onChange={(e) => setSelectedDepartmentId(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">Вся компания</option>
+              {departments.map((dept) => (
+                <option key={dept.id} value={dept.id}>
+                  {dept.name}
+                </option>
+              ))}
+            </select>
+            {canManage ? (
+              <button type="button" className="btn-primary" onClick={() => openCreateDepartment()}>
+                + Отдел
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <nav className="org-subtabs" aria-label="Разделы отделов">
+        {(
+          [
+            ['roster', 'Состав'],
+            ['pyramid', 'Пирамида'],
+            ['employees', 'Сотрудники'],
+            ['manage', 'Управление'],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className={`org-subtab${panel === id ? ' org-subtab-active' : ''}`}
+            onClick={() => setPanel(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {error ? <p className="org-error">{error}</p> : null}
+      {loading ? <p>Обновление…</p> : null}
+
+      {panel === 'roster' ? (
+        <section className="org-panel">
+          <div className="org-panel-toolbar">
+            <h2>{selectedDepartment?.name ?? 'Выберите отдел'}</h2>
+            {canManage && selectedDepartmentId !== null ? (
+              <button type="button" className="btn-primary" onClick={openCreateMember}>
+                + Участник
+              </button>
+            ) : null}
+          </div>
+          {selectedDepartmentId === null ? (
+            <p className="org-hint">Выберите отдел для просмотра состава.</p>
+          ) : (
+            <table className="org-table">
+              <thead>
+                <tr>
+                  <th>ФИО</th>
+                  <th>Роль</th>
+                  <th>Должность</th>
+                  <th>Руководитель</th>
+                  <th>Email</th>
+                  {canManage ? <th /> : null}
+                </tr>
+              </thead>
+              <tbody>
+                {members.map((member) => (
+                  <tr key={member.id}>
+                    <td>
+                      <EmployeeNameButton
+                        employeeId={member.employeeId}
+                        name={member.employeeName}
+                        onOpen={openEmployeeCard}
+                      />
+                    </td>
+                    <td>{member.teamRoleName ?? '—'}</td>
+                    <td>{member.displayPosition ?? '—'}</td>
+                    <td>{member.managerName ?? '—'}</td>
+                    <td>{member.displayEmail ?? '—'}</td>
+                    {canManage ? (
+                      <td className="org-table-actions">
+                        <button type="button" className="btn-ghost" onClick={() => openEditMember(member)}>
+                          Изм.
+                        </button>
+                        <button type="button" className="btn-ghost" onClick={() => void removeMember(member.id)}>
+                          ✕
+                        </button>
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      ) : null}
+
+      {panel === 'pyramid' ? (
+        <section className="org-panel">
+          {selectedDepartmentId === null ? (
+            <>
+              {orgChart?.organizationHead ? (
+                <OrgChartView
+                  organizationHead={orgChart.organizationHead}
+                  roots={[]}
+                  onEmployeeClick={openEmployeeCard}
+                />
+              ) : null}
+              {orgChart?.departments?.map((block) => (
+                <div key={block.departmentId} className="org-dept-block">
+                  <OrgChartView
+                    roots={block.roots}
+                    departmentName={block.departmentName}
+                    onEmployeeClick={openEmployeeCard}
+                  />
+                </div>
+              )) ?? (
+                <OrgChartView roots={orgChart?.departmentTree ?? []} onEmployeeClick={openEmployeeCard} />
+              )}
+            </>
+          ) : (
+            <OrgChartView
+              roots={orgChart?.departmentTree ?? []}
+              departmentName={selectedDepartment?.name}
+              onEmployeeClick={openEmployeeCard}
+            />
+          )}
+        </section>
+      ) : null}
+
+      {panel === 'employees' ? (
+        <section className="org-panel">
+          <div className="org-panel-toolbar">
+            <h2>Сотрудники</h2>
+            {canManage ? (
+              <div className="org-panel-toolbar-actions">
+                <button type="button" className="btn-ghost" onClick={() => void addPosition()}>
+                  + Должность
+                </button>
+                <button type="button" className="btn-primary" onClick={openCreateEmployee}>
+                  + Сотрудник
+                </button>
+              </div>
+            ) : null}
+          </div>
+          <table className="org-table">
+            <thead>
+              <tr>
+                <th>ФИО</th>
+                <th>Должность</th>
+                <th>Email</th>
+                <th>Руководитель</th>
+                <th>Часы/день</th>
+                <th>Активен</th>
+                {canManage ? <th /> : null}
+              </tr>
+            </thead>
+            <tbody>
+              {employees.map((emp) => (
+                <tr key={emp.id}>
+                  <td>
+                    <EmployeeNameButton employeeId={emp.id} name={emp.fullName} onOpen={openEmployeeCard} />
+                  </td>
+                  <td>{emp.position ?? '—'}</td>
+                  <td>{emp.email ?? '—'}</td>
+                  <td>{emp.managerName ?? '—'}</td>
+                  <td>{emp.dailyWorkHours}</td>
+                  <td>{emp.isActive ? 'Да' : 'Нет'}</td>
+                  {canManage ? (
+                    <td className="org-table-actions">
+                      <button type="button" className="btn-ghost" onClick={() => openEditEmployee(emp)}>
+                        Изм.
+                      </button>
+                      <button type="button" className="btn-ghost" onClick={() => void removeEmployee(emp.id)}>
+                        ✕
+                      </button>
+                    </td>
+                  ) : null}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      ) : null}
+
+      {panel === 'manage' ? (
+        <section className="org-panel">
+          <div className="org-panel-toolbar">
+            <h2>Отделы</h2>
+            {canManage ? (
+              <button type="button" className="btn-primary" onClick={openCreateDepartment}>
+                + Отдел
+              </button>
+            ) : null}
+          </div>
+          <table className="org-table">
+            <thead>
+              <tr>
+                <th>Название</th>
+                <th>Руководитель</th>
+                <th>Участников</th>
+                <th>Порядок</th>
+                <th>Активен</th>
+                {canManage ? <th /> : null}
+              </tr>
+            </thead>
+            <tbody>
+              {departments.map((dept) => (
+                <tr key={dept.id}>
+                  <td>{dept.name}</td>
+                  <td>{dept.headEmployeeName ?? '—'}</td>
+                  <td>{dept.memberCount}</td>
+                  <td>{dept.sortOrder}</td>
+                  <td>{dept.isActive ? 'Да' : 'Нет'}</td>
+                  {canManage ? (
+                    <td className="org-table-actions">
+                      <button type="button" className="btn-ghost" onClick={() => openEditDepartment(dept)}>
+                        Изм.
+                      </button>
+                      <button type="button" className="btn-ghost" onClick={() => void removeDepartment(dept.id)}>
+                        ✕
+                      </button>
+                    </td>
+                  ) : null}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      ) : null}
+
+      {showEmployeeModal ? (
+        <div className="org-modal-backdrop" onClick={() => setShowEmployeeModal(false)}>
+          <div className="org-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{editingEmployeeId ? 'Редактирование сотрудника' : 'Новый сотрудник'}</h3>
+            <form className="org-form" onSubmit={(e) => void saveEmployee(e)}>
+              <label>
+                ФИО
+                <input
+                  value={employeeForm.fullName}
+                  onChange={(e) => setEmployeeForm({ ...employeeForm, fullName: e.target.value })}
+                  required
+                />
+              </label>
+              <label>
+                Email
+                <input
+                  type="email"
+                  value={employeeForm.email}
+                  onChange={(e) => setEmployeeForm({ ...employeeForm, email: e.target.value })}
+                />
+              </label>
+              <label>
+                Должность
+                <select
+                  value={employeeForm.positionId}
+                  onChange={(e) => setEmployeeForm({ ...employeeForm, positionId: e.target.value })}
+                >
+                  <option value="">— выберите —</option>
+                  {positions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Руководитель
+                <select
+                  value={employeeForm.managerId}
+                  onChange={(e) => setEmployeeForm({ ...employeeForm, managerId: e.target.value })}
+                >
+                  <option value="">— не назначен —</option>
+                  {employeeOptions
+                    .filter((o) => o.id !== editingEmployeeId)
+                    .map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label>
+                Рабочих часов в день
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  max="24"
+                  value={employeeForm.dailyWorkHours}
+                  onChange={(e) => setEmployeeForm({ ...employeeForm, dailyWorkHours: e.target.value })}
+                />
+              </label>
+              <label className="org-checkbox">
+                <input
+                  type="checkbox"
+                  checked={employeeForm.isActive}
+                  onChange={(e) => setEmployeeForm({ ...employeeForm, isActive: e.target.checked })}
+                />
+                Активен
+              </label>
+              <label className="org-checkbox">
+                <input
+                  type="checkbox"
+                  checked={employeeForm.isOrganizationHead}
+                  onChange={(e) =>
+                    setEmployeeForm({ ...employeeForm, isOrganizationHead: e.target.checked })
+                  }
+                />
+                Директор организации
+              </label>
+              {!editingEmployeeId ? (
+                <>
+                  <label className="org-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={employeeForm.createUserAccount}
+                      onChange={(e) =>
+                        setEmployeeForm({ ...employeeForm, createUserAccount: e.target.checked })
+                      }
+                    />
+                    Создать учётную запись для входа
+                  </label>
+                  {employeeForm.createUserAccount ? (
+                    <>
+                      <label>
+                        Пароль для входа
+                        <input
+                          type="password"
+                          value={employeeForm.userPassword}
+                          onChange={(e) =>
+                            setEmployeeForm({ ...employeeForm, userPassword: e.target.value })
+                          }
+                        />
+                      </label>
+                      <label className="org-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={employeeForm.userIsAdmin}
+                          onChange={(e) =>
+                            setEmployeeForm({ ...employeeForm, userIsAdmin: e.target.checked })
+                          }
+                        />
+                        Администратор
+                      </label>
+                    </>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <label className="org-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={employeeForm.userIsAdmin}
+                      onChange={(e) => setEmployeeForm({ ...employeeForm, userIsAdmin: e.target.checked })}
+                    />
+                    Администратор
+                  </label>
+                  <label>
+                    Новый пароль (необязательно)
+                    <input
+                      type="password"
+                      value={employeeForm.userPassword}
+                      onChange={(e) => setEmployeeForm({ ...employeeForm, userPassword: e.target.value })}
+                    />
+                  </label>
+                </>
+              )}
+              <div className="org-modal-actions">
+                <button type="submit" className="btn-primary">
+                  Сохранить
+                </button>
+                <button type="button" className="btn-ghost" onClick={() => setShowEmployeeModal(false)}>
+                  Отмена
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {showDepartmentModal ? (
+        <div className="org-modal-backdrop" onClick={() => setShowDepartmentModal(false)}>
+          <div className="org-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{editingDepartmentId ? 'Редактирование отдела' : 'Новый отдел'}</h3>
+            <form className="org-form" onSubmit={(e) => void saveDepartment(e)}>
+              <label>
+                Название
+                <input
+                  value={departmentForm.name}
+                  onChange={(e) => setDepartmentForm({ ...departmentForm, name: e.target.value })}
+                  required
+                />
+              </label>
+              <label>
+                Руководитель
+                <select
+                  value={departmentForm.headEmployeeId}
+                  onChange={(e) =>
+                    setDepartmentForm({ ...departmentForm, headEmployeeId: e.target.value })
+                  }
+                >
+                  <option value="">— не назначен —</option>
+                  {employeeOptions.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Описание
+                <textarea
+                  rows={3}
+                  value={departmentForm.description}
+                  onChange={(e) => setDepartmentForm({ ...departmentForm, description: e.target.value })}
+                />
+              </label>
+              <label>
+                Порядок
+                <input
+                  type="number"
+                  value={departmentForm.sortOrder}
+                  onChange={(e) => setDepartmentForm({ ...departmentForm, sortOrder: e.target.value })}
+                />
+              </label>
+              <label className="org-checkbox">
+                <input
+                  type="checkbox"
+                  checked={departmentForm.isActive}
+                  onChange={(e) => setDepartmentForm({ ...departmentForm, isActive: e.target.checked })}
+                />
+                Активен
+              </label>
+              <div className="org-modal-actions">
+                <button type="submit" className="btn-primary">
+                  Сохранить
+                </button>
+                <button type="button" className="btn-ghost" onClick={() => setShowDepartmentModal(false)}>
+                  Отмена
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {showMemberModal && selectedDepartmentId !== null ? (
+        <div className="org-modal-backdrop" onClick={() => setShowMemberModal(false)}>
+          <div className="org-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{editingMemberId ? 'Редактирование участника' : 'Добавить участника'}</h3>
+            <form className="org-form" onSubmit={(e) => void saveMember(e)}>
+              {!editingMemberId ? (
+                <label>
+                  Сотрудник
+                  <select
+                    value={memberForm.employeeId}
+                    onChange={(e) => setMemberForm({ ...memberForm, employeeId: e.target.value })}
+                    required
+                  >
+                    <option value="">Выберите сотрудника</option>
+                    {employeeOptions.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              <label>
+                Роль в отделе
+                <select
+                  value={memberForm.teamRoleId}
+                  onChange={(e) => setMemberForm({ ...memberForm, teamRoleId: e.target.value })}
+                >
+                  <option value="">— выберите —</option>
+                  {teamRoles.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Должность
+                <select
+                  value={memberForm.position}
+                  onChange={(e) => setMemberForm({ ...memberForm, position: e.target.value })}
+                >
+                  <option value="">— из карточки сотрудника —</option>
+                  {positionNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Руководитель
+                <select
+                  value={memberForm.managerId}
+                  onChange={(e) => setMemberForm({ ...memberForm, managerId: e.target.value })}
+                >
+                  <option value="">— не назначен —</option>
+                  {employeeOptions.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Email
+                <input
+                  type="email"
+                  placeholder="Если пусто — из справочника"
+                  value={memberForm.email}
+                  onChange={(e) => setMemberForm({ ...memberForm, email: e.target.value })}
+                />
+              </label>
+              <label>
+                Порядок
+                <input
+                  type="number"
+                  value={memberForm.sortOrder}
+                  onChange={(e) => setMemberForm({ ...memberForm, sortOrder: e.target.value })}
+                />
+              </label>
+              <div className="org-modal-actions">
+                <button type="submit" className="btn-primary">
+                  Сохранить
+                </button>
+                <button type="button" className="btn-ghost" onClick={() => setShowMemberModal(false)}>
+                  Отмена
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {cardEmployeeId !== null ? (
+        <EmployeeCardModal
+          employeeId={cardEmployeeId}
+          canManage={canManage}
+          onClose={closeEmployeeCard}
+          onOpenEmployee={openEmployeeCard}
+          onEdit={(employee: EmployeeDetail) => {
+            closeEmployeeCard()
+            openEditEmployee(employee)
+          }}
+        />
+      ) : null}
+    </div>
+  )
+}

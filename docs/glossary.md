@@ -646,3 +646,81 @@
 | `GET /api/export/csv?board=` | CSV: ЗНИ + ошибки |
 
 Диаграммы: [diagrams.md](diagrams.md) · Production: [deploy/DEPLOY.md](../deploy/DEPLOY.md).
+
+---
+
+## org_user — учётные записи сотрудников
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `email` | varchar(255) | Email для входа (уникальный) |
+| `password_hash` | text | Хеш пароля (PBKDF2-SHA256) |
+| `role` | smallint | `10` — пользователь, `100` — администратор отделов |
+| `status` | smallint | `0` удалён, `9` неактивен, `10` активен |
+| `created_at`, `updated_at` | timestamptz | Метки времени |
+
+Связь: `employee.user_id` → `org_user.id`. Вход по email/паролю через `POST /api/auth/login` (режим app_user).
+
+---
+
+## employee — сотрудники
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `user_id` | bigint | FK → `org_user` (учётная запись) |
+| `full_name` | varchar(255) | ФИО |
+| `email` | varchar(255) | Рабочий email |
+| `position_id` | bigint | FK → `job_position` |
+| `position` | varchar(255) | Название должности (денормализация) |
+| `manager_id` | bigint | FK → `employee` (руководитель) |
+| `photo_path` | varchar(512) | Путь к фото в `ORG_UPLOADS_DIR` |
+| `daily_work_hours` | numeric(4,2) | Рабочих часов в день (по умолчанию 8) |
+| `is_active` | boolean | Активен |
+| `is_organization_head` | boolean | Директор организации (вершина пирамиды) |
+
+---
+
+## department — отделы
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `name` | varchar(255) | Название |
+| `description` | text | Описание |
+| `head_employee_id` | bigint | FK → `employee` (руководитель отдела) |
+| `sort_order` | int | Порядок отображения |
+| `is_active` | boolean | Активен |
+
+---
+
+## department_member — состав отдела
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `department_id` | bigint | FK → `department` |
+| `employee_id` | bigint | FK → `employee` (уникально в паре с отделом) |
+| `team_role_id` | bigint | FK → `team_role` |
+| `position` | varchar(255) | Должность в контексте отдела |
+| `manager_id` | bigint | FK → `employee` (руководитель в отделе) |
+| `email` | varchar(255) | Email в контексте отдела |
+| `sort_order` | int | Порядок в списке |
+
+---
+
+## job_position, team_role, expertise_direction
+
+Справочники должностей, ролей в отделе и направлений экспертизы. Поля: `name`, `sort_order`, `is_active`, timestamps. Таблица `employee_expertise` связывает сотрудника с направлением и уровнем (`level`).
+
+---
+
+## Вкладка «Отделы» (UI)
+
+| Раздел | API |
+|--------|-----|
+| Состав | `GET /api/org/departments/{id}/members` |
+| Пирамида | `GET /api/org/org-chart?department_id=` |
+| Сотрудники | `GET/POST/PATCH /api/org/employees` |
+| Личный кабинет | `GET/PATCH /api/profile`, `POST /api/profile/password` |

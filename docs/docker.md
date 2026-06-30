@@ -211,6 +211,14 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 ./scripts/migrate.sh 004_auth_sessions.sql
 ```
 
+Организационная структура (отделы, сотрудники, учётные записи):
+
+```bash
+./scripts/migrate.sh 005_org_structure.sql
+```
+
+Переменная `ORG_UPLOADS_DIR` (по умолчанию `/app/uploads`) — каталог фото сотрудников на backend.
+
 ## Остановка
 
 ```bash

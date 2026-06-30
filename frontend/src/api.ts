@@ -96,3 +96,33 @@ export async function patchJson<T>(path: string, body: unknown): Promise<T> {
   }
   return (await response.json()) as T
 }
+
+export async function putJson<T>(path: string, body: unknown): Promise<T> {
+  const response = await apiFetch(path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    throw new Error(await readApiError(response))
+  }
+  return (await response.json()) as T
+}
+
+export async function deleteJson(path: string): Promise<void> {
+  const response = await apiFetch(path, { method: 'DELETE' })
+  if (!response.ok) {
+    throw new Error(await readApiError(response))
+  }
+}
+
+export async function postForm<T>(path: string, formData: FormData): Promise<T> {
+  const response = await apiFetch(path, {
+    method: 'POST',
+    body: formData,
+  })
+  if (!response.ok) {
+    throw new Error(await readApiError(response))
+  }
+  return (await response.json()) as T
+}
