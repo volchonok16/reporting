@@ -5,6 +5,7 @@ import OrgChartCanvas from './OrgChartCanvas'
 import OrgChartView from './OrgChartView'
 import VacationSchedule from './VacationSchedule'
 import WorkspaceBooking from './WorkspaceBooking'
+import OfficePresence from './OfficePresence'
 import EmployeeCardModal from './EmployeeCardModal'
 import OrgPhoto from './OrgPhoto'
 import type {
@@ -546,6 +547,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
             ['employees', 'Сотрудники'],
             ['vacations', 'График отпусков'],
             ['workspace', 'Бронь мест'],
+            ['office_presence', 'Сотрудники в офисе'],
             ['manage', 'Управление'],
           ] as const
         ).map(([id, label]) => (
@@ -767,6 +769,8 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       ) : null}
 
       {panel === 'workspace' ? <WorkspaceBooking orgEmployeeId={orgEmployeeId} /> : null}
+
+      {panel === 'office_presence' ? <OfficePresence /> : null}
 
       {panel === 'manage' ? (
         <section className="org-panel">

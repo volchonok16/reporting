@@ -25,6 +25,9 @@ from app.org_schemas import (
     OrgUserIn,
     OrgUserOut,
     OrgUserUpdateIn,
+    OfficeDayOut,
+    OfficeDayRangeIn,
+    OfficeDayRangeOut,
     PasswordChangeIn,
     ProfileOut,
     ProfileUpdateIn,
@@ -34,6 +37,7 @@ from app.org_schemas import (
     VacationRangeIn,
     VacationRangeOut,
     VacationScheduleOut,
+    WorkspaceOfficePresenceOut,
     WorkspaceBookingScheduleOut,
     WorkspaceBookingToggleIn,
     WorkspaceBookingToggleOut,
@@ -81,8 +85,11 @@ from app.org_workspace_service import (
     create_workspace_place,
     delete_workspace_place,
     get_workspace_booking_schedule,
+    get_workspace_office_presence,
+    get_profile_office_days,
     list_workspace_places,
     toggle_workspace_booking,
+    upsert_profile_office_days,
     update_workspace_place,
 )
 
@@ -368,6 +375,16 @@ def api_workspace_bookings(
     return get_workspace_booking_schedule(db, year=year, month=month, meta=meta)
 
 
+@router.get("/workspace/presence", response_model=WorkspaceOfficePresenceOut)
+def api_workspace_presence(
+    year: int = Query(default=date.today().year),
+    month: int | None = Query(default=None, ge=1, le=12),
+    db: Session = Depends(get_db),
+    meta: dict = Depends(_load_session_meta),
+) -> WorkspaceOfficePresenceOut:
+    return get_workspace_office_presence(db, year=year, month=month, meta=meta)
+
+
 @router.put("/workspace/bookings/toggle", response_model=WorkspaceBookingToggleOut)
 def api_workspace_booking_toggle(
     data: WorkspaceBookingToggleIn,
@@ -473,6 +490,25 @@ def api_change_password(
     org_user_id = int(meta["org_user_id"]) if meta.get("org_user_id") else None
     change_password(db, org_user_id, meta.get("app_login"), data)
     return {"ok": True}
+
+
+@profile_router.get("/office-days", response_model=list[OfficeDayOut])
+def api_profile_office_days(
+    year: int = Query(default=date.today().year),
+    month: int = Query(default=date.today().month, ge=1, le=12),
+    db: Session = Depends(get_db),
+    meta: dict = Depends(_load_session_meta),
+) -> list[OfficeDayOut]:
+    return get_profile_office_days(db, year=year, month=month, meta=meta)
+
+
+@profile_router.put("/office-days/range", response_model=OfficeDayRangeOut)
+def api_profile_office_days_range(
+    data: OfficeDayRangeIn,
+    db: Session = Depends(get_db),
+    meta: dict = Depends(_load_session_meta),
+) -> OfficeDayRangeOut:
+    return upsert_profile_office_days(db, data, meta)
 
 
 users_router = APIRouter(prefix="/api/org/users", tags=["org-users"])

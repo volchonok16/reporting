@@ -1,16 +1,29 @@
 from __future__ import annotations
 
 from calendar import monthrange
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.org_models import Employee, WorkspaceBooking, WorkspacePlace
+from app.org_models import (
+    Employee,
+    EmployeeOfficeDay,
+    EmployeeTimeOffDay,
+    WorkspaceBooking,
+    WorkspacePlace,
+)
+from app.org_photo_service import photo_public_url
 from app.org_schemas import (
+    OfficeDayOut,
+    OfficeDayRangeIn,
+    OfficeDayRangeOut,
     VacationEmployeeOut,
+    VacationTimeOffDayOut,
     WorkspaceBookingCellOut,
+    WorkspaceOfficePresenceOut,
+    WorkspacePresenceCellOut,
     WorkspaceBookingScheduleOut,
     WorkspaceBookingToggleIn,
     WorkspaceBookingToggleOut,
@@ -33,6 +46,19 @@ def _month_bounds(year: int, month: int) -> tuple[date, date]:
         raise HTTPException(status_code=400, detail="Некорректный месяц.")
     last_day = monthrange(year, month)[1]
     return date(year, month, 1), date(year, month, last_day)
+
+
+def _year_bounds(year: int) -> tuple[date, date]:
+    return date(year, 1, 1), date(year, 12, 31)
+
+
+def _iter_days(day_from: date, day_to: date) -> list[date]:
+    days: list[date] = []
+    cursor = day_from
+    while cursor <= day_to:
+        days.append(cursor)
+        cursor += timedelta(days=1)
+    return days
 
 
 def _load_active_places(db: Session) -> list[WorkspacePlace]:
@@ -115,6 +141,162 @@ def get_workspace_booking_schedule(
         bookings=bookings_out,
         employees=employee_out,
     )
+
+
+def get_workspace_office_presence(
+    db: Session,
+    *,
+    year: int,
+    month: int | None,
+    meta: dict,
+) -> WorkspaceOfficePresenceOut:
+    if year < 2000 or year > 2100:
+        raise HTTPException(status_code=400, detail="Некорректный год.")
+    if month is not None:
+        day_from, day_to = _month_bounds(year, month)
+    else:
+        day_from, day_to = _year_bounds(year)
+
+    actor_employee_id = _actor_employee_id(db, meta)
+    employees = _load_booking_employees(db)
+    employee_ids = [employee.id for employee in employees]
+
+    employee_out = [
+        VacationEmployeeOut(
+            id=emp.id,
+            fullName=emp.full_name,
+            position=emp.position,
+            managerId=emp.manager_id,
+            photoUrl=photo_public_url(emp.photo_path),
+            canEdit=can_edit_employee_vacation(meta, actor_employee_id, emp.id),
+            isSelf=actor_employee_id == emp.id,
+        )
+        for emp in employees
+    ]
+
+    presence_rows = db.scalars(
+        select(WorkspaceBooking)
+        .options(joinedload(WorkspaceBooking.place))
+        .where(
+            WorkspaceBooking.day >= day_from,
+            WorkspaceBooking.day <= day_to,
+            WorkspaceBooking.employee_id.in_(employee_ids) if employee_ids else False,
+        )
+        .order_by(WorkspaceBooking.employee_id, WorkspaceBooking.day)
+    ).all()
+    presence_out = [
+        WorkspacePresenceCellOut(
+            employeeId=row.employee_id,
+            day=row.day.isoformat(),
+            placeId=row.place_id,
+            placeName=row.place.name if row.place else "",
+        )
+        for row in presence_rows
+    ]
+
+    office_rows = db.scalars(
+        select(EmployeeOfficeDay)
+        .where(
+            EmployeeOfficeDay.day >= day_from,
+            EmployeeOfficeDay.day <= day_to,
+            EmployeeOfficeDay.employee_id.in_(employee_ids) if employee_ids else False,
+        )
+        .order_by(EmployeeOfficeDay.employee_id, EmployeeOfficeDay.day)
+    ).all()
+    office_days = [
+        OfficeDayOut(employeeId=row.employee_id, day=row.day.isoformat())
+        for row in office_rows
+    ]
+
+    time_off_rows = db.scalars(
+        select(EmployeeTimeOffDay)
+        .where(
+            EmployeeTimeOffDay.day >= day_from,
+            EmployeeTimeOffDay.day <= day_to,
+            EmployeeTimeOffDay.employee_id.in_(employee_ids) if employee_ids else False,
+        )
+        .order_by(EmployeeTimeOffDay.employee_id, EmployeeTimeOffDay.day)
+    ).all()
+    time_off_days = [
+        VacationTimeOffDayOut(
+            employeeId=row.employee_id,
+            day=row.day.isoformat(),
+            kind=row.kind,  # type: ignore[arg-type]
+        )
+        for row in time_off_rows
+    ]
+
+    return WorkspaceOfficePresenceOut(
+        year=year,
+        month=month,
+        employees=employee_out,
+        presence=presence_out,
+        officeDays=office_days,
+        timeOffDays=time_off_days,
+    )
+
+
+def get_profile_office_days(
+    db: Session,
+    *,
+    year: int,
+    month: int,
+    meta: dict,
+) -> list[OfficeDayOut]:
+    if year < 2000 or year > 2100:
+        raise HTTPException(status_code=400, detail="Некорректный год.")
+    day_from, day_to = _month_bounds(year, month)
+    actor_employee_id = _actor_employee_id(db, meta)
+    if actor_employee_id is None:
+        raise HTTPException(status_code=400, detail="Календарь офиса доступен после привязки сотрудника.")
+
+    rows = db.scalars(
+        select(EmployeeOfficeDay)
+        .where(
+            EmployeeOfficeDay.employee_id == actor_employee_id,
+            EmployeeOfficeDay.day >= day_from,
+            EmployeeOfficeDay.day <= day_to,
+        )
+        .order_by(EmployeeOfficeDay.day)
+    ).all()
+    return [OfficeDayOut(employeeId=row.employee_id, day=row.day.isoformat()) for row in rows]
+
+
+def upsert_profile_office_days(
+    db: Session,
+    data: OfficeDayRangeIn,
+    meta: dict,
+) -> OfficeDayRangeOut:
+    actor_employee_id = _actor_employee_id(db, meta)
+    if actor_employee_id is None:
+        raise HTTPException(status_code=400, detail="Календарь офиса доступен после привязки сотрудника.")
+
+    employee = db.get(Employee, actor_employee_id)
+    if employee is None or not employee.is_active:
+        raise HTTPException(status_code=404, detail="Сотрудник не найден.")
+
+    start = _parse_day(data.fromDay)
+    end = _parse_day(data.toDay)
+    if start > end:
+        start, end = end, start
+
+    affected = 0
+    for target_day in _iter_days(start, end):
+        existing = db.scalar(
+            select(EmployeeOfficeDay).where(
+                EmployeeOfficeDay.employee_id == actor_employee_id,
+                EmployeeOfficeDay.day == target_day,
+            )
+        )
+        if data.present:
+            if existing is None:
+                db.add(EmployeeOfficeDay(employee_id=actor_employee_id, day=target_day))
+                affected += 1
+        elif existing is not None:
+            db.delete(existing)
+            affected += 1
+    db.commit()
+    return OfficeDayRangeOut(affectedDays=affected)
 
 
 def toggle_workspace_booking(db: Session, data: WorkspaceBookingToggleIn, meta: dict) -> WorkspaceBookingToggleOut:

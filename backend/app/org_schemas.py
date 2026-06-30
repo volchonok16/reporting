@@ -290,6 +290,11 @@ class VacationTimeOffDayOut(BaseModel):
     kind: TimeOffKind
 
 
+class OfficeDayOut(BaseModel):
+    employeeId: int
+    day: str
+
+
 class VacationScheduleOut(BaseModel):
     year: int
     departmentId: int | None = None
@@ -347,6 +352,22 @@ class WorkspaceBookingScheduleOut(BaseModel):
     employees: list[VacationEmployeeOut] = Field(default_factory=list)
 
 
+class WorkspacePresenceCellOut(BaseModel):
+    employeeId: int
+    day: str
+    placeId: int
+    placeName: str
+
+
+class WorkspaceOfficePresenceOut(BaseModel):
+    year: int
+    month: int | None = None
+    employees: list[VacationEmployeeOut] = Field(default_factory=list)
+    presence: list[WorkspacePresenceCellOut] = Field(default_factory=list)
+    officeDays: list[OfficeDayOut] = Field(default_factory=list)
+    timeOffDays: list[VacationTimeOffDayOut] = Field(default_factory=list)
+
+
 WorkspaceBookingAction = Literal["book", "release"]
 
 
@@ -361,6 +382,16 @@ class WorkspaceBookingToggleOut(BaseModel):
     action: WorkspaceBookingAction
     booked: bool
     employeeId: int | None = None
+
+
+class OfficeDayRangeIn(BaseModel):
+    fromDay: str
+    toDay: str
+    present: bool
+
+
+class OfficeDayRangeOut(BaseModel):
+    affectedDays: int
 
 
 OrgChartNodeOut.model_rebuild()

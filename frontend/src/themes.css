@@ -100,6 +100,9 @@
   --reservation-yes: #166534;
   --reservation-no: var(--text-tertiary);
 
+  --tooltip-bg: #0f172a;
+  --tooltip-text: #f8fafc;
+
   /* Legacy aliases (совместимость с index.css) */
   --t2-black: var(--brand);
   --t2-lime: var(--brand-accent);
@@ -204,6 +207,9 @@
   --dirty-text: #fbbf24;
   --reservation-yes: #34d399;
   --reservation-no: var(--text-tertiary);
+
+  --tooltip-bg: #e8eaed;
+  --tooltip-text: #111111;
 }
 
 html {

@@ -760,6 +760,22 @@
 
 ---
 
+## employee_office_day — дни «в офисе» без места
+
+Самоотметка сотрудника в личном кабинете на случай, когда он работает в офисе, но не бронирует конкретное место (например, сотрудник другого филиала).
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `employee_id` | bigint | FK → `employee` |
+| `day` | date | Календарный день присутствия в офисе |
+
+Уникальность: `(employee_id, day)`.
+
+Используется вместе с `workspace_booking` во вкладке «Сотрудники в офисе»: если есть бронь — показывается место, если только самоотметка — «в офисе (без места)».
+
+---
+
 ## Вкладка «Отделы» (UI)
 
 | Раздел | API |
@@ -769,4 +785,6 @@
 | Сотрудники | `GET/POST/PATCH /api/org/employees` |
 | График отпусков | `GET /api/org/vacations?year=&department_id=`, `PUT /api/org/vacations/range` |
 | Бронь мест | вкладка «Бронь мест»; `GET /api/org/workspace/bookings?year=&month=`, `PUT /api/org/workspace/bookings/toggle`; справочник: `GET/POST/PATCH/DELETE /api/org/workspace/places` (изменение — админ) |
+| Сотрудники в офисе | `GET /api/org/workspace/presence?year=&month=`; учитывает `workspace_booking`, `employee_office_day` и `employee_time_off_day` |
 | Личный кабинет | `GET/PATCH /api/profile`, `POST /api/profile/password` |
+| Личный кабинет — дни в офисе | `GET /api/profile/office-days?year=&month=`, `PUT /api/profile/office-days/range` (только для привязанного сотрудника) |

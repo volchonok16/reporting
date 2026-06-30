@@ -112,7 +112,15 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   const [editMode, setEditMode] = useState(false)
   const [draftChanges, setDraftChanges] = useState<Map<string, DraftBooking>>(() => new Map())
   const [bookForEmployeeId, setBookForEmployeeId] = useState<number | null>(null)
+  const [isDragScrolling, setIsDragScrolling] = useState(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const dragStateRef = useRef<{
+    pointerId: number
+    startX: number
+    startScrollLeft: number
+    moved: boolean
+  } | null>(null)
+  const suppressCellClickRef = useRef(false)
 
   const monthDays = useMemo(() => getMonthDays(year, month), [year, month])
   const holidayKeys = useMemo(() => buildHolidayKeySet(year), [year])
@@ -200,6 +208,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   }
 
   const toggleDraftCell = (placeId: number, day: string) => {
+    if (suppressCellClickRef.current) return
     if (!editMode || saving || !data) return
 
     const key = cellKey(placeId, day)
@@ -280,6 +289,59 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
       return next
     })
     setError(null)
+  }
+
+  const finishDragScroll = useCallback(
+    (pointerId?: number) => {
+      const scrollEl = scrollRef.current
+      if (scrollEl && pointerId != null && scrollEl.hasPointerCapture(pointerId)) {
+        scrollEl.releasePointerCapture(pointerId)
+      }
+      const hadMovement = Boolean(dragStateRef.current?.moved)
+      dragStateRef.current = null
+      setIsDragScrolling(false)
+      if (hadMovement) {
+        suppressCellClickRef.current = true
+        window.setTimeout(() => {
+          suppressCellClickRef.current = false
+        }, 0)
+      }
+    },
+    [setIsDragScrolling],
+  )
+
+  const handleScrollPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    if (!scrollRef.current) return
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startScrollLeft: scrollRef.current.scrollLeft,
+      moved: false,
+    }
+    scrollRef.current.setPointerCapture(event.pointerId)
+    setIsDragScrolling(true)
+  }
+
+  const handleScrollPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragStateRef.current
+    if (!drag || !scrollRef.current) return
+    const deltaX = event.clientX - drag.startX
+    if (!drag.moved && Math.abs(deltaX) > 3) {
+      drag.moved = true
+    }
+    scrollRef.current.scrollLeft = drag.startScrollLeft - deltaX
+    if (drag.moved) {
+      event.preventDefault()
+    }
+  }
+
+  const handleScrollPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    finishDragScroll(event.pointerId)
+  }
+
+  const handleScrollPointerCancel = (event: React.PointerEvent<HTMLDivElement>) => {
+    finishDragScroll(event.pointerId)
   }
 
   const saveDraft = async () => {
@@ -443,9 +505,15 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
               </table>
             </div>
             <div
-              className="org-schedule-dates org-vacation-scroll org-workspace-scroll"
+              className={`org-schedule-dates org-vacation-scroll org-workspace-scroll${
+                isDragScrolling ? ' org-workspace-scroll-dragging' : ''
+              }`}
               ref={scrollRef}
               aria-label="Календарь брони — прокрутка влево и вправо"
+              onPointerDown={handleScrollPointerDown}
+              onPointerMove={handleScrollPointerMove}
+              onPointerUp={handleScrollPointerUp}
+              onPointerCancel={handleScrollPointerCancel}
             >
               <table className="org-vacation-grid org-schedule-dates-grid org-workspace-grid">
                 <thead>

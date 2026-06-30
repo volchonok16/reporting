@@ -436,6 +436,47 @@
   margin: 0;
 }
 
+.org-profile-office-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 8px;
+}
+
+.org-profile-office-day {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+}
+
+.org-profile-office-day small {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: lowercase;
+}
+
+.org-profile-office-day-weekend {
+  background: color-mix(in srgb, var(--surface-2) 94%, var(--day-off-tint) 6%);
+}
+
+.org-profile-office-day-active {
+  background: var(--workspace-self-fill, #e9f5ee);
+  border-color: var(--workspace-self-border, #c8e6d4);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.org-profile-office-day:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
 /* Интерактивный лист пирамиды: pan + zoom */
 .org-panel-pyramid {
   padding: 0;
@@ -1353,6 +1394,16 @@
   background: var(--surface-1);
 }
 
+.org-workspace-scroll {
+  cursor: grab;
+  touch-action: pan-y;
+}
+
+.org-workspace-scroll-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
 .org-vacation-scroll {
   overflow: auto;
   max-width: 100%;
@@ -1828,8 +1879,8 @@
   transform: translateX(-50%);
   padding: 8px 12px;
   border-radius: 10px;
-  background: var(--surface-inverse, #0f172a);
-  color: var(--text-inverse, #f8fafc);
+  background: var(--tooltip-bg);
+  color: var(--tooltip-text);
   font-size: 12px;
   font-weight: 500;
   line-height: 1.4;
@@ -1837,6 +1888,7 @@
   width: max-content;
   max-width: 280px;
   text-align: center;
+  border: 1px solid var(--tooltip-bg);
   box-shadow: var(--shadow-md);
   z-index: 30;
   pointer-events: none;
@@ -1849,7 +1901,7 @@
   left: 50%;
   transform: translateX(-50%);
   border: 6px solid transparent;
-  border-top-color: var(--surface-inverse, #0f172a);
+  border-top-color: var(--tooltip-bg);
   z-index: 30;
   pointer-events: none;
 }
@@ -1923,15 +1975,140 @@
 }
 
 [data-theme='dark'] .org-workspace-panel {
-  --workspace-self-fill: #1a3d2e;
-  --workspace-self-border: #2d4a3e;
-  --workspace-busy-fill: #1f2937;
-  --workspace-busy-border: #374151;
-  --workspace-weekend-fill: color-mix(in srgb, var(--day-off-tint) 10%, var(--surface-1) 90%);
-  --workspace-weekend-head-fill: color-mix(in srgb, var(--day-off-tint) 12%, var(--table-head-bg) 88%);
-  --workspace-weekend-text: color-mix(in srgb, var(--day-off-tint) 45%, var(--text-muted) 55%);
+  --workspace-self-fill: #1f5f44;
+  --workspace-self-border: #53a579;
+  --workspace-busy-fill: #3a4b60;
+  --workspace-busy-border: #6f89a8;
+  --workspace-weekend-fill: color-mix(in srgb, var(--day-off-tint) 24%, var(--surface-1) 76%);
+  --workspace-weekend-head-fill: color-mix(in srgb, var(--day-off-tint) 30%, var(--table-head-bg) 70%);
+  --workspace-weekend-text: color-mix(in srgb, var(--day-off-tint) 68%, white 32%);
+}
+
+[data-theme='dark'] .org-workspace-grid th,
+[data-theme='dark'] .org-workspace-grid td {
+  border-color: color-mix(in srgb, var(--border-strong) 55%, var(--text-tertiary) 45%);
+}
+
+[data-theme='dark'] .org-workspace-grid .org-workspace-cell.org-workspace-free {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-strong) 88%, transparent 12%);
+}
+
+[data-theme='dark'] .org-workspace-grid .org-workspace-cell.org-vacation-editable:hover {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-secondary) 65%, white 35%);
+}
+
+[data-theme='dark'] .org-workspace-grid .org-workspace-cell.org-workspace-self,
+[data-theme='dark'] .org-workspace-grid .org-workspace-cell.org-workspace-busy {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 28%, transparent 72%);
+}
+
+[data-theme='dark'] .org-workspace-pending {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-accent) 70%, white 30%) !important;
+}
+
+[data-theme='dark'] .org-vacation-legend-item.org-workspace-self,
+[data-theme='dark'] .org-vacation-legend-item.org-workspace-busy {
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .org-vacation-legend-item.org-workspace-free,
+[data-theme='dark'] .org-vacation-legend-item.org-workspace-weekend-legend,
+[data-theme='dark'] .org-vacation-legend-item.org-workspace-pending-legend {
+  color: var(--text-secondary);
+  border-color: color-mix(in srgb, var(--border-strong) 85%, transparent 15%);
+}
+
+[data-theme='dark'] .org-workspace-weekday-head,
+[data-theme='dark'] .org-workspace-day-head,
+[data-theme='dark'] .org-workspace-chart .org-vacation-month {
+  color: color-mix(in srgb, white 84%, var(--text-muted) 16%);
+}
+
+[data-theme='dark'] .org-workspace-chart .org-workspace-names-head {
+  color: color-mix(in srgb, white 82%, var(--text-muted) 18%);
 }
 
 [data-theme='dark'] .org-workspace-today-head::after {
-  background: var(--text-tertiary);
+  background: color-mix(in srgb, var(--brand-accent) 72%, white 28%);
+}
+
+[data-theme='dark'] .org-workspace-grid .org-workspace-cell[data-tip]:hover::after {
+  background: #1a2438;
+  color: #f5f8ff;
+  border: 1px solid color-mix(in srgb, #93c5fd 32%, transparent 68%);
+  box-shadow: 0 12px 30px rgb(3 8 20 / 0.55);
+}
+
+[data-theme='dark'] .org-workspace-grid .org-workspace-cell[data-tip]:hover::before {
+  border-top-color: #1a2438;
+}
+
+.org-office-presence-panel {
+  overflow: visible;
+}
+
+.org-office-presence-panel .org-vacation-cell.org-office-presence-in {
+  background: var(--workspace-self-fill, #e9f5ee) !important;
+  box-shadow: inset 0 0 0 1px var(--workspace-self-border, #c8e6d4);
+}
+
+.org-office-presence-panel .org-vacation-cell.org-office-presence-conflict {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #b45309 70%, transparent 30%) !important;
+}
+
+.org-vacation-legend-item.org-office-presence-in {
+  background: var(--workspace-self-fill, #e9f5ee);
+  border: 1px solid var(--workspace-self-border, #c8e6d4);
+  color: var(--text-secondary);
+}
+
+.org-office-presence-panel .org-office-presence-cell[data-tip] {
+  position: relative;
+}
+
+.org-office-presence-panel .org-office-presence-cell[data-tip]:hover {
+  z-index: 6;
+}
+
+.org-office-presence-panel .org-office-presence-cell[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--surface-inverse, #0f172a);
+  color: var(--text-inverse, #f8fafc);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: normal;
+  width: max-content;
+  max-width: 280px;
+  text-align: center;
+  box-shadow: var(--shadow-md);
+  z-index: 30;
+  pointer-events: none;
+}
+
+.org-office-presence-panel .org-office-presence-cell[data-tip]:hover::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--surface-inverse, #0f172a);
+  z-index: 30;
+  pointer-events: none;
+}
+
+[data-theme='dark'] .org-office-presence-panel .org-vacation-cell.org-office-presence-in {
+  background: var(--workspace-self-fill, #1f5a41) !important;
+  box-shadow: inset 0 0 0 1px var(--workspace-self-border, #3f8a65);
+}
+
+[data-theme='dark'] .org-vacation-legend-item.org-office-presence-in {
+  color: var(--text-primary);
 }

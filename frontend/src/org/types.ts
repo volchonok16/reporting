@@ -150,7 +150,14 @@ export type SelectOption = {
   name: string
 }
 
-export type OrgPanel = 'roster' | 'pyramid' | 'employees' | 'manage' | 'vacations' | 'workspace'
+export type OrgPanel =
+  | 'roster'
+  | 'pyramid'
+  | 'employees'
+  | 'manage'
+  | 'vacations'
+  | 'workspace'
+  | 'office_presence'
 
 export type TimeOffKind = 'vacation' | 'dayoff' | 'sick_leave'
 export type EditableTimeOffKind = TimeOffKind | 'erase'
@@ -169,6 +176,11 @@ export type VacationTimeOffDay = {
   employeeId: number
   day: string
   kind: TimeOffKind
+}
+
+export type OfficeDay = {
+  employeeId: number
+  day: string
 }
 
 export type VacationScheduleData = {
@@ -203,4 +215,20 @@ export type WorkspaceBookingScheduleData = {
   places: WorkspacePlace[]
   bookings: WorkspaceBookingCell[]
   employees: VacationEmployee[]
+}
+
+export type WorkspacePresenceCell = {
+  employeeId: number
+  day: string
+  placeId: number
+  placeName: string
+}
+
+export type WorkspaceOfficePresenceData = {
+  year: number
+  month?: number | null
+  employees: VacationEmployee[]
+  presence: WorkspacePresenceCell[]
+  officeDays: OfficeDay[]
+  timeOffDays: VacationTimeOffDay[]
 }

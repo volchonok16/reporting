@@ -93,6 +93,9 @@ class Employee(Base):
         back_populates="employee",
         foreign_keys="EmployeeTimeOffDay.employee_id",
     )
+    office_days: Mapped[list["EmployeeOfficeDay"]] = relationship(
+        foreign_keys="EmployeeOfficeDay.employee_id",
+    )
     workspace_bookings: Mapped[list["WorkspaceBooking"]] = relationship(
         back_populates="employee",
         foreign_keys="WorkspaceBooking.employee_id",
@@ -149,6 +152,18 @@ class EmployeeTimeOffDay(Base):
         back_populates="time_off_days",
         foreign_keys=[employee_id],
     )
+
+
+class EmployeeOfficeDay(Base):
+    __tablename__ = "employee_office_day"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    employee_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("employee.id", ondelete="CASCADE"), nullable=False
+    )
+    day: Mapped[date] = mapped_column(Date, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 
 class EmployeeExpertise(Base):

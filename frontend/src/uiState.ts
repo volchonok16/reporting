@@ -2,7 +2,14 @@ const STORAGE_KEY = 'reporting.uiState'
 
 export type SheetId = 'zni' | 'product-status-b2b' | 'roadmap' | 'departments'
 
-export type OrgPanelId = 'roster' | 'pyramid' | 'employees' | 'manage' | 'vacations' | 'workspace'
+export type OrgPanelId =
+  | 'roster'
+  | 'pyramid'
+  | 'employees'
+  | 'manage'
+  | 'vacations'
+  | 'workspace'
+  | 'office_presence'
 
 export type OrgUiState = {
   panel: OrgPanelId
@@ -61,7 +68,15 @@ function writeUiState(patch: UiState): void {
 
 const WORKBOOK_SHEETS: SheetId[] = ['zni', 'product-status-b2b', 'roadmap', 'departments']
 
-const ORG_PANELS: OrgPanelId[] = ['roster', 'pyramid', 'employees', 'manage', 'vacations', 'workspace']
+const ORG_PANELS: OrgPanelId[] = [
+  'roster',
+  'pyramid',
+  'employees',
+  'manage',
+  'vacations',
+  'workspace',
+  'office_presence',
+]
 
 export function loadActiveSheet(): SheetId {
   const sheet = readUiState().activeSheet as string | undefined

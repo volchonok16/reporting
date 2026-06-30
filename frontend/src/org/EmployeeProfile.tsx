@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getJson, patchJson, postForm, postJson } from '../api'
 import type { ProfileData } from './types'
 import OrgPhoto from './OrgPhoto'
+import ProfileOfficeCalendar from './ProfileOfficeCalendar'
 
 type EmployeeProfileProps = {
   onClose: () => void
@@ -193,6 +194,8 @@ export default function EmployeeProfile({ onClose }: EmployeeProfileProps) {
                 </button>
               </form>
             </section>
+
+            <ProfileOfficeCalendar enabled={Boolean(profile.employee)} />
           </div>
         ) : null}
       </div>
