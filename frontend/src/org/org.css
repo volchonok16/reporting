@@ -1859,6 +1859,7 @@
   --schedule-head-row-2: 20px;
   --schedule-head-row-3: 28px;
   --vac-cell-size: 26px;
+  --vac-name-col-width: 128px;
   box-shadow: var(--shadow-sm);
   border-radius: 12px;
 }
@@ -1867,6 +1868,11 @@
   flex-basis: 128px;
   width: 128px;
   background: var(--surface-1);
+}
+
+.org-workspace-chart .org-schedule-names-grid .org-vacation-name,
+.org-workspace-chart .org-workspace-names-head {
+  background: color-mix(in srgb, var(--surface-2) 86%, var(--surface-1) 14%);
 }
 
 .org-workspace-chart .org-workspace-names-head {

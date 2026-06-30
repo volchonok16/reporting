@@ -370,6 +370,7 @@ export default function VacationSchedule({
                                 'org-vacation-cell',
                                 kind ? KIND_META[kind].className : '',
                                 dayOff ? 'org-vacation-weekend' : '',
+                                dayKey === todayKey ? 'org-vacation-today' : '',
                                 dayKey === selectedDayKey ? 'org-vacation-cell-selected-day' : '',
                                 inPreview ? 'org-vacation-preview' : '',
                                 isSelecting ? 'org-vacation-selecting' : '',
