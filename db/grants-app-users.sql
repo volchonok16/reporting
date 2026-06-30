@@ -2,6 +2,10 @@
 -- Запускать от владельца БД: reporting
 --   bash scripts/grant-db-users.sh
 
+-- Членство в reporting: backend (DATABASE_URL=alex) может SET ROLE reporting
+-- для default privileges и GRANT на объекты владельца reporting.
+GRANT reporting TO alex, ivan;
+
 DO $$
 BEGIN
   EXECUTE format('GRANT CONNECT, TEMPORARY ON DATABASE %I TO alex, ivan', current_database());

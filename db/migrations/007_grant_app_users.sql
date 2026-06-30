@@ -2,6 +2,8 @@
 -- Применение: ./scripts/migrate.sh db/migrations/007_grant_app_users.sql
 -- Содержимое дублирует db/grants-app-users.sql — при изменении прав обновляйте оба файла.
 
+GRANT reporting TO alex, ivan;
+
 DO $$
 BEGIN
   EXECUTE format('GRANT CONNECT, TEMPORARY ON DATABASE %I TO alex, ivan', current_database());

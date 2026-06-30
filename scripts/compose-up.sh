@@ -77,3 +77,11 @@ ARGS=(up -d)
 
 echo "==> ${COMPOSE[*]} ${ARGS[*]}"
 "${COMPOSE[@]}" "${ARGS[@]}"
+
+# Права alex/ivan (в т.ч. GRANT reporting TO alex) — initdb не перезапускается на старом volume.
+if [[ ${#SERVICES[@]} -eq 0 ]] || printf '%s\n' "${SERVICES[@]}" | grep -qx postgres; then
+  if "${COMPOSE[@]}" exec -T postgres pg_isready -U reporting -d reporting >/dev/null 2>&1; then
+    echo "==> Обновление прав alex/ivan (grant-db-users.sh)…"
+    bash "$(dirname "$0")/grant-db-users.sh" || echo "Предупреждение: grant-db-users.sh не выполнен" >&2
+  fi
+fi

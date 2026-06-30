@@ -48,17 +48,21 @@ def _execute_startup_sql(conn, sql: str) -> None:
 
 def _ensure_app_user_grants(conn) -> None:
     """Права alex/ivan на все таблицы (в т.ч. org), созданные при старте backend."""
-    grant_statements = [
+    object_grants = [
         "GRANT USAGE, CREATE ON SCHEMA public TO alex, ivan",
         "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO alex, ivan",
         "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO alex, ivan",
         "GRANT ALL PRIVILEGES ON ALL ROUTINES IN SCHEMA public TO alex, ivan",
+    ]
+    reporting_default_privileges = [
         "ALTER DEFAULT PRIVILEGES FOR ROLE reporting IN SCHEMA public "
         "GRANT ALL PRIVILEGES ON TABLES TO alex, ivan",
         "ALTER DEFAULT PRIVILEGES FOR ROLE reporting IN SCHEMA public "
         "GRANT ALL PRIVILEGES ON SEQUENCES TO alex, ivan",
         "ALTER DEFAULT PRIVILEGES FOR ROLE reporting IN SCHEMA public "
         "GRANT ALL PRIVILEGES ON ROUTINES TO alex, ivan",
+    ]
+    alex_default_privileges = [
         "ALTER DEFAULT PRIVILEGES FOR ROLE alex IN SCHEMA public "
         "GRANT ALL PRIVILEGES ON TABLES TO alex, ivan",
         "ALTER DEFAULT PRIVILEGES FOR ROLE alex IN SCHEMA public "
@@ -66,11 +70,39 @@ def _ensure_app_user_grants(conn) -> None:
         "ALTER DEFAULT PRIVILEGES FOR ROLE alex IN SCHEMA public "
         "GRANT ALL PRIVILEGES ON ROUTINES TO alex, ivan",
     ]
-    try:
-        conn.execute(text("SET LOCAL ROLE reporting"))
-        for stmt in grant_statements:
+
+    current_user = conn.execute(text("SELECT current_user")).scalar_one()
+    can_set_reporting = bool(
+        conn.execute(
+            text("SELECT pg_has_role(:user, 'reporting', 'member')"),
+            {"user": current_user},
+        ).scalar_one()
+    )
+
+    def _run_statements(statements: list[str]) -> None:
+        for stmt in statements:
             conn.execute(text(stmt))
-        conn.execute(text("RESET ROLE"))
+
+    try:
+        if current_user == "reporting":
+            _run_statements(object_grants + reporting_default_privileges)
+        elif can_set_reporting:
+            conn.execute(text("SET LOCAL ROLE reporting"))
+            try:
+                _run_statements(object_grants + reporting_default_privileges)
+            finally:
+                conn.execute(text("RESET ROLE"))
+        else:
+            _run_statements(object_grants)
+            logger.warning(
+                "Пользователь %s не член роли reporting — default privileges reporting "
+                "не обновлены; выполните: bash scripts/grant-db-users.sh",
+                current_user,
+            )
+
+        if current_user == "alex":
+            _run_statements(alex_default_privileges)
+
         logger.info("Права alex/ivan на объекты public обновлены")
     except DBAPIError:
         logger.warning(
