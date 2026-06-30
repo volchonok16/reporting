@@ -1,13 +1,16 @@
+import { Fragment, type ReactNode } from 'react'
 import type { DepartmentBlock, OrgChartNode } from './types'
 import OrgPhoto from './OrgPhoto'
 
 /** Максимум карточек в одном горизонтальном ряду под одним руководителем. */
 const ORG_TREE_MAX_SIBLINGS_PER_ROW = 5
+/** Максимум рамок отделов в одном горизонтальном ряду (рамки шире карточек). */
+const ORG_DEPT_MAX_BRANCHES_PER_ROW = 2
 
-function chunkNodes(nodes: OrgChartNode[], size: number): OrgChartNode[][] {
-  const rows: OrgChartNode[][] = []
-  for (let i = 0; i < nodes.length; i += size) {
-    rows.push(nodes.slice(i, i + size))
+function chunkItems<T>(items: T[], size: number): T[][] {
+  const rows: T[][] = []
+  for (let i = 0; i < items.length; i += size) {
+    rows.push(items.slice(i, i + size))
   }
   return rows
 }
@@ -78,7 +81,7 @@ function OrgTreeChildren({
   const rows =
     children.length <= ORG_TREE_MAX_SIBLINGS_PER_ROW
       ? [children]
-      : chunkNodes(children, ORG_TREE_MAX_SIBLINGS_PER_ROW)
+      : chunkItems(children, ORG_TREE_MAX_SIBLINGS_PER_ROW)
 
   if (rows.length === 1) {
     return (
@@ -170,6 +173,69 @@ function DepartmentFrame({
   )
 }
 
+function DepartmentBranchRows<T>({
+  items,
+  renderItem,
+  getKey,
+  className = 'org-dept-branch-nested',
+}: {
+  items: T[]
+  renderItem: (item: T) => ReactNode
+  getKey: (item: T) => string | number
+  className?: string
+}) {
+  const rows =
+    items.length <= ORG_DEPT_MAX_BRANCHES_PER_ROW
+      ? [items]
+      : chunkItems(items, ORG_DEPT_MAX_BRANCHES_PER_ROW)
+
+  if (rows.length === 1) {
+    return (
+      <div className={className}>
+        {items.map((item) => (
+          <Fragment key={getKey(item)}>{renderItem(item)}</Fragment>
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div className={`${className} ${className}-stacked`}>
+      {rows.map((row) => (
+        <div key={row.map(getKey).join('-')} className={`${className} ${className}-row`}>
+          {row.map((item) => (
+            <Fragment key={getKey(item)}>{renderItem(item)}</Fragment>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function NestedDepartments({
+  blocks,
+  onEmployeeClick,
+  onDepartmentClick,
+}: {
+  blocks: DepartmentBlock[]
+  onEmployeeClick?: (employeeId: number) => void
+  onDepartmentClick?: (departmentId: number) => void
+}) {
+  return (
+    <DepartmentBranchRows
+      items={blocks}
+      getKey={(block) => block.departmentId}
+      renderItem={(nestedBlock) => (
+        <DepartmentBranchColumn
+          block={nestedBlock}
+          onEmployeeClick={onEmployeeClick}
+          onDepartmentClick={onDepartmentClick}
+          nested
+        />
+      )}
+    />
+  )
+}
 function DepartmentBranchColumn({
   block,
   onEmployeeClick,
@@ -193,17 +259,11 @@ function DepartmentBranchColumn({
         </div>
       </div>
       {block.nestedDepartments && block.nestedDepartments.length > 0 ? (
-        <div className="org-dept-branch-nested">
-          {block.nestedDepartments.map((nestedBlock) => (
-            <DepartmentBranchColumn
-              key={nestedBlock.departmentId}
-              block={nestedBlock}
-              onEmployeeClick={onEmployeeClick}
-              onDepartmentClick={onDepartmentClick}
-              nested
-            />
-          ))}
-        </div>
+        <NestedDepartments
+          blocks={block.nestedDepartments}
+          onEmployeeClick={onEmployeeClick}
+          onDepartmentClick={onDepartmentClick}
+        />
       ) : null}
     </div>
   )
@@ -227,6 +287,10 @@ function StandaloneBranchColumn({
   )
 }
 
+type CompanyBranchItem =
+  | { kind: 'department'; block: DepartmentBlock }
+  | { kind: 'standalone'; root: OrgChartNode }
+
 function CompanyPyramid({
   organizationHead,
   departments,
@@ -240,7 +304,11 @@ function CompanyPyramid({
   onEmployeeClick?: (employeeId: number) => void
   onDepartmentClick?: (departmentId: number) => void
 }) {
-  const hasBranches = departments.length > 0 || standaloneRoots.length > 0
+  const branchItems: CompanyBranchItem[] = [
+    ...departments.map((block) => ({ kind: 'department' as const, block })),
+    ...standaloneRoots.map((root) => ({ kind: 'standalone' as const, root })),
+  ]
+  const hasBranches = branchItems.length > 0
 
   return (
     <div className="org-company-pyramid">
@@ -252,19 +320,22 @@ function CompanyPyramid({
         </div>
       ) : null}
       {hasBranches ? (
-        <div className="org-company-pyramid-branches">
-          {departments.map((block) => (
-            <DepartmentBranchColumn
-              key={block.departmentId}
-              block={block}
-              onEmployeeClick={onEmployeeClick}
-              onDepartmentClick={onDepartmentClick}
-            />
-          ))}
-          {standaloneRoots.map((root) => (
-            <StandaloneBranchColumn key={root.person.employeeId} root={root} onEmployeeClick={onEmployeeClick} />
-          ))}
-        </div>
+        <DepartmentBranchRows
+          className="org-company-pyramid-branches"
+          items={branchItems}
+          getKey={(item) => (item.kind === 'department' ? item.block.departmentId : item.root.person.employeeId)}
+          renderItem={(item) =>
+            item.kind === 'department' ? (
+              <DepartmentBranchColumn
+                block={item.block}
+                onEmployeeClick={onEmployeeClick}
+                onDepartmentClick={onDepartmentClick}
+              />
+            ) : (
+              <StandaloneBranchColumn root={item.root} onEmployeeClick={onEmployeeClick} />
+            )
+          }
+        />
       ) : null}
     </div>
   )
