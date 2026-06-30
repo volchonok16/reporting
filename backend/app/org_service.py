@@ -342,7 +342,7 @@ def list_employees(db: Session) -> list[EmployeeOut]:
 
 
 def get_employee(db: Session, employee_id: int) -> EmployeeDetailOut:
-    emp = db.scalar(
+    emp = db.scalars(
         select(Employee)
         .options(
             joinedload(Employee.user),
@@ -357,7 +357,7 @@ def get_employee(db: Session, employee_id: int) -> EmployeeDetailOut:
             .joinedload(DepartmentMember.team_role),
         )
         .where(Employee.id == employee_id)
-    )
+    ).unique().one_or_none()
     if emp is None:
         raise HTTPException(status_code=404, detail="Сотрудник не найден.")
 

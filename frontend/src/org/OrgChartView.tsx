@@ -33,7 +33,6 @@ function PersonCard({
         <div className="org-person-name">{person.fullName}</div>
         {person.position ? <div className="org-person-position">{person.position}</div> : null}
         {person.teamRole ? <div className="org-person-role">{person.teamRole}</div> : null}
-        {person.email ? <div className="org-person-email">{person.email}</div> : null}
       </div>
     </>
   )
