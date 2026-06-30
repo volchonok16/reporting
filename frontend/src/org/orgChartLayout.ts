@@ -20,10 +20,6 @@ export function masonryColumnCount(itemCount: number): number {
   }
   return Math.min(ORG_DEPT_MASONRY_COLUMNS_MAX, itemCount)
 }
-const TREE_LEVEL_GAP = 48
-const TREE_ROW_GAP = 40
-const DEPT_FRAME_OVERHEAD = 130
-const MASONRY_ITEM_GAP = 32
 
 export function distributeShortestColumn<T>(
   items: T[],
