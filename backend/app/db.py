@@ -1,11 +1,14 @@
 from collections.abc import Generator
+import logging
 from pathlib import Path
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 # Serialize startup DDL when uvicorn runs multiple workers (see docker-compose.prod.yml).
 _STARTUP_MIGRATION_LOCK_ID = 847291736
@@ -43,6 +46,43 @@ def _execute_startup_sql(conn, sql: str) -> None:
         raise
 
 
+def _ensure_app_user_grants(conn) -> None:
+    """Права alex/ivan на все таблицы (в т.ч. org), созданные при старте backend."""
+    grant_statements = [
+        "GRANT USAGE, CREATE ON SCHEMA public TO alex, ivan",
+        "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO alex, ivan",
+        "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO alex, ivan",
+        "GRANT ALL PRIVILEGES ON ALL ROUTINES IN SCHEMA public TO alex, ivan",
+        "ALTER DEFAULT PRIVILEGES FOR ROLE reporting IN SCHEMA public "
+        "GRANT ALL PRIVILEGES ON TABLES TO alex, ivan",
+        "ALTER DEFAULT PRIVILEGES FOR ROLE reporting IN SCHEMA public "
+        "GRANT ALL PRIVILEGES ON SEQUENCES TO alex, ivan",
+        "ALTER DEFAULT PRIVILEGES FOR ROLE reporting IN SCHEMA public "
+        "GRANT ALL PRIVILEGES ON ROUTINES TO alex, ivan",
+        "ALTER DEFAULT PRIVILEGES FOR ROLE alex IN SCHEMA public "
+        "GRANT ALL PRIVILEGES ON TABLES TO alex, ivan",
+        "ALTER DEFAULT PRIVILEGES FOR ROLE alex IN SCHEMA public "
+        "GRANT ALL PRIVILEGES ON SEQUENCES TO alex, ivan",
+        "ALTER DEFAULT PRIVILEGES FOR ROLE alex IN SCHEMA public "
+        "GRANT ALL PRIVILEGES ON ROUTINES TO alex, ivan",
+    ]
+    try:
+        conn.execute(text("SET LOCAL ROLE reporting"))
+        for stmt in grant_statements:
+            conn.execute(text(stmt))
+        conn.execute(text("RESET ROLE"))
+        logger.info("Права alex/ivan на объекты public обновлены")
+    except DBAPIError:
+        logger.warning(
+            "Не удалось выдать права от reporting — выполните bash scripts/grant-db-users.sh",
+            exc_info=True,
+        )
+        try:
+            conn.execute(text("RESET ROLE"))
+        except DBAPIError:
+            pass
+
+
 def ensure_startup_schema() -> None:
     """Idempotent DDL on app startup. Safe with multiple uvicorn workers."""
     org_migration_names = ("005_org_structure.sql", "006_vacation_schedule.sql")
@@ -73,6 +113,7 @@ def ensure_startup_schema() -> None:
             _execute_startup_sql(conn, auth_session_sql)
             for sql in org_migrations:
                 _execute_startup_sql(conn, sql)
+            _ensure_app_user_grants(conn)
 
 
 def get_db() -> Generator[Session, None, None]:

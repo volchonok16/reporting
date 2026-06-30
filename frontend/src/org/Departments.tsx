@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { deleteJson, getJson, patchJson, postForm, postJson, putJson, resolvePhotoUrl } from '../api'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
+import OrgChartCanvas from './OrgChartCanvas'
 import OrgChartView from './OrgChartView'
 import VacationSchedule from './VacationSchedule'
 import EmployeeCardModal from './EmployeeCardModal'
@@ -633,43 +634,45 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       ) : null}
 
       {panel === 'pyramid' ? (
-        <section className="org-panel">
-          {selectedDepartmentId === null ? (
-            <div className="org-company-pyramid">
-              {orgChart?.organizationHead ? (
-                <div className="org-company-pyramid-head">
-                  <OrgChartView
-                    organizationHead={orgChart.organizationHead}
-                    roots={[]}
-                    onEmployeeClick={openEmployeeCard}
-                  />
-                </div>
-              ) : null}
-              {orgChart?.departments && orgChart.departments.length > 0 ? (
-                <div className="org-company-pyramid-branches">
-                  {orgChart.departments.map((block) => (
-                    <div key={block.departmentId} className="org-dept-block org-dept-branch">
-                      <OrgChartView
-                        roots={block.roots}
-                        departmentName={block.departmentName}
-                        framed
-                        onEmployeeClick={openEmployeeCard}
-                      />
-                    </div>
-                  ))}
-                </div>
-              ) : !orgChart?.organizationHead ? (
-                <OrgChartView roots={orgChart?.departmentTree ?? []} onEmployeeClick={openEmployeeCard} />
-              ) : null}
-            </div>
-          ) : (
-            <OrgChartView
-              roots={orgChart?.departmentTree ?? []}
-              departmentName={selectedDepartment?.name}
-              framed
-              onEmployeeClick={openEmployeeCard}
-            />
-          )}
+        <section className="org-panel org-panel-pyramid">
+          <OrgChartCanvas>
+            {selectedDepartmentId === null ? (
+              <div className="org-company-pyramid">
+                {orgChart?.organizationHead ? (
+                  <div className="org-company-pyramid-head">
+                    <OrgChartView
+                      organizationHead={orgChart.organizationHead}
+                      roots={[]}
+                      onEmployeeClick={openEmployeeCard}
+                    />
+                  </div>
+                ) : null}
+                {orgChart?.departments && orgChart.departments.length > 0 ? (
+                  <div className="org-company-pyramid-branches">
+                    {orgChart.departments.map((block) => (
+                      <div key={block.departmentId} className="org-dept-block org-dept-branch">
+                        <OrgChartView
+                          roots={block.roots}
+                          departmentName={block.departmentName}
+                          framed
+                          onEmployeeClick={openEmployeeCard}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : !orgChart?.organizationHead ? (
+                  <OrgChartView roots={orgChart?.departmentTree ?? []} onEmployeeClick={openEmployeeCard} />
+                ) : null}
+              </div>
+            ) : (
+              <OrgChartView
+                roots={orgChart?.departmentTree ?? []}
+                departmentName={selectedDepartment?.name}
+                framed
+                onEmployeeClick={openEmployeeCard}
+              />
+            )}
+          </OrgChartCanvas>
         </section>
       ) : null}
 

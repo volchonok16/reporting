@@ -417,6 +417,87 @@
   margin: 0;
 }
 
+/* Интерактивный лист пирамиды: pan + zoom */
+.org-panel-pyramid {
+  padding: 0;
+  overflow: hidden;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.org-chart-canvas {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.org-chart-canvas-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 0 4px;
+}
+
+.org-chart-canvas-btn {
+  min-width: 36px;
+  padding: 6px 10px;
+  font-size: 1.125rem;
+  line-height: 1;
+}
+
+.org-chart-canvas-zoom {
+  min-width: 48px;
+  text-align: center;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.org-chart-canvas-reset {
+  font-size: 13px;
+}
+
+.org-chart-canvas-hint {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.org-chart-canvas-stage {
+  position: relative;
+  height: min(72vh, 720px);
+  min-height: 420px;
+  overflow: hidden;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--text-muted) 8%, var(--surface-2, var(--bg-hover)));
+  border: 1px solid var(--border);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.org-chart-canvas-stage-dragging {
+  cursor: grabbing;
+}
+
+.org-chart-canvas-sheet {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 40px 48px;
+  background: var(--surface-1);
+  border-radius: 20px;
+  box-shadow: var(--shadow-md, 0 8px 32px rgb(0 0 0 / 0.08));
+  will-change: transform;
+}
+
+.org-chart-canvas-sheet .org-chart-scroll {
+  overflow: visible;
+  padding: 0;
+}
+
 .org-chart-scroll {
   overflow: auto;
   padding: 12px 0;

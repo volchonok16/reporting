@@ -33,6 +33,10 @@ COMPOSE_ARGS+=("${EXTRA_ARGS[@]}")
 echo "==> Docker Compose (prod + db-tunnel)…"
 bash "$(dirname "$0")/compose-up.sh" "${COMPOSE_ARGS[@]}"
 
+echo ""
+echo "==> Права БД для alex/ivan…"
+bash "$(dirname "$0")/grant-db-users.sh" || echo "Предупреждение: grant-db-users.sh не выполнен" >&2
+
 # shellcheck source=resolve-compose.sh
 source "$(dirname "$0")/resolve-compose.sh" prod-tunnel
 
