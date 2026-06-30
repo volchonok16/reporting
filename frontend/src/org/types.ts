@@ -150,7 +150,7 @@ export type SelectOption = {
   name: string
 }
 
-export type OrgPanel = 'roster' | 'pyramid' | 'employees' | 'manage' | 'vacations'
+export type OrgPanel = 'roster' | 'pyramid' | 'employees' | 'manage' | 'vacations' | 'workspace'
 
 export type TimeOffKind = 'vacation' | 'dayoff' | 'sick_leave'
 export type EditableTimeOffKind = TimeOffKind | 'erase'

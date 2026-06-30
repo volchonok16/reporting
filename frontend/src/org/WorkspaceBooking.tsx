@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getJson, putJson } from '../api'
+import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import type { WorkspaceBookingScheduleData } from './types'
 import {
   MONTH_NAMES_FULL,
@@ -11,9 +12,6 @@ import {
 
 type WorkspaceBookingProps = {
   orgEmployeeId: number | null
-  year: number
-  month: number
-  onMonthChange: (month: number) => void
 }
 
 function employeeInitials(name: string): string {
@@ -23,13 +21,12 @@ function employeeInitials(name: string): string {
   return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase()
 }
 
-export default function WorkspaceBooking({
-  orgEmployeeId,
-  year,
-  month,
-  onMonthChange,
-}: WorkspaceBookingProps) {
+export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProps) {
   const currentDate = new Date()
+  const currentYear = currentDate.getFullYear()
+  const savedOrgUi = loadOrgUiState()
+  const [year, setYear] = useState(savedOrgUi.vacationYear)
+  const [month, setMonth] = useState(currentDate.getMonth())
   const [data, setData] = useState<WorkspaceBookingScheduleData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -50,6 +47,10 @@ export default function WorkspaceBooking({
   }, [data])
 
   const canEditAny = Boolean(data?.isAdmin || data?.actorEmployeeId != null)
+
+  useEffect(() => {
+    saveOrgUiState({ vacationYear: year })
+  }, [year])
 
   useEffect(() => {
     if (!data?.isAdmin || bookForEmployeeId != null) return
@@ -154,8 +155,18 @@ export default function WorkspaceBooking({
         <div className="org-vacation-toolbar-left">
           <h2>Бронь мест</h2>
           <label className="org-vacation-year">
+            Год
+            <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
+              {[currentYear - 1, currentYear, currentYear + 1].map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="org-vacation-year">
             Месяц
-            <select value={month} onChange={(e) => onMonthChange(Number(e.target.value))}>
+            <select value={month} onChange={(e) => setMonth(Number(e.target.value))}>
               {MONTH_NAMES_FULL.map((label, index) => (
                 <option key={label} value={index}>
                   {label}

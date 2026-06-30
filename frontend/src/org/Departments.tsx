@@ -3,7 +3,8 @@ import { deleteJson, getJson, patchJson, postForm, postJson, putJson, resolvePho
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgChartCanvas from './OrgChartCanvas'
 import OrgChartView from './OrgChartView'
-import VacationsPanel from './VacationsPanel'
+import VacationSchedule from './VacationSchedule'
+import WorkspaceBooking from './WorkspaceBooking'
 import EmployeeCardModal from './EmployeeCardModal'
 import OrgPhoto from './OrgPhoto'
 import type {
@@ -542,6 +543,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
             ['pyramid', 'Пирамида'],
             ['employees', 'Сотрудники'],
             ['vacations', 'График отпусков'],
+            ['workspace', 'Бронь мест'],
             ['manage', 'Управление'],
           ] as const
         ).map(([id, label]) => (
@@ -740,8 +742,10 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       ) : null}
 
       {panel === 'vacations' ? (
-        <VacationsPanel orgEmployeeId={orgEmployeeId} canManage={canManage} />
+        <VacationSchedule orgEmployeeId={orgEmployeeId} canManage={canManage} />
       ) : null}
+
+      {panel === 'workspace' ? <WorkspaceBooking orgEmployeeId={orgEmployeeId} /> : null}
 
       {panel === 'manage' ? (
         <section className="org-panel">

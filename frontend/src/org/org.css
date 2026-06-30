@@ -1417,6 +1417,16 @@
   background: color-mix(in srgb, var(--table-head-bg) 92%, #e11d48 8%) !important;
 }
 
+.org-vacation-holiday {
+  background: color-mix(in srgb, #ef4444 24%, var(--surface-1) 76%) !important;
+}
+
+.org-vacation-day-head.org-vacation-holiday {
+  background: color-mix(in srgb, #ef4444 28%, var(--table-head-bg) 72%) !important;
+  color: #b91c1c;
+  font-weight: 700;
+}
+
 .org-vacation-today {
   box-shadow: inset 0 0 0 2px var(--brand);
   position: relative;
@@ -1468,6 +1478,15 @@
 
 [data-theme='dark'] .vac-kind-sick {
   background: #92400e !important;
+}
+
+[data-theme='dark'] .org-vacation-holiday {
+  background: color-mix(in srgb, #ef4444 32%, var(--surface-1) 68%) !important;
+}
+
+[data-theme='dark'] .org-vacation-day-head.org-vacation-holiday {
+  background: color-mix(in srgb, #ef4444 36%, var(--table-head-bg) 64%) !important;
+  color: #fca5a5;
 }
 
 .org-schedule-page {

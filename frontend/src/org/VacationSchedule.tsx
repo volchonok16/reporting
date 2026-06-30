@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getJson, putJson } from '../api'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgPhoto from './OrgPhoto'
+import { buildHolidayKeySet } from './ruPublicHolidays'
 import { getMonthGroups, getYearDays, toDayKey } from './scheduleUtils'
 import type { EditableTimeOffKind, TimeOffKind, VacationScheduleData } from './types'
 
@@ -62,6 +63,7 @@ export default function VacationSchedule({
 
   const yearDays = useMemo(() => getYearDays(year), [year])
   const monthGroups = useMemo(() => getMonthGroups(yearDays), [yearDays])
+  const holidayKeys = useMemo(() => buildHolidayKeySet(year), [year])
   const todayKey = toDayKey(new Date())
 
   const dayKindMap = useMemo(() => {
@@ -223,6 +225,7 @@ export default function VacationSchedule({
               {meta.label}
             </span>
           ))}
+          <span className="org-vacation-legend-item org-vacation-holiday">Праздник</span>
         </div>
       )}
 
@@ -257,12 +260,13 @@ export default function VacationSchedule({
                   {yearDays.map((day) => {
                     const key = toDayKey(day)
                     const isWeekend = day.getDay() === 0 || day.getDay() === 6
+                    const isHoliday = holidayKeys.has(key)
                     return (
                       <th
                         key={key}
-                        className={`org-vacation-day-head${isWeekend ? ' org-vacation-weekend' : ''}${
-                          key === todayKey ? ' org-vacation-today' : ''
-                        }`}
+                        className={`org-vacation-day-head${
+                          isHoliday ? ' org-vacation-holiday' : isWeekend ? ' org-vacation-weekend' : ''
+                        }${key === todayKey ? ' org-vacation-today' : ''}`}
                         title={key}
                       >
                         {day.getDate()}
@@ -295,6 +299,7 @@ export default function VacationSchedule({
                       const dayKey = toDayKey(day)
                       const kind = dayKindMap.get(`${employee.id}:${dayKey}`)
                       const isWeekend = day.getDay() === 0 || day.getDay() === 6
+                      const isHoliday = holidayKeys.has(dayKey)
                       const inPreview =
                         rangeStart?.employeeId === employee.id && previewDays.has(dayKey)
                       const isSelecting = rangeStart?.employeeId === employee.id && rangeStart.day === dayKey
@@ -304,7 +309,7 @@ export default function VacationSchedule({
                           className={[
                             'org-vacation-cell',
                             kind ? KIND_META[kind].className : '',
-                            isWeekend ? 'org-vacation-weekend' : '',
+                            !kind && isHoliday ? 'org-vacation-holiday' : !kind && isWeekend ? 'org-vacation-weekend' : '',
                             dayKey === todayKey ? 'org-vacation-today' : '',
                             inPreview ? 'org-vacation-preview' : '',
                             isSelecting ? 'org-vacation-selecting' : '',

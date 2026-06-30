@@ -768,5 +768,5 @@
 | Пирамида | `GET /api/org/org-chart?department_id=` — без `department_id`: директор; отделы — отдельные рамки (подчинённый отдел head→head — колонкой под отделом руководителя); сотрудники без отдела — отдельная ветка на уровне отделов; для одного отдела — дерево по составу |
 | Сотрудники | `GET/POST/PATCH /api/org/employees` |
 | График отпусков | `GET /api/org/vacations?year=&department_id=`, `PUT /api/org/vacations/range` |
-| Бронь мест | `GET /api/org/workspace/bookings?year=&month=`, `PUT /api/org/workspace/bookings/toggle`; справочник мест: `GET/POST/PATCH/DELETE /api/org/workspace/places` (изменение — админ) |
+| Бронь мест | вкладка «Бронь мест»; `GET /api/org/workspace/bookings?year=&month=`, `PUT /api/org/workspace/bookings/toggle`; справочник: `GET/POST/PATCH/DELETE /api/org/workspace/places` (изменение — админ) |
 | Личный кабинет | `GET/PATCH /api/profile`, `POST /api/profile/password` |
