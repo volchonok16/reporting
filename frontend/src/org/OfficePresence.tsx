@@ -3,7 +3,7 @@ import { getJson } from '../api'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgPhoto from './OrgPhoto'
 import { buildHolidayKeySet } from './ruPublicHolidays'
-import { MONTH_NAMES_FULL, WEEKDAY_NAMES, getMonthDays, isWeekendDay, toDayKey } from './scheduleUtils'
+import { getMonthGroups, getYearDays, isDayOff, toDayKey } from './scheduleUtils'
 import type { WorkspaceOfficePresenceData } from './types'
 
 function presenceKey(employeeId: number, day: string): string {
@@ -26,10 +26,8 @@ function formatPresenceTip(
 export default function OfficePresence() {
   const currentDate = new Date()
   const currentYear = currentDate.getFullYear()
-  const currentMonth = currentDate.getMonth()
   const savedOrgUi = loadOrgUiState()
   const [year, setYear] = useState(savedOrgUi.workspaceYear)
-  const [month, setMonth] = useState(savedOrgUi.workspaceMonth)
   const [data, setData] = useState<WorkspaceOfficePresenceData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -42,7 +40,8 @@ export default function OfficePresence() {
     moved: boolean
   } | null>(null)
 
-  const monthDays = useMemo(() => getMonthDays(year, month), [year, month])
+  const yearDays = useMemo(() => getYearDays(year), [year])
+  const monthGroups = useMemo(() => getMonthGroups(yearDays), [yearDays])
   const holidayKeys = useMemo(() => buildHolidayKeySet(year), [year])
   const todayKey = toDayKey(currentDate)
 
@@ -63,14 +62,14 @@ export default function OfficePresence() {
   }, [data])
 
   useEffect(() => {
-    saveOrgUiState({ workspaceYear: year, workspaceMonth: month })
-  }, [year, month])
+    saveOrgUiState({ workspaceYear: year, workspaceMonth: new Date().getMonth() })
+  }, [year])
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const query = new URLSearchParams({ year: String(year), month: String(month + 1) })
+      const query = new URLSearchParams({ year: String(year) })
       const response = await getJson<WorkspaceOfficePresenceData>(
         `/api/org/workspace/presence?${query.toString()}`,
       )
@@ -80,20 +79,20 @@ export default function OfficePresence() {
     } finally {
       setLoading(false)
     }
-  }, [year, month])
+  }, [year])
 
   useEffect(() => {
     void load()
   }, [load])
 
   useEffect(() => {
-    if (scrollRef.current && year === currentYear && month === currentMonth) {
-      const todayIndex = monthDays.findIndex((day) => toDayKey(day) === todayKey)
+    if (scrollRef.current && year === currentYear) {
+      const todayIndex = yearDays.findIndex((day) => toDayKey(day) === todayKey)
       if (todayIndex > 0) {
         scrollRef.current.scrollLeft = Math.max(0, todayIndex * 26 - 100)
       }
     }
-  }, [year, month, monthDays, todayKey, currentYear, currentMonth])
+  }, [year, yearDays, todayKey, currentYear])
 
   const finishDragScroll = (pointerId?: number) => {
     const scrollEl = scrollRef.current
@@ -156,20 +155,6 @@ export default function OfficePresence() {
               </button>
             ))}
           </div>
-          <label className="org-workspace-month-picker">
-            <span className="org-workspace-month-label">Месяц</span>
-            <select
-              className="org-workspace-month-select"
-              value={month}
-              onChange={(e) => setMonth(Number(e.target.value))}
-            >
-              {MONTH_NAMES_FULL.map((label, index) => (
-                <option key={label} value={index}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
       </div>
 
@@ -201,21 +186,23 @@ export default function OfficePresence() {
                   <th className="org-vacation-sticky-col org-vacation-names-head" rowSpan={2}>
                     Сотрудник
                   </th>
-                  <th colSpan={monthDays.length} className="org-vacation-month">
-                    {MONTH_NAMES_FULL[month]} {year}
-                  </th>
+                  {monthGroups.map((group, index) => (
+                    <th key={`${group.label}-${index}`} colSpan={group.length} className="org-vacation-month">
+                      {group.label}
+                    </th>
+                  ))}
                 </tr>
                 <tr>
-                  {monthDays.map((day) => {
+                  {yearDays.map((day) => {
                     const key = toDayKey(day)
-                    const dayOff = isWeekendDay(day) || holidayKeys.has(key)
+                    const dayOff = isDayOff(day, holidayKeys)
                     return (
                       <th
                         key={key}
                         className={`org-vacation-day-head${
                           dayOff ? ' org-vacation-weekend' : ''
                         }${key === todayKey ? ' org-vacation-today' : ''}`}
-                        title={`${WEEKDAY_NAMES[day.getDay()]} · ${key}`}
+                        title={key}
                       >
                         {day.getDate()}
                       </th>
@@ -243,14 +230,14 @@ export default function OfficePresence() {
                         </span>
                       </span>
                     </td>
-                    {monthDays.map((day) => {
+                    {yearDays.map((day) => {
                       const dayKey = toDayKey(day)
                       const placeName = presenceMap.get(presenceKey(employee.id, dayKey)) ?? null
                       const officeMarked = officeDaysSet.has(presenceKey(employee.id, dayKey))
                       const dayOff =
                         !placeName &&
                         !officeMarked &&
-                        (isWeekendDay(day) || holidayKeys.has(dayKey))
+                        isDayOff(day, holidayKeys)
                       const tip = formatPresenceTip(placeName, officeMarked)
                       return (
                         <td
@@ -265,7 +252,6 @@ export default function OfficePresence() {
                             .filter(Boolean)
                             .join(' ')}
                           data-tip={tip}
-                          title={tip}
                           aria-label={tip}
                         />
                       )

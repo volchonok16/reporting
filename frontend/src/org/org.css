@@ -2065,6 +2065,8 @@
 
 .org-office-presence-panel {
   overflow: visible;
+  --workspace-self-fill: #e9f5ee;
+  --workspace-self-border: #c8e6d4;
 }
 
 .org-office-presence-panel .org-vacation-cell.org-office-presence-in {
@@ -2079,7 +2081,8 @@
 .org-vacation-legend-item.org-office-presence-in {
   background: var(--workspace-self-fill, #e9f5ee);
   border: 1px solid var(--workspace-self-border, #c8e6d4);
-  color: var(--text-secondary);
+  color: #0f172a;
+  font-weight: 600;
 }
 
 .org-office-presence-panel .org-office-presence-cell[data-tip] {
@@ -2098,8 +2101,8 @@
   transform: translateX(-50%);
   padding: 8px 12px;
   border-radius: 10px;
-  background: var(--surface-inverse, #0f172a);
-  color: var(--text-inverse, #f8fafc);
+  background: #0f172a;
+  color: #f8fafc;
   font-size: 12px;
   font-weight: 500;
   line-height: 1.4;
@@ -2119,7 +2122,7 @@
   left: 50%;
   transform: translateX(-50%);
   border: 6px solid transparent;
-  border-top-color: var(--surface-inverse, #0f172a);
+  border-top-color: #0f172a;
   z-index: 30;
   pointer-events: none;
 }
@@ -2129,11 +2132,28 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, #86efac 64%, transparent 36%);
 }
 
+[data-theme='dark'] .org-office-presence-panel {
+  --workspace-self-fill: color-mix(in srgb, #1f5f44 68%, #22c55e 32%);
+  --workspace-self-border: color-mix(in srgb, #86efac 64%, transparent 36%);
+}
+
 [data-theme='dark'] .org-vacation-legend-item.org-office-presence-in {
-  color: var(--text-primary);
+  color: #ecfff5;
+  border-color: color-mix(in srgb, #86efac 64%, transparent 36%);
 }
 
 [data-theme='dark'] .org-office-presence-panel .org-vacation-cell.org-workspace-free {
   background: #1b2233 !important;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, #64748b 48%, transparent 52%);
+}
+
+[data-theme='dark'] .org-office-presence-panel .org-office-presence-cell[data-tip]:hover::after {
+  background: #1a2438;
+  color: #f5f8ff;
+  border: 1px solid color-mix(in srgb, #93c5fd 32%, transparent 68%);
+  box-shadow: 0 12px 30px rgb(3 8 20 / 0.55);
+}
+
+[data-theme='dark'] .org-office-presence-panel .org-office-presence-cell[data-tip]:hover::before {
+  border-top-color: #1a2438;
 }
