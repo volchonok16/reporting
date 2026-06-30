@@ -231,6 +231,7 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 ./scripts/migrate.sh 005_org_structure.sql
 ./scripts/migrate.sh 006_vacation_schedule.sql
 ./scripts/migrate.sh 008_workspace_booking.sql
+./scripts/migrate.sh 009_employee_office_days.sql
 ./scripts/grant-db-users.sh
 ```
 

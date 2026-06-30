@@ -133,3 +133,12 @@
 | records_fetched | Получено из API |
 | records_upserted | Записано в `task` |
 | parameters_json | `board`, фильтры |
+
+## employee_office_day — присутствие в офисе без места
+
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| employee_id | bigint | FK на сотрудника (`employee.id`) |
+| day | date | День, когда сотрудник отметил «в офисе» |
+
+Применение: вкладка «Сотрудники в офисе» учитывает `workspace_booking` (с местом) и `employee_office_day` (без места), а также исключения по `employee_time_off_day`.

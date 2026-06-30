@@ -2048,8 +2048,8 @@
 }
 
 .org-office-presence-panel .org-vacation-cell.org-office-presence-in {
-  background: var(--workspace-self-fill, #e9f5ee) !important;
-  box-shadow: inset 0 0 0 1px var(--workspace-self-border, #c8e6d4);
+  background: color-mix(in srgb, var(--workspace-self-fill, #e9f5ee) 90%, #2e7d32 10%) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--workspace-self-border, #c8e6d4) 85%, #1b5e20 15%);
 }
 
 .org-office-presence-panel .org-vacation-cell.org-office-presence-conflict {
@@ -2105,10 +2105,15 @@
 }
 
 [data-theme='dark'] .org-office-presence-panel .org-vacation-cell.org-office-presence-in {
-  background: var(--workspace-self-fill, #1f5a41) !important;
-  box-shadow: inset 0 0 0 1px var(--workspace-self-border, #3f8a65);
+  background: color-mix(in srgb, #1f5f44 68%, #22c55e 32%) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #86efac 64%, transparent 36%);
 }
 
 [data-theme='dark'] .org-vacation-legend-item.org-office-presence-in {
   color: var(--text-primary);
+}
+
+[data-theme='dark'] .org-office-presence-panel .org-vacation-cell.org-workspace-free {
+  background: #1b2233 !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #64748b 48%, transparent 52%);
 }

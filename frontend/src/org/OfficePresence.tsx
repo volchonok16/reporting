@@ -3,14 +3,8 @@ import { getJson } from '../api'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgPhoto from './OrgPhoto'
 import { buildHolidayKeySet } from './ruPublicHolidays'
-import { getMonthGroups, getYearDays, isDayOff, toDayKey } from './scheduleUtils'
-import type { TimeOffKind, WorkspaceOfficePresenceData } from './types'
-
-const KIND_META: Record<TimeOffKind, { label: string; className: string }> = {
-  vacation: { label: 'Отпуск', className: 'vac-kind-vacation' },
-  dayoff: { label: 'Отгул', className: 'vac-kind-dayoff' },
-  sick_leave: { label: 'Больничный', className: 'vac-kind-sick' },
-}
+import { MONTH_NAMES_FULL, WEEKDAY_NAMES, getMonthDays, isWeekendDay, toDayKey } from './scheduleUtils'
+import type { WorkspaceOfficePresenceData } from './types'
 
 function presenceKey(employeeId: number, day: string): string {
   return `${employeeId}:${day}`
@@ -19,17 +13,7 @@ function presenceKey(employeeId: number, day: string): string {
 function formatPresenceTip(
   placeName: string | null,
   officeMarked: boolean,
-  timeOffKind: TimeOffKind | null,
 ): string | undefined {
-  if (timeOffKind && placeName) {
-    return `${KIND_META[timeOffKind].label} · бронь: ${placeName}`
-  }
-  if (timeOffKind && officeMarked) {
-    return `${KIND_META[timeOffKind].label} · отмечен как в офисе (без места)`
-  }
-  if (timeOffKind) {
-    return KIND_META[timeOffKind].label
-  }
   if (placeName) {
     return `В офисе · ${placeName}`
   }
@@ -40,31 +24,25 @@ function formatPresenceTip(
 }
 
 export default function OfficePresence() {
-  const currentYear = new Date().getFullYear()
+  const currentDate = new Date()
+  const currentYear = currentDate.getFullYear()
+  const currentMonth = currentDate.getMonth()
   const savedOrgUi = loadOrgUiState()
-  const [year, setYear] = useState(savedOrgUi.vacationYear)
+  const [year, setYear] = useState(savedOrgUi.workspaceYear)
+  const [month, setMonth] = useState(savedOrgUi.workspaceMonth)
   const [data, setData] = useState<WorkspaceOfficePresenceData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
-  const yearDays = useMemo(() => getYearDays(year), [year])
-  const monthGroups = useMemo(() => getMonthGroups(yearDays), [yearDays])
+  const monthDays = useMemo(() => getMonthDays(year, month), [year, month])
   const holidayKeys = useMemo(() => buildHolidayKeySet(year), [year])
-  const todayKey = toDayKey(new Date())
+  const todayKey = toDayKey(currentDate)
 
   const presenceMap = useMemo(() => {
     const map = new Map<string, string>()
     for (const item of data?.presence ?? []) {
       map.set(presenceKey(item.employeeId, item.day), item.placeName)
-    }
-    return map
-  }, [data])
-
-  const timeOffMap = useMemo(() => {
-    const map = new Map<string, TimeOffKind>()
-    for (const item of data?.timeOffDays ?? []) {
-      map.set(presenceKey(item.employeeId, item.day), item.kind)
     }
     return map
   }, [data])
@@ -78,14 +56,14 @@ export default function OfficePresence() {
   }, [data])
 
   useEffect(() => {
-    saveOrgUiState({ vacationYear: year })
-  }, [year])
+    saveOrgUiState({ workspaceYear: year, workspaceMonth: month })
+  }, [year, month])
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const query = new URLSearchParams({ year: String(year) })
+      const query = new URLSearchParams({ year: String(year), month: String(month + 1) })
       const response = await getJson<WorkspaceOfficePresenceData>(
         `/api/org/workspace/presence?${query.toString()}`,
       )
@@ -95,20 +73,20 @@ export default function OfficePresence() {
     } finally {
       setLoading(false)
     }
-  }, [year])
+  }, [year, month])
 
   useEffect(() => {
     void load()
   }, [load])
 
   useEffect(() => {
-    if (scrollRef.current && year === currentYear) {
-      const todayIndex = yearDays.findIndex((day) => toDayKey(day) === todayKey)
+    if (scrollRef.current && year === currentYear && month === currentMonth) {
+      const todayIndex = monthDays.findIndex((day) => toDayKey(day) === todayKey)
       if (todayIndex > 0) {
-        scrollRef.current.scrollLeft = Math.max(0, todayIndex * 26 - 120)
+        scrollRef.current.scrollLeft = Math.max(0, todayIndex * 26 - 100)
       }
     }
-  }, [year, yearDays, todayKey, currentYear])
+  }, [year, month, monthDays, todayKey, currentYear, currentMonth])
 
   return (
     <section className="org-panel org-vacation-panel org-office-presence-panel">
@@ -128,21 +106,31 @@ export default function OfficePresence() {
               </button>
             ))}
           </div>
+          <label className="org-workspace-month-picker">
+            <span className="org-workspace-month-label">Месяц</span>
+            <select
+              className="org-workspace-month-select"
+              value={month}
+              onChange={(e) => setMonth(Number(e.target.value))}
+            >
+              {MONTH_NAMES_FULL.map((label, index) => (
+                <option key={label} value={index}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       </div>
 
       <p className="org-hint">
         План посещения по броням мест и самоотметкам из личного кабинета. Наведите на ячейку, чтобы
-        увидеть место или отметку «без места». Отпуска, отгулы и больничные учитываются из графика отпусков.
+        увидеть место или отметку «без места».
       </p>
 
       <div className="org-vacation-legend">
         <span className="org-vacation-legend-item org-office-presence-in">В офисе</span>
-        {Object.entries(KIND_META).map(([kind, meta]) => (
-          <span key={kind} className={`org-vacation-legend-item ${meta.className}`}>
-            {meta.label}
-          </span>
-        ))}
+        <span className="org-vacation-legend-item org-workspace-free">Нет отметки</span>
         <span className="org-vacation-legend-item org-vacation-weekend">Выходной и праздник</span>
       </div>
 
@@ -162,27 +150,21 @@ export default function OfficePresence() {
                   <th className="org-vacation-sticky-col org-vacation-names-head" rowSpan={2}>
                     Сотрудник
                   </th>
-                  {monthGroups.map((group, index) => (
-                    <th
-                      key={`${group.label}-${index}`}
-                      colSpan={group.length}
-                      className="org-vacation-month"
-                    >
-                      {group.label}
-                    </th>
-                  ))}
+                  <th colSpan={monthDays.length} className="org-vacation-month">
+                    {MONTH_NAMES_FULL[month]} {year}
+                  </th>
                 </tr>
                 <tr>
-                  {yearDays.map((day) => {
+                  {monthDays.map((day) => {
                     const key = toDayKey(day)
-                    const dayOff = isDayOff(day, holidayKeys)
+                    const dayOff = isWeekendDay(day) || holidayKeys.has(key)
                     return (
                       <th
                         key={key}
                         className={`org-vacation-day-head${
                           dayOff ? ' org-vacation-weekend' : ''
                         }${key === todayKey ? ' org-vacation-today' : ''}`}
-                        title={key}
+                        title={`${WEEKDAY_NAMES[day.getDay()]} · ${key}`}
                       >
                         {day.getDate()}
                       </th>
@@ -210,23 +192,22 @@ export default function OfficePresence() {
                         </span>
                       </span>
                     </td>
-                    {yearDays.map((day) => {
+                    {monthDays.map((day) => {
                       const dayKey = toDayKey(day)
                       const placeName = presenceMap.get(presenceKey(employee.id, dayKey)) ?? null
                       const officeMarked = officeDaysSet.has(presenceKey(employee.id, dayKey))
-                      const timeOffKind = timeOffMap.get(presenceKey(employee.id, dayKey)) ?? null
-                      const dayOff = !timeOffKind && !placeName && !officeMarked && isDayOff(day, holidayKeys)
-                      const tip = formatPresenceTip(placeName, officeMarked, timeOffKind)
+                      const dayOff =
+                        !placeName &&
+                        !officeMarked &&
+                        (isWeekendDay(day) || holidayKeys.has(dayKey))
+                      const tip = formatPresenceTip(placeName, officeMarked)
                       return (
                         <td
                           key={dayKey}
                           className={[
                             'org-vacation-cell',
                             'org-office-presence-cell',
-                            timeOffKind ? KIND_META[timeOffKind].className : '',
-                            (placeName || officeMarked) && !timeOffKind ? 'org-office-presence-in' : '',
-                            placeName && timeOffKind ? 'org-office-presence-conflict' : '',
-                            officeMarked && timeOffKind ? 'org-office-presence-conflict' : '',
+                            placeName || officeMarked ? 'org-office-presence-in' : 'org-workspace-free',
                             dayOff ? 'org-vacation-weekend' : '',
                             dayKey === todayKey ? 'org-vacation-today' : '',
                           ]
