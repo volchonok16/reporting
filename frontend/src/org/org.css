@@ -477,6 +477,26 @@
   cursor: progress;
 }
 
+[data-theme='dark'] .org-profile-office-day {
+  background: #1a2338;
+  border-color: color-mix(in srgb, #64748b 42%, transparent 58%);
+  color: #dbe7ff;
+}
+
+[data-theme='dark'] .org-profile-office-day small {
+  color: #93a7c8;
+}
+
+[data-theme='dark'] .org-profile-office-day-weekend {
+  background: color-mix(in srgb, #7f1d1d 22%, #1a2338 78%);
+}
+
+[data-theme='dark'] .org-profile-office-day-active {
+  background: color-mix(in srgb, #22c55e 34%, #1a2338 66%);
+  border-color: color-mix(in srgb, #86efac 70%, transparent 30%);
+  color: #ecfff5;
+}
+
 /* Интерактивный лист пирамиды: pan + zoom */
 .org-panel-pyramid {
   padding: 0;

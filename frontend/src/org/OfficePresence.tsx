@@ -33,7 +33,14 @@ export default function OfficePresence() {
   const [data, setData] = useState<WorkspaceOfficePresenceData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [isDragScrolling, setIsDragScrolling] = useState(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const dragStateRef = useRef<{
+    pointerId: number
+    startX: number
+    startScrollLeft: number
+    moved: boolean
+  } | null>(null)
 
   const monthDays = useMemo(() => getMonthDays(year, month), [year, month])
   const holidayKeys = useMemo(() => buildHolidayKeySet(year), [year])
@@ -88,6 +95,49 @@ export default function OfficePresence() {
     }
   }, [year, month, monthDays, todayKey, currentYear, currentMonth])
 
+  const finishDragScroll = (pointerId?: number) => {
+    const scrollEl = scrollRef.current
+    if (scrollEl && pointerId != null && scrollEl.hasPointerCapture(pointerId)) {
+      scrollEl.releasePointerCapture(pointerId)
+    }
+    dragStateRef.current = null
+    setIsDragScrolling(false)
+  }
+
+  const handleScrollPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    if (!scrollRef.current) return
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startScrollLeft: scrollRef.current.scrollLeft,
+      moved: false,
+    }
+    scrollRef.current.setPointerCapture(event.pointerId)
+    setIsDragScrolling(true)
+  }
+
+  const handleScrollPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragStateRef.current
+    if (!drag || !scrollRef.current) return
+    const deltaX = event.clientX - drag.startX
+    if (!drag.moved && Math.abs(deltaX) > 3) {
+      drag.moved = true
+    }
+    scrollRef.current.scrollLeft = drag.startScrollLeft - deltaX
+    if (drag.moved) {
+      event.preventDefault()
+    }
+  }
+
+  const handleScrollPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    finishDragScroll(event.pointerId)
+  }
+
+  const handleScrollPointerCancel = (event: React.PointerEvent<HTMLDivElement>) => {
+    finishDragScroll(event.pointerId)
+  }
+
   return (
     <section className="org-panel org-vacation-panel org-office-presence-panel">
       <div className="org-panel-toolbar org-vacation-toolbar">
@@ -123,11 +173,6 @@ export default function OfficePresence() {
         </div>
       </div>
 
-      <p className="org-hint">
-        План посещения по броням мест и самоотметкам из личного кабинета. Наведите на ячейку, чтобы
-        увидеть место или отметку «без места».
-      </p>
-
       <div className="org-vacation-legend">
         <span className="org-vacation-legend-item org-office-presence-in">В офисе</span>
         <span className="org-vacation-legend-item org-workspace-free">Нет отметки</span>
@@ -140,9 +185,15 @@ export default function OfficePresence() {
       {data && !loading ? (
         <div className="org-vacation-chart-wrap">
           <div
-            className="org-vacation-scroll"
+            className={`org-vacation-scroll org-workspace-scroll${
+              isDragScrolling ? ' org-workspace-scroll-dragging' : ''
+            }`}
             ref={scrollRef}
             aria-label="Календарь посещений — прокрутка влево и вправо"
+            onPointerDown={handleScrollPointerDown}
+            onPointerMove={handleScrollPointerMove}
+            onPointerUp={handleScrollPointerUp}
+            onPointerCancel={handleScrollPointerCancel}
           >
             <table className="org-vacation-grid">
               <thead>

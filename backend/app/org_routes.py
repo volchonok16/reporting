@@ -84,11 +84,13 @@ from app.org_vacation_service import get_vacation_schedule, upsert_vacation_rang
 from app.org_workspace_service import (
     create_workspace_place,
     delete_workspace_place,
+    get_employee_office_days,
     get_workspace_booking_schedule,
     get_workspace_office_presence,
     get_profile_office_days,
     list_workspace_places,
     toggle_workspace_booking,
+    upsert_employee_office_days,
     upsert_profile_office_days,
     update_workspace_place,
 )
@@ -218,6 +220,27 @@ def api_delete_employee(
 ) -> dict[str, bool]:
     delete_employee(db, employee_id)
     return {"ok": True}
+
+
+@router.get("/employees/{employee_id}/office-days", response_model=list[OfficeDayOut])
+def api_employee_office_days(
+    employee_id: int,
+    year: int = Query(default=date.today().year),
+    month: int = Query(default=date.today().month, ge=1, le=12),
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_org_admin),
+) -> list[OfficeDayOut]:
+    return get_employee_office_days(db, employee_id=employee_id, year=year, month=month)
+
+
+@router.put("/employees/{employee_id}/office-days/range", response_model=OfficeDayRangeOut)
+def api_employee_office_days_range(
+    employee_id: int,
+    data: OfficeDayRangeIn,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_org_admin),
+) -> OfficeDayRangeOut:
+    return upsert_employee_office_days(db, employee_id=employee_id, data=data)
 
 
 @router.post("/employees/{employee_id}/photo", response_model=EmployeeOut)

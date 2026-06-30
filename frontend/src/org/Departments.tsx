@@ -8,6 +8,8 @@ import WorkspaceBooking from './WorkspaceBooking'
 import OfficePresence from './OfficePresence'
 import EmployeeCardModal from './EmployeeCardModal'
 import OrgPhoto from './OrgPhoto'
+import { buildHolidayKeySet } from './ruPublicHolidays'
+import { MONTH_NAMES_FULL, WEEKDAY_NAMES, getMonthDays, isWeekendDay, toDayKey } from './scheduleUtils'
 import type {
   Department,
   DepartmentMember,
@@ -17,6 +19,7 @@ import type {
   EmployeeExpertise,
   ExpertiseDirection,
   JobPosition,
+  OfficeDay,
   OrgChartData,
   OrgPanel,
   SelectOption,
@@ -144,6 +147,11 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null)
   const [savingEmployee, setSavingEmployee] = useState(false)
+  const [employeeOfficeYear, setEmployeeOfficeYear] = useState(savedOrgUi.workspaceYear)
+  const [employeeOfficeMonth, setEmployeeOfficeMonth] = useState(savedOrgUi.workspaceMonth)
+  const [employeeOfficeDays, setEmployeeOfficeDays] = useState<OfficeDay[]>([])
+  const [loadingEmployeeOfficeDays, setLoadingEmployeeOfficeDays] = useState(false)
+  const [savingEmployeeOfficeDay, setSavingEmployeeOfficeDay] = useState<string | null>(null)
   const photoInputRef = useRef<HTMLInputElement>(null)
   const userPickedAllCompany = useRef(savedOrgUi.allCompany)
 
@@ -168,6 +176,18 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const editingEmployee = useMemo(
     () => (editingEmployeeId ? employeeById.get(editingEmployeeId) ?? null : null),
     [editingEmployeeId, employeeById],
+  )
+  const employeeOfficeMonthDays = useMemo(
+    () => getMonthDays(employeeOfficeYear, employeeOfficeMonth),
+    [employeeOfficeYear, employeeOfficeMonth],
+  )
+  const employeeOfficeHolidayKeys = useMemo(
+    () => buildHolidayKeySet(employeeOfficeYear),
+    [employeeOfficeYear],
+  )
+  const employeeOfficeDaySet = useMemo(
+    () => new Set(employeeOfficeDays.map((item) => item.day)),
+    [employeeOfficeDays],
   )
 
   useEffect(() => {
@@ -223,6 +243,28 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
     setOrgChart(data)
   }, [])
 
+  const loadEmployeeOfficeDays = useCallback(
+    async (employeeId: number, year: number, month: number) => {
+      if (!canManage) return
+      setLoadingEmployeeOfficeDays(true)
+      try {
+        const query = new URLSearchParams({
+          year: String(year),
+          month: String(month + 1),
+        })
+        const response = await getJson<OfficeDay[]>(
+          `/api/org/employees/${employeeId}/office-days?${query.toString()}`,
+        )
+        setEmployeeOfficeDays(response)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Ошибка загрузки дней офиса')
+      } finally {
+        setLoadingEmployeeOfficeDays(false)
+      }
+    },
+    [canManage],
+  )
+
   useEffect(() => {
     void loadBase()
   }, [loadBase])
@@ -265,6 +307,8 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
 
   const closeEmployeeModal = () => {
     resetPhotoState()
+    setEmployeeOfficeDays([])
+    setSavingEmployeeOfficeDay(null)
     setShowEmployeeModal(false)
   }
 
@@ -284,6 +328,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
     setEmployeeDepartmentIds([])
     setExpertiseDirectionId('')
     setExpertiseLevel('')
+    setEmployeeOfficeDays([])
     resetPhotoState()
     setShowEmployeeModal(true)
   }
@@ -299,6 +344,9 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       }
     }
     setEmployeeDepartmentIds([...departmentIds])
+    setEmployeeOfficeYear(savedOrgUi.workspaceYear)
+    setEmployeeOfficeMonth(savedOrgUi.workspaceMonth)
+    void loadEmployeeOfficeDays(emp.id, savedOrgUi.workspaceYear, savedOrgUi.workspaceMonth)
     resetPhotoState(resolvePhotoUrl(emp.photoUrl))
     setEmployeeForm({
       fullName: emp.fullName,
@@ -314,6 +362,36 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
     })
     setShowEmployeeModal(true)
   }
+
+  const toggleEmployeeOfficeDay = async (day: string) => {
+    if (!canManage || !editingEmployeeId || savingEmployeeOfficeDay) return
+    const present = !employeeOfficeDaySet.has(day)
+    setSavingEmployeeOfficeDay(day)
+    try {
+      await putJson(`/api/org/employees/${editingEmployeeId}/office-days/range`, {
+        fromDay: day,
+        toDay: day,
+        present,
+      })
+      await loadEmployeeOfficeDays(editingEmployeeId, employeeOfficeYear, employeeOfficeMonth)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка сохранения дней офиса')
+    } finally {
+      setSavingEmployeeOfficeDay(null)
+    }
+  }
+
+  useEffect(() => {
+    if (!showEmployeeModal || !editingEmployeeId || !canManage) return
+    void loadEmployeeOfficeDays(editingEmployeeId, employeeOfficeYear, employeeOfficeMonth)
+  }, [
+    showEmployeeModal,
+    editingEmployeeId,
+    canManage,
+    employeeOfficeYear,
+    employeeOfficeMonth,
+    loadEmployeeOfficeDays,
+  ])
 
   const uploadEmployeePhoto = async (employeeId: number, file: File) => {
     const form = new FormData()
@@ -997,6 +1075,77 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                         </button>
                       </div>
                     ) : null}
+                  </section>
+                ) : null}
+
+                {editingEmployeeId && canManage ? (
+                  <section className="org-form-section">
+                    <div className="org-form-section-header">
+                      <h4>Дни в офисе (без места)</h4>
+                    </div>
+                    <div className="org-vacation-toolbar-left">
+                      <div className="org-vacation-year-picker" role="group" aria-label="Год">
+                        {[new Date().getFullYear() - 1, new Date().getFullYear(), new Date().getFullYear() + 1].map(
+                          (y) => (
+                            <button
+                              key={y}
+                              type="button"
+                              className={`org-vacation-year-btn${employeeOfficeYear === y ? ' org-vacation-year-btn-active' : ''}`}
+                              onClick={() => setEmployeeOfficeYear(y)}
+                              aria-pressed={employeeOfficeYear === y}
+                            >
+                              {y}
+                            </button>
+                          ),
+                        )}
+                      </div>
+                      <label className="org-workspace-month-picker">
+                        <span className="org-workspace-month-label">Месяц</span>
+                        <select
+                          className="org-workspace-month-select"
+                          value={employeeOfficeMonth}
+                          onChange={(e) => setEmployeeOfficeMonth(Number(e.target.value))}
+                        >
+                          {MONTH_NAMES_FULL.map((label, index) => (
+                            <option key={label} value={index}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <p className="org-hint">
+                      Администратор может проставить сотруднику дни присутствия в офисе без брони места.
+                    </p>
+                    {loadingEmployeeOfficeDays ? <p className="org-hint">Загрузка…</p> : null}
+                    <div className="org-profile-office-grid">
+                      {employeeOfficeMonthDays.map((dayDate) => {
+                        const day = toDayKey(dayDate)
+                        const isMarked = employeeOfficeDaySet.has(day)
+                        const isWeekend = isWeekendDay(dayDate) || employeeOfficeHolidayKeys.has(day)
+                        return (
+                          <button
+                            key={day}
+                            type="button"
+                            className={[
+                              'org-profile-office-day',
+                              isMarked ? 'org-profile-office-day-active' : '',
+                              isWeekend ? 'org-profile-office-day-weekend' : '',
+                            ]
+                              .filter(Boolean)
+                              .join(' ')}
+                            title={`${WEEKDAY_NAMES[dayDate.getDay()]} ${dayDate.getDate()} ${MONTH_NAMES_FULL[
+                              dayDate.getMonth()
+                            ].toLowerCase()}`}
+                            disabled={savingEmployeeOfficeDay === day}
+                            onClick={() => void toggleEmployeeOfficeDay(day)}
+                          >
+                            <span>{dayDate.getDate()}</span>
+                            <small>{WEEKDAY_NAMES[dayDate.getDay()]}</small>
+                          </button>
+                        )
+                      })}
+                    </div>
                   </section>
                 ) : null}
 

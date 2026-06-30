@@ -262,6 +262,30 @@ def get_profile_office_days(
     return [OfficeDayOut(employeeId=row.employee_id, day=row.day.isoformat()) for row in rows]
 
 
+def get_employee_office_days(
+    db: Session,
+    *,
+    employee_id: int,
+    year: int,
+    month: int,
+) -> list[OfficeDayOut]:
+    if year < 2000 or year > 2100:
+        raise HTTPException(status_code=400, detail="Некорректный год.")
+    day_from, day_to = _month_bounds(year, month)
+    employee = db.get(Employee, employee_id)
+    if employee is None or not employee.is_active:
+        raise HTTPException(status_code=404, detail="Сотрудник не найден.")
+
+    rows = db.scalars(
+        select(EmployeeOfficeDay).where(
+            EmployeeOfficeDay.employee_id == employee_id,
+            EmployeeOfficeDay.day >= day_from,
+            EmployeeOfficeDay.day <= day_to,
+        )
+    ).all()
+    return [OfficeDayOut(employeeId=row.employee_id, day=row.day.isoformat()) for row in rows]
+
+
 def upsert_profile_office_days(
     db: Session,
     data: OfficeDayRangeIn,
@@ -291,6 +315,40 @@ def upsert_profile_office_days(
         if data.present:
             if existing is None:
                 db.add(EmployeeOfficeDay(employee_id=actor_employee_id, day=target_day))
+                affected += 1
+        elif existing is not None:
+            db.delete(existing)
+            affected += 1
+    db.commit()
+    return OfficeDayRangeOut(affectedDays=affected)
+
+
+def upsert_employee_office_days(
+    db: Session,
+    *,
+    employee_id: int,
+    data: OfficeDayRangeIn,
+) -> OfficeDayRangeOut:
+    employee = db.get(Employee, employee_id)
+    if employee is None or not employee.is_active:
+        raise HTTPException(status_code=404, detail="Сотрудник не найден.")
+
+    start = _parse_day(data.fromDay)
+    end = _parse_day(data.toDay)
+    if start > end:
+        start, end = end, start
+
+    affected = 0
+    for target_day in _iter_days(start, end):
+        existing = db.scalar(
+            select(EmployeeOfficeDay).where(
+                EmployeeOfficeDay.employee_id == employee_id,
+                EmployeeOfficeDay.day == target_day,
+            )
+        )
+        if data.present:
+            if existing is None:
+                db.add(EmployeeOfficeDay(employee_id=employee_id, day=target_day))
                 affected += 1
         elif existing is not None:
             db.delete(existing)
