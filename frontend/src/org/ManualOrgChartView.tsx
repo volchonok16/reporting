@@ -46,7 +46,7 @@ type ChartItem =
 
 const EMPLOYEE_NODE_WIDTH = 180
 const EMPLOYEE_NODE_HEIGHT = 190
-const DEPARTMENT_NODE_WIDTH = 520
+const DEPARTMENT_NODE_WIDTH = 640
 const DEPARTMENT_TITLE_HEIGHT = 52
 const DEPARTMENT_PADDING = 24
 const DEPARTMENT_EMPLOYEE_GAP = 18
@@ -378,6 +378,7 @@ function edgePath(from: OrgChartLayoutNode, to: OrgChartLayoutNode): string {
 }
 
 function clamp(value: number, min: number, max: number): number {
+  if (max < min) return min
   return Math.min(max, Math.max(min, value))
 }
 
@@ -472,10 +473,12 @@ export default function ManualOrgChartView({
       if (Math.abs(moveEvent.clientX - startX) > 3 || Math.abs(moveEvent.clientY - startY) > 3) {
         dragMovedRef.current = true
       }
+      const nextX = initialX + (moveEvent.clientX - startX) / scale
+      const nextY = moveEvent.ctrlKey ? initialY : initialY + (moveEvent.clientY - startY) / scale
       moveNode(
         node.id,
-        initialX + (moveEvent.clientX - startX) / scale,
-        initialY + (moveEvent.clientY - startY) / scale,
+        nextX,
+        nextY,
       )
     }
     const onUp = () => {
