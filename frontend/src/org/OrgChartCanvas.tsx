@@ -43,6 +43,22 @@ export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
     scaleRef.current = scale
   }, [scale])
 
+  const applyZoom = useCallback((nextScale: number, anchorX: number, anchorY: number) => {
+    const clamped = clamp(nextScale, MIN_SCALE, MAX_SCALE)
+    setScale((currentScale) => {
+      setTranslate((currentTranslate) => {
+        const worldX = (anchorX - currentTranslate.x) / currentScale
+        const worldY = (anchorY - currentTranslate.y) / currentScale
+        return {
+          x: anchorX - worldX * clamped,
+          y: anchorY - worldY * clamped,
+        }
+      })
+      scaleRef.current = clamped
+      return clamped
+    })
+  }, [])
+
   useEffect(() => {
     setScale(1)
     scaleRef.current = 1
@@ -64,22 +80,6 @@ export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
     stage.addEventListener('wheel', onWheel, { passive: false })
     return () => stage.removeEventListener('wheel', onWheel)
   }, [applyZoom])
-
-  const applyZoom = useCallback((nextScale: number, anchorX: number, anchorY: number) => {
-    const clamped = clamp(nextScale, MIN_SCALE, MAX_SCALE)
-    setScale((currentScale) => {
-      setTranslate((currentTranslate) => {
-        const worldX = (anchorX - currentTranslate.x) / currentScale
-        const worldY = (anchorY - currentTranslate.y) / currentScale
-        return {
-          x: anchorX - worldX * clamped,
-          y: anchorY - worldY * clamped,
-        }
-      })
-      scaleRef.current = clamped
-      return clamped
-    })
-  }, [])
 
   const zoomBy = useCallback(
     (factor: number) => {

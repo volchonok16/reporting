@@ -738,7 +738,7 @@
 | Раздел | API |
 |--------|-----|
 | Состав | `GET /api/org/departments/{id}/members` |
-| Пирамида | `GET /api/org/org-chart?department_id=` |
+| Пирамида | `GET /api/org/org-chart?department_id=` — без `department_id` дерево по `employee.manager_id`; для отдела — по составу отдела и `department_member.manager_id` |
 | Сотрудники | `GET/POST/PATCH /api/org/employees` |
 | График отпусков | `GET /api/org/vacations?year=&department_id=`, `PUT /api/org/vacations/range` |
 | Личный кабинет | `GET/PATCH /api/profile`, `POST /api/profile/password` |

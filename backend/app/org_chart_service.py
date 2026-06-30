@@ -123,6 +123,56 @@ def _build_node(
     )
 
 
+def build_employee_hierarchy_tree(employees: list[Employee]) -> list[OrgChartNode]:
+    """Общая пирамида компании: связи по employee.manager_id (как в карточке сотрудника)."""
+    active = [e for e in employees if e.is_active]
+    by_id = {e.id: e for e in active}
+    org_head = next((e for e in active if e.is_organization_head), None)
+
+    children_by_manager: dict[int, list[Employee]] = {}
+    unattached: list[Employee] = []
+
+    for emp in active:
+        if org_head is not None and emp.id == org_head.id:
+            continue
+        manager_id = emp.manager_id
+        if manager_id is not None and manager_id in by_id:
+            children_by_manager.setdefault(manager_id, []).append(emp)
+        else:
+            unattached.append(emp)
+
+    def emp_to_node(emp: Employee, *, is_head: bool = False) -> OrgChartNode:
+        children = [
+            emp_to_node(child)
+            for child in sorted(
+                children_by_manager.get(emp.id, []),
+                key=lambda e: e.full_name.casefold(),
+            )
+        ]
+        return OrgChartNode(
+            person=OrgChartPerson(
+                employeeId=emp.id,
+                fullName=emp.full_name,
+                position=emp.position or (emp.job_position.name if emp.job_position else None),
+                email=emp.email,
+                photoUrl=photo_public_url(emp.photo_path),
+                isHead=is_head or emp.is_organization_head,
+            ),
+            children=children,
+        )
+
+    if org_head is not None:
+        root = emp_to_node(org_head, is_head=True)
+        for emp in sorted(unattached, key=lambda e: e.full_name.casefold()):
+            root.children.append(emp_to_node(emp))
+        root.children.sort(key=lambda n: n.person.fullName.casefold())
+        return [root]
+
+    roots = [emp_to_node(emp) for emp in sorted(unattached, key=lambda e: e.full_name.casefold())]
+    roots.sort(key=lambda n: n.person.fullName.casefold())
+    return roots
+
+
 def build_department_tree(
     department: Department,
     members: list[DepartmentMember],
