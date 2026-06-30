@@ -97,6 +97,11 @@ class OrgUserBriefOut(BaseModel):
     status: Literal["active", "inactive", "deleted"]
 
 
+class EmployeeDepartmentBriefOut(BaseModel):
+    departmentId: int
+    departmentName: str
+
+
 class EmployeeOut(BaseModel):
     id: int
     fullName: str
@@ -118,11 +123,6 @@ class EmployeeBriefOut(BaseModel):
     id: int
     fullName: str
     position: str | None = None
-
-
-class EmployeeDepartmentBriefOut(BaseModel):
-    departmentId: int
-    departmentName: str
 
 
 class EmployeeDepartmentMembershipOut(BaseModel):
