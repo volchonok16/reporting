@@ -9,6 +9,8 @@ export type OrgUiState = {
   selectedDepartmentId: number | null
   allCompany: boolean
   vacationYear: number
+  workspaceYear: number
+  workspaceMonth: number
 }
 
 export type RoadmapUiState = {
@@ -92,7 +94,15 @@ export function loadOrgUiState(): OrgUiState {
     typeof org?.vacationYear === 'number' && org.vacationYear >= 2000 && org.vacationYear <= 2100
       ? org.vacationYear
       : currentYear
-  return { panel, selectedDepartmentId, allCompany, vacationYear }
+  const workspaceYear =
+    typeof org?.workspaceYear === 'number' && org.workspaceYear >= 2000 && org.workspaceYear <= 2100
+      ? org.workspaceYear
+      : currentYear
+  const workspaceMonth =
+    typeof org?.workspaceMonth === 'number' && org.workspaceMonth >= 0 && org.workspaceMonth <= 11
+      ? org.workspaceMonth
+      : new Date().getMonth()
+  return { panel, selectedDepartmentId, allCompany, vacationYear, workspaceYear, workspaceMonth }
 }
 
 export function saveOrgUiState(patch: Partial<OrgUiState>): void {
@@ -104,6 +114,8 @@ export function saveOrgUiState(patch: Partial<OrgUiState>): void {
         patch.selectedDepartmentId !== undefined ? patch.selectedDepartmentId : current.selectedDepartmentId,
       allCompany: patch.allCompany !== undefined ? patch.allCompany : current.allCompany,
       vacationYear: patch.vacationYear ?? current.vacationYear,
+      workspaceYear: patch.workspaceYear ?? current.workspaceYear,
+      workspaceMonth: patch.workspaceMonth ?? current.workspaceMonth,
     },
   })
 }

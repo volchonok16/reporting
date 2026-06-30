@@ -65,6 +65,43 @@
 
   --focus-ring: rgba(59, 130, 246, 0.15);
 
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --page-gutter: 16px;
+
+  --text-link: #1d5fbf;
+  --text-link-hover: #0f3d82;
+  --tag-info-bg: #eff6ff;
+  --tag-info-text: #1d4ed8;
+  --tag-warn-bg: #ffe8cc;
+  --tag-warn-text: #9a3412;
+  --presentation-row-bg: #dcfce7;
+  --presentation-row-bg-hover: #bbf7d0;
+  --attention-text: #b91c1c;
+  --format-toolbar-bg: #f8fafc;
+  --format-toolbar-border: #e2e8f0;
+  --format-toolbar-muted: #64748b;
+  --format-toolbar-hint: #94a3b8;
+  --format-toolbar-sep: #dbe3ee;
+  --input-hover-bg: var(--surface-2);
+  --input-focus-border: var(--accent);
+  --btn-ghost-hover: var(--bg-hover);
+
+  --vac-vacation-bg: #86efac;
+  --vac-dayoff-bg: #c4b5fd;
+  --vac-sick-bg: #fcd34d;
+  --vac-erase-bg: var(--surface-2);
+  --workspace-self-bg: #86efac;
+  --workspace-busy-bg: color-mix(in srgb, var(--surface-2) 78%, var(--text-muted) 22%);
+  --weekend-tint: #e11d48;
+  --holiday-tint: #ef4444;
+  --holiday-text: #b91c1c;
+  --news-accent: #c41e3a;
+  --dirty-text: #b45309;
+  --reservation-yes: #166534;
+  --reservation-no: var(--text-tertiary);
+
   /* Legacy aliases (совместимость с index.css) */
   --t2-black: var(--brand);
   --t2-lime: var(--brand-accent);
@@ -74,7 +111,6 @@
   --text-muted: var(--text-secondary);
   --accent-blue: var(--accent);
   --accent-blue-soft: var(--accent-soft);
-  --page-gutter: 12px;
   --tab-hover: rgba(255, 255, 255, 0.55);
 }
 
@@ -140,6 +176,38 @@
 
   --focus-ring: rgba(107, 163, 255, 0.25);
   --tab-hover: rgba(255, 255, 255, 0.06);
+
+  --text-link: #93bbff;
+  --text-link-hover: #c4d9ff;
+  --tag-info-bg: rgba(107, 163, 255, 0.16);
+  --tag-info-text: #93bbff;
+  --tag-warn-bg: rgba(251, 191, 36, 0.18);
+  --tag-warn-text: #fcd34d;
+  --presentation-row-bg: rgba(52, 211, 153, 0.18);
+  --presentation-row-bg-hover: rgba(52, 211, 153, 0.28);
+  --attention-text: #fca5a5;
+  --format-toolbar-bg: var(--surface-2);
+  --format-toolbar-border: var(--border);
+  --format-toolbar-muted: var(--text-secondary);
+  --format-toolbar-hint: var(--text-tertiary);
+  --format-toolbar-sep: var(--border-strong);
+  --input-hover-bg: var(--surface-3);
+  --input-focus-border: var(--accent);
+  --btn-ghost-hover: var(--bg-hover);
+
+  --vac-vacation-bg: #166534;
+  --vac-dayoff-bg: #5b21b6;
+  --vac-sick-bg: #92400e;
+  --vac-erase-bg: var(--surface-3);
+  --workspace-self-bg: #166534;
+  --workspace-busy-bg: color-mix(in srgb, var(--surface-3) 82%, var(--text-muted) 18%);
+  --weekend-tint: #f87171;
+  --holiday-tint: #ef4444;
+  --holiday-text: #fca5a5;
+  --news-accent: #fb7185;
+  --dirty-text: #fbbf24;
+  --reservation-yes: #34d399;
+  --reservation-no: var(--text-tertiary);
 }
 
 html {
@@ -152,6 +220,32 @@ body {
   background: var(--bg-app);
   color: var(--text-primary);
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--text-tertiary) 70%, var(--border-strong) 30%);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* Theme toggle */
@@ -210,7 +304,41 @@ body {
   padding: 0 var(--page-gutter) 8px;
 }
 
-/* Roadmap cards in dark theme */
+[data-theme='dark'] .roadmap-quarter-btn:hover {
+  color: var(--accent-hover);
+}
+
+/* Roadmap — тёмная тема: приглушённые цвета статусов */
+[data-theme='dark'] .roadmap-page {
+  --rm-today: #f87171;
+  --rm-accent: var(--accent);
+  --rm-accent-soft: rgba(107, 163, 255, 0.28);
+  --c-new: #854d0e;
+  --c-new-text: #fde68a;
+  --c-backlog: #334155;
+  --c-backlog-text: #cbd5e1;
+  --c-express: #115e59;
+  --c-express-text: #99f6e4;
+  --c-analysis-bl: #134e4a;
+  --c-analysis-bl-text: #5eead4;
+  --c-analysis: #0f766e;
+  --c-analysis-text: #ccfbf1;
+  --c-development: #1e3a8a;
+  --c-development-text: #bfdbfe;
+  --c-uat: #4c1d95;
+  --c-uat-text: #ddd6fe;
+  --c-pilot: #5b21b6;
+  --c-pilot-text: #e9d5ff;
+  --c-closed: #14532d;
+  --c-closed-text: #bbf7d0;
+  --c-default: #374151;
+  --c-default-text: #e5e7eb;
+}
+
+[data-theme='dark'] .roadmap-priority-dot {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
 [data-theme='dark'] .roadmap-task-card {
   background: var(--surface-1);
   border-color: var(--border);
@@ -231,4 +359,62 @@ body {
 
 [data-theme='dark'] .loading {
   color: var(--text-primary);
+}
+
+[data-theme='dark'] .zni-modal-errors {
+  border-top-color: var(--border);
+}
+
+/* =============================================================================
+   Global polish — кнопки, фокус, скроллбары
+   ============================================================================= */
+
+.btn-ghost:hover {
+  background: var(--btn-ghost-hover);
+  color: var(--text-primary);
+}
+
+.btn-ghost:focus-visible,
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible,
+.workbook-tab:focus-visible,
+.org-subtab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.login-panel input:focus,
+.org-form input:focus,
+.org-form select:focus,
+.org-form textarea:focus,
+.select-wrap select:focus,
+.search-wrap input:focus,
+.date-wrap input:focus {
+  outline: none;
+  border-color: var(--input-focus-border);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.metric-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+[data-theme='dark'] .row-expand-btn {
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .row-expand-btn:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .zni-table-row-expanded td,
+[data-theme='dark'] .zni-table-detail-row td {
+  background: var(--bg-subtle);
+}
+
+[data-theme='dark'] .zni-detail-panel {
+  background: var(--surface-1);
+  border-color: var(--border);
 }

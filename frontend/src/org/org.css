@@ -42,18 +42,29 @@
   padding: 8px 16px;
   cursor: pointer;
   color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.org-subtab:hover:not(.org-subtab-active) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
 }
 
 .org-subtab-active {
   background: var(--brand);
   color: var(--text-inverse);
   border-color: var(--brand);
+  box-shadow: var(--shadow-sm);
 }
 
 .org-panel {
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-md, 12px);
   padding: 16px;
   box-shadow: var(--shadow-sm);
 }
@@ -88,6 +99,14 @@
   padding: 10px 8px;
   text-align: left;
   vertical-align: top;
+}
+
+.org-table tbody tr {
+  transition: background 0.12s ease;
+}
+
+.org-table tbody tr:hover td {
+  background: var(--table-row-hover);
 }
 
 .org-table th {
@@ -265,7 +284,7 @@
   display: grid;
   place-items: center;
   background: var(--avatar-gradient);
-  color: #fff;
+  color: var(--text-inverse);
   font-weight: 700;
   font-size: 1.25rem;
 }
@@ -396,7 +415,7 @@
   display: grid;
   place-items: center;
   background: var(--avatar-gradient);
-  color: #fff;
+  color: var(--text-inverse);
   font-weight: 700;
   font-size: 1.5rem;
 }
@@ -913,7 +932,7 @@
   border-radius: 12px;
   overflow: hidden;
   background: var(--avatar-gradient);
-  color: #fff;
+  color: var(--text-inverse);
   display: grid;
   place-items: center;
   font-size: 13px;
@@ -945,7 +964,7 @@
   place-items: center;
   font-size: 12px;
   font-weight: 700;
-  color: #fff;
+  color: var(--text-inverse);
   background: var(--avatar-gradient);
 }
 
@@ -1005,7 +1024,7 @@
   display: grid;
   place-items: center;
   background: var(--avatar-gradient);
-  color: #fff;
+  color: var(--text-inverse);
   font-size: 11px;
   font-weight: 700;
 }
@@ -1410,20 +1429,20 @@
 }
 
 .org-vacation-weekend {
-  background: color-mix(in srgb, var(--surface-2) 94%, #e11d48 6%) !important;
+  background: color-mix(in srgb, var(--surface-2) 94%, var(--weekend-tint) 6%) !important;
 }
 
 .org-vacation-day-head.org-vacation-weekend {
-  background: color-mix(in srgb, var(--table-head-bg) 92%, #e11d48 8%) !important;
+  background: color-mix(in srgb, var(--table-head-bg) 92%, var(--weekend-tint) 8%) !important;
 }
 
 .org-vacation-holiday {
-  background: color-mix(in srgb, #ef4444 24%, var(--surface-1) 76%) !important;
+  background: color-mix(in srgb, var(--holiday-tint) 24%, var(--surface-1) 76%) !important;
 }
 
 .org-vacation-day-head.org-vacation-holiday {
-  background: color-mix(in srgb, #ef4444 28%, var(--table-head-bg) 72%) !important;
-  color: #b91c1c;
+  background: color-mix(in srgb, var(--holiday-tint) 28%, var(--table-head-bg) 72%) !important;
+  color: var(--holiday-text);
   font-weight: 700;
 }
 
@@ -1453,46 +1472,19 @@
 }
 
 .vac-kind-vacation {
-  background: #86efac !important;
+  background: var(--vac-vacation-bg) !important;
 }
 
 .vac-kind-dayoff {
-  background: #c4b5fd !important;
+  background: var(--vac-dayoff-bg) !important;
 }
 
 .vac-kind-sick {
-  background: #fcd34d !important;
+  background: var(--vac-sick-bg) !important;
 }
 
 .vac-kind-erase {
-  background: var(--surface-2);
-}
-
-[data-theme='dark'] .vac-kind-vacation {
-  background: #166534 !important;
-}
-
-[data-theme='dark'] .vac-kind-dayoff {
-  background: #5b21b6 !important;
-}
-
-[data-theme='dark'] .vac-kind-sick {
-  background: #92400e !important;
-}
-
-[data-theme='dark'] .org-vacation-holiday {
-  background: color-mix(in srgb, #ef4444 32%, var(--surface-1) 68%) !important;
-}
-
-[data-theme='dark'] .org-vacation-day-head.org-vacation-holiday {
-  background: color-mix(in srgb, #ef4444 36%, var(--table-head-bg) 64%) !important;
-  color: #fca5a5;
-}
-
-.org-schedule-page {
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
+  background: var(--vac-erase-bg);
 }
 
 .org-workspace-panel {
@@ -1546,12 +1538,12 @@
 
 .org-workspace-self,
 .org-workspace-self .org-workspace-mark {
-  background: #86efac !important;
+  background: var(--workspace-self-bg) !important;
 }
 
 .org-workspace-busy,
 .org-workspace-busy .org-workspace-mark {
-  background: color-mix(in srgb, var(--surface-2) 80%, var(--text-muted) 20%) !important;
+  background: var(--workspace-busy-bg) !important;
   color: var(--text-muted);
 }
 
@@ -1561,24 +1553,9 @@
 }
 
 .org-vacation-legend-item.org-workspace-self {
-  background: #86efac;
+  background: var(--workspace-self-bg);
 }
 
 .org-vacation-legend-item.org-workspace-busy {
-  background: color-mix(in srgb, var(--surface-2) 80%, var(--text-muted) 20%);
-}
-
-[data-theme='dark'] .org-workspace-self,
-[data-theme='dark'] .org-workspace-self .org-workspace-mark,
-[data-theme='dark'] .org-vacation-legend-item.org-workspace-self {
-  background: #166534 !important;
-}
-
-@media (min-width: 1280px) {
-  .org-schedule-page {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    align-items: start;
-    gap: 20px;
-  }
+  background: var(--workspace-busy-bg);
 }

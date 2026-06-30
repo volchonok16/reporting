@@ -98,7 +98,7 @@
 
 .roadmap-quarter-btn:hover {
   border-color: var(--rm-accent);
-  color: #2f4f8f;
+  color: var(--accent-hover);
 }
 
 .roadmap-quarter-btn-active {
@@ -188,18 +188,18 @@
 }
 
 .roadmap-priority-btn-red.is-active {
-  border-color: #f87171;
-  background: #fef2f2;
+  border-color: var(--error);
+  background: var(--error-soft);
 }
 
 .roadmap-priority-btn-yellow.is-active {
-  border-color: #fbbf24;
-  background: #fffbeb;
+  border-color: var(--dirty-text);
+  background: var(--warning-soft);
 }
 
 .roadmap-priority-btn-green.is-active {
-  border-color: #4ade80;
-  background: #f0fdf4;
+  border-color: var(--success);
+  background: var(--success-soft);
 }
 
 .roadmap-priority-btn:disabled {
@@ -352,7 +352,7 @@
 .roadmap-timeline-day {
   position: absolute;
   transform: translateX(-50%);
-  color: #6f7b91;
+  color: var(--text-secondary);
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
@@ -360,7 +360,7 @@
 }
 
 .roadmap-timeline-day.is-month-start {
-  color: #172033;
+  color: var(--text-primary);
   font-weight: 900;
 }
 
@@ -372,7 +372,7 @@
   width: 1px;
   height: 4px;
   transform: translateX(-50%);
-  background: #172033;
+  background: var(--text-primary);
 }
 
 .roadmap-data-row .roadmap-col-task,
@@ -382,7 +382,7 @@
 
 .roadmap-data-row + .roadmap-data-row .roadmap-col-task,
 .roadmap-data-row + .roadmap-data-row .roadmap-col-timeline {
-  border-top: 1px solid rgba(111, 124, 145, 0.1);
+  border-top: 1px solid var(--border);
 }
 
 .roadmap-task-row {
@@ -390,11 +390,17 @@
   gap: 6px;
   width: 100%;
   min-width: 0;
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 12px);
+  background: var(--surface-1);
   padding: 10px 12px;
-  box-shadow: 0 4px 14px rgba(20, 30, 48, 0.07);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.roadmap-task-row:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
 }
 
 .roadmap-task-top {
@@ -405,7 +411,7 @@
 }
 
 .roadmap-task-id {
-  color: #5c6b84;
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 900;
   text-decoration: none;
@@ -432,15 +438,15 @@
   flex-wrap: wrap;
   gap: 8px;
   font-size: 11px;
-  color: #5a6880;
+  color: var(--text-secondary);
 }
 
 .roadmap-task-column {
   border-radius: 8px;
   padding: 3px 8px;
   font-weight: 800;
-  border: 1px solid rgba(61, 71, 86, 0.12);
-  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
 }
 
 .roadmap-zoom-track {
@@ -454,7 +460,7 @@
   min-height: 112px;
   height: 100%;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.35);
+  background: color-mix(in srgb, var(--surface-2) 55%, var(--bg-app) 45%);
 }
 
 .roadmap-bar-wrap {
@@ -475,10 +481,10 @@
   font-size: 13px;
   font-weight: 800;
   background: var(--c-default);
-  border: 1px solid rgba(61, 71, 86, 0.14);
+  border: 1px solid var(--border);
   box-shadow:
-    inset 4px 0 0 #7c3aed,
-    0 3px 10px rgba(61, 71, 86, 0.12);
+    inset 4px 0 0 var(--accent),
+    var(--shadow-sm);
   z-index: 2;
   display: flex;
   flex-direction: column;
@@ -526,17 +532,17 @@
 }
 
 .roadmap-ect-badge.is-yes {
-  background: #bbf7d0;
-  color: #14532d;
-  border: 1.5px solid #16a34a;
-  box-shadow: 0 1px 3px rgba(22, 101, 52, 0.16);
+  background: var(--success-soft);
+  color: var(--success);
+  border: 1.5px solid var(--success);
+  box-shadow: var(--shadow-sm);
 }
 
 .roadmap-ect-badge.is-no {
-  background: #fecaca;
-  color: #7f1d1d;
-  border: 1.5px solid #dc2626;
-  box-shadow: 0 1px 3px rgba(185, 28, 28, 0.18);
+  background: var(--error-soft);
+  color: var(--error);
+  border: 1.5px solid var(--error);
+  box-shadow: var(--shadow-sm);
 }
 
 .roadmap-bar-label {
@@ -579,9 +585,9 @@
   min-width: 0;
   margin: 0;
   padding: 4px 6px;
-  border: 1px solid rgba(61, 71, 86, 0.22);
+  border: 1px solid var(--input-border);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.82);
+  background: var(--surface-1);
   color: inherit;
   font: inherit;
   font-size: 12px;
@@ -590,8 +596,8 @@
 }
 
 .roadmap-bar-bv-input:focus {
-  outline: 2px solid rgba(124, 58, 237, 0.35);
-  border-color: rgba(124, 58, 237, 0.45);
+  outline: 2px solid var(--focus-ring);
+  border-color: var(--input-focus-border);
 }
 
 .roadmap-bar-bv-input:disabled {
@@ -618,9 +624,9 @@
   min-width: 72px;
   margin: 0;
   padding: 4px 6px;
-  border: 1px solid rgba(61, 71, 86, 0.22);
+  border: 1px solid var(--input-border);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.82);
+  background: var(--surface-1);
   color: inherit;
   font: inherit;
   font-size: 12px;
@@ -630,8 +636,8 @@
 }
 
 .roadmap-bar-uc-select:focus {
-  outline: 2px solid rgba(124, 58, 237, 0.35);
-  border-color: rgba(124, 58, 237, 0.45);
+  outline: 2px solid var(--focus-ring);
+  border-color: var(--input-focus-border);
 }
 
 .roadmap-bar-uc-select:disabled {
@@ -644,9 +650,9 @@
   min-height: 42px;
   margin: 0;
   padding: 6px 8px;
-  border: 1px solid rgba(61, 71, 86, 0.18);
+  border: 1px solid var(--input-border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--surface-1);
   color: inherit;
   font: inherit;
   font-size: 11px;
@@ -657,13 +663,13 @@
 }
 
 .roadmap-bar-comment::placeholder {
-  color: rgba(61, 71, 86, 0.55);
+  color: var(--text-tertiary);
   font-weight: 600;
 }
 
 .roadmap-bar-comment:focus {
-  outline: 2px solid rgba(124, 58, 237, 0.35);
-  border-color: rgba(124, 58, 237, 0.45);
+  outline: 2px solid var(--focus-ring);
+  border-color: var(--input-focus-border);
 }
 
 .roadmap-bar-comment:disabled {
@@ -674,7 +680,7 @@
   margin: 0;
   padding: 6px 8px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--surface-2);
   font-size: 11px;
   font-weight: 600;
   line-height: 1.35;
@@ -766,7 +772,7 @@
   margin: 12px var(--page-gutter);
   padding: 12px 16px;
   border-radius: 10px;
-  background: #fef2f2;
-  color: #991b1b;
-  border: 1px solid #fecaca;
+  background: var(--error-soft);
+  color: var(--error);
+  border: 1px solid color-mix(in srgb, var(--error) 35%, transparent);
 }

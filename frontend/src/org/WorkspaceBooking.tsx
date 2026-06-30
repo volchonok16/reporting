@@ -25,8 +25,8 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   const currentDate = new Date()
   const currentYear = currentDate.getFullYear()
   const savedOrgUi = loadOrgUiState()
-  const [year, setYear] = useState(savedOrgUi.vacationYear)
-  const [month, setMonth] = useState(currentDate.getMonth())
+  const [year, setYear] = useState(savedOrgUi.workspaceYear)
+  const [month, setMonth] = useState(savedOrgUi.workspaceMonth)
   const [data, setData] = useState<WorkspaceBookingScheduleData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -49,8 +49,8 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   const canEditAny = Boolean(data?.isAdmin || data?.actorEmployeeId != null)
 
   useEffect(() => {
-    saveOrgUiState({ vacationYear: year })
-  }, [year])
+    saveOrgUiState({ workspaceYear: year, workspaceMonth: month })
+  }, [year, month])
 
   useEffect(() => {
     if (!data?.isAdmin || bookForEmployeeId != null) return
@@ -154,16 +154,19 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
       <div className="org-panel-toolbar org-vacation-toolbar">
         <div className="org-vacation-toolbar-left">
           <h2>Бронь мест</h2>
-          <label className="org-vacation-year">
-            Год
-            <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
-              {[currentYear - 1, currentYear, currentYear + 1].map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="org-vacation-year-picker" role="group" aria-label="Год">
+            {[currentYear - 1, currentYear, currentYear + 1].map((y) => (
+              <button
+                key={y}
+                type="button"
+                className={`org-vacation-year-btn${year === y ? ' org-vacation-year-btn-active' : ''}`}
+                onClick={() => setYear(y)}
+                aria-pressed={year === y}
+              >
+                {y}
+              </button>
+            ))}
+          </div>
           <label className="org-vacation-year">
             Месяц
             <select value={month} onChange={(e) => setMonth(Number(e.target.value))}>

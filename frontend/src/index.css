@@ -52,6 +52,12 @@ body {
   background: var(--bg-muted);
   color: var(--text-primary);
   border: 1px solid var(--border);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.login-tab:hover:not(.active) {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
 }
 
 .login-tab.active {
@@ -450,7 +456,6 @@ body {
 
 .metric-card:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
 }
 
 .metric-card-active {
@@ -529,8 +534,8 @@ body {
   line-height: 1.2;
   padding: 2px 6px;
   border-radius: 999px;
-  background: #ffe8cc;
-  color: #9a3412;
+  background: var(--tag-warn-bg);
+  color: var(--tag-warn-text);
 }
 
 .metric-label {
@@ -847,7 +852,7 @@ body {
   margin: 0;
   padding: 12px 16px;
   font-size: 13px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .cell-number {
@@ -860,20 +865,20 @@ body {
   overflow-wrap: anywhere;
   word-break: break-word;
   hyphens: auto;
-  color: #222;
+  color: var(--text-primary);
 }
 
 .cell-business-goal {
   max-width: 0;
   font-size: 12px;
   line-height: 1.45;
-  color: #333;
+  color: var(--text-secondary);
 }
 
 .cell-business-goal-text {
   font-size: 12px;
   line-height: 1.45;
-  color: #333;
+  color: var(--text-secondary);
 }
 
 .cell-business-goal-text .zni-detail-paragraph + .zni-detail-paragraph {
@@ -894,7 +899,7 @@ body {
 .zni-detail-value {
   font-size: 13px;
   line-height: 1.45;
-  color: #222;
+  color: var(--text-primary);
 }
 
 .zni-detail-title {
@@ -929,32 +934,32 @@ body {
 
 .error-tag {
   font-size: 12px;
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: var(--tag-info-bg);
+  color: var(--tag-info-text);
   border-radius: 6px;
   padding: 2px 8px;
 }
 
 .zni-link {
-  color: #1d5fbf;
+  color: var(--text-link);
   text-decoration: none;
   font-weight: 500;
 }
 
 .zni-link:hover {
-  color: #0f3d82;
+  color: var(--text-link-hover);
   text-decoration: underline;
 }
 
 .table-empty {
   padding: 32px 16px;
-  color: #666;
+  color: var(--text-secondary);
   text-align: center;
 }
 
 .cell-board {
   font-size: 13px;
-  color: #555;
+  color: var(--text-secondary);
   overflow-wrap: anywhere;
   word-break: break-word;
 }
@@ -962,7 +967,7 @@ body {
 .cell-customer {
   font-size: 11px;
   line-height: 1.2;
-  color: #333;
+  color: var(--text-secondary);
   vertical-align: top;
 }
 
@@ -979,73 +984,16 @@ body {
   white-space: nowrap;
 }
 
-.cell-expand {
-  padding: 10px 4px;
-  text-align: center;
-  vertical-align: top;
-}
-
-.row-expand-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: #fff;
-  color: #555;
-  font-size: 11px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.row-expand-btn:hover {
-  background: #f3f5f7;
-  color: #222;
-}
-
-.row-expand-btn:focus-visible {
-  outline: 2px solid #7eb8ff;
-  outline-offset: 1px;
-}
-
-.zni-table-row-expanded td {
-  background: #f6f8fa;
-}
-
-.zni-table-detail-row td {
-  padding: 0 12px 12px;
-  border-bottom: 1px solid #eee;
-  background: #f6f8fa;
-}
-
-.zni-detail-panel {
-  margin: 0 0 4px 36px;
-  padding: 12px 14px;
-  border: 1px solid #e2e6ea;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.zni-detail-label {
-  margin-bottom: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #555;
-}
-
 .cell-date {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
-  color: #444;
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 
 .cell-quarter {
   font-size: 13px;
-  color: #444;
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 
@@ -1058,11 +1006,11 @@ body {
 }
 
 .cell-reservation-yes {
-  color: #166534;
+  color: var(--reservation-yes);
 }
 
 .cell-reservation-no {
-  color: #9ca3af;
+  color: var(--reservation-no);
   font-weight: 500;
 }
 
@@ -1074,12 +1022,12 @@ body {
 
 .status-board {
   font-weight: 500;
-  color: #222;
+  color: var(--text-primary);
 }
 
 .status-workflow {
   font-size: 12px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 @media (max-width: 1100px) {
@@ -1214,12 +1162,12 @@ body {
 }
 
 .product-status-title-tab-alt {
-  color: #c41e3a;
+  color: var(--news-accent);
 }
 
 .product-status-title-tab-alt.product-status-title-tab-active {
   opacity: 1;
-  border-bottom-color: #c41e3a;
+  border-bottom-color: var(--news-accent);
 }
 
 .product-status-title-tab-active:not(.product-status-title-tab-alt) {
@@ -1229,7 +1177,7 @@ body {
 .product-status-subtitle {
   margin: 4px 0 0;
   font-size: 13px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .product-status-table {
@@ -1315,20 +1263,20 @@ body {
 }
 
 .product-status-table tbody tr.product-status-row--presentation td {
-  background-color: #c6efce;
+  background-color: var(--presentation-row-bg);
 }
 
 .product-status-table tbody tr.product-status-row--presentation:hover td {
-  background-color: #b5e8bf;
+  background-color: var(--presentation-row-bg-hover);
 }
 
 .product-status-table tbody tr.product-status-row--attention td:not(.product-status-bool-cell) {
-  color: #c00000;
+  color: var(--attention-text);
 }
 
 .product-status-table tbody tr.product-status-row--attention td:not(.product-status-bool-cell) .product-status-cell-input,
 .product-status-table tbody tr.product-status-row--attention td:not(.product-status-bool-cell) .zni-link {
-  color: #c00000;
+  color: var(--attention-text);
 }
 
 .product-status-table tbody tr:last-child td {
@@ -1384,7 +1332,7 @@ body {
 .product-status-dirty {
   margin: 4px 0 0;
   font-size: 0.85rem;
-  color: #b45309;
+  color: var(--dirty-text);
 }
 
 .product-status-format-toolbar {
@@ -1394,14 +1342,14 @@ body {
   gap: 6px;
   margin: 0 0 12px;
   padding: 8px 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #f8fafc;
+  border: 1px solid var(--format-toolbar-border);
+  border-radius: var(--radius-sm);
+  background: var(--format-toolbar-bg);
 }
 
 .product-status-format-label {
   font-size: 0.82rem;
-  color: #64748b;
+  color: var(--format-toolbar-muted);
 }
 
 .product-status-format-btn {
@@ -1414,12 +1362,12 @@ body {
   width: 1px;
   height: 20px;
   margin: 0 4px;
-  background: #dbe3ee;
+  background: var(--format-toolbar-sep);
 }
 
 .product-status-format-hint {
   font-size: 0.8rem;
-  color: #94a3b8;
+  color: var(--format-toolbar-hint);
 }
 
 .product-status-table-toolbar {
@@ -1437,15 +1385,15 @@ body {
 }
 
 .product-status-cell-input:hover {
-  border-color: #d8dee8;
-  background: #fafbfc;
+  border-color: var(--border-strong);
+  background: var(--input-hover-bg);
 }
 
 .product-status-cell-input:focus {
   outline: none;
-  border-color: #9db7e8;
-  background: #fff;
-  box-shadow: 0 0 0 2px rgba(29, 95, 191, 0.12);
+  border-color: var(--input-focus-border);
+  background: var(--surface-1);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .product-status-zni-cell--matched .product-status-zni-trigger {
@@ -1538,7 +1486,7 @@ body {
 .zni-modal-errors {
   margin-top: 20px;
   padding-top: 16px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid var(--border);
 }
 
 .zni-modal-errors-list {
