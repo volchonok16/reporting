@@ -887,36 +887,29 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                 </section>
 
                 <section className="org-form-section">
-                  <h4>Отделы</h4>
+                  <h4>Отдел</h4>
                   {departments.filter((dept) => dept.isActive).length > 0 ? (
-                    <ul className="org-department-picker">
-                      {departments
-                        .filter((dept) => dept.isActive)
-                        .map((dept) => (
-                          <li key={dept.id}>
-                            <label className="org-checkbox org-department-picker-item">
-                              <input
-                                type="checkbox"
-                                checked={employeeDepartmentIds.includes(dept.id)}
-                                onChange={(e) => {
-                                  setEmployeeDepartmentIds((current) =>
-                                    e.target.checked
-                                      ? [...current, dept.id]
-                                      : current.filter((id) => id !== dept.id),
-                                  )
-                                }}
-                              />
+                    <label>
+                      <select
+                        value={employeeDepartmentIds[0] ?? ''}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          setEmployeeDepartmentIds(value ? [Number(value)] : [])
+                        }}
+                      >
+                        <option value="">— не выбран —</option>
+                        {departments
+                          .filter((dept) => dept.isActive)
+                          .map((dept) => (
+                            <option key={dept.id} value={dept.id}>
                               {dept.name}
-                            </label>
-                          </li>
-                        ))}
-                    </ul>
+                            </option>
+                          ))}
+                      </select>
+                    </label>
                   ) : (
                     <p className="org-hint">Сначала создайте отдел во вкладке «Управление».</p>
                   )}
-                  <p className="org-hint">
-                    Тот же состав, что и при добавлении участника в отдел — можно менять с обеих сторон.
-                  </p>
                 </section>
 
                 {editingEmployeeId && editingEmployee ? (
