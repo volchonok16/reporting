@@ -1570,10 +1570,11 @@
   width: var(--vac-name-col-width);
   padding: 0 10px !important;
   text-align: left;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.25;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   color: var(--text-muted);
   background: color-mix(in srgb, var(--table-head-bg) 88%, var(--surface-1) 12%);
 }
@@ -1609,6 +1610,16 @@
   box-sizing: border-box;
   vertical-align: middle;
   padding: 0 !important;
+}
+
+.org-vacation-panel .org-vacation-day-head,
+.org-vacation-panel .org-vacation-cell {
+  border-right-color: color-mix(in srgb, var(--border-strong) 58%, var(--border) 42%);
+}
+
+[data-theme='dark'] .org-vacation-panel .org-vacation-day-head,
+[data-theme='dark'] .org-vacation-panel .org-vacation-cell {
+  border-right-color: color-mix(in srgb, var(--border-strong) 78%, var(--text-tertiary) 22%);
 }
 
 .org-vacation-weekend,

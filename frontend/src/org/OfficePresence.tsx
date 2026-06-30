@@ -49,7 +49,7 @@ function groupEmployeesByDepartment(employees: VacationEmployee[]): EmployeeGrou
     employees: groupEmployees,
   }))
   if (noDepartment.length > 0) {
-    groups.push({ key: '__no_department__', label: 'Без отдела', employees: noDepartment })
+    groups.unshift({ key: '__no_department__', label: 'Без отдела', employees: noDepartment })
   }
   return groups
 }

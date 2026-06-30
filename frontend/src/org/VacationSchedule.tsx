@@ -52,7 +52,7 @@ function groupEmployeesByDepartment(employees: VacationEmployee[]): EmployeeGrou
     employees: groupEmployees,
   }))
   if (noDepartment.length > 0) {
-    groups.push({ key: '__no_department__', label: 'Без отдела', employees: noDepartment })
+    groups.unshift({ key: '__no_department__', label: 'Без отдела', employees: noDepartment })
   }
   return groups
 }
@@ -140,15 +140,15 @@ export default function VacationSchedule({
   }, [load])
 
   useEffect(() => {
-    if (scrollRef.current && year === currentYear) {
-      const monthStartIndex = yearDays.findIndex(
-        (day) => day.getMonth() === currentDate.getMonth() && day.getDate() === 1,
-      )
-      if (monthStartIndex >= 0) {
-        scrollRef.current.scrollLeft = Math.max(0, monthStartIndex * 26 - 80)
-      }
-    }
-  }, [year, yearDays, todayKey, currentYear, currentDate])
+    if (!scrollRef.current || !data || year !== currentYear) return
+    const monthStartKey = `${year}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-01`
+    const monthStartCell = scrollRef.current.querySelector<HTMLElement>(
+      `th[data-day-key="${monthStartKey}"]`,
+    )
+    if (!monthStartCell) return
+    const stickyNamesWidth = 220
+    scrollRef.current.scrollLeft = Math.max(0, monthStartCell.offsetLeft - stickyNamesWidth - 24)
+  }, [year, data, currentYear, currentDate])
 
   const applyRange = async (employeeId: number, fromDay: string, toDay: string) => {
     setSaving(true)
@@ -298,6 +298,7 @@ export default function VacationSchedule({
                     return (
                       <th
                         key={key}
+                        data-day-key={key}
                         className={`org-vacation-day-head${
                           dayOff ? ' org-vacation-weekend' : ''
                         }${key === todayKey ? ' org-vacation-today' : ''}`}

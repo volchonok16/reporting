@@ -194,15 +194,14 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   }, [load])
 
   useEffect(() => {
-    if (scrollRef.current && year === currentDate.getFullYear()) {
-      const monthStartIndex = yearDays.findIndex(
-        (day) => day.getMonth() === currentDate.getMonth() && day.getDate() === 1,
-      )
-      if (monthStartIndex >= 0) {
-        scrollRef.current.scrollLeft = Math.max(0, monthStartIndex * 26 - 80)
-      }
-    }
-  }, [yearDays, todayKey, year, currentDate])
+    if (!scrollRef.current || !data || year !== currentDate.getFullYear()) return
+    const monthStartKey = `${year}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-01`
+    const monthStartCell = scrollRef.current.querySelector<HTMLElement>(
+      `th[data-day-key="${monthStartKey}"]`,
+    )
+    if (!monthStartCell) return
+    scrollRef.current.scrollLeft = Math.max(0, monthStartCell.offsetLeft)
+  }, [year, data, currentDate])
 
   const cancelEdit = () => {
     setDraftChanges(new Map())
@@ -543,6 +542,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                       return (
                         <th
                           key={key}
+                          data-day-key={key}
                           className={[
                             'org-vacation-day-head',
                             'org-workspace-day-head',
