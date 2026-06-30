@@ -62,6 +62,7 @@ export default function OfficePresence() {
   const [data, setData] = useState<WorkspaceOfficePresenceData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [selectedDayKey, setSelectedDayKey] = useState(() => toDayKey(new Date()))
   const [isDragScrolling, setIsDragScrolling] = useState(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const dragStateRef = useRef<{
@@ -96,6 +97,15 @@ export default function OfficePresence() {
   useEffect(() => {
     saveOrgUiState({ workspaceYear: year, workspaceMonth: new Date().getMonth() })
   }, [year])
+
+  useEffect(() => {
+    if (selectedDayKey.startsWith(`${year}-`)) return
+    const fallbackDate =
+      year === currentYear
+        ? new Date(year, currentDate.getMonth(), currentDate.getDate())
+        : new Date(year, 0, 1)
+    setSelectedDayKey(toDayKey(fallbackDate))
+  }, [year, selectedDayKey, currentYear, currentDate])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -190,6 +200,18 @@ export default function OfficePresence() {
             ))}
           </div>
         </div>
+        <div className="org-vacation-toolbar-right">
+          <label className="org-vacation-focus-date">
+            <span>Дата</span>
+            <input
+              type="date"
+              value={selectedDayKey}
+              min={`${year}-01-01`}
+              max={`${year}-12-31`}
+              onChange={(event) => setSelectedDayKey(event.target.value)}
+            />
+          </label>
+        </div>
       </div>
 
       <div className="org-vacation-legend">
@@ -235,7 +257,9 @@ export default function OfficePresence() {
                         key={key}
                         className={`org-vacation-day-head${
                           dayOff ? ' org-vacation-weekend' : ''
-                        }${key === todayKey ? ' org-vacation-today' : ''}`}
+                        }${key === todayKey ? ' org-vacation-today' : ''}${
+                          key === selectedDayKey ? ' org-vacation-day-selected' : ''
+                        }`}
                         title={key}
                       >
                         {day.getDate()}
@@ -292,6 +316,7 @@ export default function OfficePresence() {
                                 'org-office-presence-cell',
                                 placeName || officeMarked ? 'org-office-presence-in' : 'org-workspace-free',
                                 dayOff ? 'org-vacation-weekend' : '',
+                                dayKey === selectedDayKey ? 'org-vacation-cell-selected-day' : '',
                               ]
                                 .filter(Boolean)
                                 .join(' ')}

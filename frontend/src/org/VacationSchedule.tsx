@@ -91,6 +91,7 @@ export default function VacationSchedule({
   const [brush, setBrush] = useState<EditableTimeOffKind>('vacation')
   const [rangeStart, setRangeStart] = useState<{ employeeId: number; day: string } | null>(null)
   const [hoverDay, setHoverDay] = useState<string | null>(null)
+  const [selectedDayKey, setSelectedDayKey] = useState(() => toDayKey(new Date()))
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
   const yearDays = useMemo(() => getYearDays(year), [year])
@@ -111,6 +112,15 @@ export default function VacationSchedule({
       saveOrgUiState({ vacationYear: year })
     }
   }, [year, yearProp])
+
+  useEffect(() => {
+    if (selectedDayKey.startsWith(`${year}-`)) return
+    const fallbackDate =
+      year === currentYear
+        ? new Date(year, currentDate.getMonth(), currentDate.getDate())
+        : new Date(year, 0, 1)
+    setSelectedDayKey(toDayKey(fallbackDate))
+  }, [year, selectedDayKey, currentYear, currentDate])
 
   const setYear = (nextYear: number) => {
     if (onYearChange) {
@@ -211,6 +221,16 @@ export default function VacationSchedule({
           </div>
         </div>
         <div className="org-vacation-toolbar-right">
+          <label className="org-vacation-focus-date">
+            <span>Дата</span>
+            <input
+              type="date"
+              value={selectedDayKey}
+              min={`${year}-01-01`}
+              max={`${year}-12-31`}
+              onChange={(event) => setSelectedDayKey(event.target.value)}
+            />
+          </label>
           {hasEditableRows ? (
             <button
               type="button"
@@ -301,7 +321,9 @@ export default function VacationSchedule({
                         data-day-key={key}
                         className={`org-vacation-day-head${
                           dayOff ? ' org-vacation-weekend' : ''
-                        }${key === todayKey ? ' org-vacation-today' : ''}`}
+                        }${key === todayKey ? ' org-vacation-today' : ''}${
+                          key === selectedDayKey ? ' org-vacation-day-selected' : ''
+                        }`}
                         title={key}
                       >
                         {day.getDate()}
@@ -358,6 +380,7 @@ export default function VacationSchedule({
                                 'org-vacation-cell',
                                 kind ? KIND_META[kind].className : '',
                                 dayOff ? 'org-vacation-weekend' : '',
+                                dayKey === selectedDayKey ? 'org-vacation-cell-selected-day' : '',
                                 inPreview ? 'org-vacation-preview' : '',
                                 isSelecting ? 'org-vacation-selecting' : '',
                                 editMode && employee.canEdit ? 'org-vacation-editable' : '',

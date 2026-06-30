@@ -200,7 +200,14 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
       `th[data-day-key="${monthStartKey}"]`,
     )
     if (!monthStartCell) return
-    scrollRef.current.scrollLeft = Math.max(0, monthStartCell.offsetLeft)
+    const alignToCurrentMonth = () => {
+      monthStartCell.scrollIntoView({ block: 'nearest', inline: 'start' })
+      // Stabilize position after layout/scrollbar recalculation.
+      scrollRef.current!.scrollLeft = Math.max(0, monthStartCell.offsetLeft)
+    }
+    alignToCurrentMonth()
+    const rafId = window.requestAnimationFrame(alignToCurrentMonth)
+    return () => window.cancelAnimationFrame(rafId)
   }, [year, data, currentDate])
 
   const cancelEdit = () => {
