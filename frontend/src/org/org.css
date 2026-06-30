@@ -486,7 +486,7 @@
   position: absolute;
   top: 0;
   left: 0;
-  padding: 40px 48px;
+  padding: 48px 56px;
   background: var(--surface-1);
   border-radius: 20px;
   box-shadow: var(--shadow-md, 0 8px 32px rgb(0 0 0 / 0.08));
@@ -500,23 +500,23 @@
 
 .org-chart-scroll {
   overflow: auto;
-  padding: 12px 0;
+  padding: 16px 8px;
 }
 
 .org-chart {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
+  gap: 32px;
   min-width: max-content;
 }
 
 .org-tree-chart {
-  --org-tree-gap: 32px;
+  --org-tree-gap: 40px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 32px;
+  gap: 40px;
   min-width: max-content;
 }
 
@@ -536,13 +536,14 @@
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 0;
+  gap: 8px 0;
 }
 
 .org-tree-children {
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
+  gap: 8px 0;
   padding-top: 0;
   position: relative;
 }
@@ -577,7 +578,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 0 12px;
+  padding: 0 18px;
 }
 
 /* линия вниз от карточки руководителя */
@@ -673,7 +674,7 @@
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 0;
+  gap: 32px 24px;
   padding-top: 36px;
   position: relative;
   width: 100%;
@@ -693,7 +694,8 @@
 
 .org-dept-branch {
   position: relative;
-  padding: 0 16px;
+  padding: 0 12px;
+  margin-bottom: 8px;
 }
 
 .org-dept-branch::before {
@@ -746,31 +748,32 @@
 }
 
 .org-dept-branch-standalone > .org-chart-scroll {
-  padding: 8px 0;
+  padding: 12px 8px;
 }
 
 .org-dept-frame {
   border: 2px solid var(--org-chart-line-soft, var(--border));
   border-radius: 16px;
-  padding: 16px 20px 20px;
+  padding: 20px 28px 28px;
   background: var(--surface-2, var(--bg-hover));
   box-shadow: var(--shadow-sm);
-  min-width: min(100%, 320px);
+  min-width: min(100%, 360px);
 }
 
 .org-dept-frame-title {
-  margin: 0 0 16px;
+  margin: 0 0 20px;
   text-align: center;
   font-size: 1rem;
   font-weight: 700;
   color: var(--text-primary);
-  padding-bottom: 12px;
+  padding-bottom: 14px;
   border-bottom: 1px solid var(--border);
 }
 
 .org-dept-frame-body {
   display: flex;
   justify-content: center;
+  padding: 8px 12px 4px;
 }
 
 .org-dept-block {
