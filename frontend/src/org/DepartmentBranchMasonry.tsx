@@ -1,8 +1,8 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  ORG_DEPT_MASONRY_COLUMNS,
   columnsFromMeasuredHeights,
   distributeShortestColumn,
+  masonryColumnCount,
 } from './orgChartLayout'
 
 type DepartmentBranchMasonryProps<T> = {
@@ -24,15 +24,16 @@ export default function DepartmentBranchMasonry<T>({
 }: DepartmentBranchMasonryProps<T>) {
   const measureRef = useRef<HTMLDivElement>(null)
   const measuredHeightsRef = useRef<Map<string | number, number> | null>(null)
+  const columnCount = masonryColumnCount(items.length)
   const [columns, setColumns] = useState<T[][]>(() =>
-    distributeShortestColumn(items, ORG_DEPT_MASONRY_COLUMNS, estimateHeight),
+    distributeShortestColumn(items, columnCount, estimateHeight),
   )
 
   const itemSignature = useMemo(() => items.map(getKey).join('|'), [items, getKey])
 
   useLayoutEffect(() => {
     measuredHeightsRef.current = null
-    setColumns(distributeShortestColumn(items, ORG_DEPT_MASONRY_COLUMNS, estimateHeight))
+    setColumns(distributeShortestColumn(items, masonryColumnCount(items.length), estimateHeight))
   }, [itemSignature, items, estimateHeight])
 
   useLayoutEffect(() => {
@@ -58,7 +59,7 @@ export default function DepartmentBranchMasonry<T>({
 
     const nextColumns = columnsFromMeasuredHeights(
       items,
-      ORG_DEPT_MASONRY_COLUMNS,
+      masonryColumnCount(items.length),
       measured,
       getKey,
       estimateHeight,

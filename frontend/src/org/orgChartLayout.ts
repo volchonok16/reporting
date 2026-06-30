@@ -1,9 +1,25 @@
 import type { DepartmentBlock, OrgChartNode } from './types'
 
 export const ORG_TREE_MAX_SIBLINGS_PER_ROW = 5
-export const ORG_DEPT_MASONRY_COLUMNS = 2
+/** Максимум колонок для раскладки рамок отделов (masonry). */
+export const ORG_DEPT_MASONRY_COLUMNS_MAX = 3
 
 const CARD_HEIGHT = 180
+const TREE_LEVEL_GAP = 48
+const TREE_ROW_GAP = 40
+const DEPT_FRAME_OVERHEAD = 130
+const MASONRY_ITEM_GAP = 32
+
+/** 1 → одна колонка, 2 → две, 3+ → до трёх колонок. */
+export function masonryColumnCount(itemCount: number): number {
+  if (itemCount <= 1) {
+    return 1
+  }
+  if (itemCount === 2) {
+    return 2
+  }
+  return Math.min(ORG_DEPT_MASONRY_COLUMNS_MAX, itemCount)
+}
 const TREE_LEVEL_GAP = 48
 const TREE_ROW_GAP = 40
 const DEPT_FRAME_OVERHEAD = 130
@@ -69,7 +85,11 @@ export function estimateStandaloneRootHeight(root: OrgChartNode): number {
 }
 
 export function estimateMasonryPackHeight(blocks: DepartmentBlock[]): number {
-  const columns = distributeShortestColumn(blocks, ORG_DEPT_MASONRY_COLUMNS, estimateDepartmentBlockHeight)
+  const columns = distributeShortestColumn(
+    blocks,
+    masonryColumnCount(blocks.length),
+    estimateDepartmentBlockHeight,
+  )
   if (columns.length === 0) {
     return 0
   }

@@ -806,15 +806,87 @@
   justify-content: center;
   align-items: flex-start;
   gap: var(--org-masonry-item-gap) var(--org-pyramid-branch-gap);
-  padding-top: var(--org-branch-connector-gap);
   position: relative;
   width: max-content;
   max-width: 100%;
   margin: 0 auto;
 }
 
-.org-company-pyramid-branches {
+/* Вложенные направления: только сетка, без линий — иначе переплетаются с деревом внутри рамки */
+.org-dept-branch-masonry.org-dept-branch-nested {
+  margin-top: 24px;
+  padding-top: 0;
+  gap: 24px var(--org-pyramid-branch-gap);
+}
+
+.org-dept-branch-masonry.org-dept-branch-nested::before,
+.org-dept-branch-masonry.org-dept-branch-nested > .org-dept-branch-masonry-column::before,
+.org-dept-branch-masonry.org-dept-branch-nested > .org-dept-branch-masonry-column::after,
+.org-dept-branch-masonry.org-dept-branch-nested .org-dept-branch-masonry-item-first > .org-dept-branch-column > .org-dept-branch > .org-chart-scroll::before,
+.org-dept-branch-masonry.org-dept-branch-nested .org-dept-branch-masonry-item-first > .org-dept-branch-column-standalone > .org-dept-branch > .org-chart-scroll::before,
+.org-dept-branch-masonry.org-dept-branch-nested .org-dept-branch-masonry-item-follow::before {
+  display: none;
+}
+
+/* Верхний уровень под директором: одна вертикаль, одна «шина», ответвления к колонкам */
+.org-company-pyramid-branches.org-dept-branch-masonry {
   --org-branch-connector-gap: 36px;
+  padding-top: var(--org-branch-connector-gap);
+}
+
+.org-company-pyramid-branches.org-dept-branch-masonry::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: var(--org-branch-connector-gap);
+  background: var(--org-chart-line, var(--border-strong));
+  border-radius: 2px;
+}
+
+.org-company-pyramid-branches.org-dept-branch-masonry:not(.org-dept-branch-masonry-single)::after {
+  content: '';
+  position: absolute;
+  top: var(--org-branch-connector-gap);
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--org-chart-line, var(--border-strong));
+  transform: translateY(-1.5px);
+}
+
+.org-company-pyramid-branches.org-dept-branch-masonry > .org-dept-branch-masonry-column::before,
+.org-company-pyramid-branches.org-dept-branch-masonry > .org-dept-branch-masonry-column::after {
+  display: none;
+}
+
+.org-company-pyramid-branches.org-dept-branch-masonry .org-dept-branch-masonry-item-first > .org-dept-branch-column > .org-dept-branch > .org-chart-scroll::before,
+.org-company-pyramid-branches.org-dept-branch-masonry .org-dept-branch-masonry-item-first > .org-dept-branch-column-standalone > .org-dept-branch > .org-chart-scroll::before {
+  content: '';
+  position: absolute;
+  top: calc(-1 * var(--org-branch-connector-gap));
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: var(--org-branch-connector-gap);
+  background: var(--org-chart-line, var(--border-strong));
+  border-radius: 2px;
+  display: block;
+}
+
+.org-company-pyramid-branches.org-dept-branch-masonry .org-dept-branch-masonry-item-follow::before {
+  display: none;
+}
+
+.org-company-pyramid-branches.org-dept-branch-masonry-single {
+  padding-top: var(--org-branch-connector-gap);
+}
+
+.org-company-pyramid-branches.org-dept-branch-masonry-single::before,
+.org-company-pyramid-branches.org-dept-branch-masonry-single::after {
+  display: none;
 }
 
 .org-dept-branch-masonry-measure {
@@ -833,18 +905,6 @@
   width: max-content;
 }
 
-.org-dept-branch-masonry::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 3px;
-  height: var(--org-branch-connector-gap);
-  background: var(--org-chart-line, var(--border-strong));
-  border-radius: 2px;
-}
-
 .org-dept-branch-masonry-column {
   display: flex;
   flex-direction: column;
@@ -856,61 +916,6 @@
 
 .org-dept-branch-masonry-item {
   position: relative;
-}
-
-/* горизонтальная «шина» между колонками верхнего яруса */
-.org-dept-branch-masonry:not(.org-dept-branch-masonry-single) > .org-dept-branch-masonry-column::before,
-.org-dept-branch-masonry:not(.org-dept-branch-masonry-single) > .org-dept-branch-masonry-column::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  height: 3px;
-  background: var(--org-chart-line, var(--border-strong));
-}
-
-.org-dept-branch-masonry-column::before {
-  right: 50%;
-  width: calc(50% + var(--org-pyramid-branch-gap) / 2);
-}
-
-.org-dept-branch-masonry-column::after {
-  left: 50%;
-  width: calc(50% + var(--org-pyramid-branch-gap) / 2);
-}
-
-.org-dept-branch-masonry-column:first-child::before,
-.org-dept-branch-masonry-column:last-child::after,
-.org-dept-branch-masonry-single > .org-dept-branch-masonry-column::before,
-.org-dept-branch-masonry-single > .org-dept-branch-masonry-column::after {
-  display: none;
-}
-
-/* вертикаль от шины к первому блоку колонки */
-.org-dept-branch-masonry-item-first > .org-dept-branch-column > .org-dept-branch > .org-chart-scroll::before,
-.org-dept-branch-masonry-item-first > .org-dept-branch-column-standalone > .org-dept-branch > .org-chart-scroll::before {
-  content: '';
-  position: absolute;
-  top: calc(-1 * var(--org-branch-connector-gap));
-  left: 50%;
-  transform: translateX(-50%);
-  width: 3px;
-  height: var(--org-branch-connector-gap);
-  background: var(--org-chart-line, var(--border-strong));
-  border-radius: 2px;
-}
-
-/* вертикаль между блоками в одной колонке */
-.org-dept-branch-masonry-item-follow::before {
-  content: '';
-  position: absolute;
-  top: calc(-1 * var(--org-masonry-item-gap));
-  left: 50%;
-  transform: translateX(-50%);
-  width: 3px;
-  height: var(--org-masonry-item-gap);
-  background: var(--org-chart-line, var(--border-strong));
-  border-radius: 2px;
-  z-index: 0;
 }
 
 .org-dept-branch-column {
@@ -946,11 +951,6 @@
 
 .org-dept-branch > .org-chart-scroll::before {
   display: none;
-}
-
-.org-dept-branch-masonry-item-first > .org-dept-branch-column > .org-dept-branch > .org-chart-scroll::before,
-.org-dept-branch-masonry-item-first > .org-dept-branch-column-standalone > .org-dept-branch > .org-chart-scroll::before {
-  display: block;
 }
 
 .org-dept-branch > .org-chart-scroll {
