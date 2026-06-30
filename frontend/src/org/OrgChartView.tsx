@@ -1,6 +1,17 @@
 import type { DepartmentBlock, OrgChartNode } from './types'
 import OrgPhoto from './OrgPhoto'
 
+/** Максимум карточек в одном горизонтальном ряду под одним руководителем. */
+const ORG_TREE_MAX_SIBLINGS_PER_ROW = 5
+
+function chunkNodes(nodes: OrgChartNode[], size: number): OrgChartNode[][] {
+  const rows: OrgChartNode[][] = []
+  for (let i = 0; i < nodes.length; i += size) {
+    rows.push(nodes.slice(i, i + size))
+  }
+  return rows
+}
+
 type OrgChartViewProps = {
   roots?: OrgChartNode[]
   organizationHead?: OrgChartNode | null
@@ -57,6 +68,41 @@ function PersonCard({
   )
 }
 
+function OrgTreeChildren({
+  children,
+  onEmployeeClick,
+}: {
+  children: OrgChartNode[]
+  onEmployeeClick?: (employeeId: number) => void
+}) {
+  const rows =
+    children.length <= ORG_TREE_MAX_SIBLINGS_PER_ROW
+      ? [children]
+      : chunkNodes(children, ORG_TREE_MAX_SIBLINGS_PER_ROW)
+
+  if (rows.length === 1) {
+    return (
+      <ul className="org-tree-children">
+        {children.map((child) => (
+          <OrgTreeNode key={child.person.employeeId} node={child} onEmployeeClick={onEmployeeClick} />
+        ))}
+      </ul>
+    )
+  }
+
+  return (
+    <div className="org-tree-children-stacked">
+      {rows.map((row) => (
+        <ul key={row.map((node) => node.person.employeeId).join('-')} className="org-tree-children org-tree-children-row">
+          {row.map((child) => (
+            <OrgTreeNode key={child.person.employeeId} node={child} onEmployeeClick={onEmployeeClick} />
+          ))}
+        </ul>
+      ))}
+    </div>
+  )
+}
+
 function OrgTreeNode({
   node,
   onEmployeeClick,
@@ -68,11 +114,7 @@ function OrgTreeNode({
     <li className="org-tree-node">
       <PersonCard node={node} onEmployeeClick={onEmployeeClick} />
       {node.children.length > 0 ? (
-        <ul className="org-tree-children">
-          {node.children.map((child) => (
-            <OrgTreeNode key={child.person.employeeId} node={child} onEmployeeClick={onEmployeeClick} />
-          ))}
-        </ul>
+        <OrgTreeChildren children={node.children} onEmployeeClick={onEmployeeClick} />
       ) : null}
     </li>
   )

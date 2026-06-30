@@ -634,10 +634,37 @@
 .org-tree-children {
   display: flex;
   justify-content: center;
-  flex-wrap: wrap;
-  gap: 12px 0;
+  flex-wrap: nowrap;
+  gap: 0;
   padding-top: 0;
   position: relative;
+}
+
+.org-tree-children-stacked {
+  --org-tree-row-gap: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--org-tree-row-gap);
+  position: relative;
+}
+
+/* центральная вертикаль через все ряды (кроме первого подключения к руководителю) */
+.org-tree-children-stacked:has(> .org-tree-children-row:nth-child(2))::after {
+  content: '';
+  position: absolute;
+  top: var(--org-tree-gap, 48px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: calc(100% - var(--org-tree-gap, 48px));
+  background: var(--org-chart-line, var(--border-strong));
+  border-radius: 2px;
+  z-index: 0;
+}
+
+.org-tree-children-row {
+  flex-wrap: nowrap;
 }
 
 /* вертикальная линия к горизонтали (только несколько подчинённых) */
@@ -674,7 +701,8 @@
 }
 
 /* линия вниз от карточки руководителя */
-.org-tree-node:has(> .org-tree-children) > .org-person-card::after {
+.org-tree-node:has(> .org-tree-children) > .org-person-card::after,
+.org-tree-node:has(> .org-tree-children-stacked) > .org-person-card::after {
   content: '';
   position: absolute;
   left: 50%;
