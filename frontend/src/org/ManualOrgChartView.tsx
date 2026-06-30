@@ -898,24 +898,26 @@ export default function ManualOrgChartView({
                 <>
                   <PersonCard node={item.node} onEmployeeClick={editing ? undefined : onEmployeeClick} />
                   {editing ? (
-                    <button
-                      type="button"
-                      className="org-manual-connector-handle org-manual-connector-handle-top"
-                      aria-label="Протянуть линию от верхней точки сотрудника"
-                      data-node-id={node.id}
-                      data-anchor="top"
-                      onPointerDown={(event) => handleConnectorPointerDown(event, node.id, 'top')}
-                      onClick={(event) => event.stopPropagation()}
-                    />
-                    <button
-                      type="button"
-                      className="org-manual-connector-handle org-manual-connector-handle-bottom"
-                      aria-label="Протянуть линию от нижней точки сотрудника"
-                      data-node-id={node.id}
-                      data-anchor="bottom"
-                      onPointerDown={(event) => handleConnectorPointerDown(event, node.id, 'bottom')}
-                      onClick={(event) => event.stopPropagation()}
-                    />
+                    <>
+                      <button
+                        type="button"
+                        className="org-manual-connector-handle org-manual-connector-handle-top"
+                        aria-label="Протянуть линию от верхней точки сотрудника"
+                        data-node-id={node.id}
+                        data-anchor="top"
+                        onPointerDown={(event) => handleConnectorPointerDown(event, node.id, 'top')}
+                        onClick={(event) => event.stopPropagation()}
+                      />
+                      <button
+                        type="button"
+                        className="org-manual-connector-handle org-manual-connector-handle-bottom"
+                        aria-label="Протянуть линию от нижней точки сотрудника"
+                        data-node-id={node.id}
+                        data-anchor="bottom"
+                        onPointerDown={(event) => handleConnectorPointerDown(event, node.id, 'bottom')}
+                        onClick={(event) => event.stopPropagation()}
+                      />
+                    </>
                   ) : null}
                 </>
               )}
