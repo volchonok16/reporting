@@ -178,6 +178,26 @@ def node_for_employee(employee: Employee, *, is_head: bool = False) -> OrgChartN
     )
 
 
+def _department_branch_parent_id(
+    dept: Department,
+    dept_by_head_employee: dict[int, Department],
+    org_head_id: int | None,
+    employees_by_id: dict[int, Employee],
+) -> int | None:
+    """Отдел под отделом руководителя, если head подчиняется head другого отдела."""
+    if dept.head_employee_id is None:
+        return None
+    head = employees_by_id.get(dept.head_employee_id)
+    if head is None or head.manager_id is None:
+        return None
+    if org_head_id is not None and head.manager_id == org_head_id:
+        return None
+    parent = dept_by_head_employee.get(head.manager_id)
+    if parent is not None and parent.id != dept.id:
+        return parent.id
+    return None
+
+
 def _build_unassigned_roots(unassigned: list[Employee]) -> list[OrgChartNode]:
     """Сотрудники без отдела — отдельные ветки на уровне отделов (параллельно отделам)."""
     if not unassigned:
@@ -220,19 +240,34 @@ def build_company_chart(
     departments: list[Department],
     department_trees: dict[int, list[OrgChartNode]],
     employees_without_department: list[Employee],
+    employees_by_id: dict[int, Employee],
 ) -> dict[str, Any]:
-    """Каждый отдел — отдельная ветка; сотрудники без отдела — параллельно отделам."""
+    """Отделы — отдельные ветки; подчинённый отдел — колонкой под отделом руководителя."""
+
+    org_head_id = organization_head.id if organization_head else None
+    dept_by_head: dict[int, Department] = {}
+    for dept in departments:
+        if dept.head_employee_id is not None:
+            dept_by_head[dept.head_employee_id] = dept
+
+    parent_of: dict[int, int | None] = {
+        dept.id: _department_branch_parent_id(dept, dept_by_head, org_head_id, employees_by_id)
+        for dept in departments
+    }
 
     def build_block(dept: Department) -> dict[str, Any]:
+        nested = [d for d in departments if parent_of.get(d.id) == dept.id]
+        nested.sort(key=lambda d: (d.sort_order, d.name.casefold()))
         return {
             "departmentId": dept.id,
             "departmentName": dept.name,
             "headEmployeeId": dept.head_employee_id,
             "roots": [_node_to_dict(n) for n in department_trees.get(dept.id, [])],
-            "nestedDepartments": [],
+            "nestedDepartments": [build_block(d) for d in nested],
         }
 
-    top_level = sorted(departments, key=lambda d: (d.sort_order, d.name.casefold()))
+    top_level = [d for d in departments if parent_of.get(d.id) is None]
+    top_level.sort(key=lambda d: (d.sort_order, d.name.casefold()))
 
     director_node = node_for_employee(organization_head, is_head=True) if organization_head else None
     standalone_roots = _build_unassigned_roots(employees_without_department)

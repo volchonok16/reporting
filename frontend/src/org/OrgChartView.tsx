@@ -145,7 +145,7 @@ function DepartmentBranchColumn({
   )
 }
 
-function StandaloneBranch({
+function StandaloneBranchColumn({
   root,
   onEmployeeClick,
 }: {
@@ -153,9 +153,11 @@ function StandaloneBranch({
   onEmployeeClick?: (employeeId: number) => void
 }) {
   return (
-    <div className="org-dept-branch org-dept-branch-standalone">
-      <div className="org-chart-scroll">
-        <OrgTreeRoots roots={[root]} onEmployeeClick={onEmployeeClick} />
+    <div className="org-dept-branch-column org-dept-branch-column-standalone">
+      <div className="org-dept-branch org-dept-branch-standalone">
+        <div className="org-chart-scroll">
+          <OrgTreeRoots roots={[root]} onEmployeeClick={onEmployeeClick} />
+        </div>
       </div>
     </div>
   )
@@ -189,7 +191,7 @@ function CompanyPyramid({
             <DepartmentBranchColumn key={block.departmentId} block={block} onEmployeeClick={onEmployeeClick} />
           ))}
           {standaloneRoots.map((root) => (
-            <StandaloneBranch key={root.person.employeeId} root={root} onEmployeeClick={onEmployeeClick} />
+            <StandaloneBranchColumn key={root.person.employeeId} root={root} onEmployeeClick={onEmployeeClick} />
           ))}
         </div>
       ) : null}

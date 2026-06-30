@@ -672,11 +672,12 @@
 }
 
 .org-company-pyramid-branches {
+  --org-pyramid-branch-gap: 24px;
   display: flex;
   justify-content: center;
   align-items: flex-start;
   flex-wrap: wrap;
-  gap: 32px 24px;
+  gap: 32px var(--org-pyramid-branch-gap);
   padding-top: 36px;
   position: relative;
   width: 100%;
@@ -703,24 +704,24 @@
   margin-bottom: 8px;
 }
 
-.org-company-pyramid-branches > .org-dept-branch-column::before {
-  content: '';
-  position: absolute;
-  top: -36px;
-  right: 50%;
-  width: 50%;
-  height: 3px;
-  background: var(--org-chart-line, var(--border-strong));
-}
-
+/* горизонтальная линия между всеми ветками (отделы + карточки без отдела) */
+.org-company-pyramid-branches > .org-dept-branch-column::before,
 .org-company-pyramid-branches > .org-dept-branch-column::after {
   content: '';
   position: absolute;
   top: -36px;
-  left: 50%;
-  width: 50%;
   height: 3px;
   background: var(--org-chart-line, var(--border-strong));
+}
+
+.org-company-pyramid-branches > .org-dept-branch-column::before {
+  right: 50%;
+  width: calc(50% + var(--org-pyramid-branch-gap) / 2);
+}
+
+.org-company-pyramid-branches > .org-dept-branch-column::after {
+  left: 50%;
+  width: calc(50% + var(--org-pyramid-branch-gap) / 2);
 }
 
 .org-company-pyramid-branches > .org-dept-branch-column:first-child::before {
@@ -794,39 +795,11 @@
 
 .org-dept-branch-standalone {
   position: relative;
-  padding: 0 12px;
-  margin-bottom: 8px;
+  padding: 0;
+  margin-bottom: 0;
 }
 
-.org-dept-branch-standalone::before {
-  content: '';
-  position: absolute;
-  top: -36px;
-  right: 50%;
-  width: 50%;
-  height: 3px;
-  background: var(--org-chart-line, var(--border-strong));
-}
-
-.org-dept-branch-standalone::after {
-  content: '';
-  position: absolute;
-  top: -36px;
-  left: 50%;
-  width: 50%;
-  height: 3px;
-  background: var(--org-chart-line, var(--border-strong));
-}
-
-.org-company-pyramid-branches > .org-dept-branch-standalone:first-child::before {
-  display: none;
-}
-
-.org-company-pyramid-branches > .org-dept-branch-standalone:last-child::after {
-  display: none;
-}
-
-.org-dept-branch-standalone > .org-chart-scroll::before {
+.org-dept-branch-column-standalone > .org-dept-branch > .org-chart-scroll::before {
   content: '';
   position: absolute;
   top: -36px;
