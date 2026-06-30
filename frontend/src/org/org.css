@@ -2034,7 +2034,7 @@
 }
 
 .org-workspace-free {
-  background: var(--surface-1) !important;
+  background: color-mix(in srgb, var(--surface-1) 90%, var(--surface-2) 10%) !important;
 }
 
 .org-workspace-self {
@@ -2071,7 +2071,7 @@
 }
 
 .org-vacation-legend-item.org-workspace-free {
-  background: var(--surface-1);
+  background: color-mix(in srgb, var(--surface-1) 90%, var(--surface-2) 10%);
   border: 1px solid var(--border);
   color: var(--text-muted);
 }
