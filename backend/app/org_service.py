@@ -20,6 +20,7 @@ from app.org_models import (
     EmployeeExpertise,
     ExpertiseDirection,
     JobPosition,
+    OrgChartLayout,
     OrgUser,
     TeamRole,
 )
@@ -45,6 +46,8 @@ from app.org_schemas import (
     ExpertiseDirectionOut,
     JobPositionIn,
     JobPositionOut,
+    OrgChartLayoutIn,
+    OrgChartLayoutOut,
     OrgChartOut,
     OrgUserBriefOut,
     OrgUserIn,
@@ -774,6 +777,112 @@ def get_org_chart(db: Session, department_id: int | None = None) -> OrgChartOut:
         departments=chart.get("departments", []),
         standaloneRoots=chart.get("standaloneRoots", []),
     )  # type: ignore[arg-type]
+
+
+def _validate_org_chart_layout_scope(scope: str, department_id: int | None) -> None:
+    if scope not in {"company", "department"}:
+        raise HTTPException(status_code=400, detail="Некорректная область схемы.")
+    if scope == "company" and department_id is not None:
+        raise HTTPException(status_code=400, detail="Для схемы компании department_id не передаётся.")
+    if scope == "department" and department_id is None:
+        raise HTTPException(status_code=400, detail="Для схемы отдела нужен department_id.")
+
+
+def _empty_layout(scope: str, department_id: int | None) -> OrgChartLayoutOut:
+    return OrgChartLayoutOut(scope=scope, departmentId=department_id)
+
+
+def get_org_chart_layout(db: Session, scope: str = "company", department_id: int | None = None) -> OrgChartLayoutOut:
+    _validate_org_chart_layout_scope(scope, department_id)
+    row = db.scalar(
+        select(OrgChartLayout).where(
+            OrgChartLayout.scope == scope,
+            OrgChartLayout.department_id.is_(None)
+            if department_id is None
+            else OrgChartLayout.department_id == department_id,
+        )
+    )
+    if row is None:
+        return _empty_layout(scope, department_id)
+    return OrgChartLayoutOut(
+        scope=row.scope,  # type: ignore[arg-type]
+        departmentId=row.department_id,
+        layout=row.layout_json,
+    )
+
+
+def _valid_org_chart_refs(db: Session, scope: str, department_id: int | None) -> tuple[set[int], set[int]]:
+    if scope == "department" and department_id is not None:
+        dept = db.get(Department, department_id)
+        if dept is None:
+            raise HTTPException(status_code=404, detail="Отдел не найден.")
+        department_ids = {department_id}
+        employee_ids = set(
+            db.scalars(
+                select(DepartmentMember.employee_id).where(DepartmentMember.department_id == department_id)
+            ).all()
+        )
+        if dept.head_employee_id is not None:
+            employee_ids.add(dept.head_employee_id)
+        return employee_ids, department_ids
+
+    employee_ids = set(
+        db.scalars(select(Employee.id).where(Employee.is_active.is_(True))).all()
+    )
+    department_ids = set(
+        db.scalars(select(Department.id).where(Department.is_active.is_(True))).all()
+    )
+    return employee_ids, department_ids
+
+
+def _validate_org_chart_layout_nodes(
+    db: Session,
+    scope: str,
+    department_id: int | None,
+    data: OrgChartLayoutIn,
+) -> None:
+    employee_ids, department_ids = _valid_org_chart_refs(db, scope, department_id)
+    node_ids: set[str] = set()
+    for node in data.layout.nodes:
+        if node.id in node_ids:
+            raise HTTPException(status_code=400, detail="В схеме есть дублирующиеся node id.")
+        node_ids.add(node.id)
+        if node.kind == "employee" and node.refId not in employee_ids:
+            raise HTTPException(status_code=400, detail="В схеме есть несуществующий сотрудник.")
+        if node.kind == "department" and node.refId not in department_ids:
+            raise HTTPException(status_code=400, detail="В схеме есть несуществующий отдел.")
+
+    for edge in data.layout.edges:
+        if edge.fromNodeId not in node_ids or edge.toNodeId not in node_ids:
+            raise HTTPException(status_code=400, detail="Линия ссылается на несуществующий узел.")
+        if edge.fromNodeId == edge.toNodeId:
+            raise HTTPException(status_code=400, detail="Линия не может ссылаться на тот же узел.")
+
+
+def save_org_chart_layout(
+    db: Session,
+    data: OrgChartLayoutIn,
+    scope: str = "company",
+    department_id: int | None = None,
+) -> OrgChartLayoutOut:
+    _validate_org_chart_layout_scope(scope, department_id)
+    _validate_org_chart_layout_nodes(db, scope, department_id, data)
+
+    row = db.scalar(
+        select(OrgChartLayout).where(
+            OrgChartLayout.scope == scope,
+            OrgChartLayout.department_id.is_(None)
+            if department_id is None
+            else OrgChartLayout.department_id == department_id,
+        )
+    )
+    if row is None:
+        row = OrgChartLayout(scope=scope, department_id=department_id, layout_json={})
+        db.add(row)
+
+    row.layout_json = data.layout.model_dump()
+    db.commit()
+    return get_org_chart_layout(db, scope, department_id)
 
 
 def find_org_user_by_email(db: Session, email: str) -> OrgUser | None:

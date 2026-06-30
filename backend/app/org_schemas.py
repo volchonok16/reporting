@@ -38,6 +38,50 @@ class OrgChartOut(BaseModel):
     departmentTree: list[OrgChartNodeOut] = Field(default_factory=list)
 
 
+class OrgChartLayoutNodeOut(BaseModel):
+    id: str
+    kind: Literal["employee", "department"]
+    refId: int
+    x: float
+    y: float
+    width: float = 180
+    height: float = 220
+
+
+class OrgChartLayoutEdgeOut(BaseModel):
+    id: str
+    fromNodeId: str
+    toNodeId: str
+
+
+class OrgChartLayoutDataOut(BaseModel):
+    nodes: list[OrgChartLayoutNodeOut] = Field(default_factory=list)
+    edges: list[OrgChartLayoutEdgeOut] = Field(default_factory=list)
+
+
+class OrgChartLayoutOut(BaseModel):
+    scope: Literal["company", "department"]
+    departmentId: int | None = None
+    layout: OrgChartLayoutDataOut = Field(default_factory=OrgChartLayoutDataOut)
+
+
+class OrgChartLayoutNodeIn(OrgChartLayoutNodeOut):
+    pass
+
+
+class OrgChartLayoutEdgeIn(OrgChartLayoutEdgeOut):
+    pass
+
+
+class OrgChartLayoutDataIn(BaseModel):
+    nodes: list[OrgChartLayoutNodeIn] = Field(default_factory=list)
+    edges: list[OrgChartLayoutEdgeIn] = Field(default_factory=list)
+
+
+class OrgChartLayoutIn(BaseModel):
+    layout: OrgChartLayoutDataIn = Field(default_factory=OrgChartLayoutDataIn)
+
+
 class JobPositionOut(BaseModel):
     id: int
     name: str

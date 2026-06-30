@@ -21,6 +21,8 @@ from app.org_schemas import (
     ExpertiseDirectionOut,
     JobPositionIn,
     JobPositionOut,
+    OrgChartLayoutIn,
+    OrgChartLayoutOut,
     OrgChartOut,
     OrgUserIn,
     OrgUserOut,
@@ -62,6 +64,7 @@ from app.org_service import (
     get_department,
     get_employee,
     get_org_chart,
+    get_org_chart_layout,
     list_department_members,
     list_departments,
     list_employee_options,
@@ -76,6 +79,7 @@ from app.org_service import (
     update_employee,
     update_org_user_account,
     update_profile,
+    save_org_chart_layout,
     upload_employee_photo,
 )
 from app.org_service import update_profile_photo as update_profile_photo_service
@@ -367,6 +371,27 @@ def api_org_chart(
     _: dict = Depends(_load_session_meta),
 ) -> OrgChartOut:
     return get_org_chart(db, department_id)
+
+
+@router.get("/org-chart-layout", response_model=OrgChartLayoutOut)
+def api_org_chart_layout(
+    scope: str = Query(default="company"),
+    department_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _: dict = Depends(_load_session_meta),
+) -> OrgChartLayoutOut:
+    return get_org_chart_layout(db, scope, department_id)
+
+
+@router.put("/org-chart-layout", response_model=OrgChartLayoutOut)
+def api_save_org_chart_layout(
+    data: OrgChartLayoutIn,
+    scope: str = Query(default="company"),
+    department_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_org_admin),
+) -> OrgChartLayoutOut:
+    return save_org_chart_layout(db, data, scope, department_id)
 
 
 @router.get("/vacations", response_model=VacationScheduleOut)

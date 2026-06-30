@@ -1,6 +1,6 @@
-import DepartmentBranchRows from './DepartmentBranchRows'
 import { ORG_TREE_MAX_SIBLINGS_PER_ROW } from './orgChartLayout'
 import type { DepartmentBlock, OrgChartNode } from './types'
+import ManualOrgChartView from './ManualOrgChartView'
 import OrgPhoto from './OrgPhoto'
 
 function chunkItems<T>(items: T[], size: number): T[][] {
@@ -19,6 +19,7 @@ type OrgChartViewProps = {
   departmentName?: string
   departmentId?: number | null
   framed?: boolean
+  canManage?: boolean
   onEmployeeClick?: (employeeId: number) => void
   onDepartmentClick?: (departmentId: number) => void
 }
@@ -139,175 +140,30 @@ function OrgTreeRoots({
   )
 }
 
-function DepartmentFrame({
-  block,
-  onEmployeeClick,
-  onDepartmentClick,
-}: {
-  block: DepartmentBlock
-  onEmployeeClick?: (employeeId: number) => void
-  onDepartmentClick?: (departmentId: number) => void
-}) {
-  return (
-    <div className="org-dept-frame">
-      {onDepartmentClick ? (
-        <button
-          type="button"
-          className="org-dept-frame-title org-dept-frame-title-btn"
-          onClick={() => onDepartmentClick(block.departmentId)}
-          title="Открыть карточку отдела"
-        >
-          {block.departmentName}
-        </button>
-      ) : (
-        <h3 className="org-dept-frame-title">{block.departmentName}</h3>
-      )}
-      <div className="org-dept-frame-body">
-        <OrgTreeRoots roots={block.roots} onEmployeeClick={onEmployeeClick} />
-      </div>
-    </div>
-  )
-}
-
-function NestedDepartments({
-  blocks,
-  onEmployeeClick,
-  onDepartmentClick,
-}: {
-  blocks: DepartmentBlock[]
-  onEmployeeClick?: (employeeId: number) => void
-  onDepartmentClick?: (departmentId: number) => void
-}) {
-  return (
-    <DepartmentBranchRows
-      className="org-dept-branch-rows org-dept-branch-nested"
-      items={blocks}
-      getKey={(block) => block.departmentId}
-      renderItem={(nestedBlock) => (
-        <DepartmentBranchColumn
-          block={nestedBlock}
-          onEmployeeClick={onEmployeeClick}
-          onDepartmentClick={onDepartmentClick}
-          nested
-        />
-      )}
-    />
-  )
-}
-
-function DepartmentBranchColumn({
-  block,
-  onEmployeeClick,
-  onDepartmentClick,
-  nested = false,
-  renderNested = true,
-}: {
-  block: DepartmentBlock
-  onEmployeeClick?: (employeeId: number) => void
-  onDepartmentClick?: (departmentId: number) => void
-  nested?: boolean
-  renderNested?: boolean
-}) {
-  return (
-    <div className={`org-dept-branch-column${nested ? ' org-dept-branch-column-nested' : ''}`}>
-      <div className="org-dept-branch">
-        <div className="org-chart-scroll">
-          <DepartmentFrame
-            block={block}
-            onEmployeeClick={onEmployeeClick}
-            onDepartmentClick={onDepartmentClick}
-          />
-        </div>
-      </div>
-      {renderNested && block.nestedDepartments && block.nestedDepartments.length > 0 ? (
-        <NestedDepartments
-          blocks={block.nestedDepartments}
-          onEmployeeClick={onEmployeeClick}
-          onDepartmentClick={onDepartmentClick}
-        />
-      ) : null}
-    </div>
-  )
-}
-
-function StandaloneBranchColumn({
-  root,
-  onEmployeeClick,
-}: {
-  root: OrgChartNode
-  onEmployeeClick?: (employeeId: number) => void
-}) {
-  return (
-    <div className="org-dept-branch-column org-dept-branch-column-standalone">
-      <div className="org-dept-branch org-dept-branch-standalone">
-        <div className="org-chart-scroll">
-          <OrgTreeRoots roots={[root]} onEmployeeClick={onEmployeeClick} />
-        </div>
-      </div>
-    </div>
-  )
-}
-
-type CompanyBranchItem =
-  | { kind: 'department'; block: DepartmentBlock }
-  | { kind: 'standalone'; root: OrgChartNode }
-
-function flattenDepartmentBlocks(blocks: DepartmentBlock[]): DepartmentBlock[] {
-  return blocks.flatMap((block) => [
-    block,
-    ...flattenDepartmentBlocks(block.nestedDepartments ?? []),
-  ])
-}
-
 function CompanyPyramid({
   organizationHead,
   departments,
   standaloneRoots = [],
+  canManage = false,
   onEmployeeClick,
   onDepartmentClick,
 }: {
   organizationHead?: OrgChartNode | null
   departments: DepartmentBlock[]
   standaloneRoots?: OrgChartNode[]
+  canManage?: boolean
   onEmployeeClick?: (employeeId: number) => void
   onDepartmentClick?: (departmentId: number) => void
 }) {
-  const companyDepartments = flattenDepartmentBlocks(departments)
-  const branchItems: CompanyBranchItem[] = [
-    ...companyDepartments.map((block) => ({ kind: 'department' as const, block })),
-    ...standaloneRoots.map((root) => ({ kind: 'standalone' as const, root })),
-  ]
-  const hasBranches = branchItems.length > 0
-
   return (
-    <div className="org-company-pyramid">
-      {organizationHead ? (
-        <div className="org-company-pyramid-head">
-          <ul className="org-tree">
-            <OrgTreeNode node={organizationHead} onEmployeeClick={onEmployeeClick} />
-          </ul>
-        </div>
-      ) : null}
-      {hasBranches ? (
-        <DepartmentBranchRows
-          className="org-dept-branch-rows org-company-pyramid-branches"
-          items={branchItems}
-          getKey={(item) => (item.kind === 'department' ? item.block.departmentId : item.root.person.employeeId)}
-          renderItem={(item) =>
-            item.kind === 'department' ? (
-              <DepartmentBranchColumn
-                block={item.block}
-                onEmployeeClick={onEmployeeClick}
-                onDepartmentClick={onDepartmentClick}
-                renderNested={false}
-              />
-            ) : (
-              <StandaloneBranchColumn root={item.root} onEmployeeClick={onEmployeeClick} />
-            )
-          }
-        />
-      ) : null}
-    </div>
+    <ManualOrgChartView
+      organizationHead={organizationHead}
+      departments={departments}
+      standaloneRoots={standaloneRoots}
+      canManage={canManage}
+      onEmployeeClick={onEmployeeClick}
+      onDepartmentClick={onDepartmentClick}
+    />
   )
 }
 
@@ -319,6 +175,7 @@ export default function OrgChartView({
   departmentName,
   departmentId,
   framed,
+  canManage = false,
   onEmployeeClick,
   onDepartmentClick,
 }: OrgChartViewProps) {
@@ -338,6 +195,7 @@ export default function OrgChartView({
             organizationHead={organizationHead}
             departments={departments}
             standaloneRoots={standaloneRoots}
+            canManage={canManage}
             onEmployeeClick={onEmployeeClick}
             onDepartmentClick={onDepartmentClick}
           />

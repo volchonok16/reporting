@@ -1,7 +1,9 @@
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import BigInteger, Boolean, Date, ForeignKey, Integer, Numeric, SmallInteger, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -229,3 +231,18 @@ class DepartmentMember(Base):
     employee: Mapped[Employee] = relationship(back_populates="department_members", foreign_keys=[employee_id])
     manager: Mapped[Employee | None] = relationship(foreign_keys=[manager_id])
     team_role: Mapped[TeamRole | None] = relationship()
+
+
+class OrgChartLayout(Base):
+    __tablename__ = "org_chart_layout"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    scope: Mapped[str] = mapped_column(String(32), nullable=False)
+    department_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("department.id", ondelete="CASCADE")
+    )
+    layout_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    department: Mapped[Department | None] = relationship()

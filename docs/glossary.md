@@ -712,6 +712,20 @@
 
 ---
 
+## org_chart_layout — ручная раскладка оргсхемы
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `scope` | varchar(32) | Область схемы: `company` — вся компания, `department` — отдельный отдел |
+| `department_id` | bigint | FK → `department`; заполнено только для `scope = department` |
+| `layout_json` | jsonb | Сохранённые узлы (`nodes`) с координатами и линии (`edges`) между ними |
+| `created_at`, `updated_at` | timestamptz | Метки времени |
+
+Используется вкладкой «Пирамида»: администратор вручную расставляет карточки сотрудников/рамки отделов и рисует линии; сохранённая схема показывается всем пользователям.
+
+---
+
 ## job_position, team_role, expertise_direction
 
 Справочники должностей, ролей в отделе и направлений экспертизы. Поля: `name`, `sort_order`, `is_active`, timestamps. Таблица `employee_expertise` связывает сотрудника с направлением и уровнем (`level`).
@@ -781,7 +795,7 @@
 | Раздел | API |
 |--------|-----|
 | Состав | `GET /api/org/departments/{id}/members` |
-| Пирамида | `GET /api/org/org-chart?department_id=` — без `department_id`: директор; отделы — отдельные рамки (подчинённый отдел head→head — колонкой под отделом руководителя); сотрудники без отдела — отдельная ветка на уровне отделов; для одного отдела — дерево по составу |
+| Пирамида | `GET /api/org/org-chart?department_id=` — данные сотрудников/отделов; `GET/PUT /api/org/org-chart-layout?scope=company&department_id=` — сохранённая ручная раскладка (PUT только админ); для одного отдела — дерево по составу |
 | Сотрудники | `GET/POST/PATCH /api/org/employees` |
 | График отпусков | `GET /api/org/vacations?year=&department_id=`, `PUT /api/org/vacations/range` |
 | Бронь мест | вкладка «Бронь мест»; `GET /api/org/workspace/bookings?year=&month=`, `PUT /api/org/workspace/bookings/toggle`; справочник: `GET/POST/PATCH/DELETE /api/org/workspace/places` (изменение — админ) |

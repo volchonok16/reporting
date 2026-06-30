@@ -29,6 +29,35 @@ export type OrgChartData = {
   departmentTree?: OrgChartNode[]
 }
 
+export type OrgChartLayoutNodeKind = 'employee' | 'department'
+
+export type OrgChartLayoutNode = {
+  id: string
+  kind: OrgChartLayoutNodeKind
+  refId: number
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export type OrgChartLayoutEdge = {
+  id: string
+  fromNodeId: string
+  toNodeId: string
+}
+
+export type OrgChartLayoutData = {
+  nodes: OrgChartLayoutNode[]
+  edges: OrgChartLayoutEdge[]
+}
+
+export type OrgChartLayout = {
+  scope: 'company' | 'department'
+  departmentId?: number | null
+  layout: OrgChartLayoutData
+}
+
 export type JobPosition = {
   id: number
   name: string
