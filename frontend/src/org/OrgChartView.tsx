@@ -1,11 +1,11 @@
-import { Fragment, type ReactNode } from 'react'
+import DepartmentBranchMasonry from './DepartmentBranchMasonry'
+import {
+  ORG_TREE_MAX_SIBLINGS_PER_ROW,
+  estimateDepartmentBlockHeight,
+  estimateStandaloneRootHeight,
+} from './orgChartLayout'
 import type { DepartmentBlock, OrgChartNode } from './types'
 import OrgPhoto from './OrgPhoto'
-
-/** Максимум карточек в одном горизонтальном ряду под одним руководителем. */
-const ORG_TREE_MAX_SIBLINGS_PER_ROW = 5
-/** Максимум рамок отделов в одном горизонтальном ряду (рамки шире карточек). */
-const ORG_DEPT_MAX_BRANCHES_PER_ROW = 2
 
 function chunkItems<T>(items: T[], size: number): T[][] {
   const rows: T[][] = []
@@ -173,45 +173,6 @@ function DepartmentFrame({
   )
 }
 
-function DepartmentBranchRows<T>({
-  items,
-  renderItem,
-  getKey,
-  className = 'org-dept-branch-nested',
-}: {
-  items: T[]
-  renderItem: (item: T) => ReactNode
-  getKey: (item: T) => string | number
-  className?: string
-}) {
-  const rows =
-    items.length <= ORG_DEPT_MAX_BRANCHES_PER_ROW
-      ? [items]
-      : chunkItems(items, ORG_DEPT_MAX_BRANCHES_PER_ROW)
-
-  if (rows.length === 1) {
-    return (
-      <div className={className}>
-        {items.map((item) => (
-          <Fragment key={getKey(item)}>{renderItem(item)}</Fragment>
-        ))}
-      </div>
-    )
-  }
-
-  return (
-    <div className={`${className} ${className}-stacked`}>
-      {rows.map((row) => (
-        <div key={row.map(getKey).join('-')} className={`${className} ${className}-row`}>
-          {row.map((item) => (
-            <Fragment key={getKey(item)}>{renderItem(item)}</Fragment>
-          ))}
-        </div>
-      ))}
-    </div>
-  )
-}
-
 function NestedDepartments({
   blocks,
   onEmployeeClick,
@@ -222,9 +183,11 @@ function NestedDepartments({
   onDepartmentClick?: (departmentId: number) => void
 }) {
   return (
-    <DepartmentBranchRows
+    <DepartmentBranchMasonry
+      className="org-dept-branch-masonry org-dept-branch-nested"
       items={blocks}
       getKey={(block) => block.departmentId}
+      estimateHeight={estimateDepartmentBlockHeight}
       renderItem={(nestedBlock) => (
         <DepartmentBranchColumn
           block={nestedBlock}
@@ -236,6 +199,7 @@ function NestedDepartments({
     />
   )
 }
+
 function DepartmentBranchColumn({
   block,
   onEmployeeClick,
@@ -291,6 +255,12 @@ type CompanyBranchItem =
   | { kind: 'department'; block: DepartmentBlock }
   | { kind: 'standalone'; root: OrgChartNode }
 
+function estimateCompanyBranchHeight(item: CompanyBranchItem): number {
+  return item.kind === 'department'
+    ? estimateDepartmentBlockHeight(item.block)
+    : estimateStandaloneRootHeight(item.root)
+}
+
 function CompanyPyramid({
   organizationHead,
   departments,
@@ -320,10 +290,11 @@ function CompanyPyramid({
         </div>
       ) : null}
       {hasBranches ? (
-        <DepartmentBranchRows
-          className="org-company-pyramid-branches"
+        <DepartmentBranchMasonry
+          className="org-dept-branch-masonry org-company-pyramid-branches"
           items={branchItems}
           getKey={(item) => (item.kind === 'department' ? item.block.departmentId : item.root.person.employeeId)}
+          estimateHeight={estimateCompanyBranchHeight}
           renderItem={(item) =>
             item.kind === 'department' ? (
               <DepartmentBranchColumn

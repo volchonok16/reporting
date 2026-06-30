@@ -651,15 +651,14 @@
   position: relative;
 }
 
-/* центральная вертикаль через все ряды (кроме первого подключения к руководителю) */
-.org-tree-children-stacked:has(> .org-tree-children-row:nth-child(2))::after {
+.org-tree-children-stacked > .org-tree-children-row + .org-tree-children-row::before {
   content: '';
   position: absolute;
-  top: var(--org-tree-gap, 48px);
+  top: calc(-1 * var(--org-tree-row-gap, 40px));
   left: 50%;
   transform: translateX(-50%);
   width: 3px;
-  height: calc(100% - var(--org-tree-gap, 48px));
+  height: var(--org-tree-row-gap, 40px);
   background: var(--org-chart-line, var(--border-strong));
   border-radius: 2px;
   z-index: 0;
@@ -702,7 +701,7 @@
   padding: 0 18px;
 }
 
-/* линия вниз от карточки руководителя */
+/* линия вниз от карточки руководителя (не в горизонтальном ряду с соседями) */
 .org-tree-node:has(> .org-tree-children) > .org-person-card::after,
 .org-tree-node:has(> .org-tree-children-stacked) > .org-person-card::after {
   content: '';
@@ -715,6 +714,12 @@
   background: var(--org-chart-line, var(--border-strong));
   border-radius: 2px;
   z-index: 0;
+}
+
+/* в ряду с соседями — линия от горизонтали ряда, а не от карточки */
+.org-tree-children-row > .org-tree-node:has(> .org-tree-children) > .org-person-card::after,
+.org-tree-children-row > .org-tree-node:has(> .org-tree-children-stacked) > .org-person-card::after {
+  display: none;
 }
 
 /* горизонтальная линия между соседями */
@@ -784,8 +789,7 @@
   align-items: center;
 }
 
-.org-company-pyramid-head:has(+ .org-company-pyramid-branches)::after,
-.org-company-pyramid-head:has(+ .org-company-pyramid-branches-stacked)::after {
+.org-company-pyramid-head:has(+ .org-company-pyramid-branches)::after {
   content: '';
   width: 3px;
   height: 36px;
@@ -793,75 +797,120 @@
   border-radius: 2px;
 }
 
-.org-company-pyramid-branches {
+/* Masonry-раскладка веток отделов: блоки идут в более низкую колонку */
+.org-dept-branch-masonry {
   --org-pyramid-branch-gap: 24px;
+  --org-masonry-item-gap: 32px;
+  --org-branch-connector-gap: var(--org-tree-gap, 48px);
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  flex-wrap: nowrap;
-  gap: 32px var(--org-pyramid-branch-gap);
-  padding-top: 36px;
+  gap: var(--org-masonry-item-gap) var(--org-pyramid-branch-gap);
+  padding-top: var(--org-branch-connector-gap);
   position: relative;
   width: max-content;
   max-width: 100%;
   margin: 0 auto;
 }
 
-.org-company-pyramid-branches-stacked {
+.org-company-pyramid-branches {
+  --org-branch-connector-gap: 36px;
+}
+
+.org-dept-branch-masonry-measure {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  left: -10000px;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--org-masonry-item-gap);
+  width: max-content;
+}
+
+.org-dept-branch-masonry-measure .org-dept-branch-masonry-measure-item {
+  width: max-content;
+}
+
+.org-dept-branch-masonry::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: var(--org-branch-connector-gap);
+  background: var(--org-chart-line, var(--border-strong));
+  border-radius: 2px;
+}
+
+.org-dept-branch-masonry-column {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--org-tree-row-gap, 40px);
-  padding-top: 36px;
+  gap: var(--org-masonry-item-gap);
   position: relative;
-  width: max-content;
-  max-width: 100%;
-  margin: 0 auto;
+  min-width: 0;
 }
 
-.org-company-pyramid-branches-stacked::before {
+.org-dept-branch-masonry-item {
+  position: relative;
+}
+
+/* горизонтальная «шина» между колонками верхнего яруса */
+.org-dept-branch-masonry:not(.org-dept-branch-masonry-single) > .org-dept-branch-masonry-column::before,
+.org-dept-branch-masonry:not(.org-dept-branch-masonry-single) > .org-dept-branch-masonry-column::after {
   content: '';
   position: absolute;
   top: 0;
+  height: 3px;
+  background: var(--org-chart-line, var(--border-strong));
+}
+
+.org-dept-branch-masonry-column::before {
+  right: 50%;
+  width: calc(50% + var(--org-pyramid-branch-gap) / 2);
+}
+
+.org-dept-branch-masonry-column::after {
+  left: 50%;
+  width: calc(50% + var(--org-pyramid-branch-gap) / 2);
+}
+
+.org-dept-branch-masonry-column:first-child::before,
+.org-dept-branch-masonry-column:last-child::after,
+.org-dept-branch-masonry-single > .org-dept-branch-masonry-column::before,
+.org-dept-branch-masonry-single > .org-dept-branch-masonry-column::after {
+  display: none;
+}
+
+/* вертикаль от шины к первому блоку колонки */
+.org-dept-branch-masonry-item-first > .org-dept-branch-column > .org-dept-branch > .org-chart-scroll::before,
+.org-dept-branch-masonry-item-first > .org-dept-branch-column-standalone > .org-dept-branch > .org-chart-scroll::before {
+  content: '';
+  position: absolute;
+  top: calc(-1 * var(--org-branch-connector-gap));
   left: 50%;
   transform: translateX(-50%);
   width: 3px;
-  height: 36px;
+  height: var(--org-branch-connector-gap);
   background: var(--org-chart-line, var(--border-strong));
   border-radius: 2px;
 }
 
-.org-company-pyramid-branches-stacked:has(> .org-company-pyramid-branches-row:nth-child(2))::after {
+/* вертикаль между блоками в одной колонке */
+.org-dept-branch-masonry-item-follow::before {
   content: '';
   position: absolute;
-  top: 36px;
+  top: calc(-1 * var(--org-masonry-item-gap));
   left: 50%;
   transform: translateX(-50%);
   width: 3px;
-  height: calc(100% - 36px);
+  height: var(--org-masonry-item-gap);
   background: var(--org-chart-line, var(--border-strong));
   border-radius: 2px;
   z-index: 0;
-}
-
-.org-company-pyramid-branches-row {
-  padding-top: 0;
-}
-
-.org-company-pyramid-branches::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 3px;
-  height: 36px;
-  background: var(--org-chart-line, var(--border-strong));
-  border-radius: 2px;
-}
-
-.org-company-pyramid-branches-row::before {
-  display: none;
 }
 
 .org-dept-branch-column {
@@ -870,142 +919,7 @@
   align-items: center;
   position: relative;
   padding: 0 12px;
-  margin-bottom: 8px;
-}
-
-/* горизонтальная линия между ветками (отделы верхнего уровня и вложенные направления) */
-.org-company-pyramid-branches > .org-dept-branch-column::before,
-.org-company-pyramid-branches > .org-dept-branch-column::after,
-.org-dept-branch-nested > .org-dept-branch-column::before,
-.org-dept-branch-nested > .org-dept-branch-column::after {
-  content: '';
-  position: absolute;
-  height: 3px;
-  background: var(--org-chart-line, var(--border-strong));
-}
-
-.org-company-pyramid-branches > .org-dept-branch-column::before,
-.org-company-pyramid-branches > .org-dept-branch-column::after {
-  top: -36px;
-}
-
-.org-dept-branch-nested > .org-dept-branch-column::before,
-.org-dept-branch-nested > .org-dept-branch-column::after {
-  top: calc(-1 * var(--org-tree-gap, 48px));
-}
-
-.org-company-pyramid-branches > .org-dept-branch-column::before,
-.org-dept-branch-nested > .org-dept-branch-column::before {
-  right: 50%;
-  width: calc(50% + var(--org-pyramid-branch-gap) / 2);
-}
-
-.org-company-pyramid-branches > .org-dept-branch-column::after,
-.org-dept-branch-nested > .org-dept-branch-column::after {
-  left: 50%;
-  width: calc(50% + var(--org-pyramid-branch-gap) / 2);
-}
-
-.org-company-pyramid-branches > .org-dept-branch-column:first-child::before,
-.org-company-pyramid-branches > .org-dept-branch-column:last-child::after,
-.org-dept-branch-nested > .org-dept-branch-column:first-child::before,
-.org-dept-branch-nested > .org-dept-branch-column:last-child::after {
-  display: none;
-}
-
-.org-company-pyramid-branches > .org-dept-branch-column:only-child::before,
-.org-company-pyramid-branches > .org-dept-branch-column:only-child::after,
-.org-dept-branch-nested > .org-dept-branch-column:only-child::before,
-.org-dept-branch-nested > .org-dept-branch-column:only-child::after {
-  display: none;
-}
-
-.org-company-pyramid-branches > .org-dept-branch-column > .org-dept-branch > .org-chart-scroll::before,
-.org-dept-branch-nested > .org-dept-branch-column > .org-dept-branch > .org-chart-scroll::before {
-  content: '';
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 3px;
-  background: var(--org-chart-line, var(--border-strong));
-  border-radius: 2px;
-}
-
-.org-company-pyramid-branches > .org-dept-branch-column > .org-dept-branch > .org-chart-scroll::before {
-  top: -36px;
-  height: 36px;
-}
-
-.org-dept-branch-nested > .org-dept-branch-column > .org-dept-branch > .org-chart-scroll::before {
-  top: calc(-1 * var(--org-tree-gap, 48px));
-  height: var(--org-tree-gap, 48px);
-}
-
-.org-dept-branch-nested {
-  --org-pyramid-branch-gap: 24px;
-  display: flex;
-  flex-direction: row;
-  justify-content: center;
-  align-items: flex-start;
-  flex-wrap: nowrap;
-  gap: 32px var(--org-pyramid-branch-gap);
-  position: relative;
-  width: max-content;
-  max-width: 100%;
-  margin: 0 auto;
-}
-
-.org-dept-branch-nested:not(.org-dept-branch-nested-row) {
-  padding-top: var(--org-tree-gap, 48px);
-}
-
-.org-dept-branch-nested:not(.org-dept-branch-nested-row)::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 3px;
-  height: var(--org-tree-gap, 48px);
-  background: var(--org-chart-line, var(--border-strong));
-  border-radius: 2px;
-}
-
-.org-dept-branch-nested-stacked {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--org-tree-row-gap, 40px);
-  position: relative;
-  padding-top: var(--org-tree-gap, 48px);
-  width: max-content;
-  max-width: 100%;
-  margin: 0 auto;
-}
-
-.org-dept-branch-nested-stacked::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 3px;
-  height: var(--org-tree-gap, 48px);
-  background: var(--org-chart-line, var(--border-strong));
-  border-radius: 2px;
-}
-
-.org-dept-branch-nested-stacked:has(> .org-dept-branch-nested-row:nth-child(2))::after {
-  content: '';
-  position: absolute;
-  top: var(--org-tree-gap, 48px);
-  left: 50%;
-  transform: translateX(-50%);
-  width: 3px;
-  height: calc(100% - var(--org-tree-gap, 48px));
-  background: var(--org-chart-line, var(--border-strong));
-  border-radius: 2px;
-  z-index: 0;
+  margin-bottom: 0;
 }
 
 .org-dept-branch-column-nested .org-dept-branch::before,
@@ -1025,18 +939,6 @@
   margin-bottom: 0;
 }
 
-.org-dept-branch-column-standalone > .org-dept-branch > .org-chart-scroll::before {
-  content: '';
-  position: absolute;
-  top: -36px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 3px;
-  height: 36px;
-  background: var(--org-chart-line, var(--border-strong));
-  border-radius: 2px;
-}
-
 .org-dept-branch::before,
 .org-dept-branch::after {
   display: none;
@@ -1046,8 +948,8 @@
   display: none;
 }
 
-.org-company-pyramid-branches > .org-dept-branch-column > .org-dept-branch > .org-chart-scroll::before,
-.org-dept-branch-nested > .org-dept-branch-column > .org-dept-branch > .org-chart-scroll::before {
+.org-dept-branch-masonry-item-first > .org-dept-branch-column > .org-dept-branch > .org-chart-scroll::before,
+.org-dept-branch-masonry-item-first > .org-dept-branch-column-standalone > .org-dept-branch > .org-chart-scroll::before {
   display: block;
 }
 
