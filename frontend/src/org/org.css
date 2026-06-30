@@ -427,28 +427,35 @@
 }
 
 .org-chart-canvas {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: block;
 }
 
 .org-chart-canvas-toolbar {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 4;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 6px 10px;
-  padding: 0 4px;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-1) 92%, transparent);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md, 0 8px 24px rgb(0 0 0 / 0.12));
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
 }
 
 .org-chart-canvas-btn {
-  min-width: 36px;
-  padding: 6px 10px;
+  min-width: 32px;
+  padding: 4px 8px;
   font-size: 1.125rem;
   line-height: 1;
 }
 
 .org-chart-canvas-zoom {
-  min-width: 48px;
+  min-width: 44px;
   text-align: center;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
@@ -457,12 +464,15 @@
 
 .org-chart-canvas-reset {
   font-size: 13px;
+  padding: 4px 10px;
 }
 
-.org-chart-canvas-hint {
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--text-muted);
+.org-chart-canvas-toolbar-divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 2px;
+  background: var(--border);
+  flex-shrink: 0;
 }
 
 .org-chart-canvas-stage {
@@ -475,6 +485,7 @@
   border: 1px solid var(--border);
   cursor: grab;
   touch-action: none;
+  overscroll-behavior: none;
   user-select: none;
 }
 
