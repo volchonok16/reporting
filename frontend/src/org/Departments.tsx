@@ -92,8 +92,8 @@ const EMPTY_EMPLOYEE = {
   dailyWorkHours: '8',
   isActive: true,
   isOrganizationHead: false,
-  createUserAccount: false,
-  userPassword: '',
+  createUserAccount: true,
+  userPassword: '12345678',
   userIsAdmin: false,
 }
 
@@ -430,8 +430,8 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       dailyWorkHours: Number(employeeForm.dailyWorkHours),
       isActive: employeeForm.isActive,
       isOrganizationHead: employeeForm.isOrganizationHead,
-      createUserAccount: employeeForm.createUserAccount,
-      userPassword: employeeForm.userPassword || null,
+      createUserAccount: true,
+      userPassword: '12345678',
       userIsAdmin: employeeForm.userIsAdmin,
       departmentIds: employeeDepartmentIds,
     }
@@ -1198,40 +1198,19 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                 {!editingEmployeeId ? (
                   <section className="org-form-section">
                     <h4>Учётная запись</h4>
+                    <p className="org-hint">
+                      Учётная запись создаётся автоматически. Стартовый пароль: <strong>12345678</strong>.
+                    </p>
                     <label className="org-checkbox">
                       <input
                         type="checkbox"
-                        checked={employeeForm.createUserAccount}
+                        checked={employeeForm.userIsAdmin}
                         onChange={(e) =>
-                          setEmployeeForm({ ...employeeForm, createUserAccount: e.target.checked })
+                          setEmployeeForm({ ...employeeForm, userIsAdmin: e.target.checked })
                         }
                       />
-                      Создать учётную запись для входа
+                      Администратор
                     </label>
-                    {employeeForm.createUserAccount ? (
-                      <div className="org-form-row-2 org-form-row-align-end">
-                        <label>
-                          Пароль для входа
-                          <input
-                            type="password"
-                            value={employeeForm.userPassword}
-                            onChange={(e) =>
-                              setEmployeeForm({ ...employeeForm, userPassword: e.target.value })
-                            }
-                          />
-                        </label>
-                        <label className="org-checkbox org-checkbox-field">
-                          <input
-                            type="checkbox"
-                            checked={employeeForm.userIsAdmin}
-                            onChange={(e) =>
-                              setEmployeeForm({ ...employeeForm, userIsAdmin: e.target.checked })
-                            }
-                          />
-                          Администратор
-                        </label>
-                      </div>
-                    ) : null}
                   </section>
                 ) : editingEmployee?.user ? (
                   <section className="org-form-section">

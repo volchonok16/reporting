@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.org_chart_service import build_company_chart, build_department_tree, tree_to_dict
@@ -56,6 +57,8 @@ from app.org_schemas import (
     TeamRoleIn,
     TeamRoleOut,
 )
+
+DEFAULT_NEW_EMPLOYEE_PASSWORD = "12345678"
 
 
 def _user_role_label(role: int) -> str:
@@ -273,9 +276,20 @@ def list_job_positions(db: Session) -> list[JobPositionOut]:
 
 
 def create_job_position(db: Session, data: JobPositionIn) -> JobPositionOut:
-    row = JobPosition(name=data.name.strip(), sort_order=data.sortOrder, is_active=data.isActive)
+    name = data.name.strip()
+    existing = db.scalar(
+        select(JobPosition.id).where(func.lower(JobPosition.name) == name.casefold())
+    )
+    if existing is not None:
+        raise HTTPException(status_code=400, detail="Должность с таким названием уже существует.")
+
+    row = JobPosition(name=name, sort_order=data.sortOrder, is_active=data.isActive)
     db.add(row)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Должность с таким названием уже существует.") from exc
     db.refresh(row)
     return JobPositionOut(id=row.id, name=row.name, sortOrder=row.sort_order, isActive=row.is_active)
 
@@ -414,15 +428,15 @@ def create_employee(db: Session, data: EmployeeIn) -> EmployeeOut:
     db.flush()
     if data.isOrganizationHead:
         _ensure_single_org_head(db, emp.id)
-    if data.createUserAccount:
-        if not data.email:
-            raise HTTPException(status_code=400, detail="Для учётной записи нужен email сотрудника.")
-        if not data.userPassword or len(data.userPassword) < 8:
-            raise HTTPException(status_code=400, detail="Пароль для входа должен быть не короче 8 символов.")
-        user = _create_org_user(
-            db, email=data.email, password=data.userPassword, is_admin=data.userIsAdmin
-        )
-        emp.user_id = user.id
+    if not data.email:
+        raise HTTPException(status_code=400, detail="Для учётной записи нужен email сотрудника.")
+    password = (data.userPassword or "").strip() or DEFAULT_NEW_EMPLOYEE_PASSWORD
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Пароль для входа должен быть не короче 8 символов.")
+    user = _create_org_user(
+        db, email=data.email, password=password, is_admin=data.userIsAdmin
+    )
+    emp.user_id = user.id
     if data.departmentIds:
         _sync_employee_departments(db, emp.id, data.departmentIds)
     db.commit()
