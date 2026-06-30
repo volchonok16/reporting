@@ -708,6 +708,8 @@
 | `email` | varchar(255) | Email в контексте отдела |
 | `sort_order` | int | Порядок в списке |
 
+**UI:** состав редактируется и из вкладки «Состав» отдела (добавление участника), и из карточки/формы сотрудника (поле `departmentIds` → те же строки `department_member`).
+
 ---
 
 ## job_position, team_role, expertise_direction

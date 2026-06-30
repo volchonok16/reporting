@@ -111,12 +111,18 @@ class EmployeeOut(BaseModel):
     isOrganizationHead: bool
     user: OrgUserBriefOut | None = None
     expertises: list[EmployeeExpertiseOut] = Field(default_factory=list)
+    departments: list[EmployeeDepartmentBriefOut] = Field(default_factory=list)
 
 
 class EmployeeBriefOut(BaseModel):
     id: int
     fullName: str
     position: str | None = None
+
+
+class EmployeeDepartmentBriefOut(BaseModel):
+    departmentId: int
+    departmentName: str
 
 
 class EmployeeDepartmentMembershipOut(BaseModel):
@@ -150,6 +156,7 @@ class EmployeeIn(BaseModel):
     createUserAccount: bool = False
     userPassword: str | None = None
     userIsAdmin: bool = False
+    departmentIds: list[int] = Field(default_factory=list)
 
 
 class EmployeeUpdateIn(BaseModel):
@@ -162,6 +169,7 @@ class EmployeeUpdateIn(BaseModel):
     isOrganizationHead: bool | None = None
     userIsAdmin: bool | None = None
     userPassword: str | None = None
+    departmentIds: list[int] | None = None
 
 
 class DepartmentOut(BaseModel):

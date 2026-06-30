@@ -512,6 +512,7 @@
 }
 
 .org-tree-chart {
+  --org-tree-gap: 32px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -542,21 +543,33 @@
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
-  padding-top: 28px;
+  padding-top: 0;
   position: relative;
 }
 
-/* вертикальная линия от родителя к горизонтали */
-.org-tree-children::before {
+/* вертикальная линия к горизонтали (только несколько подчинённых) */
+.org-tree-children:not(:has(> .org-tree-node:only-child))::before {
   content: '';
   position: absolute;
   top: 0;
   left: 50%;
   transform: translateX(-50%);
   width: 3px;
-  height: 28px;
+  height: var(--org-tree-gap);
   background: var(--org-chart-line, var(--border-strong));
   border-radius: 2px;
+}
+
+.org-tree-children:not(:has(> .org-tree-node:only-child)) {
+  padding-top: var(--org-tree-gap);
+}
+
+.org-tree-children:has(> .org-tree-node:only-child) {
+  padding-top: var(--org-tree-gap);
+}
+
+.org-tree-children:has(> .org-tree-node:only-child)::before {
+  display: none;
 }
 
 .org-tree-node {
@@ -567,7 +580,7 @@
   padding: 0 12px;
 }
 
-/* линия вниз от карточки руководителя к подчинённым */
+/* линия вниз от карточки руководителя */
 .org-tree-node:has(> .org-tree-children) > .org-person-card::after {
   content: '';
   position: absolute;
@@ -575,57 +588,56 @@
   bottom: 0;
   transform: translate(-50%, 100%);
   width: 3px;
-  height: 28px;
+  height: var(--org-tree-gap);
   background: var(--org-chart-line, var(--border-strong));
   border-radius: 2px;
   z-index: 0;
 }
 
 /* горизонтальная линия между соседями */
-.org-tree-children > .org-tree-node::before {
+.org-tree-children:not(:has(> .org-tree-node:only-child)) > .org-tree-node::before {
   content: '';
   position: absolute;
-  top: -28px;
+  top: calc(-1 * var(--org-tree-gap));
   right: 50%;
   width: 50%;
   height: 3px;
   background: var(--org-chart-line, var(--border-strong));
 }
 
-.org-tree-children > .org-tree-node::after {
+.org-tree-children:not(:has(> .org-tree-node:only-child)) > .org-tree-node::after {
   content: '';
   position: absolute;
-  top: -28px;
+  top: calc(-1 * var(--org-tree-gap));
   left: 50%;
   width: 50%;
   height: 3px;
   background: var(--org-chart-line, var(--border-strong));
 }
 
-.org-tree-children > .org-tree-node:first-child::before {
+.org-tree-children:not(:has(> .org-tree-node:only-child)) > .org-tree-node:first-child::before {
   display: none;
 }
 
-.org-tree-children > .org-tree-node:last-child::after {
+.org-tree-children:not(:has(> .org-tree-node:only-child)) > .org-tree-node:last-child::after {
   display: none;
 }
 
-/* вертикальная линия от горизонтали к карточке */
-.org-tree-children > .org-tree-node:only-child::before,
-.org-tree-children > .org-tree-node:only-child::after {
-  display: none;
-}
-
-.org-tree-children > .org-tree-node > .org-person-card::before {
+/* вертикальная линия от горизонтали к карточке (несколько подчинённых) */
+.org-tree-children:not(:has(> .org-tree-node:only-child)) > .org-tree-node > .org-person-card::before {
   content: '';
   position: absolute;
-  top: -28px;
+  top: calc(-1 * var(--org-tree-gap));
   left: 50%;
   transform: translateX(-50%);
   width: 3px;
-  height: 28px;
+  height: var(--org-tree-gap);
   background: var(--org-chart-line, var(--border-strong));
   border-radius: 2px;
+}
+
+.org-tree-children > .org-tree-node:only-child > .org-person-card::before {
+  display: none;
 }
 
 .org-tree-node > .org-person-card {
@@ -733,41 +745,6 @@
   position: relative;
 }
 
-.org-dept-nested-branches {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-top: 24px;
-  position: relative;
-  width: 100%;
-}
-
-.org-dept-nested-branches::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 3px;
-  height: 24px;
-  background: var(--org-chart-line, var(--border-strong));
-  border-radius: 2px;
-}
-
-.org-dept-nested-branches > .org-dept-branch {
-  padding-top: 24px;
-}
-
-.org-dept-nested-branches > .org-dept-branch::before,
-.org-dept-nested-branches > .org-dept-branch::after {
-  display: none;
-}
-
-.org-dept-nested-branches > .org-dept-branch > .org-chart-scroll::before {
-  top: -24px;
-  height: 24px;
-}
-
 .org-dept-frame {
   border: 2px solid var(--org-chart-line-soft, var(--border));
   border-radius: 16px;
@@ -811,13 +788,17 @@
 
 .org-person-card {
   display: flex;
-  gap: 10px;
+  flex-direction: column;
   align-items: center;
+  text-align: center;
+  gap: 8px;
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 10px 12px;
-  min-width: 200px;
+  padding: 12px 10px;
+  width: 168px;
+  max-width: 168px;
+  box-sizing: border-box;
   box-shadow: var(--shadow-sm);
 }
 
@@ -827,17 +808,26 @@
 }
 
 .org-person-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
   overflow: hidden;
   background: var(--avatar-gradient);
   color: #fff;
   display: grid;
   place-items: center;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   flex-shrink: 0;
+}
+
+.org-person-info {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
 }
 
 .org-person-avatar img,
@@ -878,13 +868,18 @@
 
 .org-person-name {
   font-weight: 600;
+  font-size: 13px;
+  line-height: 1.3;
+  word-break: break-word;
 }
 
 .org-person-position,
 .org-person-role,
 .org-person-email {
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 1.35;
   color: var(--text-muted);
+  word-break: break-word;
 }
 
 .org-empty {
@@ -938,13 +933,14 @@
 
 .org-person-card-button {
   display: flex;
-  gap: 10px;
+  flex-direction: column;
   align-items: center;
+  text-align: center;
+  gap: 8px;
   width: 100%;
   padding: 0;
   border: none;
   background: transparent;
-  text-align: left;
   cursor: pointer;
   font: inherit;
   color: inherit;
@@ -1063,6 +1059,23 @@
 .org-form-section-header h4 {
   margin: 0;
   font-size: 14px;
+}
+
+.org-department-picker {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.org-department-picker-item {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-1);
 }
 
 .org-expertise-list {

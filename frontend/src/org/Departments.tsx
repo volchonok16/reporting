@@ -8,9 +8,9 @@ import EmployeeCardModal from './EmployeeCardModal'
 import OrgPhoto from './OrgPhoto'
 import type {
   Department,
-  DepartmentBlock,
   DepartmentMember,
   Employee,
+  EmployeeDepartmentBrief,
   EmployeeDetail,
   EmployeeExpertise,
   ExpertiseDirection,
@@ -34,34 +34,9 @@ function formatExpertises(expertises: EmployeeExpertise[] | undefined): string {
     .join(', ')
 }
 
-function DepartmentBranch({
-  block,
-  onEmployeeClick,
-}: {
-  block: DepartmentBlock
-  onEmployeeClick: (employeeId: number) => void
-}) {
-  return (
-    <div className="org-dept-branch">
-      <OrgChartView
-        roots={block.roots}
-        departmentName={block.departmentName}
-        framed
-        onEmployeeClick={onEmployeeClick}
-      />
-      {block.nestedDepartments && block.nestedDepartments.length > 0 ? (
-        <div className="org-dept-nested-branches">
-          {block.nestedDepartments.map((nested) => (
-            <DepartmentBranch
-              key={nested.departmentId}
-              block={nested}
-              onEmployeeClick={onEmployeeClick}
-            />
-          ))}
-        </div>
-      ) : null}
-    </div>
-  )
+function formatDepartments(departments: EmployeeDepartmentBrief[] | undefined): string {
+  if (!departments?.length) return '—'
+  return departments.map((item) => item.departmentName).join(', ')
 }
 
 function PersonCell({
@@ -163,6 +138,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const [cardEmployeeId, setCardEmployeeId] = useState<number | null>(null)
   const [expertiseDirectionId, setExpertiseDirectionId] = useState('')
   const [expertiseLevel, setExpertiseLevel] = useState('')
+  const [employeeDepartmentIds, setEmployeeDepartmentIds] = useState<number[]>([])
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null)
   const [savingEmployee, setSavingEmployee] = useState(false)
@@ -301,16 +277,24 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const openCreateEmployee = () => {
     setEditingEmployeeId(null)
     setEmployeeForm({ ...EMPTY_EMPLOYEE })
+    setEmployeeDepartmentIds([])
     setExpertiseDirectionId('')
     setExpertiseLevel('')
     resetPhotoState()
     setShowEmployeeModal(true)
   }
 
-  const openEditEmployee = (emp: Employee) => {
+  const openEditEmployee = (emp: Employee | EmployeeDetail) => {
     setEditingEmployeeId(emp.id)
     setExpertiseDirectionId('')
     setExpertiseLevel('')
+    const departmentIds = new Set(emp.departments.map((item) => item.departmentId))
+    if ('headedDepartments' in emp) {
+      for (const dept of emp.headedDepartments) {
+        departmentIds.add(dept.id)
+      }
+    }
+    setEmployeeDepartmentIds([...departmentIds])
     resetPhotoState(resolvePhotoUrl(emp.photoUrl))
     setEmployeeForm({
       fullName: emp.fullName,
@@ -348,6 +332,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       createUserAccount: employeeForm.createUserAccount,
       userPassword: employeeForm.userPassword || null,
       userIsAdmin: employeeForm.userIsAdmin,
+      departmentIds: employeeDepartmentIds,
     }
     setSavingEmployee(true)
     try {
@@ -363,6 +348,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
           isOrganizationHead: body.isOrganizationHead,
           userIsAdmin: body.userIsAdmin,
           userPassword: body.userPassword,
+          departmentIds: body.departmentIds,
         })
       } else {
         const created = await postJson<Employee>('/api/org/employees', body)
@@ -668,30 +654,10 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
         <section className="org-panel org-panel-pyramid">
           <OrgChartCanvas>
             {selectedDepartmentId === null ? (
-              <div className="org-company-pyramid">
-                {orgChart?.organizationHead ? (
-                  <div className="org-company-pyramid-head">
-                    <OrgChartView
-                      organizationHead={orgChart.organizationHead}
-                      roots={[]}
-                      onEmployeeClick={openEmployeeCard}
-                    />
-                  </div>
-                ) : null}
-                {orgChart?.departments && orgChart.departments.length > 0 ? (
-                  <div className="org-company-pyramid-branches">
-                    {orgChart.departments.map((block) => (
-                      <DepartmentBranch
-                        key={block.departmentId}
-                        block={block}
-                        onEmployeeClick={openEmployeeCard}
-                      />
-                    ))}
-                  </div>
-                ) : !orgChart?.organizationHead ? (
-                  <OrgChartView roots={orgChart?.departmentTree ?? []} onEmployeeClick={openEmployeeCard} />
-                ) : null}
-              </div>
+              <OrgChartView
+                roots={orgChart?.departmentTree ?? []}
+                onEmployeeClick={openEmployeeCard}
+              />
             ) : (
               <OrgChartView
                 roots={orgChart?.departmentTree ?? []}
@@ -727,6 +693,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
               <tr>
                 <th>ФИО</th>
                 <th>Должность</th>
+                <th>Отделы</th>
                 <th>Email</th>
                 <th>Рабочих часов в день</th>
                 <th>Экспертиза</th>
@@ -747,6 +714,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                     />
                   </td>
                   <td>{emp.position ?? '—'}</td>
+                  <td>{formatDepartments(emp.departments)}</td>
                   <td>{emp.email ?? '—'}</td>
                   <td>{emp.dailyWorkHours}</td>
                   <td>{formatExpertises(emp.expertises)}</td>
@@ -914,6 +882,39 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                         ))}
                     </select>
                   </label>
+                </section>
+
+                <section className="org-form-section">
+                  <h4>Отделы</h4>
+                  {departments.filter((dept) => dept.isActive).length > 0 ? (
+                    <ul className="org-department-picker">
+                      {departments
+                        .filter((dept) => dept.isActive)
+                        .map((dept) => (
+                          <li key={dept.id}>
+                            <label className="org-checkbox org-department-picker-item">
+                              <input
+                                type="checkbox"
+                                checked={employeeDepartmentIds.includes(dept.id)}
+                                onChange={(e) => {
+                                  setEmployeeDepartmentIds((current) =>
+                                    e.target.checked
+                                      ? [...current, dept.id]
+                                      : current.filter((id) => id !== dept.id),
+                                  )
+                                }}
+                              />
+                              {dept.name}
+                            </label>
+                          </li>
+                        ))}
+                    </ul>
+                  ) : (
+                    <p className="org-hint">Сначала создайте отдел во вкладке «Управление».</p>
+                  )}
+                  <p className="org-hint">
+                    Тот же состав, что и при добавлении участника в отдел — можно менять с обеих сторон.
+                  </p>
                 </section>
 
                 {editingEmployeeId && editingEmployee ? (

@@ -4,12 +4,18 @@ type OrgChartCanvasProps = {
   children: ReactNode
 }
 
-const MIN_SCALE = 0.25
-const MAX_SCALE = 2.5
-const ZOOM_STEP = 1.15
+const MIN_SCALE = 0.35
+const MAX_SCALE = 2
+const ZOOM_STEP = 1.08
+const WHEEL_ZOOM_SENSITIVITY = 0.0016
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
+}
+
+function wheelZoomFactor(deltaY: number): number {
+  const delta = clamp(-deltaY, -100, 100)
+  return Math.exp(delta * WHEEL_ZOOM_SENSITIVITY)
 }
 
 function isInteractiveTarget(target: EventTarget | null): boolean {
@@ -74,8 +80,7 @@ export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
       const rect = stage.getBoundingClientRect()
       const anchorX = event.clientX - rect.left
       const anchorY = event.clientY - rect.top
-      const factor = event.deltaY > 0 ? 1 / ZOOM_STEP : ZOOM_STEP
-      applyZoom(scaleRef.current * factor, anchorX, anchorY)
+      applyZoom(scaleRef.current * wheelZoomFactor(event.deltaY), anchorX, anchorY)
     }
     stage.addEventListener('wheel', onWheel, { passive: false })
     return () => stage.removeEventListener('wheel', onWheel)

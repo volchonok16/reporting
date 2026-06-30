@@ -78,6 +78,7 @@ export type Employee = {
   isOrganizationHead: boolean
   user?: OrgUserBrief | null
   expertises: EmployeeExpertise[]
+  departments: EmployeeDepartmentBrief[]
 }
 
 export type EmployeeBrief = {
@@ -86,9 +87,12 @@ export type EmployeeBrief = {
   position?: string | null
 }
 
-export type EmployeeDepartmentMembership = {
+export type EmployeeDepartmentBrief = {
   departmentId: number
   departmentName: string
+}
+
+export type EmployeeDepartmentMembership = EmployeeDepartmentBrief & {
   teamRoleName?: string | null
   displayPosition?: string | null
   managerName?: string | null
@@ -100,7 +104,7 @@ export type EmployeeHeadedDepartment = {
   name: string
 }
 
-export type EmployeeDetail = Employee & {
+export type EmployeeDetail = Omit<Employee, 'departments'> & {
   subordinates: EmployeeBrief[]
   departments: EmployeeDepartmentMembership[]
   headedDepartments: EmployeeHeadedDepartment[]

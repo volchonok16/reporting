@@ -31,6 +31,7 @@ from app.org_schemas import (
     DepartmentMemberUpdateIn,
     DepartmentOut,
     EmployeeBriefOut,
+    EmployeeDepartmentBriefOut,
     EmployeeDepartmentMembershipOut,
     EmployeeDetailOut,
     EmployeeExpertiseIn,
@@ -91,6 +92,13 @@ def _employee_out(db: Session, emp: Employee) -> EmployeeOut:
         )
         for ex in emp.expertises
     ]
+    departments = [
+        EmployeeDepartmentBriefOut(
+            departmentId=m.department_id,
+            departmentName=m.department.name if m.department else "",
+        )
+        for m in sorted(emp.department_members, key=lambda item: (item.sort_order, item.id))
+    ] if emp.department_members else []
     return EmployeeOut(
         id=emp.id,
         fullName=emp.full_name,
@@ -105,7 +113,44 @@ def _employee_out(db: Session, emp: Employee) -> EmployeeOut:
         isOrganizationHead=emp.is_organization_head,
         user=user_out,
         expertises=expertises,
+        departments=departments,
     )
+
+
+def _sync_employee_departments(db: Session, employee_id: int, department_ids: list[int]) -> None:
+    unique_ids = list(dict.fromkeys(department_ids))
+    for dept_id in unique_ids:
+        dept = db.get(Department, dept_id)
+        if dept is None:
+            raise HTTPException(status_code=404, detail=f"Отдел {dept_id} не найден.")
+
+    current = db.scalars(
+        select(DepartmentMember).where(DepartmentMember.employee_id == employee_id)
+    ).all()
+    current_ids = {m.department_id for m in current}
+    target_ids = set(unique_ids)
+
+    for member in current:
+        if member.department_id in target_ids:
+            continue
+        dept = db.get(Department, member.department_id)
+        if dept and dept.head_employee_id == employee_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Нельзя исключить сотрудника из отдела «{dept.name}»: он назначен руководителем отдела.",
+            )
+        db.delete(member)
+
+    for dept_id in unique_ids:
+        if dept_id in current_ids:
+            continue
+        db.add(
+            DepartmentMember(
+                department_id=dept_id,
+                employee_id=employee_id,
+                sort_order=0,
+            )
+        )
 
 
 def _department_out(db: Session, dept: Department) -> DepartmentOut:
@@ -289,6 +334,7 @@ def list_employees(db: Session) -> list[EmployeeOut]:
             joinedload(Employee.user),
             joinedload(Employee.job_position),
             joinedload(Employee.expertises).joinedload(EmployeeExpertise.direction),
+            joinedload(Employee.department_members).joinedload(DepartmentMember.department),
         )
         .order_by(Employee.full_name)
     ).unique().all()
@@ -377,6 +423,8 @@ def create_employee(db: Session, data: EmployeeIn) -> EmployeeOut:
             db, email=data.email, password=data.userPassword, is_admin=data.userIsAdmin
         )
         emp.user_id = user.id
+    if data.departmentIds:
+        _sync_employee_departments(db, emp.id, data.departmentIds)
     db.commit()
     return get_employee(db, emp.id)
 
@@ -411,6 +459,8 @@ def update_employee(db: Session, employee_id: int, data: EmployeeUpdateIn) -> Em
             raise HTTPException(status_code=400, detail="Пароль должен быть не короче 8 символов.")
         emp.user.password_hash = hash_password(data.userPassword)
     _sync_position_name(db, emp)
+    if data.departmentIds is not None:
+        _sync_employee_departments(db, employee_id, data.departmentIds)
     db.commit()
     return get_employee(db, employee_id)
 
