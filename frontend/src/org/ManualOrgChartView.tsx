@@ -248,16 +248,7 @@ function defaultLayout(items: ChartItem[]): OrgChartLayoutData {
     })
   }
 
-  const knownNodeIds = new Set(nodes.map((node) => node.id))
-  const edges = items
-    .filter((item) => item.parentId && knownNodeIds.has(item.parentId))
-    .map((item) => ({
-      id: edgeId(item.parentId as string, item.id),
-      fromNodeId: item.parentId as string,
-      toNodeId: item.id,
-    }))
-
-  return { nodes, edges }
+  return { nodes, edges: [] }
 }
 
 function reconcileLayout(saved: OrgChartLayoutData | null, items: ChartItem[]): OrgChartLayoutData {
@@ -301,11 +292,6 @@ function reconcileLayout(saved: OrgChartLayoutData | null, items: ChartItem[]): 
   const edges = saved.edges.filter(
     (edge) => knownNodeIds.has(edge.fromNodeId) && knownNodeIds.has(edge.toNodeId),
   )
-  for (const generatedEdge of generated.edges) {
-    if (!edges.some((edge) => edge.id === generatedEdge.id)) {
-      edges.push(generatedEdge)
-    }
-  }
   return { nodes, edges }
 }
 
@@ -412,6 +398,7 @@ export default function ManualOrgChartView({
   const [layout, setLayout] = useState<OrgChartLayoutData>(() => defaultLayout(items))
   const [editing, setEditing] = useState(false)
   const [connectFrom, setConnectFrom] = useState<string | null>(null)
+  const [dragConnection, setDragConnection] = useState<{ fromNodeId: string; point: Point } | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
 
@@ -504,7 +491,7 @@ export default function ManualOrgChartView({
   const handleNodePointerDown = (event: ReactPointerEvent<HTMLDivElement>, node: OrgChartLayoutNode) => {
     event.stopPropagation()
     if (!editing || event.button !== 0) return
-    if ((event.target as Element).closest('button')) return
+    if ((event.target as Element).closest('button, .org-manual-connector-handle')) return
     event.preventDefault()
     const element = event.currentTarget
     element.setPointerCapture(event.pointerId)
@@ -595,6 +582,51 @@ export default function ManualOrgChartView({
     setConnectFrom(null)
   }
 
+  const createEdge = useCallback((fromNodeId: string, toNodeId: string) => {
+    if (fromNodeId === toNodeId) return
+    const id = edgeId(fromNodeId, toNodeId)
+    setLayout((current) => ({
+      ...current,
+      edges: current.edges.some((edge) => edge.id === id)
+        ? current.edges
+        : [...current.edges, { id, fromNodeId, toNodeId, points: [] }],
+    }))
+    setSelectedEdgeId(id)
+  }, [])
+
+  const handleConnectorPointerDown = (event: ReactPointerEvent<HTMLButtonElement>, fromNodeId: string) => {
+    event.stopPropagation()
+    if (!editing) return
+    event.preventDefault()
+    const element = event.currentTarget
+    element.setPointerCapture(event.pointerId)
+    const initialPoint = eventToCanvasPoint(event)
+    if (!initialPoint) return
+    setDragConnection({ fromNodeId, point: initialPoint })
+
+    const onMove = (moveEvent: PointerEvent) => {
+      const point = eventToCanvasPoint(moveEvent)
+      if (point) {
+        setDragConnection({ fromNodeId, point })
+      }
+    }
+    const onUp = (upEvent: PointerEvent) => {
+      element.releasePointerCapture(event.pointerId)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      const target = document
+        .elementFromPoint(upEvent.clientX, upEvent.clientY)
+        ?.closest<HTMLElement>('[data-node-id]')
+      const toNodeId = target?.dataset.nodeId
+      if (toNodeId) {
+        createEdge(fromNodeId, toNodeId)
+      }
+      setDragConnection(null)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
   const saveLayout = async () => {
     setStatus('Сохраняем...')
     try {
@@ -610,6 +642,12 @@ export default function ManualOrgChartView({
 
   const resetLayout = () => {
     setLayout(defaultLayout(items))
+    setConnectFrom(null)
+    setSelectedEdgeId(null)
+  }
+
+  const clearEdges = () => {
+    setLayout((current) => ({ ...current, edges: [] }))
     setConnectFrom(null)
     setSelectedEdgeId(null)
   }
@@ -691,13 +729,16 @@ export default function ManualOrgChartView({
           {editing ? (
             <>
               <button type="button" className="btn-ghost" onClick={() => setConnectFrom(null)}>
-                {connectFrom ? 'Отменить линию' : 'Линия: клик по двум карточкам'}
+                {connectFrom ? 'Отменить линию' : 'Линия: потяните точку к карточке'}
               </button>
               <button type="button" className="btn-ghost" onClick={deleteSelectedEdge} disabled={!selectedEdgeId}>
                 Удалить линию
               </button>
               <button type="button" className="btn-ghost" onClick={deleteLastPointFromSelectedEdge} disabled={!selectedEdgeId}>
                 Убрать точку
+              </button>
+              <button type="button" className="btn-ghost" onClick={clearEdges}>
+                Очистить линии
               </button>
               <button type="button" className="btn-ghost" onClick={resetLayout}>
                 Сбросить раскладку
@@ -744,6 +785,18 @@ export default function ManualOrgChartView({
               />
             )
           })}
+          {dragConnection ? (() => {
+            const from = nodeById.get(dragConnection.fromNodeId)
+            if (!from) return null
+            const startX = from.x + from.width / 2
+            const startY = from.y + from.height
+            return (
+              <path
+                className="org-manual-line org-manual-line-preview"
+                d={`M ${startX} ${startY} L ${dragConnection.point.x} ${dragConnection.point.y}`}
+              />
+            )
+          })() : null}
           {editing && selectedEdgeId ? layout.edges
             .filter((edge) => edge.id === selectedEdgeId)
             .flatMap((edge) => (edge.points ?? []).map((point, pointIndex) => (
@@ -764,6 +817,7 @@ export default function ManualOrgChartView({
           return (
             <div
               key={node.id}
+              data-node-id={node.id}
               className={`org-manual-node org-manual-node-${node.kind}${editing ? ' org-manual-node-editing' : ''}${isConnecting ? ' org-manual-node-connecting' : ''}`}
               style={{ left: node.x, top: node.y, width: node.width, height: node.height }}
               onPointerDown={(event) => handleNodePointerDown(event, node)}
@@ -773,17 +827,37 @@ export default function ManualOrgChartView({
                 <>
                   <DepartmentCard block={item.block} onDepartmentClick={editing ? undefined : onDepartmentClick} />
                   {editing ? (
+                    <>
+                      <button
+                        type="button"
+                        className="org-manual-connector-handle"
+                        aria-label="Протянуть линию от отдела"
+                        onPointerDown={(event) => handleConnectorPointerDown(event, node.id)}
+                        onClick={(event) => event.stopPropagation()}
+                      />
+                      <button
+                        type="button"
+                        className="org-manual-resize-handle"
+                        aria-label="Изменить размер отдела"
+                        onPointerDown={(event) => handleResizePointerDown(event, node)}
+                        onClick={(event) => event.stopPropagation()}
+                      />
+                    </>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <PersonCard node={item.node} onEmployeeClick={editing ? undefined : onEmployeeClick} />
+                  {editing ? (
                     <button
                       type="button"
-                      className="org-manual-resize-handle"
-                      aria-label="Изменить размер отдела"
-                      onPointerDown={(event) => handleResizePointerDown(event, node)}
+                      className="org-manual-connector-handle"
+                      aria-label="Протянуть линию от сотрудника"
+                      onPointerDown={(event) => handleConnectorPointerDown(event, node.id)}
                       onClick={(event) => event.stopPropagation()}
                     />
                   ) : null}
                 </>
-              ) : (
-                <PersonCard node={item.node} onEmployeeClick={editing ? undefined : onEmployeeClick} />
               )}
             </div>
           )

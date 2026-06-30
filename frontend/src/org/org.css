@@ -833,6 +833,12 @@
   stroke-width: 5;
 }
 
+.org-manual-line-preview {
+  stroke: var(--accent-blue);
+  stroke-dasharray: 8 6;
+  pointer-events: none;
+}
+
 .org-manual-line-point {
   fill: var(--accent-blue);
   stroke: var(--surface-1);
@@ -901,6 +907,26 @@
     color-mix(in srgb, var(--surface-1) 82%, transparent);
   cursor: nwse-resize;
   z-index: 5;
+}
+
+.org-manual-connector-handle {
+  position: absolute;
+  left: 50%;
+  bottom: -11px;
+  transform: translateX(-50%);
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--surface-1);
+  border-radius: 999px;
+  background: var(--accent-blue);
+  box-shadow: var(--shadow-sm);
+  cursor: crosshair;
+  z-index: 6;
+}
+
+.org-manual-node-department > .org-manual-connector-handle {
+  top: 38px;
+  bottom: auto;
 }
 
 .org-manual-dept-title {
