@@ -45,6 +45,7 @@ DESCRIPTION_SLOT_INDEX = 2
 DESCRIPTION_HEADER = "Описание проекта и статус"
 WHY_HEADER = "Зачем и для чего делаем"
 PRESENTATION_FLAG_PATTERN = r"идет в презентацию"
+ATTENTION_FLAG_PATTERN = r"обратить.*вним"
 PRESENTATION_DESCRIPTION_PATTERN = r"для презентации"
 FULL_DESCRIPTION_PATTERN = r"полное описание"
 WHY_PATTERN = r"зачем"
@@ -57,6 +58,7 @@ TABLE_FONT_SIZE_DENSE = Pt(8)
 TITLE_FONT_SIZE = Pt(22)
 TITLE_COLOR = RGBColor(0x00, 0x00, 0x00)
 TEXT_COLOR = RGBColor(0x00, 0x00, 0x00)
+ATTENTION_TEXT_COLOR = RGBColor(0xC0, 0x00, 0x00)
 WHITE_FILL = RGBColor(0xFF, 0xFF, 0xFF)
 TABLE_BORDER_COLOR = "7F7F7F"
 TABLE_BORDER_WIDTH = "12700"
@@ -360,16 +362,84 @@ def _full_description_notes_column(columns: list[str]) -> str:
     return ""
 
 
+def _legacy_description_notes_column(columns: list[str]) -> str:
+    for column in columns:
+        if _is_legacy_description_column(column):
+            return column
+    return ""
+
+
+def _legacy_why_notes_column(columns: list[str]) -> str:
+    for column in columns:
+        if _is_legacy_why_column(column):
+            return column
+    return ""
+
+
+def _description_notes_source_columns(columns: list[str]) -> list[str]:
+    """Столбцы с полным описанием для заметок (от приоритетного к запасному)."""
+    sources: list[str] = []
+    full_column = _full_description_notes_column(columns)
+    if full_column:
+        sources.append(full_column)
+    if any(_is_description_presentation_column(column) for column in columns):
+        legacy = _legacy_description_notes_column(columns)
+        if legacy and legacy not in sources:
+            sources.append(legacy)
+    elif not sources:
+        table_column = _description_value_column(columns)
+        if table_column and not _is_presentation_internal_column(table_column):
+            sources.append(table_column)
+    return sources
+
+
+def _why_notes_source_columns(columns: list[str]) -> list[str]:
+    """Столбцы с полным «зачем» для заметок (от приоритетного к запасному)."""
+    sources: list[str] = []
+    full_column = _full_why_notes_column(columns)
+    if full_column:
+        sources.append(full_column)
+    if any(_is_why_presentation_column(column) for column in columns):
+        legacy = _legacy_why_notes_column(columns)
+        if legacy and legacy not in sources:
+            sources.append(legacy)
+    elif not sources:
+        table_column = _why_value_column(columns)
+        if table_column and not _is_presentation_internal_column(table_column):
+            sources.append(table_column)
+    return sources
+
+
+def _notes_text_from_sources(
+    row: dict[str, str],
+    source_columns: list[str],
+    *,
+    presentation_column: str = "",
+) -> str:
+    presentation_text = (
+        display_cell_text(row.get(presentation_column, "")).strip() if presentation_column else ""
+    )
+    for column in source_columns:
+        text = display_cell_text(row.get(column, "")).strip()
+        if not text:
+            continue
+        if presentation_column and text == presentation_text:
+            continue
+        return text
+    return ""
+
+
 def _full_why_notes_column(columns: list[str]) -> str:
     for column in columns:
         if _is_full_why_notes_column(column):
             return column
-    has_full_notes = bool(_full_description_notes_column(columns))
-    if not has_full_notes:
-        return ""
     for column in columns:
         key = column.strip().casefold()
-        if re.search(WHY_PATTERN, key) and not re.search(PRESENTATION_DESCRIPTION_PATTERN, key):
+        if (
+            key.startswith("полное")
+            and re.search(WHY_PATTERN, key) is not None
+            and not re.search(PRESENTATION_DESCRIPTION_PATTERN, key)
+        ):
             return column
     return ""
 
@@ -447,6 +517,24 @@ def _presentation_headers(columns: list[str]) -> list[str]:
     return headers
 
 
+def _is_yes_cell_value(value: str) -> bool:
+    normalized = display_cell_text(value or "").strip().casefold()
+    if normalized in ("нет", "no", "0", "false"):
+        return False
+    return normalized in ("да", "yes", "1", "true")
+
+
+def _attention_column(columns: list[str]) -> str:
+    return _find_column(columns, ATTENTION_FLAG_PATTERN)
+
+
+def _is_attention_row(row: dict[str, str], columns: list[str]) -> bool:
+    column = _attention_column(columns)
+    if not column:
+        return False
+    return _is_yes_cell_value(row.get(column, ""))
+
+
 def _filter_presentation_rows(
     rows: list[dict[str, str]],
     columns: list[str],
@@ -457,7 +545,7 @@ def _filter_presentation_rows(
     return [
         row
         for row in rows
-        if display_cell_text(row.get(flag_column, "") or "").strip().casefold() == "да"
+        if _is_yes_cell_value(row.get(flag_column, ""))
     ]
 
 
@@ -474,18 +562,35 @@ def _description_paragraphs(text: str) -> list[str]:
 
 
 def _slide_notes_blocks(rows: list[dict[str, str]], columns: list[str]) -> list[list[str]]:
-    full_column = _full_description_notes_column(columns)
-    full_why_column = _full_why_notes_column(columns)
+    description_sources = _description_notes_source_columns(columns)
+    why_sources = _why_notes_source_columns(columns)
     project_column = _find_column(columns, r"^Проект")
-    if not full_column and not full_why_column:
+    if not description_sources and not why_sources:
         return []
+
+    presentation_description_column = (
+        _description_value_column(columns)
+        if any(_is_description_presentation_column(column) for column in columns)
+        else ""
+    )
+    presentation_why_column = (
+        _why_value_column(columns)
+        if any(_is_why_presentation_column(column) for column in columns)
+        else ""
+    )
 
     blocks: list[list[str]] = []
     for row in rows:
-        description_text = (
-            display_cell_text(row.get(full_column, "")).strip() if full_column else ""
+        description_text = _notes_text_from_sources(
+            row,
+            description_sources,
+            presentation_column=presentation_description_column,
         )
-        why_text = display_cell_text(row.get(full_why_column, "")).strip() if full_why_column else ""
+        why_text = _notes_text_from_sources(
+            row,
+            why_sources,
+            presentation_column=presentation_why_column,
+        )
         if not description_text and not why_text:
             continue
         project = (
@@ -1056,7 +1161,14 @@ def _apply_cell_container_style(cell, cell_style: CellStyle) -> None:
         _set_cell_outer_border(cell, cell_style.border)
 
 
-def _fill_white_cell(cell, value: str, *, col_index: int, bold: bool = False) -> None:
+def _fill_white_cell(
+    cell,
+    value: str,
+    *,
+    col_index: int,
+    bold: bool = False,
+    default_text_color: RGBColor = TEXT_COLOR,
+) -> None:
     cell_style, inner = split_cell_wrapper(value)
     sanitized = _sanitize_cell_text(inner)
     font_size, _ = _cell_font_size(col_index, sanitized)
@@ -1090,7 +1202,7 @@ def _fill_white_cell(cell, value: str, *, col_index: int, bold: bool = False) ->
             run.font.size = font_size
             run.font.bold = bold or segment.bold
             run.font.italic = segment.italic
-            run.font.color.rgb = _hex_to_rgb(segment.fg) if segment.fg else TEXT_COLOR
+            run.font.color.rgb = _hex_to_rgb(segment.fg) if segment.fg else default_text_color
             _set_run_strike(run, enabled=segment.strike)
             if segment.bg and not segment.fg:
                 _set_run_highlight(run, segment.bg)
@@ -1171,8 +1283,14 @@ def _fill_content_slide(
 
     for row_index, row in enumerate(rows, start=1):
         values = _row_values(row, columns, COLUMN_COUNT)
+        row_text_color = ATTENTION_TEXT_COLOR if _is_attention_row(row, columns) else TEXT_COLOR
         for col_index, value in enumerate(values):
-            _fill_white_cell(table.rows[row_index].cells[col_index], value, col_index=col_index)
+            _fill_white_cell(
+                table.rows[row_index].cells[col_index],
+                value,
+                col_index=col_index,
+                default_text_color=row_text_color,
+            )
 
     _apply_table_grid(table)
     _layout_table_rows(table, rows, columns, body_shape.height)

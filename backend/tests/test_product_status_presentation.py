@@ -22,6 +22,8 @@ from app.product_status_presentation import (
     _why_value_column,
     _estimate_row_height,
     _estimate_text_lines,
+    _attention_column,
+    _is_attention_row,
     _filter_presentation_rows,
     _mapped_columns,
     _market_news_lines,
@@ -154,6 +156,14 @@ def test_filter_presentation_rows_keeps_only_yes() -> None:
     ]
 
 
+def test_attention_column_and_row() -> None:
+    columns = ["Идет в презентацию", "Обратить внимание", "Проект"]
+    assert _attention_column(columns) == "Обратить внимание"
+    assert _is_attention_row({"Обратить внимание": "Да", "Проект": "A"}, columns)
+    assert not _is_attention_row({"Обратить внимание": "Нет", "Проект": "B"}, columns)
+    assert not _is_attention_row({"Проект": "C"}, ["Проект"])
+
+
 def test_slide_notes_text_joins_full_descriptions() -> None:
     columns = ["Проект", "Полное Описание проекта и статус"]
     rows = [
@@ -255,6 +265,69 @@ def test_slide_notes_blocks_one_table_row_per_block() -> None:
         ["SMS Hub", "Тендер ОТП-банк\nКейс с Озоном"],
         ["SMS Hub", "Кастомные отчеты"],
     ]
+
+
+def test_slide_notes_blocks_use_legacy_columns_without_presentation_split() -> None:
+    columns = ["Дата запуска", "Проект", "Описание проекта", "Зачем и для чего делаем"]
+    rows = [
+        {
+            "Дата запуска": "01.06",
+            "Проект": "CORE",
+            "Описание проекта": "Полный статус для заметок",
+            "Зачем и для чего делаем": "Полный зачем для заметок",
+        },
+    ]
+    assert _slide_notes_blocks(rows, columns) == [
+        ["CORE", "Полный статус для заметок", "Полный зачем для заметок"],
+    ]
+
+
+def test_slide_notes_blocks_fallback_to_legacy_when_full_cells_empty() -> None:
+    columns = [
+        "Проект",
+        "Полное Описание проекта и статус",
+        "Для презентации Описание проекта и статус",
+        "Описание проекта и статус",
+        "Зачем и для чего делаем полное описание",
+        "Зачем и для чего делаем для презентации",
+        "Зачем и для чего делаем",
+    ]
+    rows = [
+        {
+            "Проект": "SMS Hub",
+            "Полное Описание проекта и статус": "",
+            "Для презентации Описание проекта и статус": "Коротко",
+            "Описание проекта и статус": "Полный текст из соседнего столбца",
+            "Зачем и для чего делаем полное описание": "",
+            "Зачем и для чего делаем для презентации": "Короткий зачем",
+            "Зачем и для чего делаем": "Полный зачем из соседнего столбца",
+        },
+    ]
+    assert _slide_notes_blocks(rows, columns) == [
+        [
+            "SMS Hub",
+            "Полный текст из соседнего столбца",
+            "Полный зачем из соседнего столбца",
+        ],
+    ]
+
+
+def test_slide_notes_blocks_use_legacy_why_without_full_description_column() -> None:
+    columns = [
+        "Проект",
+        "Для презентации Описание проекта и статус",
+        "Зачем и для чего делаем для презентации",
+        "Зачем и для чего делаем",
+    ]
+    rows = [
+        {
+            "Проект": "CORE",
+            "Для презентации Описание проекта и статус": "Коротко",
+            "Зачем и для чего делаем для презентации": "Короткий зачем",
+            "Зачем и для чего делаем": "Полный зачем в заметках",
+        },
+    ]
+    assert _slide_notes_text(rows, columns) == "CORE\n\nПолный зачем в заметках"
 
 
 def test_estimate_text_lines_wraps_each_paragraph_separately() -> None:
@@ -610,6 +683,60 @@ def test_generate_presentation_colored_text_has_no_highlight_fill(mock_load) -> 
 
 
 @patch("app.product_status_presentation.load_b2b_product_status")
+def test_generate_presentation_attention_rows_use_red_text(mock_load) -> None:
+    mock_load.return_value = ProductStatusB2BOut(
+        title="Статус продукта B2B",
+        sheets=[
+            ProductStatusSheetOut(
+                gid="0",
+                name="Продуктовый офис: SMS",
+                columns=[
+                    "Идет в презентацию",
+                    "Обратить внимание",
+                    "Дата запуска",
+                    "Проект",
+                    "Описание проекта",
+                    "Зачем и для чего делаем",
+                ],
+                rows=[
+                    {
+                        "Идет в презентацию": "Да",
+                        "Обратить внимание": "Да",
+                        "Дата запуска": "09.06",
+                        "Проект": "Критичный проект",
+                        "Описание проекта": "Срочный статус",
+                        "Зачем и для чего делаем": "Риск",
+                    },
+                    {
+                        "Идет в презентацию": "Да",
+                        "Обратить внимание": "Нет",
+                        "Дата запуска": "10.06",
+                        "Проект": "Обычный проект",
+                        "Описание проекта": "Штатный статус",
+                        "Зачем и для чего делаем": "OK",
+                    },
+                ],
+                totalShown=2,
+            )
+        ],
+    )
+
+    content, _ = generate_b2b_product_status_presentation()
+    prs = Presentation(io.BytesIO(content))
+    content_slide = prs.slides[FIXED_SLIDE_COUNT]
+    xml = content_slide.part.blob.decode()
+
+    critical_start = xml.index("<a:t>Критичный проект</a:t>")
+    critical_run = xml[max(0, critical_start - 500):critical_start + 200]
+    assert 'val="C00000"' in critical_run
+
+    normal_start = xml.index("<a:t>Обычный проект</a:t>")
+    normal_run = xml[max(0, normal_start - 500):normal_start + 200]
+    assert 'val="C00000"' not in normal_run
+    assert 'val="000000"' in normal_run
+
+
+@patch("app.product_status_presentation.load_b2b_product_status")
 def test_generate_presentation_table_cells_contain_text_xml(mock_load) -> None:
     mock_load.return_value = ProductStatusB2BOut(
         title="Статус продукта B2B",
@@ -820,3 +947,34 @@ def test_generate_presentation_splits_rows_across_slides(mock_load) -> None:
         )
     ]
     assert len(core_slides) >= 2
+
+
+@patch("app.product_status_presentation.load_b2b_product_status")
+def test_generate_presentation_fills_notes_for_legacy_sheet(mock_load) -> None:
+    mock_load.return_value = ProductStatusB2BOut(
+        title="Статус продукта B2B",
+        sheets=[
+            ProductStatusSheetOut(
+                gid="0",
+                name="Продуктовый офис: CORE",
+                columns=["Дата запуска", "Проект", "Описание проекта", "Зачем и для чего делаем"],
+                rows=[
+                    {
+                        "Дата запуска": "01.06",
+                        "Проект": "CORE",
+                        "Описание проекта": "Полный статус",
+                        "Зачем и для чего делаем": "Полный зачем",
+                    },
+                ],
+                totalShown=1,
+            )
+        ],
+    )
+
+    content, _ = generate_b2b_product_status_presentation()
+    prs = Presentation(io.BytesIO(content))
+    content_slide = prs.slides[FIXED_SLIDE_COUNT]
+    notes = content_slide.notes_slide.notes_text_frame.text
+    assert "CORE" in notes
+    assert "Полный статус" in notes
+    assert "Полный зачем" in notes
