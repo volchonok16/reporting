@@ -1234,7 +1234,7 @@
 }
 
 .org-vacation-panel {
-  overflow: hidden;
+  overflow: visible;
 }
 
 .org-vacation-toolbar {
@@ -1324,12 +1324,75 @@
   max-width: 100%;
 }
 
+.org-schedule-chart {
+  --schedule-head-row-1: 29px;
+  --schedule-head-row-2: 26px;
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-1);
+  overflow: hidden;
+}
+
+.org-schedule-names {
+  flex: 0 0 240px;
+  width: 240px;
+  background: var(--surface-1);
+  border-right: 1px solid var(--border);
+  z-index: 2;
+}
+
+.org-schedule-dates {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--surface-1);
+}
+
 .org-vacation-scroll {
   overflow: auto;
   max-width: 100%;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface-1);
+}
+
+.org-schedule-dates.org-vacation-scroll {
+  border: none;
+  border-radius: 0;
+}
+
+.org-schedule-names-grid .org-vacation-names-head {
+  height: calc(var(--schedule-head-row-1) + var(--schedule-head-row-2));
+  box-sizing: border-box;
+}
+
+.org-schedule-dates-grid .org-vacation-month {
+  height: var(--schedule-head-row-1);
+  box-sizing: border-box;
+}
+
+.org-schedule-dates-grid .org-vacation-day-head {
+  height: var(--schedule-head-row-2);
+  box-sizing: border-box;
+}
+
+.org-schedule-names-grid .org-vacation-name {
+  width: 240px;
+  max-width: 240px;
+  overflow: hidden;
+}
+
+.org-schedule-names-grid .org-person-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
 }
 
 .org-vacation-grid {
@@ -1384,7 +1447,9 @@
   white-space: nowrap;
 }
 
-.org-vacation-grid tbody tr {
+.org-vacation-grid tbody tr,
+.org-schedule-names-grid tbody tr,
+.org-schedule-dates-grid tbody tr {
   height: calc(var(--vac-cell-size) + 10px);
 }
 
@@ -1428,22 +1493,19 @@
   vertical-align: middle;
 }
 
-.org-vacation-weekend {
-  background: color-mix(in srgb, var(--surface-2) 94%, var(--weekend-tint) 6%) !important;
-}
-
-.org-vacation-day-head.org-vacation-weekend {
-  background: color-mix(in srgb, var(--table-head-bg) 92%, var(--weekend-tint) 8%) !important;
-}
-
+.org-vacation-weekend,
 .org-vacation-holiday {
-  background: color-mix(in srgb, var(--holiday-tint) 24%, var(--surface-1) 76%) !important;
+  background: color-mix(in srgb, var(--surface-2) 94%, var(--day-off-tint) 6%) !important;
 }
 
+.org-vacation-day-head.org-vacation-weekend,
 .org-vacation-day-head.org-vacation-holiday {
-  background: color-mix(in srgb, var(--holiday-tint) 28%, var(--table-head-bg) 72%) !important;
-  color: var(--holiday-text);
-  font-weight: 700;
+  background: color-mix(in srgb, var(--table-head-bg) 92%, var(--day-off-tint) 8%) !important;
+}
+
+.org-vacation-legend-item.org-vacation-weekend {
+  background: color-mix(in srgb, var(--surface-2) 94%, var(--day-off-tint) 6%);
+  border: 1px solid var(--border);
 }
 
 .org-vacation-today {
@@ -1488,7 +1550,7 @@
 }
 
 .org-workspace-panel {
-  overflow: hidden;
+  overflow: visible;
 }
 
 .org-workspace-book-for {
@@ -1509,42 +1571,63 @@
   font-weight: 600;
 }
 
-.org-workspace-weekday {
-  font-size: 9px;
-  text-transform: lowercase;
+.org-workspace-grid .org-workspace-cell {
+  position: relative;
+  cursor: default;
 }
 
-.org-workspace-cell {
+.org-workspace-grid .org-workspace-cell.org-vacation-editable {
+  cursor: crosshair;
+}
+
+.org-workspace-grid .org-workspace-cell[data-tip]:hover {
+  z-index: 4;
+}
+
+.org-workspace-grid .org-workspace-cell[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--surface-inverse, #0f172a);
+  color: var(--text-inverse, #f8fafc);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: normal;
+  width: max-content;
+  max-width: 280px;
   text-align: center;
-  padding: 0 !important;
+  box-shadow: var(--shadow-md);
+  z-index: 30;
+  pointer-events: none;
 }
 
-.org-workspace-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: calc(var(--vac-cell-size) - 4px);
-  height: calc(var(--vac-cell-size) - 4px);
-  margin: 2px auto;
-  border-radius: 6px;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
+.org-workspace-grid .org-workspace-cell[data-tip]:hover::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--surface-inverse, #0f172a);
+  z-index: 30;
+  pointer-events: none;
 }
 
 .org-workspace-free {
   background: var(--surface-1) !important;
 }
 
-.org-workspace-self,
-.org-workspace-self .org-workspace-mark {
+.org-workspace-self {
   background: var(--workspace-self-bg) !important;
 }
 
-.org-workspace-busy,
-.org-workspace-busy .org-workspace-mark {
+.org-workspace-busy {
   background: var(--workspace-busy-bg) !important;
-  color: var(--text-muted);
 }
 
 .org-vacation-legend-item.org-workspace-free {

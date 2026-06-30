@@ -1,24 +1,43 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getJson, putJson } from '../api'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
-import type { WorkspaceBookingScheduleData } from './types'
 import {
   MONTH_NAMES_FULL,
-  WEEKDAY_NAMES,
   getMonthDays,
-  isWeekendDay,
+  isDayOff,
   toDayKey,
 } from './scheduleUtils'
+import { buildHolidayKeySet } from './ruPublicHolidays'
+import type { WorkspaceBookingCell, WorkspaceBookingScheduleData } from './types'
 
 type WorkspaceBookingProps = {
   orgEmployeeId: number | null
 }
 
-function employeeInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return '?'
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase()
+function formatWorkspaceCellTip(
+  placeName: string,
+  day: Date,
+  booking: WorkspaceBookingCell | undefined,
+  editMode: boolean,
+  canBook: boolean,
+  canRelease: boolean,
+): string {
+  const monthLabel = MONTH_NAMES_FULL[day.getMonth()].toLowerCase()
+  const dateLabel = `${day.getDate()} ${monthLabel} ${day.getFullYear()}`
+  const prefix = `${placeName} · ${dateLabel}`
+
+  if (!booking) {
+    if (editMode && canBook) {
+      return `${prefix} · свободно · клик — забронировать`
+    }
+    return `${prefix} · свободно`
+  }
+
+  const who = booking.isSelf ? `${booking.employeeName} · ваша бронь` : booking.employeeName
+  if (editMode && canRelease) {
+    return `${prefix} · ${who} · клик — снять бронь`
+  }
+  return `${prefix} · ${who}`
 }
 
 export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProps) {
@@ -36,6 +55,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
   const monthDays = useMemo(() => getMonthDays(year, month), [year, month])
+  const holidayKeys = useMemo(() => buildHolidayKeySet(year), [year])
   const todayKey = toDayKey(currentDate)
 
   const bookingMap = useMemo(() => {
@@ -90,7 +110,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     if (scrollRef.current && year === currentDate.getFullYear() && month === currentDate.getMonth()) {
       const todayIndex = monthDays.findIndex((day) => toDayKey(day) === todayKey)
       if (todayIndex > 0) {
-        scrollRef.current.scrollLeft = Math.max(0, todayIndex * 28 - 80)
+        scrollRef.current.scrollLeft = Math.max(0, todayIndex * 26 - 80)
       }
     }
   }, [monthDays, todayKey, year, month, currentDate])
@@ -238,115 +258,108 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
       {saving ? <p>Сохранение…</p> : null}
 
       {data && !loading ? (
-        <div className="org-vacation-chart org-workspace-chart">
-          <div className="org-vacation-names">
-            <table className="org-vacation-names-grid">
-              <thead>
-                <tr>
-                  <th className="org-vacation-names-head" rowSpan={3}>
-                    Место
-                  </th>
-                </tr>
-                <tr aria-hidden="true" />
-                <tr aria-hidden="true" />
-              </thead>
-              <tbody>
-                {data.places.map((place) => (
-                  <tr key={place.id}>
-                    <td className="org-vacation-name org-workspace-place-name" title={place.name}>
-                      {place.name}
-                    </td>
+        <div className="org-vacation-chart-wrap">
+          <div className="org-schedule-chart">
+            <div className="org-schedule-names">
+              <table className="org-vacation-grid org-schedule-names-grid">
+                <thead>
+                  <tr>
+                    <th className="org-vacation-names-head" rowSpan={2}>
+                      Место
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div
-            className="org-vacation-dates-scroll"
-            ref={scrollRef}
-            aria-label="Календарь брони — прокрутка влево и вправо"
-          >
-            <table className="org-vacation-dates-grid org-workspace-dates-grid">
-              <thead>
-                <tr>
-                  {monthDays.map((day) => {
-                    const key = toDayKey(day)
-                    const isWeekend = isWeekendDay(day)
-                    return (
-                      <th
-                        key={`wd-${key}`}
-                        className={`org-vacation-day-head org-workspace-weekday${isWeekend ? ' org-vacation-weekend' : ''}`}
-                      >
-                        {WEEKDAY_NAMES[day.getDay()]}
-                      </th>
-                    )
-                  })}
-                </tr>
-                <tr>
-                  {monthDays.map((day) => {
-                    const key = toDayKey(day)
-                    const isWeekend = isWeekendDay(day)
-                    return (
-                      <th
-                        key={key}
-                        className={`org-vacation-day-head${isWeekend ? ' org-vacation-weekend' : ''}${
-                          key === todayKey ? ' org-vacation-today' : ''
-                        }`}
-                      >
-                        {day.getDate()}
-                      </th>
-                    )
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {data.places.map((place) => (
-                  <tr key={place.id}>
+                </thead>
+                <tbody>
+                  {data.places.map((place) => (
+                    <tr key={place.id}>
+                      <td className="org-vacation-name org-workspace-place-name" title={place.name}>
+                        <span className="org-vacation-name-text">{place.name}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div
+              className="org-schedule-dates org-vacation-scroll org-workspace-scroll"
+              ref={scrollRef}
+              aria-label="Календарь брони — прокрутка влево и вправо"
+            >
+              <table className="org-vacation-grid org-schedule-dates-grid org-workspace-grid">
+                <thead>
+                  <tr>
+                    <th colSpan={monthDays.length} className="org-vacation-month">
+                      {MONTH_NAMES_FULL[month]} {year}
+                    </th>
+                  </tr>
+                  <tr>
                     {monthDays.map((day) => {
-                      const dayKey = toDayKey(day)
-                      const booking = bookingMap.get(`${place.id}:${dayKey}`)
-                      const isWeekend = isWeekendDay(day)
-                      const canBook =
-                        editMode &&
-                        !booking &&
-                        (data.isAdmin ? bookForEmployeeId != null : data.actorEmployeeId != null)
-                      const canRelease = editMode && booking?.canRelease
-                      const isEditable = canBook || canRelease
-
+                      const key = toDayKey(day)
+                      const dayOff = isDayOff(day, holidayKeys)
                       return (
-                        <td
-                          key={`${place.id}-${dayKey}`}
-                          className={[
-                            'org-vacation-cell',
-                            'org-workspace-cell',
-                            booking ? (booking.isSelf ? 'org-workspace-self' : 'org-workspace-busy') : 'org-workspace-free',
-                            isWeekend ? 'org-vacation-weekend' : '',
-                            dayKey === todayKey ? 'org-vacation-today' : '',
-                            isEditable ? 'org-vacation-editable' : '',
-                          ]
-                            .filter(Boolean)
-                            .join(' ')}
-                          title={
-                            booking
-                              ? `${booking.employeeName}${booking.isSelf ? ' (вы)' : ''}`
-                              : 'Свободно'
-                          }
-                          onClick={() => void toggleCell(place.id, dayKey, booking)}
+                        <th
+                          key={key}
+                          className={`org-vacation-day-head${
+                            dayOff ? ' org-vacation-weekend' : ''
+                          }${key === todayKey ? ' org-vacation-today' : ''}`}
+                          title={key}
                         >
-                          {booking ? (
-                            <span className="org-workspace-mark" aria-label={booking.employeeName}>
-                              {data.isAdmin || booking.isSelf
-                                ? employeeInitials(booking.employeeName)
-                                : '×'}
-                            </span>
-                          ) : null}
-                        </td>
+                          {day.getDate()}
+                        </th>
                       )
                     })}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {data.places.map((place) => (
+                    <tr key={place.id}>
+                      {monthDays.map((day) => {
+                        const dayKey = toDayKey(day)
+                        const booking = bookingMap.get(`${place.id}:${dayKey}`)
+                        const dayOff = !booking && isDayOff(day, holidayKeys)
+                        const canBook =
+                          editMode &&
+                          !booking &&
+                          (data.isAdmin ? bookForEmployeeId != null : data.actorEmployeeId != null)
+                        const canRelease = editMode && Boolean(booking?.canRelease)
+                        const isEditable = canBook || canRelease
+                        const tip = formatWorkspaceCellTip(
+                          place.name,
+                          day,
+                          booking,
+                          editMode,
+                          canBook,
+                          canRelease,
+                        )
+
+                        return (
+                          <td
+                            key={`${place.id}-${dayKey}`}
+                            className={[
+                              'org-vacation-cell',
+                              'org-workspace-cell',
+                              booking
+                                ? booking.isSelf
+                                  ? 'org-workspace-self'
+                                  : 'org-workspace-busy'
+                                : 'org-workspace-free',
+                              dayOff ? 'org-vacation-weekend' : '',
+                              dayKey === todayKey ? 'org-vacation-today' : '',
+                              isEditable ? 'org-vacation-editable' : '',
+                            ]
+                              .filter(Boolean)
+                              .join(' ')}
+                            data-tip={tip}
+                            aria-label={tip}
+                            onClick={() => void toggleCell(place.id, dayKey, booking)}
+                          />
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       ) : null}

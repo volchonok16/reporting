@@ -85,3 +85,7 @@ export function isWeekendDay(date: Date): boolean {
   const dow = date.getDay()
   return dow === 0 || dow === 6
 }
+
+export function isDayOff(date: Date, holidayKeys: Set<string>): boolean {
+  return isWeekendDay(date) || holidayKeys.has(toDayKey(date))
+}

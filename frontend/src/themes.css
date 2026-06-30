@@ -94,9 +94,7 @@
   --vac-erase-bg: var(--surface-2);
   --workspace-self-bg: #86efac;
   --workspace-busy-bg: color-mix(in srgb, var(--surface-2) 78%, var(--text-muted) 22%);
-  --weekend-tint: #e11d48;
-  --holiday-tint: #ef4444;
-  --holiday-text: #b91c1c;
+  --day-off-tint: #e11d48;
   --news-accent: #c41e3a;
   --dirty-text: #b45309;
   --reservation-yes: #166534;
@@ -201,9 +199,7 @@
   --vac-erase-bg: var(--surface-3);
   --workspace-self-bg: #166534;
   --workspace-busy-bg: color-mix(in srgb, var(--surface-3) 82%, var(--text-muted) 18%);
-  --weekend-tint: #f87171;
-  --holiday-tint: #ef4444;
-  --holiday-text: #fca5a5;
+  --day-off-tint: #f87171;
   --news-accent: #fb7185;
   --dirty-text: #fbbf24;
   --reservation-yes: #34d399;
