@@ -96,7 +96,7 @@ function OrgTreeRoots({
   )
 }
 
-function NestedDepartmentBlock({
+function DepartmentFrame({
   block,
   onEmployeeClick,
 }: {
@@ -104,36 +104,43 @@ function NestedDepartmentBlock({
   onEmployeeClick?: (employeeId: number) => void
 }) {
   return (
-    <div className="org-dept-block">
-      <h4 className="org-dept-title">{block.departmentName}</h4>
-      <OrgTreeRoots roots={block.roots} onEmployeeClick={onEmployeeClick} />
-      {block.nestedDepartments?.map((nested) => (
-        <NestedDepartmentBlock key={nested.departmentId} block={nested} onEmployeeClick={onEmployeeClick} />
-      ))}
+    <div className="org-dept-frame">
+      <h3 className="org-dept-frame-title">{block.departmentName}</h3>
+      <div className="org-dept-frame-body">
+        <OrgTreeRoots roots={block.roots} onEmployeeClick={onEmployeeClick} />
+      </div>
     </div>
   )
 }
 
-function DepartmentBranch({
+function DepartmentBranchColumn({
   block,
   onEmployeeClick,
+  nested = false,
 }: {
   block: DepartmentBlock
   onEmployeeClick?: (employeeId: number) => void
+  nested?: boolean
 }) {
   return (
-    <div className="org-dept-branch">
-      <div className="org-chart-scroll">
-        <div className="org-dept-frame">
-          <h3 className="org-dept-frame-title">{block.departmentName}</h3>
-          <div className="org-dept-frame-body">
-            <OrgTreeRoots roots={block.roots} onEmployeeClick={onEmployeeClick} />
-            {block.nestedDepartments?.map((nested) => (
-              <NestedDepartmentBlock key={nested.departmentId} block={nested} onEmployeeClick={onEmployeeClick} />
-            ))}
-          </div>
+    <div className={`org-dept-branch-column${nested ? ' org-dept-branch-column-nested' : ''}`}>
+      <div className="org-dept-branch">
+        <div className="org-chart-scroll">
+          <DepartmentFrame block={block} onEmployeeClick={onEmployeeClick} />
         </div>
       </div>
+      {block.nestedDepartments && block.nestedDepartments.length > 0 ? (
+        <div className="org-dept-branch-nested">
+          {block.nestedDepartments.map((nestedBlock) => (
+            <DepartmentBranchColumn
+              key={nestedBlock.departmentId}
+              block={nestedBlock}
+              onEmployeeClick={onEmployeeClick}
+              nested
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -179,7 +186,7 @@ function CompanyPyramid({
       {hasBranches ? (
         <div className="org-company-pyramid-branches">
           {departments.map((block) => (
-            <DepartmentBranch key={block.departmentId} block={block} onEmployeeClick={onEmployeeClick} />
+            <DepartmentBranchColumn key={block.departmentId} block={block} onEmployeeClick={onEmployeeClick} />
           ))}
           {standaloneRoots.map((root) => (
             <StandaloneBranch key={root.person.employeeId} root={root} onEmployeeClick={onEmployeeClick} />

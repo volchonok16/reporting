@@ -708,19 +708,23 @@ def get_org_chart(db: Session, department_id: int | None = None) -> OrgChartOut:
         department_trees[dept.id] = build_department_tree(dept, members)
 
     department_head_ids = {dept.head_employee_id for dept in departments if dept.head_employee_id is not None}
+    assigned_employee_ids = set(
+        db.scalars(select(DepartmentMember.employee_id).distinct()).all()
+    )
     employees_without_department = list(
         db.scalars(
             select(Employee)
             .options(joinedload(Employee.job_position))
             .where(Employee.is_active.is_(True))
-            .where(~Employee.department_members.any())
             .where(Employee.is_organization_head.is_(False))
+            .where(
+                Employee.id.not_in(assigned_employee_ids) if assigned_employee_ids else Employee.id.isnot(None)
+            )
         ).unique().all()
     )
     employees_without_department = [
         emp for emp in employees_without_department if emp.id not in department_head_ids
     ]
-
     chart = build_company_chart(
         organization_head=org_head,
         departments=departments,

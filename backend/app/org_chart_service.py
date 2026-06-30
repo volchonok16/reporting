@@ -178,26 +178,8 @@ def node_for_employee(employee: Employee, *, is_head: bool = False) -> OrgChartN
     )
 
 
-def _index_nodes_by_employee(*roots_groups: list[OrgChartNode]) -> dict[int, OrgChartNode]:
-    index: dict[int, OrgChartNode] = {}
-
-    def walk(node: OrgChartNode) -> None:
-        index[node.person.employeeId] = node
-        for child in node.children:
-            walk(child)
-
-    for roots in roots_groups:
-        for root in roots:
-            walk(root)
-    return index
-
-
-def _attach_employees_without_department(
-    *,
-    chart_nodes_by_employee: dict[int, OrgChartNode],
-    unassigned: list[Employee],
-) -> list[OrgChartNode]:
-    """Сотрудники без отдела: подчинённые — под карточкой руководителя на схеме, иначе отдельная ветка."""
+def _build_unassigned_roots(unassigned: list[Employee]) -> list[OrgChartNode]:
+    """Сотрудники без отдела — отдельные ветки на уровне отделов (параллельно отделам)."""
     if not unassigned:
         return []
 
@@ -224,23 +206,12 @@ def _attach_employees_without_department(
         created[emp.id] = node
         return node
 
-    standalone: list[OrgChartNode] = []
     roots = [
         emp
         for emp in unassigned
         if emp.manager_id is None or emp.manager_id not in unassigned_ids
     ]
-    for emp in sorted(roots, key=lambda item: item.full_name.casefold()):
-        node = build_node(emp)
-        manager_id = emp.manager_id
-        if manager_id is not None and manager_id in chart_nodes_by_employee:
-            parent = chart_nodes_by_employee[manager_id]
-            parent.children.append(node)
-            parent.children.sort(key=lambda item: item.person.fullName.casefold())
-        else:
-            standalone.append(node)
-
-    return standalone
+    return [build_node(emp) for emp in sorted(roots, key=lambda item: item.full_name.casefold())]
 
 
 def build_company_chart(
@@ -250,7 +221,7 @@ def build_company_chart(
     department_trees: dict[int, list[OrgChartNode]],
     employees_without_department: list[Employee],
 ) -> dict[str, Any]:
-    """Каждый отдел — отдельная ветка; сотрудники без отдела — карточки под руководителем или отдельно."""
+    """Каждый отдел — отдельная ветка; сотрудники без отдела — параллельно отделам."""
 
     def build_block(dept: Department) -> dict[str, Any]:
         return {
@@ -264,15 +235,7 @@ def build_company_chart(
     top_level = sorted(departments, key=lambda d: (d.sort_order, d.name.casefold()))
 
     director_node = node_for_employee(organization_head, is_head=True) if organization_head else None
-    all_roots = [director_node] if director_node else []
-    for dept in top_level:
-        all_roots.extend(department_trees.get(dept.id, []))
-
-    chart_nodes = _index_nodes_by_employee(all_roots) if all_roots else {}
-    standalone_roots = _attach_employees_without_department(
-        chart_nodes_by_employee=chart_nodes,
-        unassigned=employees_without_department,
-    )
+    standalone_roots = _build_unassigned_roots(employees_without_department)
 
     return {
         "organizationHead": _node_to_dict(director_node) if director_node else None,

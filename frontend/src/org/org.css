@@ -673,6 +673,7 @@
 .org-company-pyramid-branches {
   display: flex;
   justify-content: center;
+  align-items: flex-start;
   flex-wrap: wrap;
   gap: 32px 24px;
   padding-top: 36px;
@@ -692,13 +693,16 @@
   border-radius: 2px;
 }
 
-.org-dept-branch {
+.org-dept-branch-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   position: relative;
   padding: 0 12px;
   margin-bottom: 8px;
 }
 
-.org-dept-branch::before {
+.org-company-pyramid-branches > .org-dept-branch-column::before {
   content: '';
   position: absolute;
   top: -36px;
@@ -708,7 +712,7 @@
   background: var(--org-chart-line, var(--border-strong));
 }
 
-.org-dept-branch::after {
+.org-company-pyramid-branches > .org-dept-branch-column::after {
   content: '';
   position: absolute;
   top: -36px;
@@ -718,20 +722,20 @@
   background: var(--org-chart-line, var(--border-strong));
 }
 
-.org-dept-branch:first-child::before {
+.org-company-pyramid-branches > .org-dept-branch-column:first-child::before {
   display: none;
 }
 
-.org-dept-branch:last-child::after {
+.org-company-pyramid-branches > .org-dept-branch-column:last-child::after {
   display: none;
 }
 
-.org-dept-branch:only-child::before,
-.org-dept-branch:only-child::after {
+.org-company-pyramid-branches > .org-dept-branch-column:only-child::before,
+.org-company-pyramid-branches > .org-dept-branch-column:only-child::after {
   display: none;
 }
 
-.org-dept-branch > .org-chart-scroll::before {
+.org-company-pyramid-branches > .org-dept-branch-column > .org-dept-branch > .org-chart-scroll::before {
   content: '';
   position: absolute;
   top: -36px;
@@ -741,6 +745,109 @@
   height: 36px;
   background: var(--org-chart-line, var(--border-strong));
   border-radius: 2px;
+}
+
+.org-dept-branch-nested {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  padding-top: var(--org-tree-gap, 40px);
+  width: 100%;
+}
+
+.org-dept-branch-nested::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: var(--org-tree-gap, 40px);
+  background: var(--org-chart-line, var(--border-strong));
+  border-radius: 2px;
+}
+
+.org-dept-branch-column-nested .org-dept-branch::before,
+.org-dept-branch-column-nested .org-dept-branch::after {
+  display: none;
+}
+
+.org-dept-branch-column-nested > .org-dept-branch > .org-chart-scroll::before {
+  content: '';
+  position: absolute;
+  top: calc(-1 * var(--org-tree-gap, 40px));
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: var(--org-tree-gap, 40px);
+  background: var(--org-chart-line, var(--border-strong));
+  border-radius: 2px;
+}
+
+.org-dept-branch {
+  position: relative;
+  padding: 0;
+  margin-bottom: 0;
+}
+
+.org-dept-branch-standalone {
+  position: relative;
+  padding: 0 12px;
+  margin-bottom: 8px;
+}
+
+.org-dept-branch-standalone::before {
+  content: '';
+  position: absolute;
+  top: -36px;
+  right: 50%;
+  width: 50%;
+  height: 3px;
+  background: var(--org-chart-line, var(--border-strong));
+}
+
+.org-dept-branch-standalone::after {
+  content: '';
+  position: absolute;
+  top: -36px;
+  left: 50%;
+  width: 50%;
+  height: 3px;
+  background: var(--org-chart-line, var(--border-strong));
+}
+
+.org-company-pyramid-branches > .org-dept-branch-standalone:first-child::before {
+  display: none;
+}
+
+.org-company-pyramid-branches > .org-dept-branch-standalone:last-child::after {
+  display: none;
+}
+
+.org-dept-branch-standalone > .org-chart-scroll::before {
+  content: '';
+  position: absolute;
+  top: -36px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: 36px;
+  background: var(--org-chart-line, var(--border-strong));
+  border-radius: 2px;
+}
+
+.org-dept-branch::before,
+.org-dept-branch::after {
+  display: none;
+}
+
+.org-dept-branch > .org-chart-scroll::before {
+  display: none;
+}
+
+.org-company-pyramid-branches > .org-dept-branch-column > .org-dept-branch > .org-chart-scroll::before {
+  display: block;
 }
 
 .org-dept-branch > .org-chart-scroll {

@@ -740,7 +740,7 @@
 | Раздел | API |
 |--------|-----|
 | Состав | `GET /api/org/departments/{id}/members` |
-| Пирамида | `GET /api/org/org-chart?department_id=` — без `department_id`: директор, отделы (отдельные ветки) и сотрудники без отдела (карточка под руководителем на схеме или отдельной веткой); для одного отдела — дерево по составу |
+| Пирамида | `GET /api/org/org-chart?department_id=` — без `department_id`: директор; отделы — отдельные ветки; сотрудники без отдела — отдельная ветка на уровне отделов (параллельно им); для одного отдела — дерево по составу |
 | Сотрудники | `GET/POST/PATCH /api/org/employees` |
 | График отпусков | `GET /api/org/vacations?year=&department_id=`, `PUT /api/org/vacations/range` |
 | Личный кабинет | `GET/PATCH /api/profile`, `POST /api/profile/password` |
