@@ -679,9 +679,9 @@
   position: absolute;
   left: 50%;
   bottom: 0;
-  transform: translate(-50%, 100%);
+  transform: translate(-50%, calc(100% + 4px));
   width: 3px;
-  height: var(--org-tree-gap, 48px);
+  height: calc(var(--org-tree-gap, 48px) - 4px);
   background: var(--org-chart-line, var(--border-strong));
   border-radius: 2px;
   z-index: 0;
