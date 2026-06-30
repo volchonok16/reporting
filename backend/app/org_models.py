@@ -87,18 +87,25 @@ class Employee(Base):
     department_members: Mapped[list["DepartmentMember"]] = relationship(
         back_populates="employee",
         foreign_keys="DepartmentMember.employee_id",
+        passive_deletes=True,
     )
-    expertises: Mapped[list["EmployeeExpertise"]] = relationship(back_populates="employee")
+    expertises: Mapped[list["EmployeeExpertise"]] = relationship(
+        back_populates="employee",
+        passive_deletes=True,
+    )
     time_off_days: Mapped[list["EmployeeTimeOffDay"]] = relationship(
         back_populates="employee",
         foreign_keys="EmployeeTimeOffDay.employee_id",
+        passive_deletes=True,
     )
     office_days: Mapped[list["EmployeeOfficeDay"]] = relationship(
         foreign_keys="EmployeeOfficeDay.employee_id",
+        passive_deletes=True,
     )
     workspace_bookings: Mapped[list["WorkspaceBooking"]] = relationship(
         back_populates="employee",
         foreign_keys="WorkspaceBooking.employee_id",
+        passive_deletes=True,
     )
 
 
