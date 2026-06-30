@@ -150,6 +150,10 @@ export default function OfficePresence() {
   const handleScrollPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return
     if (!scrollRef.current) return
+    const target = event.target as Element | null
+    if (target?.closest('.org-vacation-day-head')) {
+      return
+    }
     dragStateRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,

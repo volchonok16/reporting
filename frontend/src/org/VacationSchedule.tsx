@@ -78,8 +78,10 @@ export default function VacationSchedule({
   year: yearProp,
   onYearChange,
 }: VacationScheduleProps) {
-  const currentDate = new Date()
-  const currentYear = new Date().getFullYear()
+  const currentDate = useMemo(() => new Date(), [])
+  const currentYear = currentDate.getFullYear()
+  const currentMonth = currentDate.getMonth()
+  const currentDay = currentDate.getDate()
   const savedOrgUi = loadOrgUiState()
   const [internalYear, setInternalYear] = useState(savedOrgUi.vacationYear)
   const year = yearProp ?? internalYear
@@ -97,7 +99,7 @@ export default function VacationSchedule({
   const yearDays = useMemo(() => getYearDays(year), [year])
   const monthGroups = useMemo(() => getMonthGroups(yearDays), [yearDays])
   const holidayKeys = useMemo(() => buildHolidayKeySet(year), [year])
-  const todayKey = toDayKey(new Date())
+  const todayKey = toDayKey(currentDate)
 
   const dayKindMap = useMemo(() => {
     const map = new Map<string, TimeOffKind>()
@@ -115,12 +117,9 @@ export default function VacationSchedule({
 
   useEffect(() => {
     if (selectedDayKey.startsWith(`${year}-`)) return
-    const fallbackDate =
-      year === currentYear
-        ? new Date(year, currentDate.getMonth(), currentDate.getDate())
-        : new Date(year, 0, 1)
+    const fallbackDate = new Date(year, currentMonth, currentDay)
     setSelectedDayKey(toDayKey(fallbackDate))
-  }, [year, selectedDayKey, currentYear, currentDate])
+  }, [year, selectedDayKey, currentMonth, currentDay])
 
   const setYear = (nextYear: number) => {
     if (onYearChange) {
@@ -150,15 +149,15 @@ export default function VacationSchedule({
   }, [load])
 
   useEffect(() => {
-    if (!scrollRef.current || !data || year !== currentYear) return
-    const monthStartKey = `${year}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-01`
+    if (!scrollRef.current || !data) return
+    const monthStartKey = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`
     const monthStartCell = scrollRef.current.querySelector<HTMLElement>(
       `th[data-day-key="${monthStartKey}"]`,
     )
     if (!monthStartCell) return
     const stickyNamesWidth = 220
     scrollRef.current.scrollLeft = Math.max(0, monthStartCell.offsetLeft - stickyNamesWidth - 24)
-  }, [year, data, currentYear, currentDate])
+  }, [year, data, currentMonth])
 
   const applyRange = async (employeeId: number, fromDay: string, toDay: string) => {
     setSaving(true)
