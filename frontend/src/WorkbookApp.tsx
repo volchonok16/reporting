@@ -5,6 +5,7 @@ import ProductStatusB2B from './ProductStatusB2B'
 import Roadmap from './Roadmap'
 import Departments from './org/Departments'
 import EmployeeProfile from './org/EmployeeProfile'
+import OrgPhoto from './org/OrgPhoto'
 import ThemeToggle from './ThemeToggle'
 import type { AppRole } from './App'
 import { loadActiveSheet, saveActiveSheet, type SheetId } from './uiState'
@@ -26,6 +27,9 @@ type WorkbookAppProps = {
   canSyncTfs: boolean
   canManageOrg: boolean
   orgEmployeeId: number | null
+  orgEmployeePhotoUrl: string | null
+  accountLabel: string | null
+  onAuthRefresh: () => void
   onLogout: () => void
 }
 
@@ -34,6 +38,9 @@ export default function WorkbookApp({
   canSyncTfs,
   canManageOrg,
   orgEmployeeId,
+  orgEmployeePhotoUrl,
+  accountLabel,
+  onAuthRefresh,
   onLogout,
 }: WorkbookAppProps) {
   const visibleSheets =
@@ -88,8 +95,15 @@ export default function WorkbookApp({
                 type="button"
                 className="workbook-tab workbook-profile-btn"
                 onClick={() => setProfileOpen(true)}
+                title={accountLabel ?? 'Личный кабинет'}
               >
-                Личный кабинет
+                <OrgPhoto
+                  url={orgEmployeePhotoUrl}
+                  name={accountLabel ?? 'Пользователь'}
+                  className="workbook-header-avatar-img"
+                  placeholderClassName="workbook-header-avatar"
+                />
+                <span className="workbook-profile-label">Личный кабинет</span>
               </button>
               <button type="button" className="workbook-tab" onClick={() => void handleLogout()}>
                 Выйти
@@ -122,7 +136,14 @@ export default function WorkbookApp({
         )}
       </div>
 
-      {profileOpen ? <EmployeeProfile onClose={() => setProfileOpen(false)} /> : null}
+      {profileOpen ? (
+        <EmployeeProfile
+          onClose={() => {
+            setProfileOpen(false)
+            onAuthRefresh()
+          }}
+        />
+      ) : null}
     </div>
   )
 }

@@ -489,7 +489,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                             'org-workspace-day-head',
                             isWeekend ? 'org-workspace-weekend-head' : '',
                             isHoliday ? 'org-workspace-holiday-head' : '',
-                            key === todayKey ? 'org-vacation-today' : '',
+                            key === todayKey ? 'org-workspace-today-head' : '',
                           ]
                             .filter(Boolean)
                             .join(' ')}
@@ -545,7 +545,6 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                                 : 'org-workspace-free',
                               isWeekend ? 'org-workspace-weekend' : '',
                               isHoliday ? 'org-workspace-holiday' : '',
-                              dayKey === todayKey ? 'org-vacation-today' : '',
                               pending ? 'org-workspace-pending' : '',
                               isEditable ? 'org-vacation-editable' : '',
                             ]

@@ -12,6 +12,7 @@ from app.auth_sessions import delete_session, get_session, get_session_with_meta
 from app.boards import ALL_BOARDS_CODE, BOARDS, boards_for_sync
 from app.config import settings
 from app.db import close_db_session, ensure_startup_schema, get_db
+from app.org_photo_service import photo_public_url
 from app.org_service import get_employee_for_org_user
 from app.models import SyncRun
 from app.b2b_news_service import load_b2b_news
@@ -126,11 +127,16 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
     )
     org_user_id = int(meta["org_user_id"]) if meta.get("org_user_id") else None
     org_employee_id: int | None = None
+    org_employee_name: str | None = None
+    org_employee_photo_url: str | None = None
     if org_user_id is not None:
         db = next(get_db())
         try:
             emp = get_employee_for_org_user(db, org_user_id)
-            org_employee_id = emp.id if emp else None
+            if emp:
+                org_employee_id = emp.id
+                org_employee_name = emp.full_name
+                org_employee_photo_url = photo_public_url(emp.photo_path)
         finally:
             close_db_session(db)
     return TfsAuthStatusOut(
@@ -144,6 +150,8 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
         canManageOrg=can_manage_org,
         orgUserId=org_user_id,
         orgEmployeeId=org_employee_id,
+        orgEmployeeName=org_employee_name,
+        orgEmployeePhotoUrl=org_employee_photo_url,
     )
 
 

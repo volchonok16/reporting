@@ -174,7 +174,41 @@ body {
 }
 
 .workbook-profile-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   margin-left: 0;
+  max-width: 220px;
+}
+
+.workbook-profile-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbook-header-avatar,
+.workbook-header-avatar-img {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.workbook-header-avatar {
+  display: grid;
+  place-items: center;
+  background: var(--avatar-gradient);
+  color: var(--text-inverse);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.workbook-header-avatar-img {
+  object-fit: cover;
+  display: block;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--border) 80%, transparent 20%);
 }
 
 .workbook-tab {

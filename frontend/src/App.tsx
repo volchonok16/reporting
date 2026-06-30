@@ -11,6 +11,9 @@ export default function App() {
   const [canSyncTfs, setCanSyncTfs] = useState(false)
   const [canManageOrg, setCanManageOrg] = useState(false)
   const [orgEmployeeId, setOrgEmployeeId] = useState<number | null>(null)
+  const [orgEmployeeName, setOrgEmployeeName] = useState<string | null>(null)
+  const [orgEmployeePhotoUrl, setOrgEmployeePhotoUrl] = useState<string | null>(null)
+  const [username, setUsername] = useState<string | null>(null)
 
   const loadAuthStatus = useCallback(async () => {
     const sessionId = getSessionId()
@@ -27,12 +30,20 @@ export default function App() {
         canManageOrg?: boolean
         orgUserId?: number | null
         orgEmployeeId?: number | null
+        orgEmployeeName?: string | null
+        orgEmployeePhotoUrl?: string | null
+        username?: string | null
       }
       setAuthenticated(Boolean(data.authenticated))
       setAppRole(data.appRole === 'roadmap' ? 'roadmap' : 'full')
       setCanSyncTfs(Boolean(data.canSyncTfs))
       setCanManageOrg(Boolean(data.canManageOrg))
       setOrgEmployeeId(typeof data.orgEmployeeId === 'number' ? data.orgEmployeeId : null)
+      setOrgEmployeeName(typeof data.orgEmployeeName === 'string' ? data.orgEmployeeName : null)
+      setOrgEmployeePhotoUrl(
+        typeof data.orgEmployeePhotoUrl === 'string' ? data.orgEmployeePhotoUrl : null,
+      )
+      setUsername(typeof data.username === 'string' ? data.username : null)
     } catch {
       setAuthenticated(false)
     }
@@ -56,6 +67,9 @@ export default function App() {
       canSyncTfs={canSyncTfs}
       canManageOrg={canManageOrg}
       orgEmployeeId={orgEmployeeId}
+      orgEmployeePhotoUrl={orgEmployeePhotoUrl}
+      accountLabel={orgEmployeeName ?? username}
+      onAuthRefresh={() => void loadAuthStatus()}
       onLogout={() => setAuthenticated(false)}
     />
   )

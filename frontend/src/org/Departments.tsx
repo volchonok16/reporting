@@ -149,6 +149,8 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const openEmployeeCard = (employeeId: number) => setCardEmployeeId(employeeId)
   const closeEmployeeCard = () => setCardEmployeeId(null)
 
+  const isAllCompanyView = selectedDepartmentId === null && userPickedAllCompany.current
+
   const selectedDepartment = useMemo(
     () => departments.find((d) => d.id === selectedDepartmentId) ?? null,
     [departments, selectedDepartmentId],
@@ -591,61 +593,80 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       {panel === 'roster' ? (
         <section className="org-panel">
           <div className="org-panel-toolbar">
-            <h2>{selectedDepartment?.name ?? 'Выберите отдел'}</h2>
+            <h2>{selectedDepartment?.name ?? (isAllCompanyView ? 'Вся компания' : 'Выберите отдел')}</h2>
             {canManage && selectedDepartmentId !== null ? (
               <button type="button" className="btn-primary" onClick={openCreateMember}>
                 + Участник
               </button>
             ) : null}
           </div>
-          {selectedDepartmentId === null ? (
+          {selectedDepartmentId === null && !isAllCompanyView ? (
             <p className="org-hint">Выберите отдел для просмотра состава.</p>
           ) : (
             <table className="org-table">
               <thead>
                 <tr>
                   <th>ФИО</th>
-                  <th>Роль</th>
+                  <th>{isAllCompanyView ? 'Отдел' : 'Роль'}</th>
                   <th>Должность</th>
                   <th>Руководитель</th>
                   <th>Email</th>
                   <th>Рабочих часов в день</th>
                   <th>Экспертиза</th>
-                  {canManage ? <th /> : null}
+                  {canManage && !isAllCompanyView ? <th /> : null}
                 </tr>
               </thead>
               <tbody>
-                {members.map((member) => {
-                  const emp = employeeById.get(member.employeeId)
-                  return (
-                  <tr key={member.id}>
-                    <td>
-                      <PersonCell
-                        employeeId={member.employeeId}
-                        name={member.employeeName}
-                        photoUrl={member.photoUrl ?? emp?.photoUrl}
-                        onOpen={openEmployeeCard}
-                      />
-                    </td>
-                    <td>{member.teamRoleName ?? '—'}</td>
-                    <td>{member.displayPosition ?? '—'}</td>
-                    <td>{member.managerName ?? '—'}</td>
-                    <td>{member.displayEmail ?? emp?.email ?? '—'}</td>
-                    <td>{emp?.dailyWorkHours ?? '—'}</td>
-                    <td>{formatExpertises(emp?.expertises)}</td>
-                    {canManage ? (
-                      <td className="org-table-actions">
-                        <button type="button" className="btn-ghost" onClick={() => openEditMember(member)}>
-                          Изм.
-                        </button>
-                        <button type="button" className="btn-ghost" onClick={() => void removeMember(member.id)}>
-                          ✕
-                        </button>
-                      </td>
-                    ) : null}
-                  </tr>
-                  )
-                })}
+                {isAllCompanyView
+                  ? employees.map((emp) => (
+                      <tr key={emp.id}>
+                        <td>
+                          <PersonCell
+                            employeeId={emp.id}
+                            name={emp.fullName}
+                            photoUrl={emp.photoUrl}
+                            onOpen={openEmployeeCard}
+                          />
+                        </td>
+                        <td>{formatDepartments(emp.departments)}</td>
+                        <td>{emp.position ?? '—'}</td>
+                        <td>{emp.managerName ?? '—'}</td>
+                        <td>{emp.email ?? '—'}</td>
+                        <td>{emp.dailyWorkHours}</td>
+                        <td>{formatExpertises(emp.expertises)}</td>
+                      </tr>
+                    ))
+                  : members.map((member) => {
+                      const emp = employeeById.get(member.employeeId)
+                      return (
+                        <tr key={member.id}>
+                          <td>
+                            <PersonCell
+                              employeeId={member.employeeId}
+                              name={member.employeeName}
+                              photoUrl={member.photoUrl ?? emp?.photoUrl}
+                              onOpen={openEmployeeCard}
+                            />
+                          </td>
+                          <td>{member.teamRoleName ?? '—'}</td>
+                          <td>{member.displayPosition ?? '—'}</td>
+                          <td>{member.managerName ?? '—'}</td>
+                          <td>{member.displayEmail ?? emp?.email ?? '—'}</td>
+                          <td>{emp?.dailyWorkHours ?? '—'}</td>
+                          <td>{formatExpertises(emp?.expertises)}</td>
+                          {canManage ? (
+                            <td className="org-table-actions">
+                              <button type="button" className="btn-ghost" onClick={() => openEditMember(member)}>
+                                Изм.
+                              </button>
+                              <button type="button" className="btn-ghost" onClick={() => void removeMember(member.id)}>
+                                ✕
+                              </button>
+                            </td>
+                          ) : null}
+                        </tr>
+                      )
+                    })}
               </tbody>
             </table>
           )}
