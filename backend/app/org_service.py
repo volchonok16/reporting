@@ -375,7 +375,7 @@ def get_employee(db: Session, employee_id: int) -> EmployeeDetailOut:
     ).all()
 
     return EmployeeDetailOut(
-        **base.model_dump(),
+        **base.model_dump(exclude={"departments"}),
         subordinates=[
             EmployeeBriefOut(id=s.id, fullName=s.full_name, position=s.position) for s in subordinates
         ],
@@ -702,14 +702,6 @@ def get_org_chart(db: Session, department_id: int | None = None) -> OrgChartOut:
             .order_by(Department.sort_order, Department.name)
         ).unique().all()
     )
-    employees = list(
-        db.scalars(
-            select(Employee)
-            .options(joinedload(Employee.job_position))
-            .where(Employee.is_active.is_(True))
-        ).unique().all()
-    )
-    employees_by_id = {emp.id: emp for emp in employees}
     department_trees: dict[int, list] = {}
     for dept in departments:
         members = _load_members_for_department(db, dept.id)
@@ -718,7 +710,6 @@ def get_org_chart(db: Session, department_id: int | None = None) -> OrgChartOut:
         organization_head=org_head,
         departments=departments,
         department_trees=department_trees,
-        employees_by_id=employees_by_id,
     )
     return OrgChartOut(
         organizationHead=chart.get("organizationHead"),
