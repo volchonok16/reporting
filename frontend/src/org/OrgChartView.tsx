@@ -200,11 +200,13 @@ function DepartmentBranchColumn({
   onEmployeeClick,
   onDepartmentClick,
   nested = false,
+  renderNested = true,
 }: {
   block: DepartmentBlock
   onEmployeeClick?: (employeeId: number) => void
   onDepartmentClick?: (departmentId: number) => void
   nested?: boolean
+  renderNested?: boolean
 }) {
   return (
     <div className={`org-dept-branch-column${nested ? ' org-dept-branch-column-nested' : ''}`}>
@@ -217,7 +219,7 @@ function DepartmentBranchColumn({
           />
         </div>
       </div>
-      {block.nestedDepartments && block.nestedDepartments.length > 0 ? (
+      {renderNested && block.nestedDepartments && block.nestedDepartments.length > 0 ? (
         <NestedDepartments
           blocks={block.nestedDepartments}
           onEmployeeClick={onEmployeeClick}
@@ -250,6 +252,13 @@ type CompanyBranchItem =
   | { kind: 'department'; block: DepartmentBlock }
   | { kind: 'standalone'; root: OrgChartNode }
 
+function flattenDepartmentBlocks(blocks: DepartmentBlock[]): DepartmentBlock[] {
+  return blocks.flatMap((block) => [
+    block,
+    ...flattenDepartmentBlocks(block.nestedDepartments ?? []),
+  ])
+}
+
 function CompanyPyramid({
   organizationHead,
   departments,
@@ -263,8 +272,9 @@ function CompanyPyramid({
   onEmployeeClick?: (employeeId: number) => void
   onDepartmentClick?: (departmentId: number) => void
 }) {
+  const companyDepartments = flattenDepartmentBlocks(departments)
   const branchItems: CompanyBranchItem[] = [
-    ...departments.map((block) => ({ kind: 'department' as const, block })),
+    ...companyDepartments.map((block) => ({ kind: 'department' as const, block })),
     ...standaloneRoots.map((root) => ({ kind: 'standalone' as const, root })),
   ]
   const hasBranches = branchItems.length > 0
@@ -289,6 +299,7 @@ function CompanyPyramid({
                 block={item.block}
                 onEmployeeClick={onEmployeeClick}
                 onDepartmentClick={onDepartmentClick}
+                renderNested={false}
               />
             ) : (
               <StandaloneBranchColumn root={item.root} onEmployeeClick={onEmployeeClick} />
