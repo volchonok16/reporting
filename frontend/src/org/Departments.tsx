@@ -3,6 +3,7 @@ import { deleteJson, getJson, patchJson, postForm, postJson, putJson, resolvePho
 import OrgChartView from './OrgChartView'
 import VacationSchedule from './VacationSchedule'
 import EmployeeCardModal from './EmployeeCardModal'
+import OrgPhoto from './OrgPhoto'
 import type {
   Department,
   DepartmentMember,
@@ -23,21 +24,35 @@ type DepartmentsProps = {
   orgEmployeeId: number | null
 }
 
-function employeeInitials(fullName: string): string {
-  return (
-    fullName
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase() ?? '')
-      .join('') || '?'
-  )
-}
-
 function formatExpertises(expertises: EmployeeExpertise[] | undefined): string {
   if (!expertises?.length) return '—'
   return expertises
     .map((item) => (item.level ? `${item.directionName} (${item.level})` : item.directionName))
     .join(', ')
+}
+
+function PersonCell({
+  employeeId,
+  name,
+  photoUrl,
+  onOpen,
+}: {
+  employeeId: number
+  name: string
+  photoUrl?: string | null
+  onOpen: (employeeId: number) => void
+}) {
+  return (
+    <span className="org-person-cell">
+      <OrgPhoto
+        url={photoUrl}
+        name={name}
+        className="org-table-avatar-img"
+        placeholderClassName="org-table-avatar"
+      />
+      <EmployeeNameButton employeeId={employeeId} name={name} onOpen={onOpen} />
+    </span>
+  )
 }
 
 function EmployeeNameButton({
@@ -505,7 +520,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
         ))}
       </nav>
 
-      {panel === 'roster' || panel === 'pyramid' || panel === 'vacations' ? (
+      {panel === 'roster' || panel === 'pyramid' ? (
         <div className="org-dept-filter">
           <label className="org-dept-filter-label">
             Отдел
@@ -567,9 +582,10 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                   return (
                   <tr key={member.id}>
                     <td>
-                      <EmployeeNameButton
+                      <PersonCell
                         employeeId={member.employeeId}
                         name={member.employeeName}
+                        photoUrl={member.photoUrl ?? emp?.photoUrl}
                         onOpen={openEmployeeCard}
                       />
                     </td>
@@ -668,7 +684,12 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
               {employees.map((emp) => (
                 <tr key={emp.id}>
                   <td>
-                    <EmployeeNameButton employeeId={emp.id} name={emp.fullName} onOpen={openEmployeeCard} />
+                    <PersonCell
+                      employeeId={emp.id}
+                      name={emp.fullName}
+                      photoUrl={emp.photoUrl}
+                      onOpen={openEmployeeCard}
+                    />
                   </td>
                   <td>{emp.position ?? '—'}</td>
                   <td>{emp.email ?? '—'}</td>
@@ -694,11 +715,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       ) : null}
 
       {panel === 'vacations' ? (
-        <VacationSchedule
-          departmentId={selectedDepartmentId}
-          orgEmployeeId={orgEmployeeId}
-          canManage={canManage}
-        />
+        <VacationSchedule orgEmployeeId={orgEmployeeId} canManage={canManage} />
       ) : null}
 
       {panel === 'manage' ? (
@@ -759,15 +776,12 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
             <form className="org-employee-form" onSubmit={(e) => void saveEmployee(e)}>
               <div className="org-employee-modal-body org-form">
                 <section className="org-employee-hero">
-                  <div className="org-employee-photo-preview">
-                    {photoPreviewUrl ? (
-                      <img src={photoPreviewUrl} alt="" />
-                    ) : (
-                      <div className="org-employee-photo-placeholder">
-                        {employeeInitials(employeeForm.fullName)}
-                      </div>
-                    )}
-                  </div>
+                  <OrgPhoto
+                    url={photoPreviewUrl}
+                    name={employeeForm.fullName}
+                    className="org-employee-photo-preview-img"
+                    placeholderClassName="org-employee-photo-preview org-employee-photo-placeholder"
+                  />
                   <div className="org-employee-photo-actions">
                     <label className="org-photo-upload-btn">
                       {photoPreviewUrl ? 'Сменить фото' : 'Добавить фото'}

@@ -7,6 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.org_models import DepartmentMember, Employee, EmployeeTimeOffDay
+from app.org_photo_service import photo_public_url
 from app.org_service import get_employee_for_org_user
 from app.org_schemas import (
     VacationEmployeeOut,
@@ -50,7 +51,6 @@ def _is_org_admin(meta: dict) -> bool:
 
 
 def can_edit_employee_vacation(
-    db: Session,
     meta: dict,
     actor_employee_id: int | None,
     target_employee_id: int,
@@ -59,10 +59,7 @@ def can_edit_employee_vacation(
         return True
     if actor_employee_id is None:
         return False
-    if actor_employee_id == target_employee_id:
-        return True
-    target = db.get(Employee, target_employee_id)
-    return target is not None and target.manager_id == actor_employee_id
+    return actor_employee_id == target_employee_id
 
 
 def _load_employees(db: Session, department_id: int | None) -> list[Employee]:
@@ -121,7 +118,8 @@ def get_vacation_schedule(
             fullName=emp.full_name,
             position=emp.position,
             managerId=emp.manager_id,
-            canEdit=can_edit_employee_vacation(db, meta, actor_employee_id, emp.id),
+            photoUrl=photo_public_url(emp.photo_path),
+            canEdit=can_edit_employee_vacation(meta, actor_employee_id, emp.id),
             isSelf=actor_employee_id == emp.id,
         )
         for emp in employees
@@ -142,7 +140,7 @@ def upsert_vacation_range(db: Session, data: VacationRangeIn, meta: dict) -> Vac
         raise HTTPException(status_code=404, detail="Сотрудник не найден.")
 
     actor_employee_id = _actor_employee_id(db, meta)
-    if not can_edit_employee_vacation(db, meta, actor_employee_id, data.employeeId):
+    if not can_edit_employee_vacation(meta, actor_employee_id, data.employeeId):
         raise HTTPException(status_code=403, detail="Недостаточно прав для редактирования графика.")
 
     start = _parse_day(data.fromDay)

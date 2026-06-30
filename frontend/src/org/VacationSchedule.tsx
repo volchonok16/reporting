@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getJson, putJson } from '../api'
+import OrgPhoto from './OrgPhoto'
 import type { EditableTimeOffKind, TimeOffKind, VacationScheduleData } from './types'
 
 type VacationScheduleProps = {
-  departmentId: number | null
   orgEmployeeId: number | null
   canManage: boolean
 }
@@ -91,7 +91,7 @@ function getMonthGroups(days: Date[]) {
   return groups
 }
 
-export default function VacationSchedule({ departmentId, orgEmployeeId, canManage }: VacationScheduleProps) {
+export default function VacationSchedule({ orgEmployeeId, canManage }: VacationScheduleProps) {
   const currentYear = new Date().getFullYear()
   const [year, setYear] = useState(currentYear)
   const [data, setData] = useState<VacationScheduleData | null>(null)
@@ -121,7 +121,6 @@ export default function VacationSchedule({ departmentId, orgEmployeeId, canManag
     setError(null)
     try {
       const query = new URLSearchParams({ year: String(year) })
-      if (departmentId !== null) query.set('department_id', String(departmentId))
       const response = await getJson<VacationScheduleData>(`/api/org/vacations?${query.toString()}`)
       setData(response)
     } catch (err) {
@@ -129,7 +128,7 @@ export default function VacationSchedule({ departmentId, orgEmployeeId, canManag
     } finally {
       setLoading(false)
     }
-  }, [year, departmentId])
+  }, [year])
 
   useEffect(() => {
     void load()
@@ -214,15 +213,19 @@ export default function VacationSchedule({ departmentId, orgEmployeeId, canManag
               {editMode ? 'Готово' : 'Редактировать'}
             </button>
           ) : (
-            <span className="org-hint">Редактирование доступно для своей строки или подчинённых</span>
+            <span className="org-hint">Редактирование доступно только для своей строки</span>
           )}
         </div>
       </div>
 
-      {orgEmployeeId === null && !canManage ? (
+      {canManage ? (
+        <p className="org-hint">Администратор может редактировать график любого сотрудника.</p>
+      ) : null}
+
+      {orgEmployeeId === null ? (
         <p className="org-hint">
-          Чтобы заполнить свой график, привяжите учётную запись к карточке сотрудника (Личный кабинет или
-          «Управление»).
+          Просмотр графика всей компании доступен всем. Чтобы редактировать свою строку, привяжите учётную
+          запись к карточке сотрудника (Личный кабинет или «Управление»).
         </p>
       ) : null}
 
@@ -293,8 +296,18 @@ export default function VacationSchedule({ departmentId, orgEmployeeId, canManag
                   className={employee.isSelf ? 'org-vacation-row-self' : undefined}
                 >
                   <td className="org-vacation-sticky-col org-vacation-name" title={employee.position ?? undefined}>
-                    {employee.fullName}
-                    {employee.isSelf ? <span className="org-vacation-self-badge">вы</span> : null}
+                    <span className="org-person-cell">
+                      <OrgPhoto
+                        url={employee.photoUrl}
+                        name={employee.fullName}
+                        className="org-table-avatar-img"
+                        placeholderClassName="org-table-avatar"
+                      />
+                      <span>
+                        {employee.fullName}
+                        {employee.isSelf ? <span className="org-vacation-self-badge">вы</span> : null}
+                      </span>
+                    </span>
                   </td>
                   {yearDays.map((day) => {
                     const dayKey = toDayKey(day)
@@ -333,7 +346,7 @@ export default function VacationSchedule({ departmentId, orgEmployeeId, canManag
       ) : null}
 
       {data && data.employees.length === 0 ? (
-        <p className="org-hint">Нет активных сотрудников для выбранного фильтра.</p>
+        <p className="org-hint">Нет активных сотрудников.</p>
       ) : null}
     </section>
   )

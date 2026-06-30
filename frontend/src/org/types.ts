@@ -154,6 +154,7 @@ export type VacationEmployee = {
   fullName: string
   position?: string | null
   managerId?: number | null
+  photoUrl?: string | null
   canEdit: boolean
   isSelf: boolean
 }

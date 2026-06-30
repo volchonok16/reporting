@@ -266,6 +266,7 @@ class VacationEmployeeOut(BaseModel):
     fullName: str
     position: str | None = None
     managerId: int | None = None
+    photoUrl: str | None = None
     canEdit: bool
     isSelf: bool = False
 

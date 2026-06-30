@@ -28,6 +28,10 @@ export function resolvePhotoUrl(url: string | null | undefined): string | null {
   const trimmed = url.trim()
   if (!trimmed) return null
 
+  if (trimmed.startsWith('blob:') || trimmed.startsWith('data:')) {
+    return trimmed
+  }
+
   const rewriteMinioPath = (path: string) => `${apiBase}/api/org/photos/${path.replace(/^\/+/, '')}`
 
   if (/^https?:\/\//i.test(trimmed)) {

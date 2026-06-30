@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.org_models import Department, DepartmentMember, Employee
+from app.org_photo_service import photo_public_url
 
 
 @dataclass
@@ -88,6 +89,12 @@ def _resolve_head_member(
     return None
 
 
+def _employee_photo_url(employee: Employee | None) -> str | None:
+    if employee is None:
+        return None
+    return photo_public_url(employee.photo_path)
+
+
 def _build_node(
     member: DepartmentMember,
     children_by_manager: dict[int, list[DepartmentMember]],
@@ -108,6 +115,7 @@ def _build_node(
             fullName=member.employee.full_name if member.employee else "",
             position=_display_position(member),
             email=_display_email(member),
+            photoUrl=_employee_photo_url(member.employee),
             teamRole=member.team_role.name if member.team_role else None,
             isHead=is_head,
         ),
@@ -163,6 +171,7 @@ def node_for_employee(employee: Employee, *, is_head: bool = False) -> OrgChartN
             fullName=employee.full_name,
             position=employee.position or (employee.job_position.name if employee.job_position else None),
             email=employee.email,
+            photoUrl=photo_public_url(employee.photo_path),
             isHead=is_head,
         ),
         children=[],
