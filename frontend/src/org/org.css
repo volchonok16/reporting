@@ -173,6 +173,124 @@
   width: min(920px, 100%);
 }
 
+.org-employee-modal {
+  width: min(720px, 100%);
+}
+
+.org-employee-form {
+  gap: 16px;
+}
+
+.org-employee-form-layout {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.org-employee-photo-field {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.org-employee-photo-preview,
+.org-employee-photo-placeholder {
+  width: 112px;
+  height: 112px;
+  border-radius: 16px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.org-employee-photo-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.org-employee-photo-placeholder {
+  display: grid;
+  place-items: center;
+  background: var(--avatar-gradient);
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.35rem;
+}
+
+.org-photo-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2, var(--bg-hover));
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+}
+
+.org-photo-upload-btn:hover {
+  background: var(--bg-hover);
+}
+
+.org-photo-upload-btn input {
+  display: none;
+}
+
+.org-photo-hint {
+  font-size: 12px;
+  text-align: center;
+}
+
+.org-employee-form-fields {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.org-form-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.org-form-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+}
+
+.org-form-section h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.org-checkbox-field {
+  align-self: end;
+  padding-bottom: 8px;
+}
+
+@media (max-width: 640px) {
+  .org-employee-form-layout {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .org-employee-form-fields {
+    width: 100%;
+  }
+
+  .org-form-row-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
 .org-modal-header {
   display: flex;
   align-items: center;
