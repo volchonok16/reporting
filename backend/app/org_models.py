@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, Numeric, SmallInteger, String, Text, func
+from sqlalchemy import BigInteger, Boolean, Date, ForeignKey, Integer, Numeric, SmallInteger, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -89,6 +89,28 @@ class Employee(Base):
         foreign_keys="DepartmentMember.employee_id",
     )
     expertises: Mapped[list["EmployeeExpertise"]] = relationship(back_populates="employee")
+    time_off_days: Mapped[list["EmployeeTimeOffDay"]] = relationship(
+        back_populates="employee",
+        foreign_keys="EmployeeTimeOffDay.employee_id",
+    )
+
+
+class EmployeeTimeOffDay(Base):
+    __tablename__ = "employee_time_off_day"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    employee_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("employee.id", ondelete="CASCADE"), nullable=False
+    )
+    day: Mapped[date] = mapped_column(Date, nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    employee: Mapped[Employee] = relationship(
+        back_populates="time_off_days",
+        foreign_keys=[employee_id],
+    )
 
 
 class EmployeeExpertise(Base):

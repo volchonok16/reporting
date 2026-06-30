@@ -398,6 +398,21 @@ COMMENT ON TABLE employee IS 'Сотрудники организации';
 COMMENT ON TABLE department IS 'Отделы';
 COMMENT ON TABLE department_member IS 'Состав отдела';
 
+CREATE TABLE employee_time_off_day (
+    id              BIGSERIAL PRIMARY KEY,
+    employee_id     BIGINT       NOT NULL REFERENCES employee(id) ON DELETE CASCADE,
+    day             DATE         NOT NULL,
+    kind            VARCHAR(32)  NOT NULL CHECK (kind IN ('vacation', 'dayoff', 'sick_leave')),
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE (employee_id, day)
+);
+
+CREATE INDEX idx_employee_time_off_day_day ON employee_time_off_day (day);
+CREATE INDEX idx_employee_time_off_day_employee_day ON employee_time_off_day (employee_id, day);
+
+COMMENT ON TABLE employee_time_off_day IS 'График отпусков: отпуск, отгул, больничный по дням';
+
 -- -----------------------------------------------------------------------------
 -- Синхронизация (аудит ETL)
 -- -----------------------------------------------------------------------------

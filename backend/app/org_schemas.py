@@ -257,4 +257,42 @@ class SelectOptionOut(BaseModel):
     name: str
 
 
+TimeOffKind = Literal["vacation", "dayoff", "sick_leave"]
+EditableTimeOffKind = Literal["vacation", "dayoff", "sick_leave", "erase"]
+
+
+class VacationEmployeeOut(BaseModel):
+    id: int
+    fullName: str
+    position: str | None = None
+    managerId: int | None = None
+    canEdit: bool
+    isSelf: bool = False
+
+
+class VacationTimeOffDayOut(BaseModel):
+    employeeId: int
+    day: str
+    kind: TimeOffKind
+
+
+class VacationScheduleOut(BaseModel):
+    year: int
+    departmentId: int | None = None
+    actorEmployeeId: int | None = None
+    employees: list[VacationEmployeeOut] = Field(default_factory=list)
+    timeOffDays: list[VacationTimeOffDayOut] = Field(default_factory=list)
+
+
+class VacationRangeIn(BaseModel):
+    employeeId: int
+    fromDay: str
+    toDay: str
+    kind: EditableTimeOffKind
+
+
+class VacationRangeOut(BaseModel):
+    affectedDays: int
+
+
 OrgChartNodeOut.model_rebuild()

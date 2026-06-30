@@ -8,7 +8,8 @@ function resolveApiBase(): string {
   const isPallinkHost = hostname === 'pallink.fun' || hostname === 'www.pallink.fun'
 
   if (isPallinkHost) {
-    return 'https://api.pallink.fun'
+    // nginx на pallink.fun проксирует /api/ → backend; same-origin без CORS
+    return `${protocol}//${hostname}`
   }
 
   const envPointsToLocal =

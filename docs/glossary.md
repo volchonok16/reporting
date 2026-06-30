@@ -716,6 +716,23 @@
 
 ---
 
+## employee_time_off_day — график отпусков
+
+Один день — одна запись. Сотрудник (или его руководитель / админ) заполняет график через вкладку «График отпусков».
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `employee_id` | bigint | FK → `employee` |
+| `day` | date | Календарный день |
+| `kind` | varchar(32) | `vacation` — отпуск, `dayoff` — отгул, `sick_leave` — больничный |
+
+Уникальность: `(employee_id, day)`.
+
+Права редактирования: свой график, прямой руководитель (`employee.manager_id`), админ отделов / PAT / legacy full.
+
+---
+
 ## Вкладка «Отделы» (UI)
 
 | Раздел | API |
@@ -723,4 +740,5 @@
 | Состав | `GET /api/org/departments/{id}/members` |
 | Пирамида | `GET /api/org/org-chart?department_id=` |
 | Сотрудники | `GET/POST/PATCH /api/org/employees` |
+| График отпусков | `GET /api/org/vacations?year=&department_id=`, `PUT /api/org/vacations/range` |
 | Личный кабинет | `GET/PATCH /api/profile`, `POST /api/profile/password` |

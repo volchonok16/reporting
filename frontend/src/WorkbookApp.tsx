@@ -25,6 +25,7 @@ type WorkbookAppProps = {
   appRole: AppRole
   canSyncTfs: boolean
   canManageOrg: boolean
+  orgEmployeeId: number | null
   onLogout: () => void
 }
 
@@ -32,6 +33,7 @@ export default function WorkbookApp({
   appRole,
   canSyncTfs,
   canManageOrg,
+  orgEmployeeId,
   onLogout,
 }: WorkbookAppProps) {
   const visibleSheets =
@@ -111,7 +113,7 @@ export default function WorkbookApp({
                 Выйти
               </button>
             </header>
-            <Departments canManage={canManageOrg} />
+            <Departments canManage={canManageOrg} orgEmployeeId={orgEmployeeId} />
           </div>
         ) : (
           <div className="app">

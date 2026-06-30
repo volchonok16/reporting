@@ -10,6 +10,7 @@ export default function App() {
   const [appRole, setAppRole] = useState<AppRole>('full')
   const [canSyncTfs, setCanSyncTfs] = useState(false)
   const [canManageOrg, setCanManageOrg] = useState(false)
+  const [orgEmployeeId, setOrgEmployeeId] = useState<number | null>(null)
 
   const loadAuthStatus = useCallback(async () => {
     const sessionId = getSessionId()
@@ -25,11 +26,13 @@ export default function App() {
         canSyncTfs?: boolean
         canManageOrg?: boolean
         orgUserId?: number | null
+        orgEmployeeId?: number | null
       }
       setAuthenticated(Boolean(data.authenticated))
       setAppRole(data.appRole === 'roadmap' ? 'roadmap' : 'full')
       setCanSyncTfs(Boolean(data.canSyncTfs))
       setCanManageOrg(Boolean(data.canManageOrg))
+      setOrgEmployeeId(typeof data.orgEmployeeId === 'number' ? data.orgEmployeeId : null)
     } catch {
       setAuthenticated(false)
     }
@@ -52,6 +55,7 @@ export default function App() {
       appRole={appRole}
       canSyncTfs={canSyncTfs}
       canManageOrg={canManageOrg}
+      orgEmployeeId={orgEmployeeId}
       onLogout={() => setAuthenticated(false)}
     />
   )

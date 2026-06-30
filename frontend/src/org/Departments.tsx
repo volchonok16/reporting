@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { deleteJson, getJson, patchJson, postJson, putJson } from '../api'
 import OrgChartView from './OrgChartView'
+import VacationSchedule from './VacationSchedule'
 import EmployeeCardModal from './EmployeeCardModal'
 import type {
   Department,
@@ -19,6 +20,7 @@ import './org.css'
 
 type DepartmentsProps = {
   canManage: boolean
+  orgEmployeeId: number | null
 }
 
 function formatExpertises(expertises: EmployeeExpertise[] | undefined): string {
@@ -74,7 +76,7 @@ const EMPTY_MEMBER = {
   sortOrder: '0',
 }
 
-export default function Departments({ canManage }: DepartmentsProps) {
+export default function Departments({ canManage, orgEmployeeId }: DepartmentsProps) {
   const [panel, setPanel] = useState<OrgPanel>('roster')
   const [departments, setDepartments] = useState<Department[]>([])
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<number | null>(null)
@@ -460,6 +462,7 @@ export default function Departments({ canManage }: DepartmentsProps) {
             ['roster', 'Состав'],
             ['pyramid', 'Пирамида'],
             ['employees', 'Сотрудники'],
+            ['vacations', 'График отпусков'],
             ['manage', 'Управление'],
           ] as const
         ).map(([id, label]) => (
@@ -631,6 +634,14 @@ export default function Departments({ canManage }: DepartmentsProps) {
             </tbody>
           </table>
         </section>
+      ) : null}
+
+      {panel === 'vacations' ? (
+        <VacationSchedule
+          departmentId={selectedDepartmentId}
+          orgEmployeeId={orgEmployeeId}
+          canManage={canManage}
+        />
       ) : null}
 
       {panel === 'manage' ? (

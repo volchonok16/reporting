@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
+from datetime import date
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -30,6 +31,9 @@ from app.org_schemas import (
     SelectOptionOut,
     TeamRoleIn,
     TeamRoleOut,
+    VacationRangeIn,
+    VacationRangeOut,
+    VacationScheduleOut,
 )
 from app.org_service import (
     add_department_member,
@@ -65,6 +69,8 @@ from app.org_service import (
     upload_employee_photo,
 )
 from app.org_service import update_profile_photo as update_profile_photo_service
+
+from app.org_vacation_service import get_vacation_schedule, upsert_vacation_range
 
 router = APIRouter(prefix="/api/org", tags=["org"])
 
@@ -317,6 +323,25 @@ def api_org_chart(
     _: dict = Depends(_load_session_meta),
 ) -> OrgChartOut:
     return get_org_chart(db, department_id)
+
+
+@router.get("/vacations", response_model=VacationScheduleOut)
+def api_vacation_schedule(
+    year: int = Query(default=date.today().year),
+    department_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    meta: dict = Depends(_load_session_meta),
+) -> VacationScheduleOut:
+    return get_vacation_schedule(db, year=year, department_id=department_id, meta=meta)
+
+
+@router.put("/vacations/range", response_model=VacationRangeOut)
+def api_vacation_range(
+    data: VacationRangeIn,
+    db: Session = Depends(get_db),
+    meta: dict = Depends(_load_session_meta),
+) -> VacationRangeOut:
+    return upsert_vacation_range(db, data, meta)
 
 
 @router.get("/photos/{photo_path:path}")

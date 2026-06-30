@@ -39,13 +39,18 @@ def ensure_auth_session_table() -> None:
 
 
 def ensure_org_tables() -> None:
-    migration_path = Path(__file__).resolve().parents[2] / "db" / "migrations" / "005_org_structure.sql"
-    if not migration_path.is_file():
-        return
-    sql = migration_path.read_text(encoding="utf-8")
-    with engine.connect() as conn:
-        conn.execute(text(sql))
-        conn.commit()
+    for migration_name in ("005_org_structure.sql", "006_vacation_schedule.sql"):
+        candidates = [
+            Path(__file__).resolve().parents[2] / "db" / "migrations" / migration_name,
+            Path(__file__).resolve().parents[1] / "migrations" / migration_name,
+        ]
+        migration_path = next((path for path in candidates if path.is_file()), None)
+        if migration_path is None:
+            continue
+        sql = migration_path.read_text(encoding="utf-8")
+        with engine.connect() as conn:
+            conn.execute(text(sql))
+            conn.commit()
 
 
 def get_db() -> Generator[Session, None, None]:

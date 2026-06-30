@@ -36,6 +36,7 @@ class TfsAuthStatusOut(BaseModel):
     canSyncTfs: bool = False
     canManageOrg: bool = False
     orgUserId: int | None = None
+    orgEmployeeId: int | None = None
 
 
 class BoardOut(BaseModel):

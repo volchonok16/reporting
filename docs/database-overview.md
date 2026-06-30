@@ -96,6 +96,7 @@
 | `expertise_direction` | Направления экспертизы |
 | `employee` | Сотрудники организации |
 | `employee_expertise` | Экспертиза сотрудника |
+| `employee_time_off_day` | График отпусков (день + тип) |
 | `department` | Отделы |
 | `department_member` | Состав отдела |
 | `person` | Человек |

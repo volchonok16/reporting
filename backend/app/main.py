@@ -11,7 +11,8 @@ from app.auth_service import login_with_app_user, login_with_pat
 from app.auth_sessions import delete_session, get_session, get_session_with_meta
 from app.boards import ALL_BOARDS_CODE, BOARDS, boards_for_sync
 from app.config import settings
-from app.db import ensure_auth_session_table, ensure_org_tables, get_db
+from app.db import close_db_session, ensure_auth_session_table, ensure_org_tables, get_db
+from app.org_service import get_employee_for_org_user
 from app.models import SyncRun
 from app.b2b_news_service import load_b2b_news
 from app.product_status_service import load_b2b_product_status
@@ -125,6 +126,14 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
         or org_user_role == "admin"
     )
     org_user_id = int(meta["org_user_id"]) if meta.get("org_user_id") else None
+    org_employee_id: int | None = None
+    if org_user_id is not None:
+        db = next(get_db())
+        try:
+            emp = get_employee_for_org_user(db, org_user_id)
+            org_employee_id = emp.id if emp else None
+        finally:
+            close_db_session(db)
     return TfsAuthStatusOut(
         authenticated=True,
         baseUrl=auth.base_url,
@@ -135,6 +144,7 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
         canSyncTfs=can_sync_tfs,
         canManageOrg=can_manage_org,
         orgUserId=org_user_id,
+        orgEmployeeId=org_employee_id,
     )
 
 

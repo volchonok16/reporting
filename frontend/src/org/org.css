@@ -529,3 +529,187 @@
     grid-template-columns: 1fr;
   }
 }
+
+.org-vacation-panel {
+  overflow: hidden;
+}
+
+.org-vacation-toolbar {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.org-vacation-toolbar-left,
+.org-vacation-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.org-vacation-year select {
+  margin-left: 8px;
+}
+
+.org-vacation-brushes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.org-vacation-brush {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: var(--surface-1);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.org-vacation-brush-active {
+  box-shadow: inset 0 0 0 2px var(--brand);
+}
+
+.org-vacation-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.org-vacation-legend-item {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.org-vacation-scroll {
+  overflow: auto;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-1);
+}
+
+.org-vacation-grid {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: max-content;
+}
+
+.org-vacation-grid th,
+.org-vacation-grid td {
+  border-right: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+  padding: 0;
+}
+
+.org-vacation-sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-width: 180px;
+  max-width: 220px;
+  background: var(--surface-1);
+  padding: 8px 10px !important;
+  text-align: left;
+  font-weight: 600;
+}
+
+.org-vacation-name {
+  font-weight: 500;
+}
+
+.org-vacation-self-badge {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--brand);
+  font-weight: 700;
+}
+
+.org-vacation-row-self .org-vacation-sticky-col {
+  background: var(--t2-lime-soft);
+}
+
+.org-vacation-month {
+  text-align: center;
+  font-size: 12px;
+  padding: 6px 4px !important;
+  background: var(--table-head-bg);
+}
+
+.org-vacation-day-head {
+  width: 18px;
+  min-width: 18px;
+  font-size: 10px;
+  font-weight: 500;
+  text-align: center;
+  padding: 4px 0 !important;
+  color: var(--text-muted);
+}
+
+.org-vacation-cell {
+  width: 18px;
+  min-width: 18px;
+  height: 22px;
+  background: var(--surface-2);
+}
+
+.org-vacation-weekend {
+  background: color-mix(in srgb, var(--surface-2) 70%, #f43f5e 30%);
+}
+
+.org-vacation-today {
+  box-shadow: inset 0 0 0 1px var(--brand);
+}
+
+.org-vacation-editable {
+  cursor: crosshair;
+}
+
+.org-vacation-editable:hover {
+  outline: 1px solid var(--brand);
+  outline-offset: -1px;
+}
+
+.org-vacation-preview {
+  outline: 2px dashed var(--brand);
+  outline-offset: -2px;
+}
+
+.org-vacation-selecting {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+
+.vac-kind-vacation {
+  background: #86efac !important;
+}
+
+.vac-kind-dayoff {
+  background: #c4b5fd !important;
+}
+
+.vac-kind-sick {
+  background: #fcd34d !important;
+}
+
+.vac-kind-erase {
+  background: var(--surface-2);
+}
+
+[data-theme='dark'] .vac-kind-vacation {
+  background: #166534 !important;
+}
+
+[data-theme='dark'] .vac-kind-dayoff {
+  background: #5b21b6 !important;
+}
+
+[data-theme='dark'] .vac-kind-sick {
+  background: #92400e !important;
+}

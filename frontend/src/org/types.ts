@@ -144,4 +144,30 @@ export type SelectOption = {
   name: string
 }
 
-export type OrgPanel = 'roster' | 'pyramid' | 'employees' | 'manage'
+export type OrgPanel = 'roster' | 'pyramid' | 'employees' | 'manage' | 'vacations'
+
+export type TimeOffKind = 'vacation' | 'dayoff' | 'sick_leave'
+export type EditableTimeOffKind = TimeOffKind | 'erase'
+
+export type VacationEmployee = {
+  id: number
+  fullName: string
+  position?: string | null
+  managerId?: number | null
+  canEdit: boolean
+  isSelf: boolean
+}
+
+export type VacationTimeOffDay = {
+  employeeId: number
+  day: string
+  kind: TimeOffKind
+}
+
+export type VacationScheduleData = {
+  year: number
+  departmentId?: number | null
+  actorEmployeeId?: number | null
+  employees: VacationEmployee[]
+  timeOffDays: VacationTimeOffDay[]
+}
