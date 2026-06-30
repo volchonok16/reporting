@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getJson } from '../api'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgPhoto from './OrgPhoto'
 import { buildHolidayKeySet } from './ruPublicHolidays'
 import { getMonthGroups, getYearDays, isDayOff, toDayKey } from './scheduleUtils'
-import type { WorkspaceOfficePresenceData } from './types'
+import type { VacationEmployee, WorkspaceOfficePresenceData } from './types'
 
 function presenceKey(employeeId: number, day: string): string {
   return `${employeeId}:${day}`
@@ -21,6 +21,37 @@ function formatPresenceTip(
     return 'В офисе · без места'
   }
   return undefined
+}
+
+type EmployeeGroup = {
+  key: string
+  label: string
+  employees: VacationEmployee[]
+}
+
+function groupEmployeesByDepartment(employees: VacationEmployee[]): EmployeeGroup[] {
+  const namedGroups = new Map<string, VacationEmployee[]>()
+  const noDepartment: VacationEmployee[] = []
+  for (const employee of employees) {
+    const departmentName = employee.departmentName?.trim()
+    if (departmentName) {
+      if (!namedGroups.has(departmentName)) {
+        namedGroups.set(departmentName, [])
+      }
+      namedGroups.get(departmentName)?.push(employee)
+    } else {
+      noDepartment.push(employee)
+    }
+  }
+  const groups = Array.from(namedGroups.entries()).map(([label, groupEmployees]) => ({
+    key: label,
+    label,
+    employees: groupEmployees,
+  }))
+  if (noDepartment.length > 0) {
+    groups.push({ key: '__no_department__', label: 'Без отдела', employees: noDepartment })
+  }
+  return groups
 }
 
 export default function OfficePresence() {
@@ -60,6 +91,7 @@ export default function OfficePresence() {
     }
     return set
   }, [data])
+  const employeeGroups = useMemo(() => groupEmployeesByDepartment(data?.employees ?? []), [data?.employees])
 
   useEffect(() => {
     saveOrgUiState({ workspaceYear: year, workspaceMonth: new Date().getMonth() })
@@ -213,51 +245,64 @@ export default function OfficePresence() {
                 </tr>
               </thead>
               <tbody>
-                {data.employees.map((employee) => (
-                  <tr
-                    key={employee.id}
-                    className={employee.isSelf ? 'org-vacation-row-self' : undefined}
-                  >
-                    <td className="org-vacation-sticky-col org-vacation-name" title={employee.position ?? undefined}>
-                      <span className="org-person-cell">
-                        <OrgPhoto
-                          url={employee.photoUrl}
-                          name={employee.fullName}
-                          className="org-table-avatar-img org-vacation-avatar"
-                          placeholderClassName="org-table-avatar org-vacation-avatar"
-                        />
-                        <span className="org-vacation-name-text">
-                          {employee.fullName}
-                          {employee.isSelf ? <span className="org-vacation-self-badge">вы</span> : null}
-                        </span>
-                      </span>
-                    </td>
-                    {yearDays.map((day) => {
-                      const dayKey = toDayKey(day)
-                      const placeName = presenceMap.get(presenceKey(employee.id, dayKey)) ?? null
-                      const officeMarked = officeDaysSet.has(presenceKey(employee.id, dayKey))
-                      const dayOff =
-                        !placeName &&
-                        !officeMarked &&
-                        isDayOff(day, holidayKeys)
-                      const tip = formatPresenceTip(placeName, officeMarked)
-                      return (
+                {employeeGroups.map((group) => (
+                  <Fragment key={group.key}>
+                    <tr className="org-vacation-group-row">
+                      <th className="org-vacation-sticky-col org-vacation-group-cell" scope="rowgroup">
+                        {group.label}
+                      </th>
+                      <td className="org-vacation-group-fill" colSpan={yearDays.length} />
+                    </tr>
+                    {group.employees.map((employee) => (
+                      <tr
+                        key={employee.id}
+                        className={employee.isSelf ? 'org-vacation-row-self' : undefined}
+                      >
                         <td
-                          key={dayKey}
-                          className={[
-                            'org-vacation-cell',
-                            'org-office-presence-cell',
-                            placeName || officeMarked ? 'org-office-presence-in' : 'org-workspace-free',
-                            dayOff ? 'org-vacation-weekend' : '',
-                          ]
-                            .filter(Boolean)
-                            .join(' ')}
-                          data-tip={tip}
-                          aria-label={tip}
-                        />
-                      )
-                    })}
-                  </tr>
+                          className="org-vacation-sticky-col org-vacation-name"
+                          title={employee.position ?? undefined}
+                        >
+                          <span className="org-person-cell">
+                            <OrgPhoto
+                              url={employee.photoUrl}
+                              name={employee.fullName}
+                              className="org-table-avatar-img org-vacation-avatar"
+                              placeholderClassName="org-table-avatar org-vacation-avatar"
+                            />
+                            <span className="org-vacation-name-text">
+                              {employee.fullName}
+                              {employee.isSelf ? <span className="org-vacation-self-badge">вы</span> : null}
+                            </span>
+                          </span>
+                        </td>
+                        {yearDays.map((day) => {
+                          const dayKey = toDayKey(day)
+                          const placeName = presenceMap.get(presenceKey(employee.id, dayKey)) ?? null
+                          const officeMarked = officeDaysSet.has(presenceKey(employee.id, dayKey))
+                          const dayOff =
+                            !placeName &&
+                            !officeMarked &&
+                            isDayOff(day, holidayKeys)
+                          const tip = formatPresenceTip(placeName, officeMarked)
+                          return (
+                            <td
+                              key={dayKey}
+                              className={[
+                                'org-vacation-cell',
+                                'org-office-presence-cell',
+                                placeName || officeMarked ? 'org-office-presence-in' : 'org-workspace-free',
+                                dayOff ? 'org-vacation-weekend' : '',
+                              ]
+                                .filter(Boolean)
+                                .join(' ')}
+                              data-tip={tip}
+                              aria-label={tip}
+                            />
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

@@ -1559,6 +1559,29 @@
   box-shadow: inset 3px 0 0 var(--brand-accent);
 }
 
+.org-vacation-group-row th,
+.org-vacation-group-row td {
+  height: 30px;
+}
+
+.org-vacation-group-cell {
+  min-width: var(--vac-name-col-width);
+  max-width: var(--vac-name-col-width);
+  width: var(--vac-name-col-width);
+  padding: 0 10px !important;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--table-head-bg) 88%, var(--surface-1) 12%);
+}
+
+.org-vacation-group-fill {
+  background: color-mix(in srgb, var(--table-head-bg) 88%, var(--surface-1) 12%);
+}
+
 .org-vacation-month {
   text-align: center;
   font-size: 12px;

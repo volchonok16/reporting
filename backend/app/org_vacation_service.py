@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.org_models import DepartmentMember, Employee, EmployeeTimeOffDay
+from app.org_models import Department, DepartmentMember, Employee, EmployeeTimeOffDay
 from app.org_photo_service import photo_public_url
 from app.org_service import get_employee_for_org_user
 from app.org_schemas import (
@@ -77,6 +77,25 @@ def _load_employees(db: Session, department_id: int | None) -> list[Employee]:
     return list(db.scalars(stmt).unique().all())
 
 
+def _load_primary_department_names(db: Session, employee_ids: list[int]) -> dict[int, str]:
+    if not employee_ids:
+        return {}
+    rows = db.execute(
+        select(
+            DepartmentMember.employee_id,
+            Department.name,
+        )
+        .join(Department, Department.id == DepartmentMember.department_id)
+        .where(DepartmentMember.employee_id.in_(employee_ids))
+        .order_by(DepartmentMember.employee_id, DepartmentMember.sort_order, DepartmentMember.id)
+    ).all()
+    names: dict[int, str] = {}
+    for employee_id, department_name in rows:
+        if employee_id not in names and department_name:
+            names[employee_id] = department_name
+    return names
+
+
 def get_vacation_schedule(
     db: Session,
     *,
@@ -89,6 +108,7 @@ def get_vacation_schedule(
 
     employees = _load_employees(db, department_id)
     employee_ids = [emp.id for emp in employees]
+    department_names = _load_primary_department_names(db, employee_ids)
     actor_employee_id = _actor_employee_id(db, meta)
     day_from, day_to = _year_bounds(year)
 
@@ -116,6 +136,7 @@ def get_vacation_schedule(
         VacationEmployeeOut(
             id=emp.id,
             fullName=emp.full_name,
+            departmentName=department_names.get(emp.id),
             position=emp.position,
             managerId=emp.manager_id,
             photoUrl=photo_public_url(emp.photo_path),

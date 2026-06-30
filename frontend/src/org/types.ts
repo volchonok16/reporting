@@ -165,6 +165,7 @@ export type EditableTimeOffKind = TimeOffKind | 'erase'
 export type VacationEmployee = {
   id: number
   fullName: string
+  departmentName?: string | null
   position?: string | null
   managerId?: number | null
   photoUrl?: string | null

@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getJson, putJson } from '../api'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgPhoto from './OrgPhoto'
 import { buildHolidayKeySet } from './ruPublicHolidays'
 import { getMonthGroups, getYearDays, isDayOff, toDayKey } from './scheduleUtils'
-import type { EditableTimeOffKind, TimeOffKind, VacationScheduleData } from './types'
+import type { EditableTimeOffKind, TimeOffKind, VacationEmployee, VacationScheduleData } from './types'
 
 type VacationScheduleProps = {
   orgEmployeeId: number | null
@@ -25,6 +25,37 @@ const BRUSHES: Array<{ id: EditableTimeOffKind; label: string; className: string
   { id: 'sick_leave', label: 'Больничный', className: 'vac-kind-sick' },
   { id: 'erase', label: 'Рабочий', className: 'vac-kind-erase' },
 ]
+
+type EmployeeGroup = {
+  key: string
+  label: string
+  employees: VacationEmployee[]
+}
+
+function groupEmployeesByDepartment(employees: VacationEmployee[]): EmployeeGroup[] {
+  const namedGroups = new Map<string, VacationEmployee[]>()
+  const noDepartment: VacationEmployee[] = []
+  for (const employee of employees) {
+    const departmentName = employee.departmentName?.trim()
+    if (departmentName) {
+      if (!namedGroups.has(departmentName)) {
+        namedGroups.set(departmentName, [])
+      }
+      namedGroups.get(departmentName)?.push(employee)
+    } else {
+      noDepartment.push(employee)
+    }
+  }
+  const groups = Array.from(namedGroups.entries()).map(([label, groupEmployees]) => ({
+    key: label,
+    label,
+    employees: groupEmployees,
+  }))
+  if (noDepartment.length > 0) {
+    groups.push({ key: '__no_department__', label: 'Без отдела', employees: noDepartment })
+  }
+  return groups
+}
 
 function buildRangeDays(fromDay: string, toDay: string): string[] {
   const from = new Date(`${fromDay}T12:00:00`)
@@ -158,6 +189,7 @@ export default function VacationSchedule({
   }, [rangeStart, hoverDay])
 
   const hasEditableRows = (data?.employees ?? []).some((emp) => emp.canEdit)
+  const employeeGroups = useMemo(() => groupEmployeesByDepartment(data?.employees ?? []), [data?.employees])
 
   return (
     <section className="org-panel org-vacation-panel">
@@ -278,57 +310,70 @@ export default function VacationSchedule({
                 </tr>
               </thead>
               <tbody>
-                {data.employees.map((employee) => (
-                  <tr
-                    key={employee.id}
-                    className={employee.isSelf ? 'org-vacation-row-self' : undefined}
-                  >
-                    <td className="org-vacation-sticky-col org-vacation-name" title={employee.position ?? undefined}>
-                      <span className="org-person-cell">
-                        <OrgPhoto
-                          url={employee.photoUrl}
-                          name={employee.fullName}
-                          className="org-table-avatar-img org-vacation-avatar"
-                          placeholderClassName="org-table-avatar org-vacation-avatar"
-                        />
-                        <span className="org-vacation-name-text">
-                          {employee.fullName}
-                          {employee.isSelf ? (
-                            <span className="org-vacation-self-badge">вы</span>
-                          ) : null}
-                        </span>
-                      </span>
-                    </td>
-                    {yearDays.map((day) => {
-                      const dayKey = toDayKey(day)
-                      const kind = dayKindMap.get(`${employee.id}:${dayKey}`)
-                      const dayOff = !kind && isDayOff(day, holidayKeys)
-                      const inPreview =
-                        rangeStart?.employeeId === employee.id && previewDays.has(dayKey)
-                      const isSelecting =
-                        rangeStart?.employeeId === employee.id && rangeStart.day === dayKey
-                      return (
+                {employeeGroups.map((group) => (
+                  <Fragment key={group.key}>
+                    <tr key={`group-${group.key}`} className="org-vacation-group-row">
+                      <th className="org-vacation-sticky-col org-vacation-group-cell" scope="rowgroup">
+                        {group.label}
+                      </th>
+                      <td className="org-vacation-group-fill" colSpan={yearDays.length} />
+                    </tr>
+                    {group.employees.map((employee) => (
+                      <tr
+                        key={employee.id}
+                        className={employee.isSelf ? 'org-vacation-row-self' : undefined}
+                      >
                         <td
-                          key={dayKey}
-                          className={[
-                            'org-vacation-cell',
-                            kind ? KIND_META[kind].className : '',
-                            dayOff ? 'org-vacation-weekend' : '',
-                            inPreview ? 'org-vacation-preview' : '',
-                            isSelecting ? 'org-vacation-selecting' : '',
-                            editMode && employee.canEdit ? 'org-vacation-editable' : '',
-                          ]
-                            .filter(Boolean)
-                            .join(' ')}
-                          title={kind ? KIND_META[kind].label : undefined}
-                          onClick={() => handleCellClick(employee.id, dayKey, employee.canEdit)}
-                          onMouseEnter={() => {
-                            if (rangeStart?.employeeId === employee.id) setHoverDay(dayKey)
-                          }}
-                        />
-                      )
-                    })}
-                  </tr>
+                          className="org-vacation-sticky-col org-vacation-name"
+                          title={employee.position ?? undefined}
+                        >
+                          <span className="org-person-cell">
+                            <OrgPhoto
+                              url={employee.photoUrl}
+                              name={employee.fullName}
+                              className="org-table-avatar-img org-vacation-avatar"
+                              placeholderClassName="org-table-avatar org-vacation-avatar"
+                            />
+                            <span className="org-vacation-name-text">
+                              {employee.fullName}
+                              {employee.isSelf ? (
+                                <span className="org-vacation-self-badge">вы</span>
+                              ) : null}
+                            </span>
+                          </span>
+                        </td>
+                        {yearDays.map((day) => {
+                          const dayKey = toDayKey(day)
+                          const kind = dayKindMap.get(`${employee.id}:${dayKey}`)
+                          const dayOff = !kind && isDayOff(day, holidayKeys)
+                          const inPreview =
+                            rangeStart?.employeeId === employee.id && previewDays.has(dayKey)
+                          const isSelecting =
+                            rangeStart?.employeeId === employee.id && rangeStart.day === dayKey
+                          return (
+                            <td
+                              key={dayKey}
+                              className={[
+                                'org-vacation-cell',
+                                kind ? KIND_META[kind].className : '',
+                                dayOff ? 'org-vacation-weekend' : '',
+                                inPreview ? 'org-vacation-preview' : '',
+                                isSelecting ? 'org-vacation-selecting' : '',
+                                editMode && employee.canEdit ? 'org-vacation-editable' : '',
+                              ]
+                                .filter(Boolean)
+                                .join(' ')}
+                              title={kind ? KIND_META[kind].label : undefined}
+                              onClick={() => handleCellClick(employee.id, dayKey, employee.canEdit)}
+                              onMouseEnter={() => {
+                                if (rangeStart?.employeeId === employee.id) setHoverDay(dayKey)
+                              }}
+                            />
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

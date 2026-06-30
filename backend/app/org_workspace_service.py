@@ -8,6 +8,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.org_models import (
+    Department,
+    DepartmentMember,
     Employee,
     EmployeeOfficeDay,
     EmployeeTimeOffDay,
@@ -77,6 +79,25 @@ def _load_booking_employees(db: Session) -> list[Employee]:
     )
 
 
+def _load_primary_department_names(db: Session, employee_ids: list[int]) -> dict[int, str]:
+    if not employee_ids:
+        return {}
+    rows = db.execute(
+        select(
+            DepartmentMember.employee_id,
+            Department.name,
+        )
+        .join(Department, Department.id == DepartmentMember.department_id)
+        .where(DepartmentMember.employee_id.in_(employee_ids))
+        .order_by(DepartmentMember.employee_id, DepartmentMember.sort_order, DepartmentMember.id)
+    ).all()
+    names: dict[int, str] = {}
+    for employee_id, department_name in rows:
+        if employee_id not in names and department_name:
+            names[employee_id] = department_name
+    return names
+
+
 def get_workspace_booking_schedule(
     db: Session,
     *,
@@ -120,10 +141,12 @@ def get_workspace_booking_schedule(
             )
 
     employees = _load_booking_employees(db)
+    department_names = _load_primary_department_names(db, [emp.id for emp in employees])
     employee_out = [
         VacationEmployeeOut(
             id=emp.id,
             fullName=emp.full_name,
+            departmentName=department_names.get(emp.id),
             position=emp.position,
             managerId=emp.manager_id,
             photoUrl=None,
@@ -163,11 +186,13 @@ def get_workspace_office_presence(
     actor_employee_id = _actor_employee_id(db, meta)
     employees = _load_booking_employees(db)
     employee_ids = [employee.id for employee in employees]
+    department_names = _load_primary_department_names(db, employee_ids)
 
     employee_out = [
         VacationEmployeeOut(
             id=emp.id,
             fullName=emp.full_name,
+            departmentName=department_names.get(emp.id),
             position=emp.position,
             managerId=emp.manager_id,
             photoUrl=photo_public_url(emp.photo_path),

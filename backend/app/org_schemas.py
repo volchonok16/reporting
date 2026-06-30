@@ -277,6 +277,7 @@ EditableTimeOffKind = Literal["vacation", "dayoff", "sick_leave", "erase"]
 class VacationEmployeeOut(BaseModel):
     id: int
     fullName: str
+    departmentName: str | None = None
     position: str | None = None
     managerId: int | None = None
     photoUrl: str | None = None
