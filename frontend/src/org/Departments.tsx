@@ -429,33 +429,6 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
 
   return (
     <div className="org-page">
-      <div className="dept-hero">
-        <div className="dept-hero-content">
-          <div>
-            <h1 className="dept-hero-title">Отделы</h1>
-            <p className="dept-hero-subtitle">Состав, пирамида и справочник сотрудников</p>
-          </div>
-          <div className="dept-hero-actions">
-            <select
-              value={selectedDepartmentId ?? ''}
-              onChange={(e) => setSelectedDepartmentId(e.target.value ? Number(e.target.value) : null)}
-            >
-              <option value="">Вся компания</option>
-              {departments.map((dept) => (
-                <option key={dept.id} value={dept.id}>
-                  {dept.name}
-                </option>
-              ))}
-            </select>
-            {canManage ? (
-              <button type="button" className="btn-primary" onClick={() => openCreateDepartment()}>
-                + Отдел
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </div>
-
       <nav className="org-subtabs" aria-label="Разделы отделов">
         {(
           [
@@ -476,6 +449,25 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
           </button>
         ))}
       </nav>
+
+      {panel === 'roster' || panel === 'pyramid' || panel === 'vacations' ? (
+        <div className="org-dept-filter">
+          <label className="org-dept-filter-label">
+            Отдел
+            <select
+              value={selectedDepartmentId ?? ''}
+              onChange={(e) => setSelectedDepartmentId(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">Вся компания</option>
+              {departments.map((dept) => (
+                <option key={dept.id} value={dept.id}>
+                  {dept.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      ) : null}
 
       {error ? <p className="org-error">{error}</p> : null}
       {loading ? <p>Обновление…</p> : null}

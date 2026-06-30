@@ -4,42 +4,25 @@
   margin: 0 auto;
 }
 
-.dept-hero {
-  background: var(--hero-gradient);
-  border-radius: 16px;
-  padding: 20px 24px;
-  margin-bottom: 16px;
-  color: #fff;
-}
-
-.dept-hero-content {
+.org-dept-filter {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
+  margin: 12px 0;
 }
 
-.dept-hero-title {
-  margin: 0 0 4px;
-  font-size: 1.75rem;
-}
-
-.dept-hero-subtitle {
-  margin: 0;
-  opacity: 0.9;
-}
-
-.dept-hero-actions {
+.org-dept-filter-label {
   display: flex;
+  align-items: center;
   gap: 8px;
-  align-items: center;
+  font-size: 14px;
+  color: var(--text-muted);
 }
 
-.dept-hero-actions select {
+.org-dept-filter select {
   padding: 8px 12px;
   border-radius: 8px;
-  border: none;
+  border: 1px solid var(--border);
   min-width: 200px;
   background: var(--surface-1);
   color: var(--text-primary);
