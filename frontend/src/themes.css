@@ -60,6 +60,8 @@
 
   --hero-gradient: linear-gradient(135deg, #40b3d8 0%, #3a9cbd 45%, #83c933 100%);
   --avatar-gradient: linear-gradient(135deg, #40b3d8, #83c933);
+  --org-chart-line: #6b8f2e;
+  --org-chart-line-soft: color-mix(in srgb, #83c933 35%, var(--border) 65%);
 
   --focus-ring: rgba(59, 130, 246, 0.15);
 
@@ -133,6 +135,8 @@
 
   --hero-gradient: linear-gradient(135deg, #1e5f78 0%, #1a4a5c 45%, #3d6b1f 100%);
   --avatar-gradient: linear-gradient(135deg, #2a7a96, #5a9a28);
+  --org-chart-line: #8fb946;
+  --org-chart-line-soft: color-mix(in srgb, #8fb946 40%, var(--border) 60%);
 
   --focus-ring: rgba(107, 163, 255, 0.25);
   --tab-hover: rgba(255, 255, 255, 0.06);

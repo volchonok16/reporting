@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { apiFetch, clearSessionId } from './api'
 import Dashboard from './Dashboard'
 import ProductStatusB2B from './ProductStatusB2B'
@@ -40,16 +40,21 @@ export default function WorkbookApp({
     appRole === 'roadmap'
       ? SHEETS.filter((sheet) => sheet.id === 'roadmap' || sheet.id === 'departments')
       : SHEETS
-  const [activeSheet, setActiveSheet] = useState<SheetId>(() =>
-    appRole === 'roadmap' ? 'roadmap' : loadActiveSheet(),
-  )
+  const visibleSheetIds = useMemo(() => new Set(visibleSheets.map((sheet) => sheet.id)), [visibleSheets])
+  const [activeSheet, setActiveSheet] = useState<SheetId>(() => {
+    const saved = loadActiveSheet()
+    if (appRole === 'roadmap') {
+      return saved === 'departments' ? 'departments' : 'roadmap'
+    }
+    return saved
+  })
   const [profileOpen, setProfileOpen] = useState(false)
 
   useEffect(() => {
-    if (appRole === 'roadmap' && activeSheet !== 'roadmap' && activeSheet !== 'departments') {
-      setActiveSheet('roadmap')
+    if (!visibleSheetIds.has(activeSheet)) {
+      setActiveSheet(visibleSheets[0]?.id ?? 'roadmap')
     }
-  }, [appRole, activeSheet])
+  }, [activeSheet, visibleSheetIds, visibleSheets])
 
   useEffect(() => {
     saveActiveSheet(activeSheet)

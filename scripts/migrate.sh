@@ -12,4 +12,6 @@ source "$(dirname "$0")/resolve-compose.sh" base
 
 echo "Миграция: $MIGRATION (пользователь: $DB_USER)"
 "${COMPOSE[@]}" exec -T postgres psql -U "$DB_USER" -d "$DB_NAME" < "$MIGRATION"
+echo "==> Права alex/ivan на все таблицы…"
+"${COMPOSE[@]}" exec -T postgres psql -U "$DB_USER" -d "$DB_NAME" < db/grants-app-users.sql
 echo "Готово."

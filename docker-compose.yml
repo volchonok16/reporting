@@ -15,6 +15,7 @@ services:
       - reporting_pgdata:/var/lib/postgresql/data
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./db/init-users.sh:/docker-entrypoint-initdb.d/02-init-users.sh:ro
+      - ./db/grants-app-users.sql:/docker-entrypoint-initdb.d/grants-app-users.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U reporting -d reporting"]
       interval: 5s

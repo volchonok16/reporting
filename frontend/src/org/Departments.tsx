@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { deleteJson, getJson, patchJson, postForm, postJson, putJson, resolvePhotoUrl } from '../api'
+import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgChartView from './OrgChartView'
 import VacationSchedule from './VacationSchedule'
 import EmployeeCardModal from './EmployeeCardModal'
@@ -102,9 +103,12 @@ const EMPTY_MEMBER = {
 }
 
 export default function Departments({ canManage, orgEmployeeId }: DepartmentsProps) {
-  const [panel, setPanel] = useState<OrgPanel>('roster')
+  const savedOrgUi = loadOrgUiState()
+  const [panel, setPanel] = useState<OrgPanel>(() => savedOrgUi.panel)
   const [departments, setDepartments] = useState<Department[]>([])
-  const [selectedDepartmentId, setSelectedDepartmentId] = useState<number | null>(null)
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<number | null>(
+    () => savedOrgUi.selectedDepartmentId,
+  )
   const [members, setMembers] = useState<DepartmentMember[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [positions, setPositions] = useState<JobPosition[]>([])
@@ -131,7 +135,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null)
   const [savingEmployee, setSavingEmployee] = useState(false)
   const photoInputRef = useRef<HTMLInputElement>(null)
-  const userPickedAllCompany = useRef(false)
+  const userPickedAllCompany = useRef(savedOrgUi.allCompany)
 
   const openEmployeeCard = (employeeId: number) => setCardEmployeeId(employeeId)
   const closeEmployeeCard = () => setCardEmployeeId(null)
@@ -154,6 +158,14 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
     [editingEmployeeId, employeeById],
   )
 
+  useEffect(() => {
+    saveOrgUiState({
+      panel,
+      selectedDepartmentId: userPickedAllCompany.current ? null : selectedDepartmentId,
+      allCompany: userPickedAllCompany.current,
+    })
+  }, [panel, selectedDepartmentId])
+
   const loadBase = useCallback(async () => {
     setError(null)
     try {
@@ -172,8 +184,14 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       setExpertiseDirections(dirData)
       setEmployeeOptions(optData)
       setSelectedDepartmentId((current) => {
-        if (current !== null || userPickedAllCompany.current || deptData.length === 0) {
+        if (userPickedAllCompany.current) {
+          return null
+        }
+        if (current !== null) {
           return current
+        }
+        if (deptData.length === 0) {
+          return null
         }
         return deptData[0].id
       })
@@ -617,27 +635,33 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       {panel === 'pyramid' ? (
         <section className="org-panel">
           {selectedDepartmentId === null ? (
-            <>
+            <div className="org-company-pyramid">
               {orgChart?.organizationHead ? (
-                <OrgChartView
-                  organizationHead={orgChart.organizationHead}
-                  roots={[]}
-                  onEmployeeClick={openEmployeeCard}
-                />
-              ) : null}
-              {orgChart?.departments?.map((block) => (
-                <div key={block.departmentId} className="org-dept-block">
+                <div className="org-company-pyramid-head">
                   <OrgChartView
-                    roots={block.roots}
-                    departmentName={block.departmentName}
-                    framed
+                    organizationHead={orgChart.organizationHead}
+                    roots={[]}
                     onEmployeeClick={openEmployeeCard}
                   />
                 </div>
-              )) ?? (
+              ) : null}
+              {orgChart?.departments && orgChart.departments.length > 0 ? (
+                <div className="org-company-pyramid-branches">
+                  {orgChart.departments.map((block) => (
+                    <div key={block.departmentId} className="org-dept-block org-dept-branch">
+                      <OrgChartView
+                        roots={block.roots}
+                        departmentName={block.departmentName}
+                        framed
+                        onEmployeeClick={openEmployeeCard}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : !orgChart?.organizationHead ? (
                 <OrgChartView roots={orgChart?.departmentTree ?? []} onEmployeeClick={openEmployeeCard} />
-              )}
-            </>
+              ) : null}
+            </div>
           ) : (
             <OrgChartView
               roots={orgChart?.departmentTree ?? []}

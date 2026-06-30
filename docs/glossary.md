@@ -38,7 +38,7 @@
 
 Одна каноническая команда может объединять задачи из Jira и TFS. Записи в `team` создаёт ETL; правила — в `source_team_mapping` (доска, тег и т.д.).
 
-**Миграции схемы** выполняются от пользователя `reporting` (владелец таблиц), не от `alex`/`ivan`. См. [docker.md](docker.md).
+**Миграции схемы** выполняются от пользователя `reporting` (владелец таблиц), не от `alex`/`ivan`. После миграций или DDL от backend — `bash scripts/grant-db-users.sh` (права alex/ivan на все таблицы). См. [docker.md](docker.md).
 
 ---
 

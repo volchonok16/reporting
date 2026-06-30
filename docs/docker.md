@@ -199,6 +199,16 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 
 Или: `chmod +x scripts/migrate.sh && ./scripts/migrate.sh`
 
+После каждой миграции `migrate.sh` автоматически выдаёт **alex** и **ivan** права на все таблицы и sequences.
+
+Если права нужно обновить вручную (новые таблицы org/vacation, backend создал таблицы от alex):
+
+```bash
+bash scripts/grant-db-users.sh
+# или
+./scripts/migrate.sh db/migrations/007_grant_app_users.sql
+```
+
 Добавляет: `task.team_id`, `task.source_team`, таблицу `source_team_mapping`, обновляет views (без seed-команд).
 
 Удалить примеры `digital`/`berkhut` из старой версии:
@@ -220,7 +230,10 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 ```bash
 ./scripts/migrate.sh 005_org_structure.sql
 ./scripts/migrate.sh 006_vacation_schedule.sql
+./scripts/grant-db-users.sh
 ```
+
+Права **alex** / **ivan** на новые таблицы: `db/grants-app-users.sql`, миграция `007_grant_app_users.sql`, скрипт `scripts/grant-db-users.sh`. Default privileges настроены и для роли `reporting` (миграции), и для `alex` (DDL backend при старте).
 
 ### MinIO — фото сотрудников
 

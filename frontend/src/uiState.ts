@@ -2,6 +2,15 @@ const STORAGE_KEY = 'reporting.uiState'
 
 export type SheetId = 'zni' | 'product-status-b2b' | 'roadmap' | 'departments'
 
+export type OrgPanelId = 'roster' | 'pyramid' | 'employees' | 'manage' | 'vacations'
+
+export type OrgUiState = {
+  panel: OrgPanelId
+  selectedDepartmentId: number | null
+  allCompany: boolean
+  vacationYear: number
+}
+
 export type RoadmapUiState = {
   year: number
   quarter: number
@@ -30,6 +39,7 @@ type UiState = {
   productStatusB2bGid?: string | null
   b2bNewsGid?: string | null
   b2bPanel?: B2bPanelId
+  org?: Partial<OrgUiState>
 }
 
 function readUiState(): UiState {
@@ -47,7 +57,9 @@ function writeUiState(patch: UiState): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...patch }))
 }
 
-const WORKBOOK_SHEETS: SheetId[] = ['product-status-b2b', 'roadmap', 'departments']
+const WORKBOOK_SHEETS: SheetId[] = ['zni', 'product-status-b2b', 'roadmap', 'departments']
+
+const ORG_PANELS: OrgPanelId[] = ['roster', 'pyramid', 'employees', 'manage', 'vacations']
 
 export function loadActiveSheet(): SheetId {
   const sheet = readUiState().activeSheet as string | undefined
@@ -65,6 +77,35 @@ export function loadActiveSheet(): SheetId {
 
 export function saveActiveSheet(activeSheet: SheetId): void {
   writeUiState({ activeSheet })
+}
+
+export function loadOrgUiState(): OrgUiState {
+  const org = readUiState().org
+  const currentYear = new Date().getFullYear()
+  const panel = org?.panel && ORG_PANELS.includes(org.panel) ? org.panel : 'roster'
+  const allCompany = org?.allCompany === true
+  const selectedDepartmentId =
+    allCompany || org?.selectedDepartmentId === null || org?.selectedDepartmentId === undefined
+      ? null
+      : Number(org.selectedDepartmentId)
+  const vacationYear =
+    typeof org?.vacationYear === 'number' && org.vacationYear >= 2000 && org.vacationYear <= 2100
+      ? org.vacationYear
+      : currentYear
+  return { panel, selectedDepartmentId, allCompany, vacationYear }
+}
+
+export function saveOrgUiState(patch: Partial<OrgUiState>): void {
+  const current = loadOrgUiState()
+  writeUiState({
+    org: {
+      panel: patch.panel ?? current.panel,
+      selectedDepartmentId:
+        patch.selectedDepartmentId !== undefined ? patch.selectedDepartmentId : current.selectedDepartmentId,
+      allCompany: patch.allCompany !== undefined ? patch.allCompany : current.allCompany,
+      vacationYear: patch.vacationYear ?? current.vacationYear,
+    },
+  })
 }
 
 export function loadDashboardUiState(): Partial<DashboardUiState> {

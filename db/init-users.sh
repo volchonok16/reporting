@@ -20,23 +20,17 @@ psql -v ON_ERROR_STOP=1 \
 
 psql -v ON_ERROR_STOP=1 \
   --username "${DB_OWNER}" \
-  --dbname "${DB_NAME}" <<EOSQL
-GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO alex, ivan;
-GRANT ALL ON SCHEMA public TO alex, ivan;
+  --dbname "${DB_NAME}" \
+  -c "GRANT ${DB_OWNER} TO alex, ivan;"
 
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO alex, ivan;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO alex, ivan;
-GRANT ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public TO alex, ivan;
-
-ALTER DEFAULT PRIVILEGES FOR ROLE ${DB_OWNER} IN SCHEMA public
-  GRANT ALL PRIVILEGES ON TABLES TO alex, ivan;
-ALTER DEFAULT PRIVILEGES FOR ROLE ${DB_OWNER} IN SCHEMA public
-  GRANT ALL PRIVILEGES ON SEQUENCES TO alex, ivan;
-ALTER DEFAULT PRIVILEGES FOR ROLE ${DB_OWNER} IN SCHEMA public
-  GRANT ALL PRIVILEGES ON FUNCTIONS TO alex, ivan;
-
--- Для миграций DDL: SET ROLE reporting; (таблицы принадлежат reporting)
-GRANT ${DB_OWNER} TO alex, ivan;
-EOSQL
+GRANTS_FILE="/docker-entrypoint-initdb.d/grants-app-users.sql"
+if [[ -f "${GRANTS_FILE}" ]]; then
+  psql -v ON_ERROR_STOP=1 \
+    --username "${DB_OWNER}" \
+    --dbname "${DB_NAME}" \
+    -f "${GRANTS_FILE}"
+else
+  echo "Warning: ${GRANTS_FILE} not found, skipping grants" >&2
+fi
 
 echo "Users created: alex, ivan (full access on ${DB_NAME})"

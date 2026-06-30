@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getJson, putJson } from '../api'
+import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgPhoto from './OrgPhoto'
 import type { EditableTimeOffKind, TimeOffKind, VacationScheduleData } from './types'
 
@@ -93,7 +94,8 @@ function getMonthGroups(days: Date[]) {
 
 export default function VacationSchedule({ orgEmployeeId, canManage }: VacationScheduleProps) {
   const currentYear = new Date().getFullYear()
-  const [year, setYear] = useState(currentYear)
+  const savedOrgUi = loadOrgUiState()
+  const [year, setYear] = useState(savedOrgUi.vacationYear)
   const [data, setData] = useState<VacationScheduleData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -115,6 +117,10 @@ export default function VacationSchedule({ orgEmployeeId, canManage }: VacationS
     }
     return map
   }, [data])
+
+  useEffect(() => {
+    saveOrgUiState({ vacationYear: year })
+  }, [year])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -139,7 +145,7 @@ export default function VacationSchedule({ orgEmployeeId, canManage }: VacationS
     if (scrollRef.current && year === currentYear) {
       const todayIndex = yearDays.findIndex((day) => toDayKey(day) === todayKey)
       if (todayIndex > 0) {
-        scrollRef.current.scrollLeft = Math.max(0, todayIndex * 18 - 120)
+        scrollRef.current.scrollLeft = Math.max(0, todayIndex * 24 - 120)
       }
     }
   }, [year, yearDays, todayKey, currentYear])
@@ -258,90 +264,114 @@ export default function VacationSchedule({ orgEmployeeId, canManage }: VacationS
       {saving ? <p>Сохранение…</p> : null}
 
       {data && !loading ? (
-        <div className="org-vacation-scroll" ref={scrollRef}>
-          <table className="org-vacation-grid">
-            <thead>
-              <tr>
-                <th className="org-vacation-sticky-col" rowSpan={2}>
-                  Сотрудник
-                </th>
-                {monthGroups.map((group) => (
-                  <th key={group.label} colSpan={group.length} className="org-vacation-month">
-                    {group.label}
+        <div className="org-vacation-chart">
+          <div className="org-vacation-names">
+            <table className="org-vacation-names-grid">
+              <thead>
+                <tr>
+                  <th className="org-vacation-names-head" rowSpan={2}>
+                    Сотрудник
                   </th>
-                ))}
-              </tr>
-              <tr>
-                {yearDays.map((day) => {
-                  const key = toDayKey(day)
-                  const isWeekend = day.getDay() === 0 || day.getDay() === 6
-                  return (
-                    <th
-                      key={key}
-                      className={`org-vacation-day-head${isWeekend ? ' org-vacation-weekend' : ''}${
-                        key === todayKey ? ' org-vacation-today' : ''
-                      }`}
-                      title={key}
-                    >
-                      {day.getDate()}
-                    </th>
-                  )
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {data.employees.map((employee) => (
-                <tr
-                  key={employee.id}
-                  className={employee.isSelf ? 'org-vacation-row-self' : undefined}
-                >
-                  <td className="org-vacation-sticky-col org-vacation-name" title={employee.position ?? undefined}>
-                    <span className="org-person-cell">
-                      <OrgPhoto
-                        url={employee.photoUrl}
-                        name={employee.fullName}
-                        className="org-table-avatar-img"
-                        placeholderClassName="org-table-avatar"
-                      />
-                      <span>
-                        {employee.fullName}
-                        {employee.isSelf ? <span className="org-vacation-self-badge">вы</span> : null}
+                </tr>
+                <tr aria-hidden="true" />
+              </thead>
+              <tbody>
+                {data.employees.map((employee) => (
+                  <tr
+                    key={employee.id}
+                    className={employee.isSelf ? 'org-vacation-row-self' : undefined}
+                  >
+                    <td className="org-vacation-name" title={employee.position ?? undefined}>
+                      <span className="org-person-cell">
+                        <OrgPhoto
+                          url={employee.photoUrl}
+                          name={employee.fullName}
+                          className="org-table-avatar-img"
+                          placeholderClassName="org-table-avatar"
+                        />
+                        <span>
+                          {employee.fullName}
+                          {employee.isSelf ? <span className="org-vacation-self-badge">вы</span> : null}
+                        </span>
                       </span>
-                    </span>
-                  </td>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div
+            className="org-vacation-dates-scroll"
+            ref={scrollRef}
+            aria-label="Календарь — прокрутка влево и вправо"
+          >
+            <table className="org-vacation-dates-grid">
+              <thead>
+                <tr>
+                  {monthGroups.map((group) => (
+                    <th key={group.label} colSpan={group.length} className="org-vacation-month">
+                      {group.label}
+                    </th>
+                  ))}
+                </tr>
+                <tr>
                   {yearDays.map((day) => {
-                    const dayKey = toDayKey(day)
-                    const kind = dayKindMap.get(`${employee.id}:${dayKey}`)
+                    const key = toDayKey(day)
                     const isWeekend = day.getDay() === 0 || day.getDay() === 6
-                    const inPreview =
-                      rangeStart?.employeeId === employee.id && previewDays.has(dayKey)
-                    const isSelecting = rangeStart?.employeeId === employee.id && rangeStart.day === dayKey
                     return (
-                      <td
-                        key={dayKey}
-                        className={[
-                          'org-vacation-cell',
-                          kind ? KIND_META[kind].className : '',
-                          isWeekend ? 'org-vacation-weekend' : '',
-                          dayKey === todayKey ? 'org-vacation-today' : '',
-                          inPreview ? 'org-vacation-preview' : '',
-                          isSelecting ? 'org-vacation-selecting' : '',
-                          editMode && employee.canEdit ? 'org-vacation-editable' : '',
-                        ]
-                          .filter(Boolean)
-                          .join(' ')}
-                        title={kind ? KIND_META[kind].label : undefined}
-                        onClick={() => handleCellClick(employee.id, dayKey, employee.canEdit)}
-                        onMouseEnter={() => {
-                          if (rangeStart?.employeeId === employee.id) setHoverDay(dayKey)
-                        }}
-                      />
+                      <th
+                        key={key}
+                        className={`org-vacation-day-head${isWeekend ? ' org-vacation-weekend' : ''}${
+                          key === todayKey ? ' org-vacation-today' : ''
+                        }`}
+                        title={key}
+                      >
+                        {day.getDate()}
+                      </th>
                     )
                   })}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {data.employees.map((employee) => (
+                  <tr
+                    key={employee.id}
+                    className={employee.isSelf ? 'org-vacation-row-self' : undefined}
+                  >
+                    {yearDays.map((day) => {
+                      const dayKey = toDayKey(day)
+                      const kind = dayKindMap.get(`${employee.id}:${dayKey}`)
+                      const isWeekend = day.getDay() === 0 || day.getDay() === 6
+                      const inPreview =
+                        rangeStart?.employeeId === employee.id && previewDays.has(dayKey)
+                      const isSelecting = rangeStart?.employeeId === employee.id && rangeStart.day === dayKey
+                      return (
+                        <td
+                          key={dayKey}
+                          className={[
+                            'org-vacation-cell',
+                            kind ? KIND_META[kind].className : '',
+                            isWeekend ? 'org-vacation-weekend' : '',
+                            dayKey === todayKey ? 'org-vacation-today' : '',
+                            inPreview ? 'org-vacation-preview' : '',
+                            isSelecting ? 'org-vacation-selecting' : '',
+                            editMode && employee.canEdit ? 'org-vacation-editable' : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ')}
+                          title={kind ? KIND_META[kind].label : undefined}
+                          onClick={() => handleCellClick(employee.id, dayKey, employee.canEdit)}
+                          onMouseEnter={() => {
+                            if (rangeStart?.employeeId === employee.id) setHoverDay(dayKey)
+                          }}
+                        />
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : null}
 

@@ -461,7 +461,7 @@
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
-  padding-top: 24px;
+  padding-top: 28px;
   position: relative;
 }
 
@@ -472,9 +472,10 @@
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 2px;
-  height: 24px;
-  background: var(--org-chart-line, var(--border));
+  width: 3px;
+  height: 28px;
+  background: var(--org-chart-line, var(--border-strong));
+  border-radius: 2px;
 }
 
 .org-tree-node {
@@ -485,25 +486,39 @@
   padding: 0 12px;
 }
 
+/* линия вниз от карточки руководителя к подчинённым */
+.org-tree-node:has(> .org-tree-children) > .org-person-card::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translate(-50%, 100%);
+  width: 3px;
+  height: 28px;
+  background: var(--org-chart-line, var(--border-strong));
+  border-radius: 2px;
+  z-index: 0;
+}
+
 /* горизонтальная линия между соседями */
 .org-tree-children > .org-tree-node::before {
   content: '';
   position: absolute;
-  top: -24px;
+  top: -28px;
   right: 50%;
   width: 50%;
-  height: 2px;
-  background: var(--org-chart-line, var(--border));
+  height: 3px;
+  background: var(--org-chart-line, var(--border-strong));
 }
 
 .org-tree-children > .org-tree-node::after {
   content: '';
   position: absolute;
-  top: -24px;
+  top: -28px;
   left: 50%;
   width: 50%;
-  height: 2px;
-  background: var(--org-chart-line, var(--border));
+  height: 3px;
+  background: var(--org-chart-line, var(--border-strong));
 }
 
 .org-tree-children > .org-tree-node:first-child::before {
@@ -523,20 +538,122 @@
 .org-tree-children > .org-tree-node > .org-person-card::before {
   content: '';
   position: absolute;
-  top: -24px;
+  top: -28px;
   left: 50%;
   transform: translateX(-50%);
-  width: 2px;
-  height: 24px;
-  background: var(--org-chart-line, var(--border));
+  width: 3px;
+  height: 28px;
+  background: var(--org-chart-line, var(--border-strong));
+  border-radius: 2px;
 }
 
 .org-tree-node > .org-person-card {
   position: relative;
+  z-index: 1;
+}
+
+/* Пирамида «Вся компания»: директор → отделы */
+.org-company-pyramid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  min-width: max-content;
+  margin: 0 auto;
+}
+
+.org-company-pyramid-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.org-company-pyramid-head:has(+ .org-company-pyramid-branches)::after {
+  content: '';
+  width: 3px;
+  height: 36px;
+  background: var(--org-chart-line, var(--border-strong));
+  border-radius: 2px;
+}
+
+.org-company-pyramid-branches {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0;
+  padding-top: 36px;
+  position: relative;
+  width: 100%;
+}
+
+.org-company-pyramid-branches::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: 36px;
+  background: var(--org-chart-line, var(--border-strong));
+  border-radius: 2px;
+}
+
+.org-dept-branch {
+  position: relative;
+  padding: 0 16px;
+}
+
+.org-dept-branch::before {
+  content: '';
+  position: absolute;
+  top: -36px;
+  right: 50%;
+  width: 50%;
+  height: 3px;
+  background: var(--org-chart-line, var(--border-strong));
+}
+
+.org-dept-branch::after {
+  content: '';
+  position: absolute;
+  top: -36px;
+  left: 50%;
+  width: 50%;
+  height: 3px;
+  background: var(--org-chart-line, var(--border-strong));
+}
+
+.org-dept-branch:first-child::before {
+  display: none;
+}
+
+.org-dept-branch:last-child::after {
+  display: none;
+}
+
+.org-dept-branch:only-child::before,
+.org-dept-branch:only-child::after {
+  display: none;
+}
+
+.org-dept-branch > .org-chart-scroll::before {
+  content: '';
+  position: absolute;
+  top: -36px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: 36px;
+  background: var(--org-chart-line, var(--border-strong));
+  border-radius: 2px;
+}
+
+.org-dept-branch > .org-chart-scroll {
+  position: relative;
 }
 
 .org-dept-frame {
-  border: 2px solid var(--border);
+  border: 2px solid var(--org-chart-line-soft, var(--border));
   border-radius: 16px;
   padding: 16px 20px 20px;
   background: var(--surface-2, var(--bg-hover));
@@ -563,6 +680,10 @@
   margin-top: 24px;
 }
 
+.org-company-pyramid-branches .org-dept-block {
+  margin-top: 0;
+}
+
 .org-dept-block:first-child {
   margin-top: 0;
 }
@@ -585,8 +706,8 @@
 }
 
 .org-person-card-head {
-  border-color: #83c933;
-  box-shadow: 0 0 0 2px rgba(131, 201, 51, 0.2);
+  border-color: var(--org-chart-line, #83c933);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--org-chart-line, #83c933) 22%, transparent);
 }
 
 .org-person-avatar {
@@ -921,37 +1042,68 @@
   font-size: 12px;
 }
 
-.org-vacation-scroll {
-  overflow: auto;
+.org-vacation-chart {
+  --vac-cell-size: 24px;
+  display: flex;
+  align-items: stretch;
   max-width: 100%;
+}
+
+.org-vacation-names {
+  flex: 0 0 auto;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-right: none;
+  border-radius: 12px 0 0 12px;
   background: var(--surface-1);
 }
 
-.org-vacation-grid {
+.org-vacation-names-grid {
+  border-collapse: collapse;
+}
+
+.org-vacation-names-head {
+  min-width: 200px;
+  max-width: 240px;
+  padding: 8px 12px !important;
+  text-align: left;
+  font-weight: 600;
+  vertical-align: bottom;
+  background: var(--table-head-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.org-vacation-names-grid tbody tr {
+  height: calc(var(--vac-cell-size) + 6px);
+}
+
+.org-vacation-names-grid td {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.org-vacation-dates-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 2px solid var(--border);
+  border-radius: 0 12px 12px 0;
+  background: var(--surface-1);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface-1) 80%, var(--text-muted) 20%);
+}
+
+.org-vacation-dates-grid {
   border-collapse: separate;
   border-spacing: 0;
   min-width: max-content;
 }
 
-.org-vacation-grid th,
-.org-vacation-grid td {
-  border-right: 1px solid var(--border-soft);
-  border-bottom: 1px solid var(--border-soft);
+.org-vacation-dates-grid th,
+.org-vacation-dates-grid td {
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   padding: 0;
-}
-
-.org-vacation-sticky-col {
-  position: sticky;
-  left: 0;
-  z-index: 2;
-  min-width: 180px;
-  max-width: 220px;
-  background: var(--surface-1);
-  padding: 8px 10px !important;
-  text-align: left;
-  font-weight: 600;
 }
 
 .org-vacation-name {
@@ -965,7 +1117,7 @@
   font-weight: 700;
 }
 
-.org-vacation-row-self .org-vacation-sticky-col {
+.org-vacation-row-self .org-vacation-name {
   background: var(--t2-lime-soft);
 }
 
@@ -974,31 +1126,40 @@
   font-size: 12px;
   padding: 6px 4px !important;
   background: var(--table-head-bg);
+  border-bottom: 1px solid var(--border);
 }
 
 .org-vacation-day-head {
-  width: 18px;
-  min-width: 18px;
+  width: var(--vac-cell-size);
+  min-width: var(--vac-cell-size);
   font-size: 10px;
-  font-weight: 500;
+  font-weight: 600;
   text-align: center;
   padding: 4px 0 !important;
   color: var(--text-muted);
+  background: var(--table-head-bg);
 }
 
 .org-vacation-cell {
-  width: 18px;
-  min-width: 18px;
-  height: 22px;
-  background: var(--surface-2);
+  width: var(--vac-cell-size);
+  min-width: var(--vac-cell-size);
+  height: var(--vac-cell-size);
+  background: var(--surface-1);
+  box-sizing: border-box;
 }
 
 .org-vacation-weekend {
-  background: color-mix(in srgb, var(--surface-2) 70%, #f43f5e 30%);
+  background: color-mix(in srgb, var(--surface-2) 94%, #e11d48 6%) !important;
+}
+
+.org-vacation-day-head.org-vacation-weekend {
+  background: color-mix(in srgb, var(--table-head-bg) 92%, #e11d48 8%) !important;
 }
 
 .org-vacation-today {
-  box-shadow: inset 0 0 0 1px var(--brand);
+  box-shadow: inset 0 0 0 2px var(--brand);
+  position: relative;
+  z-index: 1;
 }
 
 .org-vacation-editable {
