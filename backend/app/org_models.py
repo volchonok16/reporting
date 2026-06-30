@@ -80,8 +80,14 @@ class Employee(Base):
 
     user: Mapped[OrgUser | None] = relationship(back_populates="employee")
     job_position: Mapped[JobPosition | None] = relationship()
-    manager: Mapped["Employee | None"] = relationship(remote_side=[id])
-    department_members: Mapped[list["DepartmentMember"]] = relationship(back_populates="employee")
+    manager: Mapped["Employee | None"] = relationship(
+        remote_side=[id],
+        foreign_keys=[manager_id],
+    )
+    department_members: Mapped[list["DepartmentMember"]] = relationship(
+        back_populates="employee",
+        foreign_keys="DepartmentMember.employee_id",
+    )
     expertises: Mapped[list["EmployeeExpertise"]] = relationship(back_populates="employee")
 
 

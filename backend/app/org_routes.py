@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.auth_sessions import get_session_with_meta
 from app.db import get_db
-from app.org_photo_service import uploads_dir
+from app.org_photo_service import load_photo_content
 from app.org_schemas import (
     DepartmentIn,
     DepartmentMemberIn,
@@ -320,11 +320,12 @@ def api_org_chart(
 
 
 @router.get("/photos/{photo_path:path}")
-def api_serve_photo(photo_path: str) -> FileResponse:
-    target = uploads_dir() / photo_path
-    if not target.is_file():
+def api_serve_photo(photo_path: str) -> Response:
+    loaded = load_photo_content(photo_path)
+    if loaded is None:
         raise HTTPException(status_code=404, detail="Фото не найдено.")
-    return FileResponse(target)
+    body, content_type = loaded
+    return Response(content=body, media_type=content_type)
 
 
 profile_router = APIRouter(prefix="/api/profile", tags=["profile"])

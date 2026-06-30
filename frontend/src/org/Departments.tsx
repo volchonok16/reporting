@@ -7,6 +7,8 @@ import type {
   DepartmentMember,
   Employee,
   EmployeeDetail,
+  EmployeeExpertise,
+  ExpertiseDirection,
   JobPosition,
   OrgChartData,
   OrgPanel,
@@ -17,6 +19,13 @@ import './org.css'
 
 type DepartmentsProps = {
   canManage: boolean
+}
+
+function formatExpertises(expertises: EmployeeExpertise[] | undefined): string {
+  if (!expertises?.length) return '—'
+  return expertises
+    .map((item) => (item.level ? `${item.directionName} (${item.level})` : item.directionName))
+    .join(', ')
 }
 
 function EmployeeNameButton({
@@ -73,6 +82,7 @@ export default function Departments({ canManage }: DepartmentsProps) {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [positions, setPositions] = useState<JobPosition[]>([])
   const [teamRoles, setTeamRoles] = useState<TeamRole[]>([])
+  const [expertiseDirections, setExpertiseDirections] = useState<ExpertiseDirection[]>([])
   const [employeeOptions, setEmployeeOptions] = useState<SelectOption[]>([])
   const [orgChart, setOrgChart] = useState<OrgChartData | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -88,6 +98,8 @@ export default function Departments({ canManage }: DepartmentsProps) {
   const [showDepartmentModal, setShowDepartmentModal] = useState(false)
   const [showMemberModal, setShowMemberModal] = useState(false)
   const [cardEmployeeId, setCardEmployeeId] = useState<number | null>(null)
+  const [expertiseDirectionId, setExpertiseDirectionId] = useState('')
+  const [expertiseLevel, setExpertiseLevel] = useState('')
 
   const openEmployeeCard = (employeeId: number) => setCardEmployeeId(employeeId)
   const closeEmployeeCard = () => setCardEmployeeId(null)
@@ -99,20 +111,33 @@ export default function Departments({ canManage }: DepartmentsProps) {
 
   const positionNames = useMemo(() => positions.map((p) => p.name), [positions])
 
+  const employeeById = useMemo(() => {
+    const map = new Map<number, Employee>()
+    for (const emp of employees) map.set(emp.id, emp)
+    return map
+  }, [employees])
+
+  const editingEmployee = useMemo(
+    () => (editingEmployeeId ? employeeById.get(editingEmployeeId) ?? null : null),
+    [editingEmployeeId, employeeById],
+  )
+
   const loadBase = useCallback(async () => {
     setError(null)
     try {
-      const [deptData, empData, posData, roleData, optData] = await Promise.all([
+      const [deptData, empData, posData, roleData, dirData, optData] = await Promise.all([
         getJson<Department[]>('/api/org/departments'),
         getJson<Employee[]>('/api/org/employees'),
         getJson<JobPosition[]>('/api/org/job-positions'),
         getJson<TeamRole[]>('/api/org/team-roles'),
+        getJson<ExpertiseDirection[]>('/api/org/expertise-directions'),
         getJson<SelectOption[]>('/api/org/employee-options'),
       ])
       setDepartments(deptData)
       setEmployees(empData)
       setPositions(posData)
       setTeamRoles(roleData)
+      setExpertiseDirections(dirData)
       setEmployeeOptions(optData)
       if (deptData.length > 0 && selectedDepartmentId === null) {
         setSelectedDepartmentId(deptData[0].id)
@@ -170,11 +195,15 @@ export default function Departments({ canManage }: DepartmentsProps) {
   const openCreateEmployee = () => {
     setEditingEmployeeId(null)
     setEmployeeForm({ ...EMPTY_EMPLOYEE })
+    setExpertiseDirectionId('')
+    setExpertiseLevel('')
     setShowEmployeeModal(true)
   }
 
   const openEditEmployee = (emp: Employee) => {
     setEditingEmployeeId(emp.id)
+    setExpertiseDirectionId('')
+    setExpertiseLevel('')
     setEmployeeForm({
       fullName: emp.fullName,
       email: emp.email ?? '',
@@ -357,6 +386,45 @@ export default function Departments({ canManage }: DepartmentsProps) {
     }
   }
 
+  const addExpertiseDirection = async () => {
+    const name = window.prompt('Название направления экспертизы')
+    if (!name?.trim() || !canManage) return
+    try {
+      await postJson('/api/org/expertise-directions', { name: name.trim() })
+      await loadBase()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка')
+    }
+  }
+
+  const addEmployeeExpertise = async () => {
+    if (!editingEmployeeId || !expertiseDirectionId || !canManage) return
+    setError(null)
+    try {
+      await postJson(`/api/org/employees/${editingEmployeeId}/expertise`, {
+        expertiseDirectionId: Number(expertiseDirectionId),
+        level: expertiseLevel.trim() || null,
+      })
+      setExpertiseDirectionId('')
+      setExpertiseLevel('')
+      await loadBase()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка добавления экспертизы')
+    }
+  }
+
+  const removeEmployeeExpertise = async (expertiseId: number) => {
+    if (!editingEmployeeId || !canManage) return
+    if (!window.confirm('Удалить экспертизу?')) return
+    setError(null)
+    try {
+      await deleteJson(`/api/org/employees/${editingEmployeeId}/expertise/${expertiseId}`)
+      await loadBase()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка удаления экспертизы')
+    }
+  }
+
   return (
     <div className="org-page">
       <div className="dept-hero">
@@ -430,11 +498,15 @@ export default function Departments({ canManage }: DepartmentsProps) {
                   <th>Должность</th>
                   <th>Руководитель</th>
                   <th>Email</th>
+                  <th>Рабочих часов в день</th>
+                  <th>Экспертиза</th>
                   {canManage ? <th /> : null}
                 </tr>
               </thead>
               <tbody>
-                {members.map((member) => (
+                {members.map((member) => {
+                  const emp = employeeById.get(member.employeeId)
+                  return (
                   <tr key={member.id}>
                     <td>
                       <EmployeeNameButton
@@ -446,7 +518,9 @@ export default function Departments({ canManage }: DepartmentsProps) {
                     <td>{member.teamRoleName ?? '—'}</td>
                     <td>{member.displayPosition ?? '—'}</td>
                     <td>{member.managerName ?? '—'}</td>
-                    <td>{member.displayEmail ?? '—'}</td>
+                    <td>{member.displayEmail ?? emp?.email ?? '—'}</td>
+                    <td>{emp?.dailyWorkHours ?? '—'}</td>
+                    <td>{formatExpertises(emp?.expertises)}</td>
                     {canManage ? (
                       <td className="org-table-actions">
                         <button type="button" className="btn-ghost" onClick={() => openEditMember(member)}>
@@ -458,7 +532,8 @@ export default function Departments({ canManage }: DepartmentsProps) {
                       </td>
                     ) : null}
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           )}
@@ -504,6 +579,9 @@ export default function Departments({ canManage }: DepartmentsProps) {
             <h2>Сотрудники</h2>
             {canManage ? (
               <div className="org-panel-toolbar-actions">
+                <button type="button" className="btn-ghost" onClick={() => void addExpertiseDirection()}>
+                  + Направление
+                </button>
                 <button type="button" className="btn-ghost" onClick={() => void addPosition()}>
                   + Должность
                 </button>
@@ -519,8 +597,9 @@ export default function Departments({ canManage }: DepartmentsProps) {
                 <th>ФИО</th>
                 <th>Должность</th>
                 <th>Email</th>
+                <th>Рабочих часов в день</th>
+                <th>Экспертиза</th>
                 <th>Руководитель</th>
-                <th>Часы/день</th>
                 <th>Активен</th>
                 {canManage ? <th /> : null}
               </tr>
@@ -533,8 +612,9 @@ export default function Departments({ canManage }: DepartmentsProps) {
                   </td>
                   <td>{emp.position ?? '—'}</td>
                   <td>{emp.email ?? '—'}</td>
-                  <td>{emp.managerName ?? '—'}</td>
                   <td>{emp.dailyWorkHours}</td>
+                  <td>{formatExpertises(emp.expertises)}</td>
+                  <td>{emp.managerName ?? '—'}</td>
                   <td>{emp.isActive ? 'Да' : 'Нет'}</td>
                   {canManage ? (
                     <td className="org-table-actions">
@@ -661,6 +741,66 @@ export default function Departments({ canManage }: DepartmentsProps) {
                   onChange={(e) => setEmployeeForm({ ...employeeForm, dailyWorkHours: e.target.value })}
                 />
               </label>
+
+              {editingEmployeeId && editingEmployee ? (
+                <div className="org-form-section">
+                  <div className="org-form-section-header">
+                    <h4>Экспертиза</h4>
+                    {canManage ? (
+                      <button type="button" className="btn-ghost" onClick={() => void addExpertiseDirection()}>
+                        + Направление
+                      </button>
+                    ) : null}
+                  </div>
+                  {editingEmployee.expertises.length > 0 ? (
+                    <ul className="org-expertise-list">
+                      {editingEmployee.expertises.map((item) => (
+                        <li key={item.id}>
+                          <span>
+                            {item.directionName}
+                            {item.level ? ` (${item.level})` : ''}
+                          </span>
+                          {canManage ? (
+                            <button
+                              type="button"
+                              className="btn-ghost org-expertise-remove"
+                              onClick={() => void removeEmployeeExpertise(item.id)}
+                            >
+                              ✕
+                            </button>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="org-hint">Экспертиза не указана</p>
+                  )}
+                  {canManage ? (
+                    <div className="org-inline-form">
+                      <select
+                        value={expertiseDirectionId}
+                        onChange={(e) => setExpertiseDirectionId(e.target.value)}
+                      >
+                        <option value="">— направление —</option>
+                        {expertiseDirections.map((direction) => (
+                          <option key={direction.id} value={direction.id}>
+                            {direction.name}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        value={expertiseLevel}
+                        onChange={(e) => setExpertiseLevel(e.target.value)}
+                        placeholder="Уровень, например senior"
+                      />
+                      <button type="button" className="btn-primary" onClick={() => void addEmployeeExpertise()}>
+                        Добавить
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
               <label className="org-checkbox">
                 <input
                   type="checkbox"

@@ -5,6 +5,7 @@ import ProductStatusB2B from './ProductStatusB2B'
 import Roadmap from './Roadmap'
 import Departments from './org/Departments'
 import EmployeeProfile from './org/EmployeeProfile'
+import ThemeToggle from './ThemeToggle'
 import type { AppRole } from './App'
 import { loadActiveSheet, saveActiveSheet, type SheetId } from './uiState'
 
@@ -73,13 +74,16 @@ export default function WorkbookApp({
               {sheet.label}
             </button>
           ))}
-          <button
-            type="button"
-            className="workbook-tab workbook-profile-btn"
-            onClick={() => setProfileOpen(true)}
-          >
-            Личный кабинет
-          </button>
+          <div className="workbook-header-tools">
+            <ThemeToggle compact />
+            <button
+              type="button"
+              className="workbook-tab workbook-profile-btn"
+              onClick={() => setProfileOpen(true)}
+            >
+              Личный кабинет
+            </button>
+          </div>
         </nav>
       </header>
 

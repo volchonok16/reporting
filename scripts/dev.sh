@@ -14,5 +14,6 @@ exec bash "$(dirname "$0")/compose-up.sh" dev --build "$@"
 
 echo ""
 echo "Локально:"
-echo "  UI:  http://localhost:5173"
-echo "  API: http://localhost:8000/api/health"
+echo "  UI:            http://localhost:5173"
+echo "  API:           http://localhost:8000/api/health"
+echo "  MinIO:         http://localhost:9000  (console :9001)"

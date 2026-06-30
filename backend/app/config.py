@@ -198,7 +198,40 @@ class Settings(BaseSettings):
     org_uploads_dir: str = Field(
         default="/app/uploads",
         alias="ORG_UPLOADS_DIR",
-        description="Каталог загрузок фото сотрудников.",
+        description="Локальный каталог фото сотрудников (fallback, если MinIO недоступен).",
+    )
+    minio_endpoint: str = Field(
+        default="",
+        alias="MINIO_ENDPOINT",
+        description="S3-совместимый endpoint MinIO, например http://minio:9000.",
+    )
+    minio_access_key: str = Field(
+        default="",
+        alias="MINIO_ROOT_USER",
+        description="Access key MinIO (MINIO_ROOT_USER).",
+    )
+    minio_secret_key: str = Field(
+        default="",
+        alias="MINIO_ROOT_PASSWORD",
+        description="Secret key MinIO (MINIO_ROOT_PASSWORD).",
+    )
+    minio_bucket: str = Field(
+        default="photos",
+        alias="MINIO_BUCKET",
+        description="Bucket для фото сотрудников.",
+    )
+    minio_public_url: str = Field(
+        default="",
+        alias="MINIO_PUBLIC_URL",
+        description=(
+            "Публичный URL MinIO для прямых ссылок на фото "
+            "(например http://localhost:9000). Пусто — отдача через /api/org/photos/."
+        ),
+    )
+    minio_region: str = Field(
+        default="us-east-1",
+        alias="MINIO_REGION",
+        description="Регион S3-клиента (для MinIO обычно us-east-1).",
     )
 
     @computed_field

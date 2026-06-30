@@ -139,7 +139,12 @@ export default function EmployeeCardModal({
                   </tbody>
                 </table>
               </section>
-            ) : null}
+            ) : (
+              <section className="org-employee-card-section">
+                <h3>Экспертиза</h3>
+                <p className="org-hint">Не указана</p>
+              </section>
+            )}
 
             {employee.departments.length > 0 || employee.headedDepartments.length > 0 ? (
               <section className="org-employee-card-section">

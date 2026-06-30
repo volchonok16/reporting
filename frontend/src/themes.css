@@ -1,0 +1,230 @@
+/* =============================================================================
+   Design tokens — светлая и тёмная тема
+   ============================================================================= */
+
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+
+  --bg-app: #eef0f4;
+  --bg-header: #e4e7ec;
+  --bg-muted: #e8ebf0;
+  --bg-subtle: #f3f5f7;
+  --bg-hover: #f8f9fb;
+  --bg-active: #eef9c4;
+
+  --surface-1: #ffffff;
+  --surface-2: #fafbfc;
+  --surface-3: #f3f4f6;
+
+  --text-primary: #111111;
+  --text-secondary: #5c6570;
+  --text-tertiary: #888888;
+  --text-inverse: #ffffff;
+
+  --border: #e2e5ea;
+  --border-strong: #c5cad1;
+  --input-border: #d0d0d0;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.12);
+  --overlay: rgba(15, 23, 42, 0.45);
+
+  --brand: #111111;
+  --brand-hover: #2a2a2a;
+  --brand-accent: #c8f000;
+  --brand-accent-soft: #eef9c4;
+  --brand-accent-border: #b8d900;
+
+  --accent: #1d4ed8;
+  --accent-soft: #eff6ff;
+  --accent-hover: #1e40af;
+
+  --success: #067647;
+  --success-soft: #ecfdf3;
+  --error: #b42318;
+  --error-soft: #fef3f2;
+  --warning-soft: #fff8f0;
+  --info: #1d4ed8;
+  --info-soft: #f0f7ff;
+
+  --metric-inverse-bg: #111111;
+  --metric-inverse-text: #ffffff;
+  --table-head-bg: #f3f5f7;
+  --table-row-hover: #fafbfc;
+  --table-row-alt: #fff8f0;
+  --menu-bg: #ffffff;
+  --menu-hover: #f3f4f6;
+  --menu-selected: #e8f0fe;
+
+  --hero-gradient: linear-gradient(135deg, #40b3d8 0%, #3a9cbd 45%, #83c933 100%);
+  --avatar-gradient: linear-gradient(135deg, #40b3d8, #83c933);
+
+  --focus-ring: rgba(59, 130, 246, 0.15);
+
+  /* Legacy aliases (совместимость с index.css) */
+  --t2-black: var(--brand);
+  --t2-lime: var(--brand-accent);
+  --t2-lime-soft: var(--brand-accent-soft);
+  --t2-lime-border: var(--brand-accent-border);
+  --surface: var(--surface-1);
+  --text-muted: var(--text-secondary);
+  --accent-blue: var(--accent);
+  --accent-blue-soft: var(--accent-soft);
+  --page-gutter: 12px;
+  --tab-hover: rgba(255, 255, 255, 0.55);
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg-app: #0f1117;
+  --bg-header: #161b26;
+  --bg-muted: #1a2230;
+  --bg-subtle: #1e2636;
+  --bg-hover: #252d3d;
+  --bg-active: rgba(200, 240, 0, 0.12);
+
+  --surface-1: #1c2333;
+  --surface-2: #222b3d;
+  --surface-3: #2a3347;
+
+  --text-primary: #e8eaed;
+  --text-secondary: #9aa3b2;
+  --text-tertiary: #6b7280;
+  --text-inverse: #111111;
+
+  --border: #2d3748;
+  --border-strong: #3d4a5c;
+  --input-border: #3d4a5c;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55);
+  --overlay: rgba(0, 0, 0, 0.68);
+
+  --brand: #e8eaed;
+  --brand-hover: #ffffff;
+  --brand-accent: #c8f000;
+  --brand-accent-soft: rgba(200, 240, 0, 0.14);
+  --brand-accent-border: #a3c400;
+
+  --accent: #6ba3ff;
+  --accent-soft: rgba(107, 163, 255, 0.16);
+  --accent-hover: #93bbff;
+
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, 0.12);
+  --error: #f87171;
+  --error-soft: rgba(248, 113, 113, 0.12);
+  --warning-soft: rgba(251, 191, 36, 0.1);
+  --info: #93bbff;
+  --info-soft: rgba(107, 163, 255, 0.12);
+
+  --metric-inverse-bg: #c8f000;
+  --metric-inverse-text: #111111;
+  --table-head-bg: #222b3d;
+  --table-row-hover: #252d3d;
+  --table-row-alt: rgba(251, 191, 36, 0.08);
+  --menu-bg: #1c2333;
+  --menu-hover: #2a3347;
+  --menu-selected: rgba(107, 163, 255, 0.18);
+
+  --hero-gradient: linear-gradient(135deg, #1e5f78 0%, #1a4a5c 45%, #3d6b1f 100%);
+  --avatar-gradient: linear-gradient(135deg, #2a7a96, #5a9a28);
+
+  --focus-ring: rgba(107, 163, 255, 0.25);
+  --tab-hover: rgba(255, 255, 255, 0.06);
+}
+
+html {
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Theme toggle */
+.theme-toggle {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 999px;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+}
+
+.theme-toggle-compact .theme-toggle-btn {
+  min-width: 34px;
+  padding: 6px 8px;
+}
+
+.theme-toggle-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.theme-toggle-btn:hover {
+  color: var(--text-primary);
+}
+
+.theme-toggle-btn-active {
+  background: var(--surface-1);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.login-page {
+  position: relative;
+}
+
+.login-theme-switch {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+
+.workbook-header-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding: 0 var(--page-gutter) 8px;
+}
+
+/* Roadmap cards in dark theme */
+[data-theme='dark'] .roadmap-task-card {
+  background: var(--surface-1);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .roadmap-task-card:hover {
+  background: var(--surface-2);
+}
+
+[data-theme='dark'] .roadmap-task-card.is-selected {
+  background: var(--bg-active);
+}
+
+[data-theme='dark'] .product-status-section {
+  background: transparent;
+}
+
+[data-theme='dark'] .loading {
+  color: var(--text-primary);
+}

@@ -675,7 +675,7 @@
 | `position_id` | bigint | FK → `job_position` |
 | `position` | varchar(255) | Название должности (денормализация) |
 | `manager_id` | bigint | FK → `employee` (руководитель) |
-| `photo_path` | varchar(512) | Путь к фото в `ORG_UPLOADS_DIR` |
+| `photo_path` | varchar(512) | Ключ объекта в MinIO (`employees/…`) или путь в `ORG_UPLOADS_DIR` |
 | `daily_work_hours` | numeric(4,2) | Рабочих часов в день (по умолчанию 8) |
 | `is_active` | boolean | Активен |
 | `is_organization_head` | boolean | Директор организации (вершина пирамиды) |

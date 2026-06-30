@@ -22,3 +22,8 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+
+  minio:
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"

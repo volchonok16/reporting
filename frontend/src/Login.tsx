@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { apiFetch, getJson, readApiError, setSessionId } from './api'
+import ThemeToggle from './ThemeToggle'
 
 type AuthDefaults = {
   baseUrl: string
@@ -85,6 +86,7 @@ export default function Login({ onSuccess }: LoginProps) {
 
   return (
     <main className="login-page">
+      <ThemeToggle className="login-theme-switch" />
       <section className="login-panel">
         <h1>Reporting</h1>
         <p className="login-subtitle">Вход в отчётность по ЗНИ</p>

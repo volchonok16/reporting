@@ -5,7 +5,7 @@
 }
 
 .dept-hero {
-  background: linear-gradient(135deg, #40b3d8 0%, #3a9cbd 45%, #83c933 100%);
+  background: var(--hero-gradient);
   border-radius: 16px;
   padding: 20px 24px;
   margin-bottom: 16px;
@@ -41,6 +41,8 @@
   border-radius: 8px;
   border: none;
   min-width: 200px;
+  background: var(--surface-1);
+  color: var(--text-primary);
 }
 
 .org-subtabs {
@@ -51,24 +53,26 @@
 }
 
 .org-subtab {
-  background: var(--surface);
+  background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 8px 16px;
   cursor: pointer;
+  color: var(--text-secondary);
 }
 
 .org-subtab-active {
-  background: var(--t2-black);
-  color: #fff;
-  border-color: var(--t2-black);
+  background: var(--brand);
+  color: var(--text-inverse);
+  border-color: var(--brand);
 }
 
 .org-panel {
-  background: var(--surface);
+  background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 16px;
+  box-shadow: var(--shadow-sm);
 }
 
 .org-panel-toolbar {
@@ -129,9 +133,11 @@
 .org-form select,
 .org-form textarea {
   padding: 8px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--input-border);
   border-radius: 8px;
   font: inherit;
+  background: var(--surface-1);
+  color: var(--text-primary);
 }
 
 .org-checkbox {
@@ -145,12 +151,12 @@
 }
 
 .org-error {
-  color: #b42318;
+  color: var(--error);
   margin: 0 0 12px;
 }
 
 .org-success {
-  color: #067647;
+  color: var(--success);
   margin: 0 0 12px;
 }
 
@@ -162,7 +168,7 @@
 .org-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--overlay);
   display: grid;
   place-items: center;
   z-index: 1000;
@@ -170,12 +176,14 @@
 }
 
 .org-modal {
-  background: #fff;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 20px;
   width: min(560px, 100%);
   max-height: 90vh;
   overflow: auto;
+  box-shadow: var(--shadow-lg);
 }
 
 .org-profile-modal {
@@ -224,7 +232,7 @@
 .org-profile-photo-placeholder {
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, #40b3d8, #83c933);
+  background: var(--avatar-gradient);
   color: #fff;
   font-weight: 700;
   font-size: 1.5rem;
@@ -278,12 +286,12 @@
   display: flex;
   gap: 10px;
   align-items: center;
-  background: #fff;
+  background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 10px 12px;
   min-width: 200px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-sm);
 }
 
 .org-person-card-head {
@@ -296,7 +304,7 @@
   height: 44px;
   border-radius: 10px;
   overflow: hidden;
-  background: linear-gradient(135deg, #40b3d8, #83c933);
+  background: var(--avatar-gradient);
   color: #fff;
   display: grid;
   place-items: center;
@@ -354,7 +362,7 @@
 }
 
 .org-employee-link:hover {
-  color: #1e40af;
+  color: var(--accent-hover);
 }
 
 .org-person-card-button {
@@ -424,9 +432,9 @@
 }
 
 .org-badge-muted {
-  background: #f3f4f6;
+  background: var(--bg-muted);
   border-color: var(--border);
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .org-employee-card-fields {
@@ -465,4 +473,59 @@
 .org-employee-subordinate-position {
   color: var(--text-muted);
   font-size: 13px;
+}
+
+.org-form-section {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.org-form-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.org-form-section-header h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.org-expertise-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.org-expertise-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--bg-hover);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.org-expertise-remove {
+  color: var(--error);
+}
+
+.org-inline-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+  align-items: end;
+}
+
+@media (max-width: 640px) {
+  .org-inline-form {
+    grid-template-columns: 1fr;
+  }
 }

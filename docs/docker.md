@@ -27,6 +27,8 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 | UI | http://localhost:5173 |
 | API | http://localhost:8000/api/health |
 | PostgreSQL | `localhost:5432` |
+| MinIO API | http://localhost:9000 |
+| MinIO Console | http://localhost:9001 (логин из `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`) |
 
 Вход: PAT-токен TFS (Work Items Read). После входа — «Обновить из TFS» для загрузки ЗНИ и ошибок.
 
@@ -217,7 +219,25 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 ./scripts/migrate.sh 005_org_structure.sql
 ```
 
-Переменная `ORG_UPLOADS_DIR` (по умолчанию `/app/uploads`) — каталог фото сотрудников на backend.
+### MinIO — фото сотрудников
+
+При `docker compose up` поднимаются сервисы `minio` и `minio-init`. Init-контейнер:
+
+1. Создаёт bucket `photos` (или имя из `MINIO_BUCKET`)
+2. Включает анонимное чтение (download) для отдачи картинок
+
+Переменные в `.env`:
+
+| Переменная | По умолчанию | Назначение |
+|------------|--------------|------------|
+| `MINIO_ROOT_USER` | `minioadmin` | Access key |
+| `MINIO_ROOT_PASSWORD` | `minioadmin` | Secret key |
+| `MINIO_ENDPOINT` | `http://minio:9000` | Endpoint внутри Docker-сети |
+| `MINIO_BUCKET` | `photos` | Bucket для фото |
+| `MINIO_PUBLIC_URL` | `http://localhost:9000` (dev) | Прямые URL на фото; пусто — прокси через `/api/org/photos/` |
+| `ORG_UPLOADS_DIR` | `/app/uploads` | Локальный fallback, если MinIO недоступен |
+
+В production (`docker-compose.prod.yml`) MinIO слушает только `127.0.0.1:9000` / `:9001`.
 
 ## Остановка
 
