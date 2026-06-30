@@ -36,7 +36,14 @@ bash scripts/dev.sh
 ```bash
 cp .env.production.example .env
 # CERTBOT_EMAIL=you@example.com
-sudo bash scripts/production.sh
+sudo bash scripts/production.sh   # первый раз: nginx + certbot + Docker
+```
+
+**Обновление на сервере** (git pull + пересборка + туннель PostgreSQL):
+
+```bash
+bash scripts/up.sh prod
+# то же: bash scripts/prod.sh
 ```
 
 Подробнее: [deploy/DEPLOY.md](deploy/DEPLOY.md)

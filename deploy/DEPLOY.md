@@ -23,12 +23,14 @@ COMPOSE_CMD=docker-compose
 
 ```bash
 cd /var/database/reporting
-bash scripts/deploy-prod.sh
+bash scripts/up.sh prod
 ```
 
-Эквивалент одной строкой:
+Эквиваленты:
 
 ```bash
+bash scripts/prod.sh
+bash scripts/deploy-prod.sh
 git pull && bash scripts/compose-up.sh prod --build --tunnel
 ```
 

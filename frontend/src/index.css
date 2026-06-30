@@ -161,6 +161,12 @@ body {
   padding-bottom: 2px;
 }
 
+.workbook-header-account {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .workbook-profile-btn {
   margin-left: 0;
 }
@@ -193,12 +199,6 @@ body {
 
 .workbook-content {
   flex: 1;
-}
-
-.workbook-page-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 8px;
 }
 
 .app {

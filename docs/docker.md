@@ -131,10 +131,12 @@ cd /var/database/reporting   # путь к проекту на VPS
 # на VPS с docker-compose 1.29:
 echo 'COMPOSE_CMD=docker-compose' >> .env
 
-# Полный деплой: приложение + туннель БД
-bash scripts/deploy-prod.sh
+# Полный деплой одной командой:
+bash scripts/up.sh prod
 
-# Или вручную:
+# То же:
+# bash scripts/prod.sh
+# bash scripts/deploy-prod.sh
 # git pull && bash scripts/compose-up.sh prod --build --tunnel
 
 # Только проброс postgres (без пересборки backend/frontend):

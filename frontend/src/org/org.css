@@ -328,10 +328,6 @@
   color: var(--text-muted);
 }
 
-.workbook-profile-btn {
-  margin-left: auto;
-}
-
 .org-employee-link {
   background: none;
   border: none;

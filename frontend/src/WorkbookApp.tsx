@@ -78,27 +78,27 @@ export default function WorkbookApp({
           ))}
           <div className="workbook-header-tools">
             <ThemeToggle compact />
-            <button
-              type="button"
-              className="workbook-tab workbook-profile-btn"
-              onClick={() => setProfileOpen(true)}
-            >
-              Личный кабинет
-            </button>
+            <div className="workbook-header-account">
+              <button
+                type="button"
+                className="workbook-tab workbook-profile-btn"
+                onClick={() => setProfileOpen(true)}
+              >
+                Личный кабинет
+              </button>
+              <button type="button" className="workbook-tab" onClick={() => void handleLogout()}>
+                Выйти
+              </button>
+            </div>
           </div>
         </nav>
       </header>
 
       <div className="workbook-content">
         {activeSheet === 'zni' ? (
-          <Dashboard onLogout={() => void handleLogout()} />
+          <Dashboard />
         ) : activeSheet === 'roadmap' ? (
           <div className="app">
-            <header className="workbook-page-toolbar">
-              <button type="button" className="btn-ghost" onClick={() => void handleLogout()}>
-                Выйти
-              </button>
-            </header>
             <Roadmap
               canSyncTfs={canSyncTfs}
               canEditPriority={appRole === 'full'}
@@ -108,20 +108,10 @@ export default function WorkbookApp({
           </div>
         ) : activeSheet === 'departments' ? (
           <div className="app">
-            <header className="workbook-page-toolbar">
-              <button type="button" className="btn-ghost" onClick={() => void handleLogout()}>
-                Выйти
-              </button>
-            </header>
             <Departments canManage={canManageOrg} orgEmployeeId={orgEmployeeId} />
           </div>
         ) : (
           <div className="app">
-            <header className="workbook-page-toolbar">
-              <button type="button" className="btn-ghost" onClick={() => void handleLogout()}>
-                Выйти
-              </button>
-            </header>
             <ProductStatusB2B />
           </div>
         )}

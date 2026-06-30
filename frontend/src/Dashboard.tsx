@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { apiFetch, clearSessionId, getJson } from './api'
+import { apiFetch, getJson } from './api'
 import { loadDashboardUiState, saveDashboardUiState } from './uiState'
 
 const ALL_BOARDS = 'all'
@@ -343,10 +343,6 @@ function rowHasExpandDetails(item: ChangeRequest): boolean {
 
 type MetricFilter = '' | 'in_progress' | 'launching_soon' | 'launched' | 'completed' | 'errors'
 
-type DashboardProps = {
-  onLogout: () => void
-}
-
 const METRIC_LABELS: Record<MetricFilter, string> = {
   '': 'Все задачи',
   in_progress: 'В работе',
@@ -391,7 +387,7 @@ function isMetricFilter(value: string | undefined): value is MetricFilter {
   )
 }
 
-export default function Dashboard({ onLogout }: DashboardProps) {
+export default function Dashboard() {
   const savedUi = loadDashboardUiState()
   const defaultQuarter = currentQuarterIsoRange()
   const [boards, setBoards] = useState<Board[]>([])
@@ -674,12 +670,6 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     }
   }
 
-  const handleLogout = async () => {
-    await apiFetch('/api/auth/logout', { method: 'POST' })
-    clearSessionId()
-    onLogout()
-  }
-
   const selectedBoard = boards.find((b) => b.code === boardCode)
   const boardLabel = boardButtonLabel(boardCode, selectedBoard?.displayName)
 
@@ -780,9 +770,6 @@ export default function Dashboard({ onLogout }: DashboardProps) {
           </button>
           <button type="button" className="btn-primary" onClick={handleExport} disabled={syncing || exporting}>
             {exporting ? 'Выгрузка…' : 'Выгрузить'}
-          </button>
-          <button type="button" className="btn-ghost" onClick={handleLogout}>
-            Выйти
           </button>
         </div>
       </header>
