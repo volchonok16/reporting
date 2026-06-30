@@ -34,6 +34,7 @@ DepartmentBlockOut.model_rebuild()
 class OrgChartOut(BaseModel):
     organizationHead: OrgChartNodeOut | None = None
     departments: list[DepartmentBlockOut] = Field(default_factory=list)
+    standaloneRoots: list[OrgChartNodeOut] = Field(default_factory=list)
     departmentTree: list[OrgChartNodeOut] = Field(default_factory=list)
 
 

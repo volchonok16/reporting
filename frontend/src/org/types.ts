@@ -25,6 +25,7 @@ export type DepartmentBlock = {
 export type OrgChartData = {
   organizationHead?: OrgChartNode | null
   departments?: DepartmentBlock[]
+  standaloneRoots?: OrgChartNode[]
   departmentTree?: OrgChartNode[]
 }
 

@@ -745,6 +745,10 @@
   position: relative;
 }
 
+.org-dept-branch-standalone > .org-chart-scroll {
+  padding: 8px 0;
+}
+
 .org-dept-frame {
   border: 2px solid var(--org-chart-line-soft, var(--border));
   border-radius: 16px;

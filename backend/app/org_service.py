@@ -706,14 +706,31 @@ def get_org_chart(db: Session, department_id: int | None = None) -> OrgChartOut:
     for dept in departments:
         members = _load_members_for_department(db, dept.id)
         department_trees[dept.id] = build_department_tree(dept, members)
+
+    department_head_ids = {dept.head_employee_id for dept in departments if dept.head_employee_id is not None}
+    employees_without_department = list(
+        db.scalars(
+            select(Employee)
+            .options(joinedload(Employee.job_position))
+            .where(Employee.is_active.is_(True))
+            .where(~Employee.department_members.any())
+            .where(Employee.is_organization_head.is_(False))
+        ).unique().all()
+    )
+    employees_without_department = [
+        emp for emp in employees_without_department if emp.id not in department_head_ids
+    ]
+
     chart = build_company_chart(
         organization_head=org_head,
         departments=departments,
         department_trees=department_trees,
+        employees_without_department=employees_without_department,
     )
     return OrgChartOut(
         organizationHead=chart.get("organizationHead"),
         departments=chart.get("departments", []),
+        standaloneRoots=chart.get("standaloneRoots", []),
     )  # type: ignore[arg-type]
 
 

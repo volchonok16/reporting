@@ -5,6 +5,7 @@ type OrgChartViewProps = {
   roots?: OrgChartNode[]
   organizationHead?: OrgChartNode | null
   departments?: DepartmentBlock[]
+  standaloneRoots?: OrgChartNode[]
   departmentName?: string
   framed?: boolean
   onEmployeeClick?: (employeeId: number) => void
@@ -137,15 +138,35 @@ function DepartmentBranch({
   )
 }
 
+function StandaloneBranch({
+  root,
+  onEmployeeClick,
+}: {
+  root: OrgChartNode
+  onEmployeeClick?: (employeeId: number) => void
+}) {
+  return (
+    <div className="org-dept-branch org-dept-branch-standalone">
+      <div className="org-chart-scroll">
+        <OrgTreeRoots roots={[root]} onEmployeeClick={onEmployeeClick} />
+      </div>
+    </div>
+  )
+}
+
 function CompanyPyramid({
   organizationHead,
   departments,
+  standaloneRoots = [],
   onEmployeeClick,
 }: {
   organizationHead?: OrgChartNode | null
   departments: DepartmentBlock[]
+  standaloneRoots?: OrgChartNode[]
   onEmployeeClick?: (employeeId: number) => void
 }) {
+  const hasBranches = departments.length > 0 || standaloneRoots.length > 0
+
   return (
     <div className="org-company-pyramid">
       {organizationHead ? (
@@ -155,10 +176,13 @@ function CompanyPyramid({
           </ul>
         </div>
       ) : null}
-      {departments.length > 0 ? (
+      {hasBranches ? (
         <div className="org-company-pyramid-branches">
           {departments.map((block) => (
             <DepartmentBranch key={block.departmentId} block={block} onEmployeeClick={onEmployeeClick} />
+          ))}
+          {standaloneRoots.map((root) => (
+            <StandaloneBranch key={root.person.employeeId} root={root} onEmployeeClick={onEmployeeClick} />
           ))}
         </div>
       ) : null}
@@ -170,6 +194,7 @@ export default function OrgChartView({
   roots = [],
   organizationHead,
   departments,
+  standaloneRoots: standaloneRootsProp,
   departmentName,
   framed,
   onEmployeeClick,
@@ -178,7 +203,8 @@ export default function OrgChartView({
   const showFrame = framed ?? Boolean(departmentName)
 
   if (isCompanyView) {
-    if (!organizationHead && departments.length === 0) {
+    const standaloneRoots = standaloneRootsProp ?? []
+    if (!organizationHead && departments.length === 0 && standaloneRoots.length === 0) {
       return <p className="org-empty">Нет данных для построения пирамиды.</p>
     }
 
@@ -188,6 +214,7 @@ export default function OrgChartView({
           <CompanyPyramid
             organizationHead={organizationHead}
             departments={departments}
+            standaloneRoots={standaloneRoots}
             onEmployeeClick={onEmployeeClick}
           />
         </div>

@@ -657,6 +657,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
               <OrgChartView
                 organizationHead={orgChart?.organizationHead}
                 departments={orgChart?.departments ?? []}
+                standaloneRoots={orgChart?.standaloneRoots ?? []}
                 onEmployeeClick={openEmployeeCard}
               />
             ) : (
