@@ -25,6 +25,10 @@ class DepartmentBlockOut(BaseModel):
     departmentName: str
     headEmployeeId: int | None = None
     roots: list[OrgChartNodeOut] = Field(default_factory=list)
+    nestedDepartments: list["DepartmentBlockOut"] = Field(default_factory=list)
+
+
+DepartmentBlockOut.model_rebuild()
 
 
 class OrgChartOut(BaseModel):

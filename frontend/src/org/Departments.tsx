@@ -8,6 +8,7 @@ import EmployeeCardModal from './EmployeeCardModal'
 import OrgPhoto from './OrgPhoto'
 import type {
   Department,
+  DepartmentBlock,
   DepartmentMember,
   Employee,
   EmployeeDetail,
@@ -31,6 +32,36 @@ function formatExpertises(expertises: EmployeeExpertise[] | undefined): string {
   return expertises
     .map((item) => (item.level ? `${item.directionName} (${item.level})` : item.directionName))
     .join(', ')
+}
+
+function DepartmentBranch({
+  block,
+  onEmployeeClick,
+}: {
+  block: DepartmentBlock
+  onEmployeeClick: (employeeId: number) => void
+}) {
+  return (
+    <div className="org-dept-branch">
+      <OrgChartView
+        roots={block.roots}
+        departmentName={block.departmentName}
+        framed
+        onEmployeeClick={onEmployeeClick}
+      />
+      {block.nestedDepartments && block.nestedDepartments.length > 0 ? (
+        <div className="org-dept-nested-branches">
+          {block.nestedDepartments.map((nested) => (
+            <DepartmentBranch
+              key={nested.departmentId}
+              block={nested}
+              onEmployeeClick={onEmployeeClick}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 function PersonCell({
@@ -637,10 +668,30 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
         <section className="org-panel org-panel-pyramid">
           <OrgChartCanvas>
             {selectedDepartmentId === null ? (
-              <OrgChartView
-                roots={orgChart?.departmentTree ?? []}
-                onEmployeeClick={openEmployeeCard}
-              />
+              <div className="org-company-pyramid">
+                {orgChart?.organizationHead ? (
+                  <div className="org-company-pyramid-head">
+                    <OrgChartView
+                      organizationHead={orgChart.organizationHead}
+                      roots={[]}
+                      onEmployeeClick={openEmployeeCard}
+                    />
+                  </div>
+                ) : null}
+                {orgChart?.departments && orgChart.departments.length > 0 ? (
+                  <div className="org-company-pyramid-branches">
+                    {orgChart.departments.map((block) => (
+                      <DepartmentBranch
+                        key={block.departmentId}
+                        block={block}
+                        onEmployeeClick={openEmployeeCard}
+                      />
+                    ))}
+                  </div>
+                ) : !orgChart?.organizationHead ? (
+                  <OrgChartView roots={orgChart?.departmentTree ?? []} onEmployeeClick={openEmployeeCard} />
+                ) : null}
+              </div>
             ) : (
               <OrgChartView
                 roots={orgChart?.departmentTree ?? []}

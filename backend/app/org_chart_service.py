@@ -123,54 +123,24 @@ def _build_node(
     )
 
 
-def build_employee_hierarchy_tree(employees: list[Employee]) -> list[OrgChartNode]:
-    """Общая пирамида компании: связи по employee.manager_id (как в карточке сотрудника)."""
-    active = [e for e in employees if e.is_active]
-    by_id = {e.id: e for e in active}
-    org_head = next((e for e in active if e.is_organization_head), None)
-
-    children_by_manager: dict[int, list[Employee]] = {}
-    unattached: list[Employee] = []
-
-    for emp in active:
-        if org_head is not None and emp.id == org_head.id:
-            continue
-        manager_id = emp.manager_id
-        if manager_id is not None and manager_id in by_id:
-            children_by_manager.setdefault(manager_id, []).append(emp)
-        else:
-            unattached.append(emp)
-
-    def emp_to_node(emp: Employee, *, is_head: bool = False) -> OrgChartNode:
-        children = [
-            emp_to_node(child)
-            for child in sorted(
-                children_by_manager.get(emp.id, []),
-                key=lambda e: e.full_name.casefold(),
-            )
-        ]
-        return OrgChartNode(
-            person=OrgChartPerson(
-                employeeId=emp.id,
-                fullName=emp.full_name,
-                position=emp.position or (emp.job_position.name if emp.job_position else None),
-                email=emp.email,
-                photoUrl=photo_public_url(emp.photo_path),
-                isHead=is_head or emp.is_organization_head,
-            ),
-            children=children,
-        )
-
-    if org_head is not None:
-        root = emp_to_node(org_head, is_head=True)
-        for emp in sorted(unattached, key=lambda e: e.full_name.casefold()):
-            root.children.append(emp_to_node(emp))
-        root.children.sort(key=lambda n: n.person.fullName.casefold())
-        return [root]
-
-    roots = [emp_to_node(emp) for emp in sorted(unattached, key=lambda e: e.full_name.casefold())]
-    roots.sort(key=lambda n: n.person.fullName.casefold())
-    return roots
+def _department_parent_id(
+    dept: Department,
+    dept_by_head_employee: dict[int, Department],
+    org_head_id: int | None,
+    employees_by_id: dict[int, Employee],
+) -> int | None:
+    """Отдел вкладывается в ветку отдела, если его руководитель — head другого отдела."""
+    if dept.head_employee_id is None:
+        return None
+    head = employees_by_id.get(dept.head_employee_id)
+    if head is None or head.manager_id is None:
+        return None
+    if org_head_id is not None and head.manager_id == org_head_id:
+        return None
+    parent = dept_by_head_employee.get(head.manager_id)
+    if parent is not None and parent.id != dept.id:
+        return parent.id
+    return None
 
 
 def build_department_tree(
@@ -233,22 +203,37 @@ def build_company_chart(
     organization_head: Employee | None,
     departments: list[Department],
     department_trees: dict[int, list[OrgChartNode]],
+    employees_by_id: dict[int, Employee],
 ) -> dict[str, Any]:
-    director_node = node_for_employee(organization_head, is_head=True) if organization_head else None
-    dept_blocks = []
+    org_head_id = organization_head.id if organization_head else None
+    dept_by_head: dict[int, Department] = {}
     for dept in departments:
-        roots = department_trees.get(dept.id, [])
-        dept_blocks.append(
-            {
-                "departmentId": dept.id,
-                "departmentName": dept.name,
-                "headEmployeeId": dept.head_employee_id,
-                "roots": [_node_to_dict(n) for n in roots],
-            }
-        )
+        if dept.head_employee_id is not None:
+            dept_by_head[dept.head_employee_id] = dept
+
+    parent_of: dict[int, int | None] = {
+        dept.id: _department_parent_id(dept, dept_by_head, org_head_id, employees_by_id)
+        for dept in departments
+    }
+
+    def build_block(dept: Department) -> dict[str, Any]:
+        nested = [d for d in departments if parent_of.get(d.id) == dept.id]
+        nested.sort(key=lambda d: (d.sort_order, d.name.casefold()))
+        return {
+            "departmentId": dept.id,
+            "departmentName": dept.name,
+            "headEmployeeId": dept.head_employee_id,
+            "roots": [_node_to_dict(n) for n in department_trees.get(dept.id, [])],
+            "nestedDepartments": [build_block(d) for d in nested],
+        }
+
+    top_level = [d for d in departments if parent_of.get(d.id) is None]
+    top_level.sort(key=lambda d: (d.sort_order, d.name.casefold()))
+
+    director_node = node_for_employee(organization_head, is_head=True) if organization_head else None
     return {
         "organizationHead": _node_to_dict(director_node) if director_node else None,
-        "departments": dept_blocks,
+        "departments": [build_block(d) for d in top_level],
     }
 
 

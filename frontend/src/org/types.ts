@@ -19,6 +19,7 @@ export type DepartmentBlock = {
   departmentName: string
   headEmployeeId?: number | null
   roots: OrgChartNode[]
+  nestedDepartments?: DepartmentBlock[]
 }
 
 export type OrgChartData = {

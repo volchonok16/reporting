@@ -6,7 +6,7 @@ from fastapi import HTTPException, UploadFile
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, joinedload
 
-from app.org_chart_service import build_department_tree, build_employee_hierarchy_tree, tree_to_dict
+from app.org_chart_service import build_company_chart, build_department_tree, tree_to_dict
 from app.org_models import (
     ORG_USER_ROLE_ADMIN,
     ORG_USER_ROLE_USER,
@@ -639,6 +639,19 @@ def get_org_chart(db: Session, department_id: int | None = None) -> OrgChartOut:
         tree = build_department_tree(dept, members)
         return OrgChartOut(departmentTree=tree_to_dict(tree))  # type: ignore[arg-type]
 
+    org_head = db.scalar(
+        select(Employee)
+        .options(joinedload(Employee.job_position))
+        .where(Employee.is_organization_head.is_(True), Employee.is_active.is_(True))
+    )
+    departments = list(
+        db.scalars(
+            select(Department)
+            .options(joinedload(Department.head))
+            .where(Department.is_active.is_(True))
+            .order_by(Department.sort_order, Department.name)
+        ).unique().all()
+    )
     employees = list(
         db.scalars(
             select(Employee)
@@ -646,8 +659,21 @@ def get_org_chart(db: Session, department_id: int | None = None) -> OrgChartOut:
             .where(Employee.is_active.is_(True))
         ).unique().all()
     )
-    tree = build_employee_hierarchy_tree(employees)
-    return OrgChartOut(departmentTree=tree_to_dict(tree))  # type: ignore[arg-type]
+    employees_by_id = {emp.id: emp for emp in employees}
+    department_trees: dict[int, list] = {}
+    for dept in departments:
+        members = _load_members_for_department(db, dept.id)
+        department_trees[dept.id] = build_department_tree(dept, members)
+    chart = build_company_chart(
+        organization_head=org_head,
+        departments=departments,
+        department_trees=department_trees,
+        employees_by_id=employees_by_id,
+    )
+    return OrgChartOut(
+        organizationHead=chart.get("organizationHead"),
+        departments=chart.get("departments", []),
+    )  # type: ignore[arg-type]
 
 
 def find_org_user_by_email(db: Session, email: str) -> OrgUser | None:

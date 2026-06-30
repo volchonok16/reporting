@@ -733,6 +733,41 @@
   position: relative;
 }
 
+.org-dept-nested-branches {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 24px;
+  position: relative;
+  width: 100%;
+}
+
+.org-dept-nested-branches::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: 24px;
+  background: var(--org-chart-line, var(--border-strong));
+  border-radius: 2px;
+}
+
+.org-dept-nested-branches > .org-dept-branch {
+  padding-top: 24px;
+}
+
+.org-dept-nested-branches > .org-dept-branch::before,
+.org-dept-nested-branches > .org-dept-branch::after {
+  display: none;
+}
+
+.org-dept-nested-branches > .org-dept-branch > .org-chart-scroll::before {
+  top: -24px;
+  height: 24px;
+}
+
 .org-dept-frame {
   border: 2px solid var(--org-chart-line-soft, var(--border));
   border-radius: 16px;
