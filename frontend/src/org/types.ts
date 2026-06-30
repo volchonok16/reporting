@@ -46,6 +46,7 @@ export type OrgChartLayoutEdge = {
   id: string
   fromNodeId: string
   toNodeId: string
+  points?: Array<{ x: number; y: number }>
 }
 
 export type OrgChartLayoutData = {

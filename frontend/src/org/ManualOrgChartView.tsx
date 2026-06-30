@@ -12,6 +12,7 @@ import type {
   DepartmentBlock,
   OrgChartLayout,
   OrgChartLayoutData,
+  OrgChartLayoutEdge,
   OrgChartLayoutNode,
   OrgChartNode,
 } from './types'
@@ -54,6 +55,10 @@ const DEPARTMENT_EMPLOYEES_PER_ROW = 3
 const NODE_GAP_X = 36
 const NODE_GAP_Y = 56
 const NODES_PER_ROW = 3
+const MIN_DEPARTMENT_WIDTH = DEPARTMENT_PADDING * 2 + EMPLOYEE_NODE_WIDTH
+const MIN_DEPARTMENT_HEIGHT = DEPARTMENT_TITLE_HEIGHT + DEPARTMENT_PADDING * 2 + EMPLOYEE_NODE_HEIGHT
+
+type Point = { x: number; y: number }
 
 function employeeNodeId(employeeId: number): string {
   return `employee:${employeeId}`
@@ -368,11 +373,18 @@ function DepartmentCard({
   )
 }
 
-function edgePath(from: OrgChartLayoutNode, to: OrgChartLayoutNode): string {
+function edgePath(edge: OrgChartLayoutEdge, from: OrgChartLayoutNode, to: OrgChartLayoutNode): string {
   const startX = from.x + from.width / 2
   const startY = from.y + from.height
   const endX = to.x + to.width / 2
   const endY = to.y
+  if (edge.points?.length) {
+    return [
+      `M ${startX} ${startY}`,
+      ...edge.points.map((point) => `L ${point.x} ${point.y}`),
+      `L ${endX} ${endY}`,
+    ].join(' ')
+  }
   const middleY = startY + Math.max(24, (endY - startY) / 2)
   return `M ${startX} ${startY} V ${middleY} H ${endX} V ${endY}`
 }
@@ -423,6 +435,17 @@ export default function ManualOrgChartView({
   const canvasWidth = Math.max(1200, ...layout.nodes.map((node) => node.x + node.width + 80), 0)
   const canvasHeight = Math.max(600, ...layout.nodes.map((node) => node.y + node.height + 80), 0)
 
+  const eventToCanvasPoint = useCallback((event: { clientX: number; clientY: number }): Point | null => {
+    const root = canvasRef.current
+    const rect = root?.getBoundingClientRect()
+    if (!root || !rect) return null
+    const scale = rect.width / root.offsetWidth
+    return {
+      x: (event.clientX - rect.left) / scale,
+      y: (event.clientY - rect.top) / scale,
+    }
+  }, [])
+
   const moveNode = useCallback((nodeId: string, nextX: number, nextY: number) => {
     setLayout((current) => {
       const currentNode = current.nodes.find((node) => node.id === nodeId)
@@ -446,6 +469,31 @@ export default function ManualOrgChartView({
           }
           if (currentNode.kind === 'department' && node.parentNodeId === nodeId) {
             return { ...node, x: node.x + dx, y: node.y + dy }
+          }
+          return node
+        }),
+      }
+    })
+  }, [])
+
+  const resizeDepartmentNode = useCallback((nodeId: string, nextWidth: number, nextHeight: number) => {
+    setLayout((current) => {
+      const departmentNode = current.nodes.find((node) => node.id === nodeId && node.kind === 'department')
+      if (!departmentNode) return current
+      const width = Math.max(MIN_DEPARTMENT_WIDTH, nextWidth)
+      const height = Math.max(MIN_DEPARTMENT_HEIGHT, nextHeight)
+      return {
+        ...current,
+        nodes: current.nodes.map((node) => {
+          if (node.id === nodeId) {
+            return { ...node, width, height }
+          }
+          if (node.parentNodeId === nodeId) {
+            return {
+              ...node,
+              x: clamp(node.x, departmentNode.x + DEPARTMENT_PADDING, departmentNode.x + width - node.width - DEPARTMENT_PADDING),
+              y: clamp(node.y, departmentNode.y + DEPARTMENT_TITLE_HEIGHT, departmentNode.y + height - node.height - DEPARTMENT_PADDING),
+            }
           }
           return node
         }),
@@ -479,6 +527,37 @@ export default function ManualOrgChartView({
         node.id,
         nextX,
         nextY,
+      )
+    }
+    const onUp = () => {
+      element.releasePointerCapture(event.pointerId)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
+  const handleResizePointerDown = (event: ReactPointerEvent<HTMLButtonElement>, node: OrgChartLayoutNode) => {
+    event.stopPropagation()
+    if (!editing || node.kind !== 'department') return
+    event.preventDefault()
+    const element = event.currentTarget
+    element.setPointerCapture(event.pointerId)
+    const root = canvasRef.current
+    const rect = root?.getBoundingClientRect()
+    const scale = root && rect ? rect.width / root.offsetWidth : 1
+    const startX = event.clientX
+    const startY = event.clientY
+    const initialWidth = node.width
+    const initialHeight = node.height
+
+    const onMove = (moveEvent: PointerEvent) => {
+      dragMovedRef.current = true
+      resizeDepartmentNode(
+        node.id,
+        initialWidth + (moveEvent.clientX - startX) / scale,
+        initialHeight + (moveEvent.clientY - startY) / scale,
       )
     }
     const onUp = () => {
@@ -544,6 +623,64 @@ export default function ManualOrgChartView({
     setSelectedEdgeId(null)
   }
 
+  const addPointToSelectedEdge = (point: Point) => {
+    if (!selectedEdgeId) return
+    setLayout((current) => ({
+      ...current,
+      edges: current.edges.map((edge) =>
+        edge.id === selectedEdgeId
+          ? { ...edge, points: [...(edge.points ?? []), point] }
+          : edge,
+      ),
+    }))
+  }
+
+  const moveEdgePoint = useCallback((edgeIdValue: string, pointIndex: number, point: Point) => {
+    setLayout((current) => ({
+      ...current,
+      edges: current.edges.map((edge) => {
+        if (edge.id !== edgeIdValue) return edge
+        const points = [...(edge.points ?? [])]
+        points[pointIndex] = point
+        return { ...edge, points }
+      }),
+    }))
+  }, [])
+
+  const handleEdgePointPointerDown = (
+    event: ReactPointerEvent<SVGCircleElement>,
+    edgeIdValue: string,
+    pointIndex: number,
+  ) => {
+    event.stopPropagation()
+    if (!editing) return
+    event.preventDefault()
+    const element = event.currentTarget
+    element.setPointerCapture(event.pointerId)
+    const onMove = (moveEvent: PointerEvent) => {
+      const point = eventToCanvasPoint(moveEvent)
+      if (point) moveEdgePoint(edgeIdValue, pointIndex, point)
+    }
+    const onUp = () => {
+      element.releasePointerCapture(event.pointerId)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
+  const deleteLastPointFromSelectedEdge = () => {
+    if (!selectedEdgeId) return
+    setLayout((current) => ({
+      ...current,
+      edges: current.edges.map((edge) => {
+        if (edge.id !== selectedEdgeId) return edge
+        return { ...edge, points: (edge.points ?? []).slice(0, -1) }
+      }),
+    }))
+  }
+
   return (
     <div className="org-manual-chart-wrap">
       {canManage ? (
@@ -558,6 +695,9 @@ export default function ManualOrgChartView({
               </button>
               <button type="button" className="btn-ghost" onClick={deleteSelectedEdge} disabled={!selectedEdgeId}>
                 Удалить линию
+              </button>
+              <button type="button" className="btn-ghost" onClick={deleteLastPointFromSelectedEdge} disabled={!selectedEdgeId}>
+                Убрать точку
               </button>
               <button type="button" className="btn-ghost" onClick={resetLayout}>
                 Сбросить раскладку
@@ -580,6 +720,12 @@ export default function ManualOrgChartView({
           width={canvasWidth}
           height={canvasHeight}
           onPointerDown={(event) => editing && event.stopPropagation()}
+          onClick={(event) => {
+            if (!editing || !selectedEdgeId) return
+            event.stopPropagation()
+            const point = eventToCanvasPoint(event)
+            if (point) addPointToSelectedEdge(point)
+          }}
         >
           {layout.edges.map((edge) => {
             const from = nodeById.get(edge.fromNodeId)
@@ -588,7 +734,7 @@ export default function ManualOrgChartView({
             return (
               <path
                 key={edge.id}
-                d={edgePath(from, to)}
+                d={edgePath(edge, from, to)}
                 className={`org-manual-line${selectedEdgeId === edge.id ? ' org-manual-line-selected' : ''}`}
                 onClick={(event) => {
                   if (!editing) return
@@ -598,6 +744,18 @@ export default function ManualOrgChartView({
               />
             )
           })}
+          {editing && selectedEdgeId ? layout.edges
+            .filter((edge) => edge.id === selectedEdgeId)
+            .flatMap((edge) => (edge.points ?? []).map((point, pointIndex) => (
+              <circle
+                key={`${edge.id}:point:${pointIndex}`}
+                className="org-manual-line-point"
+                cx={point.x}
+                cy={point.y}
+                r={7}
+                onPointerDown={(event) => handleEdgePointPointerDown(event, edge.id, pointIndex)}
+              />
+            ))) : null}
         </svg>
         {layout.nodes.map((node) => {
           const item = itemById.get(node.id)
@@ -612,7 +770,18 @@ export default function ManualOrgChartView({
               onClick={(event) => handleNodeClick(event, node.id)}
             >
               {item.kind === 'department' ? (
-                <DepartmentCard block={item.block} onDepartmentClick={editing ? undefined : onDepartmentClick} />
+                <>
+                  <DepartmentCard block={item.block} onDepartmentClick={editing ? undefined : onDepartmentClick} />
+                  {editing ? (
+                    <button
+                      type="button"
+                      className="org-manual-resize-handle"
+                      aria-label="Изменить размер отдела"
+                      onPointerDown={(event) => handleResizePointerDown(event, node)}
+                      onClick={(event) => event.stopPropagation()}
+                    />
+                  ) : null}
+                </>
               ) : (
                 <PersonCard node={item.node} onEmployeeClick={editing ? undefined : onEmployeeClick} />
               )}

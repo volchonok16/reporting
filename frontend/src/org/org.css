@@ -833,6 +833,14 @@
   stroke-width: 5;
 }
 
+.org-manual-line-point {
+  fill: var(--accent-blue);
+  stroke: var(--surface-1);
+  stroke-width: 2;
+  cursor: move;
+  pointer-events: all;
+}
+
 .org-manual-node {
   position: absolute;
   z-index: 1;
@@ -878,6 +886,21 @@
   flex-direction: column;
   align-items: center;
   gap: 14px;
+}
+
+.org-manual-resize-handle {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--org-chart-line, var(--border-strong));
+  border-radius: 5px;
+  background:
+    linear-gradient(135deg, transparent 0 45%, var(--org-chart-line, var(--border-strong)) 46% 54%, transparent 55%),
+    color-mix(in srgb, var(--surface-1) 82%, transparent);
+  cursor: nwse-resize;
+  z-index: 5;
 }
 
 .org-manual-dept-title {
