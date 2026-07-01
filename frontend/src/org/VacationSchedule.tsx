@@ -32,22 +32,46 @@ type EmployeeGroup = {
   employees: VacationEmployee[]
 }
 
-function sortLeadersFirst(employees: VacationEmployee[]): VacationEmployee[] {
-  const leaderIds = new Set<number>()
+function buildHierarchyRank(employees: VacationEmployee[]): Map<number, number> {
+  const reports = new Map<number, VacationEmployee[]>()
   for (const employee of employees) {
-    if (employee.managerId != null) {
-      leaderIds.add(employee.managerId)
+    if (employee.managerId == null) continue
+    if (!reports.has(employee.managerId)) {
+      reports.set(employee.managerId, [])
+    }
+    reports.get(employee.managerId)?.push(employee)
+  }
+
+  for (const children of reports.values()) {
+    children.sort((a, b) => a.fullName.localeCompare(b.fullName, 'ru'))
+  }
+
+  const roots = [...employees]
+    .filter((employee) => employee.managerId == null || !employees.some((other) => other.id === employee.managerId))
+    .sort((a, b) => a.fullName.localeCompare(b.fullName, 'ru'))
+
+  const rank = new Map<number, number>()
+  let index = 0
+  const visit = (employee: VacationEmployee) => {
+    if (rank.has(employee.id)) return
+    rank.set(employee.id, index)
+    index += 1
+    for (const child of reports.get(employee.id) ?? []) {
+      visit(child)
     }
   }
-  return [...employees].sort((a, b) => {
-    const aLeader = leaderIds.has(a.id)
-    const bLeader = leaderIds.has(b.id)
-    if (aLeader !== bLeader) return aLeader ? -1 : 1
-    return a.fullName.localeCompare(b.fullName, 'ru')
-  })
+
+  for (const root of roots) {
+    visit(root)
+  }
+  for (const employee of employees) {
+    visit(employee)
+  }
+  return rank
 }
 
 function groupEmployeesByDepartment(employees: VacationEmployee[]): EmployeeGroup[] {
+  const rank = buildHierarchyRank(employees)
   const namedGroups = new Map<string, VacationEmployee[]>()
   const noDepartment: VacationEmployee[] = []
   for (const employee of employees) {
@@ -64,15 +88,29 @@ function groupEmployeesByDepartment(employees: VacationEmployee[]): EmployeeGrou
   const groups = Array.from(namedGroups.entries()).map(([label, groupEmployees]) => ({
     key: label,
     label,
-    employees: sortLeadersFirst(groupEmployees),
+    employees: [...groupEmployees].sort((a, b) => {
+      const rankDiff = (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+      if (rankDiff !== 0) return rankDiff
+      return a.fullName.localeCompare(b.fullName, 'ru')
+    }),
   }))
   if (noDepartment.length > 0) {
     groups.unshift({
       key: '__no_department__',
       label: 'Без отдела',
-      employees: sortLeadersFirst(noDepartment),
+      employees: [...noDepartment].sort((a, b) => {
+        const rankDiff = (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+        if (rankDiff !== 0) return rankDiff
+        return a.fullName.localeCompare(b.fullName, 'ru')
+      }),
     })
   }
+  groups.sort((a, b) => {
+    const aRank = Math.min(...a.employees.map((employee) => rank.get(employee.id) ?? Number.MAX_SAFE_INTEGER))
+    const bRank = Math.min(...b.employees.map((employee) => rank.get(employee.id) ?? Number.MAX_SAFE_INTEGER))
+    if (aRank !== bRank) return aRank - bRank
+    return a.label.localeCompare(b.label, 'ru')
+  })
   return groups
 }
 
