@@ -248,7 +248,7 @@ export default function OfficePresence() {
         <div className="org-vacation-toolbar-left">
           <h2>Сотрудники в офисе</h2>
           <div className="org-vacation-year-picker" role="group" aria-label="Год">
-            {[currentYear - 1, currentYear, currentYear + 1].map((y) => (
+            {[currentYear, currentYear + 1].map((y) => (
               <button
                 key={y}
                 type="button"

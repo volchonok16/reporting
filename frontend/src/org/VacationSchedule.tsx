@@ -263,7 +263,7 @@ export default function VacationSchedule({
         <div className="org-vacation-toolbar-left">
           <h2>График отпусков</h2>
           <div className="org-vacation-year-picker" role="group" aria-label="Год">
-            {[currentYear - 1, currentYear, currentYear + 1].map((y) => (
+            {[currentYear, currentYear + 1].map((y) => (
               <button
                 key={y}
                 type="button"
