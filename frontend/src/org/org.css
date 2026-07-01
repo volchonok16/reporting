@@ -2138,7 +2138,7 @@
   --schedule-head-row-2: 20px;
   --schedule-head-row-3: 28px;
   --vac-cell-size: 26px;
-  --vac-name-col-width: 108px;
+  --vac-name-col-width: 88px;
   box-shadow: var(--shadow-sm);
   border-radius: 12px;
 }
@@ -2164,23 +2164,17 @@
   color: var(--text-muted);
 }
 
-.org-workspace-chart .org-schedule-names-grid .org-vacation-name {
-  width: 108px;
-  max-width: 108px;
-  min-width: 108px;
-  padding: 6px 8px !important;
-}
-
 .org-workspace-panel .org-workspace-place-name {
   font-size: 12px;
   color: var(--text-secondary);
   font-weight: 600;
-  background: transparent;
+  background: var(--surface-1);
+  padding: 6px 8px !important;
 }
 
 .org-workspace-panel tbody tr:hover .org-workspace-place-name {
   color: var(--text-primary);
-  background: transparent;
+  background: var(--surface-1);
 }
 
 .org-workspace-chart .org-vacation-month {

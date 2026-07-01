@@ -207,19 +207,20 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   useEffect(() => {
     if (!scrollRef.current || !data || year !== currentYear) return
     const monthStartKey = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`
+    const monthStartIndex = yearDays.findIndex((day) => toDayKey(day) === monthStartKey)
+    if (monthStartIndex < 0) return
     const monthStartCell = scrollRef.current.querySelector<HTMLElement>(
       `th[data-day-key="${monthStartKey}"]`,
     )
     if (!monthStartCell) return
     const alignToCurrentMonth = () => {
-      monthStartCell.scrollIntoView({ block: 'nearest', inline: 'start' })
-      // Stabilize position after layout/scrollbar recalculation.
-      scrollRef.current!.scrollLeft = Math.max(0, monthStartCell.offsetLeft)
+      const dayWidth = monthStartCell.offsetWidth || 26
+      scrollRef.current!.scrollLeft = Math.max(0, monthStartIndex * dayWidth)
     }
     alignToCurrentMonth()
     const rafId = window.requestAnimationFrame(alignToCurrentMonth)
     return () => window.cancelAnimationFrame(rafId)
-  }, [year, data, currentYear, currentMonth])
+  }, [year, data, currentYear, currentMonth, yearDays])
 
   const cancelEdit = () => {
     setDraftChanges(new Map())
@@ -520,157 +521,147 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
       {data ? (
         <div className={`org-vacation-chart-wrap${saving ? ' org-workspace-saving' : ''}`}>
           {saving ? <p className="org-workspace-saving-label">Сохранение…</p> : null}
-          <div className="org-schedule-chart org-workspace-chart">
-            <div className="org-schedule-names">
-              <table className="org-vacation-grid org-schedule-names-grid org-workspace-names-grid">
-                <thead>
-                  <tr>
-                    <th className="org-vacation-names-head org-workspace-names-head" rowSpan={3}>
-                      Место
+          <div
+            className={`org-vacation-scroll org-workspace-scroll org-workspace-chart${
+              isDragScrolling ? ' org-workspace-scroll-dragging' : ''
+            }`}
+            ref={scrollRef}
+            aria-label="Календарь брони — прокрутка влево и вправо"
+            onPointerDown={handleScrollPointerDown}
+            onPointerMove={handleScrollPointerMove}
+            onPointerUp={handleScrollPointerUp}
+            onPointerCancel={handleScrollPointerCancel}
+          >
+            <table className="org-vacation-grid org-workspace-grid">
+              <thead>
+                <tr>
+                  <th
+                    className="org-vacation-sticky-col org-vacation-names-head org-workspace-names-head"
+                    rowSpan={3}
+                  >
+                    Место
+                  </th>
+                  {monthGroups.map((group, index) => (
+                    <th
+                      key={`${group.label}-${index}`}
+                      colSpan={group.length}
+                      className="org-vacation-month"
+                    >
+                      {group.label}
                     </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.places.map((place) => (
-                    <tr key={place.id}>
-                      <td className="org-vacation-name org-workspace-place-name" title={place.name}>
-                        <span className="org-vacation-name-text">{place.name}</span>
-                      </td>
-                    </tr>
                   ))}
-                </tbody>
-              </table>
-            </div>
-            <div
-              className={`org-schedule-dates org-vacation-scroll org-workspace-scroll${
-                isDragScrolling ? ' org-workspace-scroll-dragging' : ''
-              }`}
-              ref={scrollRef}
-              aria-label="Календарь брони — прокрутка влево и вправо"
-              onPointerDown={handleScrollPointerDown}
-              onPointerMove={handleScrollPointerMove}
-              onPointerUp={handleScrollPointerUp}
-              onPointerCancel={handleScrollPointerCancel}
-            >
-              <table className="org-vacation-grid org-schedule-dates-grid org-workspace-grid">
-                <thead>
-                  <tr>
-                    {monthGroups.map((group, index) => (
+                </tr>
+                <tr>
+                  {yearDays.map((day) => {
+                    const key = toDayKey(day)
+                    const dayOff = isDayOff(day, holidayKeys)
+                    return (
                       <th
-                        key={`${group.label}-${index}`}
-                        colSpan={group.length}
-                        className="org-vacation-month"
+                        key={`wd-${key}`}
+                        className={[
+                          'org-vacation-day-head',
+                          'org-workspace-weekday-head',
+                          dayOff ? 'org-workspace-weekend-head' : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
                       >
-                        {group.label}
+                        {WEEKDAY_NAMES[day.getDay()]}
                       </th>
-                    ))}
-                  </tr>
-                  <tr>
+                    )
+                  })}
+                </tr>
+                <tr>
+                  {yearDays.map((day) => {
+                    const key = toDayKey(day)
+                    const dayOff = isDayOff(day, holidayKeys)
+                    return (
+                      <th
+                        key={key}
+                        data-day-key={key}
+                        className={[
+                          'org-vacation-day-head',
+                          'org-workspace-day-head',
+                          dayOff ? 'org-workspace-weekend-head' : '',
+                          key === todayKey ? 'org-workspace-today-head' : '',
+                          key === selectedDayKey ? 'org-vacation-day-selected' : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                        title={key}
+                        onClick={() => setSelectedDayKey(key)}
+                      >
+                        {day.getDate()}
+                      </th>
+                    )
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {data.places.map((place) => (
+                  <tr key={place.id}>
+                    <td
+                      className="org-vacation-sticky-col org-vacation-name org-workspace-place-name"
+                      title={place.name}
+                    >
+                      <span className="org-vacation-name-text">{place.name}</span>
+                    </td>
                     {yearDays.map((day) => {
-                      const key = toDayKey(day)
+                      const dayKey = toDayKey(day)
+                      const serverBooking = serverBookingMap.get(cellKey(place.id, dayKey))
+                      const booking = getEffectiveBooking(place.id, dayKey)
+                      const pending = isDraftCell(cellKey(place.id, dayKey), draftChanges, serverBooking)
                       const dayOff = isDayOff(day, holidayKeys)
-                      return (
-                        <th
-                          key={`wd-${key}`}
-                          className={[
-                            'org-vacation-day-head',
-                            'org-workspace-weekday-head',
-                            dayOff ? 'org-workspace-weekend-head' : '',
-                          ]
-                            .filter(Boolean)
-                            .join(' ')}
-                        >
-                          {WEEKDAY_NAMES[day.getDay()]}
-                        </th>
-                      )
-                    })}
-                  </tr>
-                  <tr>
-                    {yearDays.map((day) => {
-                      const key = toDayKey(day)
-                      const dayOff = isDayOff(day, holidayKeys)
-                      return (
-                        <th
-                          key={key}
-                          data-day-key={key}
-                          className={[
-                            'org-vacation-day-head',
-                            'org-workspace-day-head',
-                            dayOff ? 'org-workspace-weekend-head' : '',
-                            key === todayKey ? 'org-workspace-today-head' : '',
-                            key === selectedDayKey ? 'org-vacation-day-selected' : '',
-                          ]
-                            .filter(Boolean)
-                            .join(' ')}
-                          title={key}
-                          onClick={() => setSelectedDayKey(key)}
-                        >
-                          {day.getDate()}
-                        </th>
-                      )
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.places.map((place) => (
-                    <tr key={place.id}>
-                      {yearDays.map((day) => {
-                        const dayKey = toDayKey(day)
-                        const serverBooking = serverBookingMap.get(cellKey(place.id, dayKey))
-                        const booking = getEffectiveBooking(place.id, dayKey)
-                        const pending = isDraftCell(cellKey(place.id, dayKey), draftChanges, serverBooking)
-                        const dayOff = isDayOff(day, holidayKeys)
-                        const canBook =
-                          editMode &&
-                          !booking &&
-                          (data.isAdmin ? bookForEmployeeId != null : data.actorEmployeeId != null)
-                        const canRelease =
-                          editMode &&
-                          Boolean(
-                            booking &&
-                              (booking.canRelease || booking.isSelf || data.isAdmin),
-                          )
-                        const isEditable = canBook || canRelease
-                        const tip = formatWorkspaceCellTip(
-                          place.name,
-                          day,
-                          booking,
-                          editMode,
-                          canBook,
-                          canRelease,
-                          pending,
+                      const canBook =
+                        editMode &&
+                        !booking &&
+                        (data.isAdmin ? bookForEmployeeId != null : data.actorEmployeeId != null)
+                      const canRelease =
+                        editMode &&
+                        Boolean(
+                          booking &&
+                            (booking.canRelease || booking.isSelf || data.isAdmin),
                         )
+                      const isEditable = canBook || canRelease
+                      const tip = formatWorkspaceCellTip(
+                        place.name,
+                        day,
+                        booking,
+                        editMode,
+                        canBook,
+                        canRelease,
+                        pending,
+                      )
 
-                        return (
-                          <td
-                            key={`${place.id}-${dayKey}`}
-                            className={[
-                              'org-vacation-cell',
-                              'org-workspace-cell',
-                              booking
-                                ? booking.isSelf
-                                  ? 'org-workspace-self'
-                                  : 'org-workspace-busy'
-                                : 'org-workspace-free',
-                              dayOff ? 'org-workspace-weekend' : '',
-                              dayKey === todayKey ? 'org-vacation-today' : '',
-                              dayKey === selectedDayKey ? 'org-vacation-cell-selected-day' : '',
-                              pending ? 'org-workspace-pending' : '',
-                              isEditable ? 'org-vacation-editable' : '',
-                            ]
-                              .filter(Boolean)
-                              .join(' ')}
-                            data-tip={tip}
-                            aria-label={tip}
-                            onClick={() => toggleDraftCell(place.id, dayKey)}
-                          />
-                        )
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      return (
+                        <td
+                          key={`${place.id}-${dayKey}`}
+                          className={[
+                            'org-vacation-cell',
+                            'org-workspace-cell',
+                            booking
+                              ? booking.isSelf
+                                ? 'org-workspace-self'
+                                : 'org-workspace-busy'
+                              : 'org-workspace-free',
+                            dayOff ? 'org-workspace-weekend' : '',
+                            dayKey === todayKey ? 'org-vacation-today' : '',
+                            dayKey === selectedDayKey ? 'org-vacation-cell-selected-day' : '',
+                            pending ? 'org-workspace-pending' : '',
+                            isEditable ? 'org-vacation-editable' : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ')}
+                          data-tip={tip}
+                          aria-label={tip}
+                          onClick={() => toggleDraftCell(place.id, dayKey)}
+                        />
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       ) : null}
