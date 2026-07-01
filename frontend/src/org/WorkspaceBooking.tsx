@@ -102,12 +102,14 @@ function collectSaveOperations(
 }
 
 export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProps) {
-  const currentDate = new Date()
-  const currentYear = currentDate.getFullYear()
+  const today = new Date()
+  const currentYear = today.getFullYear()
+  const currentMonth = today.getMonth()
   const savedOrgUi = loadOrgUiState()
   const [year, setYear] = useState(savedOrgUi.workspaceYear)
   const [data, setData] = useState<WorkspaceBookingScheduleData | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editMode, setEditMode] = useState(false)
@@ -126,7 +128,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   const yearDays = useMemo(() => getYearDays(year), [year])
   const monthGroups = useMemo(() => getMonthGroups(yearDays), [yearDays])
   const holidayKeys = useMemo(() => buildHolidayKeySet(year), [year])
-  const todayKey = toDayKey(currentDate)
+  const todayKey = toDayKey(today)
 
   const serverBookingMap = useMemo(() => {
     const map = new Map<string, WorkspaceBookingCell>()
@@ -151,13 +153,14 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   const canEditAny = Boolean(data?.isAdmin || data?.actorEmployeeId != null)
 
   useEffect(() => {
-    saveOrgUiState({ workspaceYear: year, workspaceMonth: currentDate.getMonth() })
-  }, [year, currentDate])
+    saveOrgUiState({ workspaceYear: year, workspaceMonth: currentMonth })
+  }, [year, currentMonth])
 
   useEffect(() => {
     setDraftChanges(new Map())
     setEditMode(false)
     setError(null)
+    setNotice(null)
   }, [year])
 
   useEffect(() => {
@@ -194,8 +197,8 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   }, [load])
 
   useEffect(() => {
-    if (!scrollRef.current || !data || year !== currentDate.getFullYear()) return
-    const monthStartKey = `${year}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-01`
+    if (!scrollRef.current || !data || year !== currentYear) return
+    const monthStartKey = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`
     const monthStartCell = scrollRef.current.querySelector<HTMLElement>(
       `th[data-day-key="${monthStartKey}"]`,
     )
@@ -208,12 +211,13 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     alignToCurrentMonth()
     const rafId = window.requestAnimationFrame(alignToCurrentMonth)
     return () => window.cancelAnimationFrame(rafId)
-  }, [year, data, currentDate])
+  }, [year, data, currentYear, currentMonth])
 
   const cancelEdit = () => {
     setDraftChanges(new Map())
     setEditMode(false)
     setError(null)
+    setNotice(null)
   }
 
   const toggleDraftCell = (placeId: number, day: string) => {
@@ -375,14 +379,25 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     setSaving(true)
     setError(null)
     try {
+      let lastNotice: string | null = null
       for (const operation of operations) {
-        await putJson('/api/org/workspace/bookings/toggle', operation)
+        const response = await putJson<{
+          action: 'book' | 'release'
+          booked: boolean
+          employeeId?: number
+          notice?: string
+        }>('/api/org/workspace/bookings/toggle', operation)
+        if (response.notice) {
+          lastNotice = response.notice
+        }
       }
       setDraftChanges(new Map())
       setEditMode(false)
+      setNotice(lastNotice)
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка сохранения')
+      setNotice(null)
     } finally {
       setSaving(false)
     }
@@ -482,6 +497,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
       </div>
 
       {error ? <p className="org-error">{error}</p> : null}
+      {notice ? <p className="org-success">{notice}</p> : null}
       {loading && !data ? <p>Загрузка…</p> : null}
 
       {data ? (

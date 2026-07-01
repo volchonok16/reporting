@@ -432,6 +432,7 @@ class WorkspaceBookingToggleOut(BaseModel):
     action: WorkspaceBookingAction
     booked: bool
     employeeId: int | None = None
+    notice: str | None = None
 
 
 class OfficeDayRangeIn(BaseModel):

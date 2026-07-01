@@ -1702,6 +1702,9 @@
   --vac-cell-size: 26px;
   --vac-row-height: 38px;
   --vac-name-col-width: 220px;
+  --org-cell-radius: 6px;
+  --org-cell-ring: color-mix(in srgb, var(--border-strong) 34%, transparent 66%);
+  --org-cell-hover-ring: color-mix(in srgb, var(--brand) 42%, transparent 58%);
   border-collapse: separate;
   border-spacing: 0;
   min-width: max-content;
@@ -1844,15 +1847,20 @@
   width: var(--vac-cell-size);
   min-width: var(--vac-cell-size);
   height: var(--vac-row-height);
-  background: var(--surface-1);
+  background: color-mix(in srgb, var(--surface-1) 88%, var(--surface-2) 12%);
   box-sizing: border-box;
   vertical-align: middle;
   padding: 0 !important;
+  position: relative;
+  transition: background 0.14s ease, box-shadow 0.14s ease;
+  box-shadow: inset 0 0 0 1px var(--org-cell-ring);
+  border-radius: var(--org-cell-radius);
 }
 
 .org-vacation-cell-selected-day {
-  border-left: 1px dashed color-mix(in srgb, var(--brand) 75%, transparent 25%) !important;
-  border-right: 1px dashed color-mix(in srgb, var(--brand) 75%, transparent 25%) !important;
+  box-shadow:
+    inset 0 0 0 1px var(--org-cell-ring),
+    inset 0 0 0 2px color-mix(in srgb, var(--brand) 72%, transparent 28%);
 }
 
 .org-vacation-panel .org-vacation-day-head,
@@ -1891,8 +1899,9 @@
 }
 
 .org-vacation-editable:hover {
-  outline: 1px solid var(--brand);
-  outline-offset: -1px;
+  box-shadow:
+    inset 0 0 0 1px var(--org-cell-ring),
+    inset 0 0 0 2px var(--org-cell-hover-ring);
 }
 
 .org-vacation-preview {
@@ -2109,9 +2118,9 @@
 }
 
 .org-workspace-day-head {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
 }
 
 .org-workspace-weekend-head {
@@ -2169,7 +2178,9 @@
 .org-workspace-grid .org-workspace-cell {
   position: relative;
   cursor: default;
-  transition: background 0.12s ease, box-shadow 0.12s ease;
+  transition: background 0.14s ease, box-shadow 0.14s ease;
+  box-shadow: inset 0 0 0 1px var(--org-cell-ring);
+  border-radius: var(--org-cell-radius);
 }
 
 .org-workspace-grid .org-workspace-cell.org-vacation-editable {
@@ -2177,7 +2188,9 @@
 }
 
 .org-workspace-grid .org-workspace-cell.org-vacation-editable:hover {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-secondary) 35%, transparent 65%);
+  box-shadow:
+    inset 0 0 0 1px var(--org-cell-ring),
+    inset 0 0 0 2px var(--org-cell-hover-ring);
   outline: none;
   transform: none;
 }
@@ -2222,19 +2235,21 @@
 }
 
 .org-workspace-free {
-  background: color-mix(in srgb, var(--surface-1) 86%, var(--surface-2) 14%) !important;
+  background: color-mix(in srgb, var(--surface-1) 88%, var(--surface-2) 12%) !important;
 }
 
 .org-workspace-self {
   background: var(--workspace-self-fill) !important;
   box-shadow:
     inset 0 0 0 1px var(--workspace-self-border),
-    inset 0 0 0 2px color-mix(in srgb, var(--workspace-self-border) 30%, transparent 70%);
+    inset 0 0 0 2px color-mix(in srgb, var(--workspace-self-border) 24%, transparent 76%);
 }
 
 .org-workspace-busy {
   background: var(--workspace-busy-fill) !important;
-  box-shadow: inset 0 0 0 1px var(--workspace-busy-border);
+  box-shadow:
+    inset 0 0 0 1px var(--workspace-busy-border),
+    inset 0 0 0 2px color-mix(in srgb, var(--workspace-busy-border) 16%, transparent 84%);
 }
 
 .org-workspace-grid .org-workspace-cell.org-workspace-weekend.org-workspace-free {
@@ -2373,12 +2388,14 @@
 
 .org-office-presence-panel .org-vacation-cell.org-office-presence-in {
   background: color-mix(in srgb, var(--workspace-self-fill, #e9f5ee) 90%, #2e7d32 10%) !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--workspace-self-border, #c8e6d4) 85%, #1b5e20 15%);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--workspace-self-border, #c8e6d4) 85%, #1b5e20 15%),
+    inset 0 0 0 2px color-mix(in srgb, var(--workspace-self-border, #c8e6d4) 28%, transparent 72%);
 }
 
 .org-office-presence-panel .org-vacation-cell.org-vacation-weekend {
   background: color-mix(in srgb, var(--surface-2) 84%, var(--day-off-tint) 16%) !important;
-  box-shadow: none;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-strong) 30%, transparent 70%);
 }
 
 .org-office-presence-panel .org-vacation-cell.org-office-presence-conflict {
@@ -2441,7 +2458,7 @@
 
 [data-theme='dark'] .org-office-presence-panel .org-vacation-cell.org-vacation-weekend {
   background: color-mix(in srgb, var(--surface-2) 78%, var(--day-off-tint) 22%) !important;
-  box-shadow: none;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-strong) 54%, transparent 46%);
 }
 
 [data-theme='dark'] .org-office-presence-panel {
@@ -2456,7 +2473,9 @@
 
 [data-theme='dark'] .org-office-presence-panel .org-vacation-cell.org-workspace-free {
   background: #1b2233 !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, #64748b 48%, transparent 52%);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, #64748b 48%, transparent 52%),
+    inset 0 0 0 2px color-mix(in srgb, #64748b 16%, transparent 84%);
 }
 
 [data-theme='dark'] .org-office-presence-panel .org-vacation-cell.org-vacation-weekend.org-workspace-free {

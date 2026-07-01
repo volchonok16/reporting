@@ -430,6 +430,30 @@ def toggle_workspace_booking(db: Session, data: WorkspaceBookingToggleIn, meta: 
     if employee is None or not employee.is_active:
         raise HTTPException(status_code=404, detail="Сотрудник не найден.")
 
+    vacation_day = db.scalar(
+        select(EmployeeTimeOffDay).where(
+            EmployeeTimeOffDay.employee_id == target_employee_id,
+            EmployeeTimeOffDay.day == day,
+            EmployeeTimeOffDay.kind == "vacation",
+        )
+    )
+    if vacation_day is not None:
+        employee_day_booking = db.scalar(
+            select(WorkspaceBooking).where(
+                WorkspaceBooking.employee_id == target_employee_id,
+                WorkspaceBooking.day == day,
+            )
+        )
+        if employee_day_booking is not None:
+            db.delete(employee_day_booking)
+            db.commit()
+        return WorkspaceBookingToggleOut(
+            action="book",
+            booked=False,
+            employeeId=target_employee_id,
+            notice="У вас запланирован отпуск на эти даты.",
+        )
+
     if existing is not None:
         if existing.employee_id == target_employee_id:
             return WorkspaceBookingToggleOut(action="book", booked=True, employeeId=target_employee_id)
