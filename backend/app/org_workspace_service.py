@@ -54,6 +54,31 @@ def _year_bounds(year: int) -> tuple[date, date]:
     return date(year, 1, 1), date(year, 12, 31)
 
 
+def _delete_vacation_conflicting_bookings(
+    db: Session,
+    day_from: date,
+    day_to: date,
+) -> int:
+    rows = db.scalars(
+        select(WorkspaceBooking)
+        .join(
+            EmployeeTimeOffDay,
+            (EmployeeTimeOffDay.employee_id == WorkspaceBooking.employee_id)
+            & (EmployeeTimeOffDay.day == WorkspaceBooking.day),
+        )
+        .where(
+            WorkspaceBooking.day >= day_from,
+            WorkspaceBooking.day <= day_to,
+            EmployeeTimeOffDay.kind == "vacation",
+        )
+    ).all()
+    for row in rows:
+        db.delete(row)
+    if rows:
+        db.commit()
+    return len(rows)
+
+
 def _iter_days(day_from: date, day_to: date) -> list[date]:
     days: list[date] = []
     cursor = day_from
@@ -115,6 +140,7 @@ def get_workspace_booking_schedule(
     actor_employee_id = _actor_employee_id(db, meta)
     is_admin = _is_org_admin(meta)
     places = _load_active_places(db)
+    _delete_vacation_conflicting_bookings(db, day_from, day_to)
 
     bookings_out: list[WorkspaceBookingCellOut] = []
     if places:
