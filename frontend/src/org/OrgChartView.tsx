@@ -132,7 +132,7 @@ function OrgTreeRoots({
   }
 
   return (
-    <ul className="org-tree">
+    <ul className="org-tree org-tree-roots">
       {roots.map((root) => (
         <OrgTreeNode key={root.person.employeeId} node={root} onEmployeeClick={onEmployeeClick} />
       ))}

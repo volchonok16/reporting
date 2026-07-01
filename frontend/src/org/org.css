@@ -774,9 +774,10 @@
   padding: 0 18px;
 }
 
-/* линия вниз от карточки руководителя (не в горизонтальном ряду с соседями) */
-.org-tree-node:has(> .org-tree-children) > .org-person-card::after,
-.org-tree-node:has(> .org-tree-children-stacked) > .org-person-card::after {
+/* линия вниз от карточки руководителя — только при одном подчинённом;
+   при нескольких соседях вертикаль рисует .org-tree-children::before */
+.org-tree-node:has(> .org-tree-children:has(> .org-tree-node:only-child)) > .org-person-card::after,
+.org-tree-node:has(> .org-tree-children-stacked:has(> .org-tree-children:has(> .org-tree-node:only-child):only-child)) > .org-person-card::after {
   content: '';
   position: absolute;
   left: 50%;
@@ -792,6 +793,11 @@
 /* в ряду с соседями — линия от горизонтали ряда, а не от карточки */
 .org-tree-children-row > .org-tree-node:has(> .org-tree-children) > .org-person-card::after,
 .org-tree-children-row > .org-tree-node:has(> .org-tree-children-stacked) > .org-person-card::after {
+  display: none;
+}
+
+/* первая строка stacked с несколькими подчинёнными — вертикаль от .org-tree-children::before */
+.org-tree-node:has(> .org-tree-children-stacked > .org-tree-children:not(:has(> .org-tree-node:only-child))) > .org-person-card::after {
   display: none;
 }
 
