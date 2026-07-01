@@ -502,7 +502,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
         <span className="org-vacation-legend-item org-workspace-free">Свободно</span>
         <span className="org-vacation-legend-item org-workspace-self">Ваша бронь</span>
         <span className="org-vacation-legend-item org-workspace-busy">Занято</span>
-        <span className="org-vacation-legend-item org-workspace-weekend-legend">Выходной</span>
+        <span className="org-vacation-legend-item org-workspace-weekend-legend">Выходной или праздник</span>
         {editMode ? (
           <span className="org-vacation-legend-item org-workspace-pending-legend">Не сохранено</span>
         ) : null}
