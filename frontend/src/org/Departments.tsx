@@ -8,6 +8,7 @@ import WorkspaceBooking from './WorkspaceBooking'
 import OfficePresence from './OfficePresence'
 import EmployeeCardModal from './EmployeeCardModal'
 import OrgPhoto from './OrgPhoto'
+import OrgFilterIcon from './OrgFilterIcon'
 import { buildHolidayKeySet } from './ruPublicHolidays'
 import { MONTH_NAMES_FULL, WEEKDAY_NAMES, getMonthDays, isWeekendDay, toDayKey } from './scheduleUtils'
 import type {
@@ -848,16 +849,15 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                         <span>ФИО</span>
                         <button
                           type="button"
-                          className={`btn-ghost org-th-filter-icon-btn${
-                            activeRosterFilter === 'name' ? ' org-th-filter-icon-btn-active' : ''
-                          }`}
+                          className={[
+                            'org-th-filter-icon-btn',
+                            activeRosterFilter === 'name' || rosterNamePrefix ? ' org-th-filter-icon-btn-active' : '',
+                          ].join('')}
                           aria-label="Открыть фильтр ФИО"
                           aria-expanded={activeRosterFilter === 'name'}
                           onClick={() => toggleRosterFilter('name')}
                         >
-                          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                            <path d="M2 3.25c0-.69.56-1.25 1.25-1.25h9.5c.69 0 1.25.56 1.25 1.25 0 .3-.1.58-.29.82L10 8.57V12a1 1 0 0 1-.55.9l-2 1A1 1 0 0 1 6 13V8.57L2.29 4.07A1.25 1.25 0 0 1 2 3.25Z" />
-                          </svg>
+                          <OrgFilterIcon />
                         </button>
                       </div>
                       {activeRosterFilter === 'name' ? (
@@ -897,18 +897,17 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                           <span>Отдел</span>
                           <button
                             type="button"
-                            className={`btn-ghost org-th-filter-icon-btn${
-                              activeRosterFilter === 'department'
+                            className={[
+                              'org-th-filter-icon-btn',
+                              activeRosterFilter === 'department' || rosterDepartmentFilter
                                 ? ' org-th-filter-icon-btn-active'
-                                : ''
-                            }`}
+                                : '',
+                            ].join('')}
                             aria-label="Открыть фильтр отдела"
                             aria-expanded={activeRosterFilter === 'department'}
                             onClick={() => toggleRosterFilter('department')}
                           >
-                            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                              <path d="M2 3.25c0-.69.56-1.25 1.25-1.25h9.5c.69 0 1.25.56 1.25 1.25 0 .3-.1.58-.29.82L10 8.57V12a1 1 0 0 1-.55.9l-2 1A1 1 0 0 1 6 13V8.57L2.29 4.07A1.25 1.25 0 0 1 2 3.25Z" />
-                            </svg>
+                            <OrgFilterIcon />
                           </button>
                         </div>
                         {activeRosterFilter === 'department' ? (
@@ -944,16 +943,17 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                         <span>Руководитель</span>
                         <button
                           type="button"
-                          className={`btn-ghost org-th-filter-icon-btn${
-                            activeRosterFilter === 'manager' ? ' org-th-filter-icon-btn-active' : ''
-                          }`}
+                          className={[
+                            'org-th-filter-icon-btn',
+                            activeRosterFilter === 'manager' || rosterManagerFilter
+                              ? ' org-th-filter-icon-btn-active'
+                              : '',
+                          ].join('')}
                           aria-label="Открыть фильтр руководителя"
                           aria-expanded={activeRosterFilter === 'manager'}
                           onClick={() => toggleRosterFilter('manager')}
                         >
-                          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                            <path d="M2 3.25c0-.69.56-1.25 1.25-1.25h9.5c.69 0 1.25.56 1.25 1.25 0 .3-.1.58-.29.82L10 8.57V12a1 1 0 0 1-.55.9l-2 1A1 1 0 0 1 6 13V8.57L2.29 4.07A1.25 1.25 0 0 1 2 3.25Z" />
-                          </svg>
+                          <OrgFilterIcon />
                         </button>
                       </div>
                       {activeRosterFilter === 'manager' ? (
