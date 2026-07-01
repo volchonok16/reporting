@@ -14,8 +14,8 @@ interface SafariGestureEvent extends Event {
 
 const MIN_SCALE = 0.12
 const MAX_SCALE = 2.5
-const ZOOM_STEP = 1.2
-const WHEEL_ZOOM_SENSITIVITY = 0.0024
+const ZOOM_STEP = 1.15
+const WHEEL_ZOOM_SENSITIVITY = 0.0018
 const FIT_MARGIN = 36
 
 function clamp(value: number, min: number, max: number): number {
@@ -23,16 +23,22 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 function wheelZoomFactor(deltaY: number): number {
-  const delta = clamp(-deltaY, -140, 140)
+  const delta = clamp(-deltaY, -120, 120)
   return Math.exp(delta * WHEEL_ZOOM_SENSITIVITY)
+}
+
+function normalizeWheelDelta(event: WheelEvent, stageHeight: number): number {
+  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+    return event.deltaY * 16
+  }
+  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+    return event.deltaY * stageHeight
+  }
+  return event.deltaY
 }
 
 function isInteractiveTarget(target: EventTarget | null): boolean {
   return target instanceof Element && Boolean(target.closest('button, a, input, select, textarea, label'))
-}
-
-function isPinchZoomWheel(event: WheelEvent): boolean {
-  return event.ctrlKey || event.metaKey
 }
 
 export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
@@ -47,12 +53,9 @@ export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
   const [translate, setTranslate] = useState<Point>({ x: 0, y: 0 })
   const [dragging, setDragging] = useState(false)
 
-  const setTranslateBoth = useCallback((next: Point | ((current: Point) => Point)) => {
-    setTranslate((current) => {
-      const resolved = typeof next === 'function' ? next(current) : next
-      translateRef.current = resolved
-      return resolved
-    })
+  const setTranslateBoth = useCallback((next: Point) => {
+    translateRef.current = next
+    setTranslate(next)
   }, [])
 
   const fitToView = useCallback(() => {
@@ -71,8 +74,8 @@ export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
     const nextScale = clamp(Math.min(scaleX, scaleY, 1), MIN_SCALE, MAX_SCALE)
 
     userAdjustedRef.current = false
-    setScale(nextScale)
     scaleRef.current = nextScale
+    setScale(nextScale)
     setTranslateBoth({
       x: (stageWidth - contentWidth * nextScale) / 2,
       y: (stageHeight - contentHeight * nextScale) / 2,
@@ -83,40 +86,38 @@ export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
     userAdjustedRef.current = true
   }, [])
 
-  useEffect(() => {
-    scaleRef.current = scale
-  }, [scale])
+  const applyZoom = useCallback(
+    (nextScale: number, anchorX: number, anchorY: number) => {
+      const currentScale = scaleRef.current
+      const currentTranslate = translateRef.current
+      const clamped = clamp(nextScale, MIN_SCALE, MAX_SCALE)
+      if (clamped === currentScale) return
 
-  useEffect(() => {
-    translateRef.current = translate
-  }, [translate])
+      const worldX = (anchorX - currentTranslate.x) / currentScale
+      const worldY = (anchorY - currentTranslate.y) / currentScale
+      const nextTranslate = {
+        x: anchorX - worldX * clamped,
+        y: anchorY - worldY * clamped,
+      }
 
-  const applyZoom = useCallback((nextScale: number, anchorX: number, anchorY: number) => {
-    const clamped = clamp(nextScale, MIN_SCALE, MAX_SCALE)
-    markUserAdjusted()
-    setScale((currentScale) => {
-      setTranslateBoth((currentTranslate) => {
-        const worldX = (anchorX - currentTranslate.x) / currentScale
-        const worldY = (anchorY - currentTranslate.y) / currentScale
-        return {
-          x: anchorX - worldX * clamped,
-          y: anchorY - worldY * clamped,
-        }
-      })
+      markUserAdjusted()
       scaleRef.current = clamped
-      return clamped
-    })
-  }, [setTranslateBoth, markUserAdjusted])
+      translateRef.current = nextTranslate
+      setScale(clamped)
+      setTranslate(nextTranslate)
+    },
+    [markUserAdjusted],
+  )
 
   const applyPan = useCallback(
     (deltaX: number, deltaY: number) => {
       markUserAdjusted()
-      setTranslateBoth((current) => ({
-        x: current.x - deltaX,
-        y: current.y - deltaY,
-      }))
+      setTranslateBoth({
+        x: translateRef.current.x - deltaX,
+        y: translateRef.current.y - deltaY,
+      })
     },
-    [setTranslateBoth, markUserAdjusted],
+    [markUserAdjusted, setTranslateBoth],
   )
 
   useEffect(() => {
@@ -162,18 +163,8 @@ export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
       const rect = stage.getBoundingClientRect()
       const anchorX = event.clientX - rect.left
       const anchorY = event.clientY - rect.top
-
-      if (event.shiftKey) {
-        applyPan(event.deltaX, event.deltaY)
-        return
-      }
-
-      if (isPinchZoomWheel(event) || Math.abs(event.deltaY) >= Math.abs(event.deltaX)) {
-        applyZoom(scaleRef.current * wheelZoomFactor(event.deltaY), anchorX, anchorY)
-        return
-      }
-
-      applyPan(event.deltaX, event.deltaY)
+      const delta = normalizeWheelDelta(event, rect.height)
+      applyZoom(scaleRef.current * wheelZoomFactor(delta), anchorX, anchorY)
     }
 
     const onGestureStart = (event: Event) => {
@@ -207,7 +198,7 @@ export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
       stage.removeEventListener('gesturechange', onGestureChange as EventListener)
       stage.removeEventListener('gestureend', onGestureEnd as EventListener)
     }
-  }, [applyPan, applyZoom])
+  }, [applyZoom])
 
   const zoomBy = useCallback(
     (factor: number) => {
@@ -250,14 +241,6 @@ export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
     event.currentTarget.releasePointerCapture(event.pointerId)
   }
 
-  const handleDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (isInteractiveTarget(event.target)) return
-    const stage = stageRef.current
-    if (!stage) return
-    const rect = stage.getBoundingClientRect()
-    applyZoom(scaleRef.current * ZOOM_STEP, event.clientX - rect.left, event.clientY - rect.top)
-  }
-
   const zoomPercent = Math.round(scale * 100)
 
   return (
@@ -269,7 +252,6 @@ export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
         onPointerMove={handlePointerMove}
         onPointerUp={finishDrag}
         onPointerCancel={finishDrag}
-        onDoubleClick={handleDoubleClick}
       >
         <div
           className="org-chart-canvas-toolbar"
@@ -308,14 +290,11 @@ export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
             type="button"
             className="btn-ghost org-chart-canvas-reset"
             onClick={fitToView}
-            title="Вписать схему в экран и выровнять по центру"
+            title="Вписать схему в экран"
           >
             Вписать
           </button>
         </div>
-        <p className="org-chart-canvas-hint" aria-hidden="true">
-          Колёсико — масштаб · перетаскивание — сдвиг · Shift+колёсико — прокрутка · двойной клик — приблизить
-        </p>
         <div
           ref={sheetRef}
           className="org-chart-canvas-sheet"
