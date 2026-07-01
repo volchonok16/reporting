@@ -376,17 +376,23 @@ function anchorPoint(node: OrgChartLayoutNode, anchor: EdgeAnchor = 'bottom'): P
 }
 
 function edgePath(edge: OrgChartLayoutEdge, from: OrgChartLayoutNode, to: OrgChartLayoutNode): string {
+  const points = edgePathPoints(edge, from, to)
+  if (points.length <= 1) return ''
+  return points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
+}
+
+function edgePathPoints(
+  edge: OrgChartLayoutEdge,
+  from: OrgChartLayoutNode,
+  to: OrgChartLayoutNode,
+): Point[] {
   const start = anchorPoint(from, edge.fromAnchor ?? 'bottom')
   const end = anchorPoint(to, edge.toAnchor ?? 'top')
   if (edge.points?.length) {
-    return [
-      `M ${start.x} ${start.y}`,
-      ...edge.points.map((point) => `L ${point.x} ${point.y}`),
-      `L ${end.x} ${end.y}`,
-    ].join(' ')
+    return [start, ...edge.points, end]
   }
   const middleY = start.y + (end.y - start.y) / 2
-  return `M ${start.x} ${start.y} V ${middleY} H ${end.x} V ${end.y}`
+  return [start, { x: start.x, y: middleY }, { x: end.x, y: middleY }, end]
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -811,17 +817,30 @@ export default function ManualOrgChartView({
             const from = nodeById.get(edge.fromNodeId)
             const to = nodeById.get(edge.toNodeId)
             if (!from || !to) return null
+            const junctionPoints = edgePathPoints(edge, from, to).slice(1, -1)
             return (
-              <path
-                key={edge.id}
-                d={edgePath(edge, from, to)}
-                className={`org-manual-line${selectedEdgeId === edge.id ? ' org-manual-line-selected' : ''}`}
-                onClick={(event) => {
-                  if (!editing) return
-                  event.stopPropagation()
-                  setSelectedEdgeId(edge.id)
-                }}
-              />
+              <g key={edge.id}>
+                <path
+                  d={edgePath(edge, from, to)}
+                  className={`org-manual-line${selectedEdgeId === edge.id ? ' org-manual-line-selected' : ''}`}
+                  onClick={(event) => {
+                    if (!editing) return
+                    event.stopPropagation()
+                    setSelectedEdgeId(edge.id)
+                  }}
+                />
+                {junctionPoints.map((point, pointIndex) => (
+                  <circle
+                    key={`${edge.id}:junction:${pointIndex}`}
+                    className={`org-manual-line-junction${
+                      selectedEdgeId === edge.id ? ' org-manual-line-junction-selected' : ''
+                    }`}
+                    cx={point.x}
+                    cy={point.y}
+                    r={editing ? 4 : 3.5}
+                  />
+                ))}
+              </g>
             )
           })}
           {dragConnection ? (() => {

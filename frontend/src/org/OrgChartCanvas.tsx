@@ -15,7 +15,7 @@ interface SafariGestureEvent extends Event {
 const MIN_SCALE = 0.12
 const MAX_SCALE = 2.5
 const ZOOM_STEP = 1.15
-const WHEEL_ZOOM_SENSITIVITY = 0.0018
+const WHEEL_ZOOM_SENSITIVITY = 0.0028
 const FIT_MARGIN = 36
 
 function clamp(value: number, min: number, max: number): number {

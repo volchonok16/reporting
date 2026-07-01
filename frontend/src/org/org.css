@@ -653,12 +653,19 @@
   min-height: 420px;
   overflow: hidden;
   border-radius: 16px;
-  background: color-mix(in srgb, var(--text-muted) 8%, var(--surface-2, var(--bg-hover)));
+  --org-canvas-grid-color: color-mix(in srgb, var(--text-muted) 22%, transparent);
+  background-color: color-mix(in srgb, var(--text-muted) 8%, var(--surface-2, var(--bg-hover)));
+  background-image: radial-gradient(circle, var(--org-canvas-grid-color) 1px, transparent 1px);
+  background-size: 16px 16px;
   border: 1px solid var(--border);
   cursor: grab;
   touch-action: none;
   overscroll-behavior: none;
   user-select: none;
+}
+
+[data-theme='dark'] .org-chart-canvas-stage {
+  --org-canvas-grid-color: color-mix(in srgb, var(--text-muted) 34%, transparent);
 }
 
 .org-chart-canvas-stage-dragging {
@@ -903,6 +910,14 @@
   position: relative;
   min-width: 100%;
   min-height: 560px;
+  --org-manual-grid-color: color-mix(in srgb, var(--text-muted) 16%, transparent);
+  background-color: var(--surface-1);
+  background-image: radial-gradient(circle, var(--org-manual-grid-color) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+[data-theme='dark'] .org-manual-chart {
+  --org-manual-grid-color: color-mix(in srgb, var(--text-muted) 28%, transparent);
 }
 
 .org-manual-lines {
@@ -935,6 +950,17 @@
   stroke: var(--accent-blue);
   stroke-dasharray: 8 6;
   pointer-events: none;
+}
+
+.org-manual-line-junction {
+  fill: var(--org-chart-line, var(--border-strong));
+  stroke: var(--surface-1);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.org-manual-line-junction-selected {
+  fill: var(--accent-blue);
 }
 
 .org-manual-line-point {
