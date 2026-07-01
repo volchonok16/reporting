@@ -202,6 +202,29 @@ def get_workspace_office_presence(
         for emp in employees
     ]
 
+    time_off_rows = db.scalars(
+        select(EmployeeTimeOffDay)
+        .where(
+            EmployeeTimeOffDay.day >= day_from,
+            EmployeeTimeOffDay.day <= day_to,
+            EmployeeTimeOffDay.employee_id.in_(employee_ids) if employee_ids else False,
+        )
+        .order_by(EmployeeTimeOffDay.employee_id, EmployeeTimeOffDay.day)
+    ).all()
+    time_off_days = [
+        VacationTimeOffDayOut(
+            employeeId=row.employee_id,
+            day=row.day.isoformat(),
+            kind=row.kind,  # type: ignore[arg-type]
+        )
+        for row in time_off_rows
+    ]
+    vacation_keys = {
+        (row.employee_id, row.day)
+        for row in time_off_rows
+        if row.kind == "vacation"
+    }
+
     presence_rows = db.scalars(
         select(WorkspaceBooking)
         .options(joinedload(WorkspaceBooking.place))
@@ -220,6 +243,7 @@ def get_workspace_office_presence(
             placeName=row.place.name if row.place else "",
         )
         for row in presence_rows
+        if (row.employee_id, row.day) not in vacation_keys
     ]
 
     office_rows = db.scalars(
@@ -234,24 +258,7 @@ def get_workspace_office_presence(
     office_days = [
         OfficeDayOut(employeeId=row.employee_id, day=row.day.isoformat())
         for row in office_rows
-    ]
-
-    time_off_rows = db.scalars(
-        select(EmployeeTimeOffDay)
-        .where(
-            EmployeeTimeOffDay.day >= day_from,
-            EmployeeTimeOffDay.day <= day_to,
-            EmployeeTimeOffDay.employee_id.in_(employee_ids) if employee_ids else False,
-        )
-        .order_by(EmployeeTimeOffDay.employee_id, EmployeeTimeOffDay.day)
-    ).all()
-    time_off_days = [
-        VacationTimeOffDayOut(
-            employeeId=row.employee_id,
-            day=row.day.isoformat(),
-            kind=row.kind,  # type: ignore[arg-type]
-        )
-        for row in time_off_rows
+        if (row.employee_id, row.day) not in vacation_keys
     ]
 
     return WorkspaceOfficePresenceOut(
