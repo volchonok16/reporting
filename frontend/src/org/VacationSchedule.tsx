@@ -377,7 +377,7 @@ export default function VacationSchedule({
                         {yearDays.map((day) => {
                           const dayKey = toDayKey(day)
                           const kind = dayKindMap.get(`${employee.id}:${dayKey}`)
-                          const dayOff = !kind && isDayOff(day, holidayKeys)
+                          const dayOff = isDayOff(day, holidayKeys)
                           const inPreview =
                             rangeStart?.employeeId === employee.id && previewDays.has(dayKey)
                           const isSelecting =

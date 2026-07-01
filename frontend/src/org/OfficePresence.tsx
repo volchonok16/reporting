@@ -315,10 +315,7 @@ export default function OfficePresence() {
                           const dayKey = toDayKey(day)
                           const placeName = presenceMap.get(presenceKey(employee.id, dayKey)) ?? null
                           const officeMarked = officeDaysSet.has(presenceKey(employee.id, dayKey))
-                          const dayOff =
-                            !placeName &&
-                            !officeMarked &&
-                            isDayOff(day, holidayKeys)
+                          const dayOff = isDayOff(day, holidayKeys)
                           const tip = formatPresenceTip(placeName, officeMarked)
                           return (
                             <td

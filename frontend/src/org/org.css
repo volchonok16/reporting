@@ -1794,16 +1794,16 @@
 
 .org-vacation-weekend,
 .org-vacation-holiday {
-  background: color-mix(in srgb, var(--surface-2) 94%, var(--day-off-tint) 6%) !important;
+  background: color-mix(in srgb, var(--surface-2) 86%, var(--day-off-tint) 14%) !important;
 }
 
 .org-vacation-day-head.org-vacation-weekend,
 .org-vacation-day-head.org-vacation-holiday {
-  background: color-mix(in srgb, var(--table-head-bg) 92%, var(--day-off-tint) 8%) !important;
+  background: color-mix(in srgb, var(--table-head-bg) 84%, var(--day-off-tint) 16%) !important;
 }
 
 .org-vacation-legend-item.org-vacation-weekend {
-  background: color-mix(in srgb, var(--surface-2) 94%, var(--day-off-tint) 6%);
+  background: color-mix(in srgb, var(--surface-2) 86%, var(--day-off-tint) 14%);
   border: 1px solid var(--border);
 }
 
@@ -1848,14 +1848,26 @@
   background: var(--vac-erase-bg);
 }
 
+.org-vacation-cell.org-vacation-weekend.vac-kind-vacation {
+  background: color-mix(in srgb, var(--vac-vacation-bg) 74%, var(--day-off-tint) 26%) !important;
+}
+
+.org-vacation-cell.org-vacation-weekend.vac-kind-dayoff {
+  background: color-mix(in srgb, var(--vac-dayoff-bg) 74%, var(--day-off-tint) 26%) !important;
+}
+
+.org-vacation-cell.org-vacation-weekend.vac-kind-sick {
+  background: color-mix(in srgb, var(--vac-sick-bg) 74%, var(--day-off-tint) 26%) !important;
+}
+
 .org-workspace-panel {
   overflow: visible;
   --workspace-self-fill: #d9f4e2;
   --workspace-self-border: #58a978;
   --workspace-busy-fill: #e9edf3;
   --workspace-busy-border: #c9d2df;
-  --workspace-weekend-fill: color-mix(in srgb, var(--day-off-tint) 6%, var(--surface-1) 94%);
-  --workspace-weekend-head-fill: color-mix(in srgb, var(--day-off-tint) 8%, var(--table-head-bg) 92%);
+  --workspace-weekend-fill: color-mix(in srgb, var(--day-off-tint) 16%, var(--surface-1) 84%);
+  --workspace-weekend-head-fill: color-mix(in srgb, var(--day-off-tint) 18%, var(--table-head-bg) 82%);
   --workspace-weekend-text: color-mix(in srgb, var(--day-off-tint) 55%, var(--text-muted) 45%);
 }
 
@@ -2158,12 +2170,12 @@
 }
 
 .org-workspace-grid .org-workspace-cell.org-workspace-weekend.org-workspace-self {
-  background: color-mix(in srgb, var(--workspace-self-fill) 82%, var(--day-off-tint) 18%) !important;
+  background: color-mix(in srgb, var(--workspace-self-fill) 70%, var(--day-off-tint) 30%) !important;
   box-shadow: inset 0 0 0 1px var(--workspace-self-border);
 }
 
 .org-workspace-grid .org-workspace-cell.org-workspace-weekend.org-workspace-busy {
-  background: color-mix(in srgb, var(--workspace-busy-fill) 84%, var(--day-off-tint) 16%) !important;
+  background: color-mix(in srgb, var(--workspace-busy-fill) 72%, var(--day-off-tint) 28%) !important;
   box-shadow: inset 0 0 0 1px var(--workspace-busy-border);
 }
 
@@ -2216,8 +2228,8 @@
   --workspace-self-border: #53a579;
   --workspace-busy-fill: #3a4b60;
   --workspace-busy-border: #6f89a8;
-  --workspace-weekend-fill: color-mix(in srgb, var(--day-off-tint) 24%, var(--surface-1) 76%);
-  --workspace-weekend-head-fill: color-mix(in srgb, var(--day-off-tint) 30%, var(--table-head-bg) 70%);
+  --workspace-weekend-fill: color-mix(in srgb, var(--day-off-tint) 30%, var(--surface-1) 70%);
+  --workspace-weekend-head-fill: color-mix(in srgb, var(--day-off-tint) 36%, var(--table-head-bg) 64%);
   --workspace-weekend-text: color-mix(in srgb, var(--day-off-tint) 68%, white 32%);
 }
 
@@ -2292,7 +2304,7 @@
 }
 
 .org-office-presence-panel .org-vacation-cell.org-vacation-weekend {
-  background: color-mix(in srgb, var(--surface-2) 94%, var(--day-off-tint) 6%) !important;
+  background: color-mix(in srgb, var(--surface-2) 84%, var(--day-off-tint) 16%) !important;
   box-shadow: none;
 }
 
@@ -2355,7 +2367,7 @@
 }
 
 [data-theme='dark'] .org-office-presence-panel .org-vacation-cell.org-vacation-weekend {
-  background: color-mix(in srgb, var(--surface-2) 94%, var(--day-off-tint) 6%) !important;
+  background: color-mix(in srgb, var(--surface-2) 78%, var(--day-off-tint) 22%) !important;
   box-shadow: none;
 }
 
