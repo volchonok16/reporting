@@ -639,12 +639,12 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       <nav className="org-subtabs" aria-label="Разделы отделов">
         {(
           [
-            ['roster', 'Состав'],
-            ['pyramid', 'Пирамида'],
-            ['employees', 'Сотрудники'],
             ['vacations', 'График отпусков'],
             ['workspace', 'Бронь мест'],
             ['office_presence', 'Сотрудники в офисе'],
+            ['roster', 'Состав'],
+            ['pyramid', 'Пирамида'],
+            ['employees', 'Сотрудники'],
             ['manage', 'Управление'],
           ] as const
         ).map(([id, label]) => (
