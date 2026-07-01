@@ -1718,6 +1718,8 @@
   --org-cell-radius: 6px;
   --org-cell-ring: color-mix(in srgb, var(--border-strong) 34%, transparent 66%);
   --org-cell-hover-ring: color-mix(in srgb, var(--brand) 42%, transparent 58%);
+  --org-selected-date-color: #2563eb;
+  --org-today-date-color: #111827;
   border-collapse: separate;
   border-spacing: 0;
   min-width: max-content;
@@ -1853,7 +1855,7 @@
 }
 
 .org-vacation-day-selected {
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, #2563eb 72%, transparent 28%);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--org-selected-date-color) 72%, transparent 28%);
 }
 
 .org-vacation-cell {
@@ -1871,7 +1873,7 @@
 }
 
 .org-vacation-cell-selected-day {
-  outline: 2px dashed color-mix(in srgb, #2563eb 64%, transparent 36%);
+  outline: 2px dashed color-mix(in srgb, var(--org-selected-date-color) 64%, transparent 36%);
   outline-offset: -2px;
 }
 
@@ -1903,7 +1905,7 @@
 
 .org-vacation-today {
   box-shadow: none;
-  outline: 2px dashed color-mix(in srgb, #111827 62%, transparent 38%);
+  outline: 2px dashed color-mix(in srgb, var(--org-today-date-color) 62%, transparent 38%);
   outline-offset: -2px;
 }
 
@@ -2166,7 +2168,7 @@
   position: relative;
   color: var(--text-primary) !important;
   font-weight: 600;
-  outline: 2px dashed color-mix(in srgb, #111827 62%, transparent 38%);
+  outline: 2px dashed color-mix(in srgb, var(--org-today-date-color) 62%, transparent 38%);
   outline-offset: -2px;
 }
 
@@ -2334,6 +2336,11 @@
   border-color: color-mix(in srgb, var(--border-strong) 55%, var(--text-tertiary) 45%);
 }
 
+[data-theme='dark'] .org-vacation-grid {
+  --org-selected-date-color: #38bdf8;
+  --org-today-date-color: #f8fafc;
+}
+
 [data-theme='dark'] .org-workspace-grid .org-workspace-cell.org-workspace-free {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-strong) 88%, transparent 12%);
 }
@@ -2411,7 +2418,7 @@
 
 /* Keep selected day visible even on "in office" cells. */
 .org-office-presence-panel .org-vacation-cell.org-vacation-cell-selected-day {
-  outline: 2px dashed color-mix(in srgb, #2563eb 66%, transparent 34%);
+  outline: 2px dashed color-mix(in srgb, var(--org-selected-date-color) 66%, transparent 34%);
   outline-offset: -2px;
 }
 
