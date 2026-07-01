@@ -170,6 +170,7 @@ export default function VacationSchedule({
   const [hoverDay, setHoverDay] = useState<string | null>(null)
   const [selectedDayKey, setSelectedDayKey] = useState(() => toDayKey(new Date()))
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const autoScrolledYearRef = useRef<number | null>(null)
 
   const yearDays = useMemo(() => getYearDays(year), [year])
   const monthGroups = useMemo(() => getMonthGroups(yearDays), [yearDays])
@@ -204,8 +205,10 @@ export default function VacationSchedule({
     setInternalYear(nextYear)
   }
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setLoading(true)
+    }
     setError(null)
     try {
       const query = new URLSearchParams({ year: String(year) })
@@ -214,17 +217,21 @@ export default function VacationSchedule({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка загрузки')
     } finally {
-      setLoading(false)
+      if (!options?.silent) {
+        setLoading(false)
+      }
     }
   }, [year])
 
   useEffect(() => {
     void load()
     setRangeStart(null)
+    autoScrolledYearRef.current = null
   }, [load])
 
   useEffect(() => {
     if (!scrollRef.current || !data) return
+    if (autoScrolledYearRef.current === year) return
     const monthStartKey = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`
     const monthStartCell = scrollRef.current.querySelector<HTMLElement>(
       `th[data-day-key="${monthStartKey}"]`,
@@ -232,6 +239,7 @@ export default function VacationSchedule({
     if (!monthStartCell) return
     const stickyNamesWidth = 220
     scrollRef.current.scrollLeft = Math.max(0, monthStartCell.offsetLeft - stickyNamesWidth - 24)
+    autoScrolledYearRef.current = year
   }, [year, data, currentMonth])
 
   const applyRange = async (employeeId: number, fromDay: string, toDay: string) => {
@@ -244,7 +252,7 @@ export default function VacationSchedule({
         toDay,
         kind: brush,
       })
-      await load()
+      await load({ silent: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка сохранения')
     } finally {
@@ -349,11 +357,11 @@ export default function VacationSchedule({
       )}
 
       {error ? <p className="org-error">{error}</p> : null}
-      {loading ? <p>Загрузка…</p> : null}
-      {saving ? <p>Сохранение…</p> : null}
+      {loading && !data ? <p>Загрузка…</p> : null}
 
-      {data && !loading ? (
-        <div className="org-vacation-chart-wrap">
+      {data ? (
+        <div className={`org-vacation-chart-wrap${saving ? ' org-workspace-saving' : ''}`}>
+          {saving ? <p className="org-workspace-saving-label">Сохранение…</p> : null}
           <div
             className="org-vacation-scroll"
             ref={scrollRef}

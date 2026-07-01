@@ -1656,6 +1656,7 @@
 
 .org-vacation-chart-wrap {
   max-width: 100%;
+  position: relative;
 }
 
 .org-schedule-chart {
@@ -2228,7 +2229,8 @@
   position: relative;
 }
 
-.org-workspace-saving .org-schedule-chart {
+.org-workspace-saving .org-schedule-chart,
+.org-workspace-saving .org-vacation-scroll {
   opacity: 0.55;
   pointer-events: none;
 }
