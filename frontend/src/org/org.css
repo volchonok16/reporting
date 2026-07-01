@@ -2278,8 +2278,8 @@
 }
 
 .org-workspace-free {
-  background: var(--workspace-free-fill) !important;
-  box-shadow: inset 0 0 0 1px var(--workspace-free-border);
+  background: var(--workspace-free-fill, var(--org-status-free-bg)) !important;
+  box-shadow: inset 0 0 0 1px var(--workspace-free-border, var(--org-status-free-border));
 }
 
 .org-workspace-self {
@@ -2297,22 +2297,30 @@
 }
 
 .org-workspace-grid .org-workspace-cell.org-workspace-weekend.org-workspace-free {
-  background: var(--workspace-weekend-fill) !important;
+  background: var(--workspace-weekend-fill, var(--org-status-weekend-bg)) !important;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--day-off-tint) 34%, transparent 66%);
 }
 
 .org-workspace-grid .org-workspace-cell.org-workspace-weekend.org-workspace-self {
-  background: color-mix(in srgb, var(--workspace-self-fill) 70%, var(--day-off-tint) 30%) !important;
-  box-shadow: inset 0 0 0 1px var(--workspace-self-border);
+  background: color-mix(
+    in srgb,
+    var(--workspace-self-fill, var(--org-status-green-bg)) 70%,
+    var(--day-off-tint) 30%
+  ) !important;
+  box-shadow: inset 0 0 0 1px var(--workspace-self-border, var(--org-status-green-border));
 }
 
 .org-workspace-grid .org-workspace-cell.org-workspace-weekend.org-workspace-busy {
-  background: color-mix(in srgb, var(--workspace-busy-fill) 72%, var(--day-off-tint) 28%) !important;
-  box-shadow: inset 0 0 0 1px var(--workspace-busy-border);
+  background: color-mix(
+    in srgb,
+    var(--workspace-busy-fill, var(--org-status-busy-bg)) 72%,
+    var(--day-off-tint) 28%
+  ) !important;
+  box-shadow: inset 0 0 0 1px var(--workspace-busy-border, var(--org-status-busy-border));
 }
 
 .org-workspace-grid .org-workspace-cell.org-workspace-holiday:not(.org-workspace-weekend).org-workspace-free {
-  background: var(--workspace-weekend-fill) !important;
+  background: var(--workspace-weekend-fill, var(--org-status-weekend-bg)) !important;
 }
 
 .org-workspace-grid th,
@@ -2325,27 +2333,27 @@
 }
 
 .org-vacation-legend-item.org-workspace-free {
-  background: var(--workspace-free-fill);
-  border: 1px solid var(--workspace-free-border);
+  background: var(--workspace-free-fill, var(--org-status-free-bg));
+  border: 1px solid var(--workspace-free-border, var(--org-status-free-border));
   color: var(--text-muted);
 }
 
 .org-vacation-legend-item.org-workspace-self {
-  background: var(--workspace-self-fill);
-  border: 1px solid var(--workspace-self-border);
+  background: var(--workspace-self-fill, var(--org-status-green-bg));
+  border: 1px solid var(--workspace-self-border, var(--org-status-green-border));
   color: var(--text-primary);
 }
 
 .org-vacation-legend-item.org-workspace-busy {
-  background: var(--workspace-busy-fill);
-  border: 1px solid var(--workspace-busy-border);
+  background: var(--workspace-busy-fill, var(--org-status-busy-bg));
+  border: 1px solid var(--workspace-busy-border, var(--org-status-busy-border));
   color: var(--text-muted);
 }
 
 .org-vacation-legend-item.org-workspace-weekend-legend {
-  background: var(--workspace-weekend-fill);
+  background: var(--workspace-weekend-fill, var(--org-status-weekend-bg));
   border: 1px solid var(--border);
-  color: var(--workspace-weekend-text);
+  color: var(--workspace-weekend-text, var(--org-status-weekend-text));
 }
 
 .org-vacation-legend-item.org-workspace-pending-legend {
