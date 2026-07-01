@@ -230,7 +230,12 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
 
   const toggleDraftCell = (placeId: number, day: string) => {
     if (suppressCellClickRef.current) return
-    if (!editMode || saving || !data) return
+    setSelectedDayKey(day)
+    if (saving || !data) return
+    if (!editMode) {
+      if (!canEditAny) return
+      setEditMode(true)
+    }
 
     const key = cellKey(placeId, day)
     const serverBooking = serverBookingMap.get(key)
