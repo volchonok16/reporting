@@ -116,6 +116,33 @@
   letter-spacing: 0.04em;
 }
 
+.org-th-filter {
+  display: grid;
+  gap: 6px;
+}
+
+.org-th-filter-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.org-th-filter-controls select {
+  min-width: 96px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.org-th-sort-btn {
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
 .org-table-actions {
   white-space: nowrap;
 }

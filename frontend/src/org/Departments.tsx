@@ -153,6 +153,9 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const [employeeOfficeDays, setEmployeeOfficeDays] = useState<OfficeDay[]>([])
   const [loadingEmployeeOfficeDays, setLoadingEmployeeOfficeDays] = useState(false)
   const [savingEmployeeOfficeDay, setSavingEmployeeOfficeDay] = useState<string | null>(null)
+  const [rosterNamePrefix, setRosterNamePrefix] = useState('')
+  const [rosterManagerFilter, setRosterManagerFilter] = useState('')
+  const [rosterNameSort, setRosterNameSort] = useState<'asc' | 'desc'>('asc')
   const photoInputRef = useRef<HTMLInputElement>(null)
   const userPickedAllCompany = useRef(savedOrgUi.allCompany)
 
@@ -300,6 +303,85 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       )
     }
   }, [panel, selectedDepartmentId, loadMembers, loadChart])
+
+  useEffect(() => {
+    setRosterNamePrefix('')
+    setRosterManagerFilter('')
+    setRosterNameSort('asc')
+  }, [selectedDepartmentId, isAllCompanyView])
+
+  const rosterRows = useMemo(() => {
+    const baseRows = isAllCompanyView
+      ? employees.map((emp) => ({
+          key: `emp-${emp.id}`,
+          employeeId: emp.id,
+          fullName: emp.fullName,
+          photoUrl: emp.photoUrl,
+          secondary: formatDepartments(emp.departments),
+          position: emp.position ?? '—',
+          managerName: emp.managerName ?? '—',
+          email: emp.email ?? '—',
+          dailyWorkHours: String(emp.dailyWorkHours),
+          expertise: formatExpertises(emp.expertises),
+          memberId: null as number | null,
+        }))
+      : members.map((member) => {
+          const emp = employeeById.get(member.employeeId)
+          return {
+            key: `member-${member.id}`,
+            employeeId: member.employeeId,
+            fullName: member.employeeName,
+            photoUrl: member.photoUrl ?? emp?.photoUrl,
+            secondary: member.teamRoleName ?? '—',
+            position: member.displayPosition ?? '—',
+            managerName: member.managerName ?? '—',
+            email: member.displayEmail ?? emp?.email ?? '—',
+            dailyWorkHours: String(emp?.dailyWorkHours ?? '—'),
+            expertise: formatExpertises(emp?.expertises),
+            memberId: member.id,
+          }
+        })
+
+    const normalizedPrefix = rosterNamePrefix.trim().toLowerCase()
+    return baseRows
+      .filter((row) =>
+        normalizedPrefix
+          ? row.fullName.trim().toLowerCase().startsWith(normalizedPrefix)
+          : true,
+      )
+      .filter((row) => (rosterManagerFilter ? row.managerName === rosterManagerFilter : true))
+      .sort((a, b) => {
+        const cmp = a.fullName.localeCompare(b.fullName, 'ru')
+        return rosterNameSort === 'asc' ? cmp : -cmp
+      })
+  }, [
+    isAllCompanyView,
+    employees,
+    members,
+    employeeById,
+    rosterNamePrefix,
+    rosterManagerFilter,
+    rosterNameSort,
+  ])
+
+  const rosterNamePrefixOptions = useMemo(() => {
+    const options = new Set<string>()
+    for (const row of rosterRows) {
+      const letter = row.fullName.trim().charAt(0).toUpperCase()
+      if (letter) options.add(letter)
+    }
+    return [...options].sort((a, b) => a.localeCompare(b, 'ru'))
+  }, [rosterRows])
+
+  const rosterManagerOptions = useMemo(() => {
+    const options = new Set<string>()
+    for (const row of rosterRows) {
+      if (row.managerName !== '—') {
+        options.add(row.managerName)
+      }
+    }
+    return [...options].sort((a, b) => a.localeCompare(b, 'ru'))
+  }, [rosterRows])
 
   const refreshAll = async () => {
     setLoading(true)
@@ -705,10 +787,56 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
             <table className="org-table">
               <thead>
                 <tr>
-                  <th>ФИО</th>
+                  <th>
+                    <div className="org-th-filter">
+                      <span>ФИО</span>
+                      <div className="org-th-filter-controls">
+                        <select
+                          value={rosterNamePrefix}
+                          onChange={(e) => setRosterNamePrefix(e.target.value)}
+                          aria-label="Фильтр ФИО по букве"
+                        >
+                          <option value="">Все</option>
+                          {rosterNamePrefixOptions.map((letter) => (
+                            <option key={letter} value={letter}>
+                              {letter}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="btn-ghost org-th-sort-btn"
+                          onClick={() =>
+                            setRosterNameSort((value) => (value === 'asc' ? 'desc' : 'asc'))
+                          }
+                          title={rosterNameSort === 'asc' ? 'Сортировка А-Я' : 'Сортировка Я-А'}
+                        >
+                          {rosterNameSort === 'asc' ? 'А-Я' : 'Я-А'}
+                        </button>
+                      </div>
+                    </div>
+                  </th>
                   <th>{isAllCompanyView ? 'Отдел' : 'Роль'}</th>
                   <th>Должность</th>
-                  <th>Руководитель</th>
+                  <th>
+                    <div className="org-th-filter">
+                      <span>Руководитель</span>
+                      <div className="org-th-filter-controls">
+                        <select
+                          value={rosterManagerFilter}
+                          onChange={(e) => setRosterManagerFilter(e.target.value)}
+                          aria-label="Фильтр по руководителю"
+                        >
+                          <option value="">Все</option>
+                          {rosterManagerOptions.map((manager) => (
+                            <option key={manager} value={manager}>
+                              {manager}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </th>
                   <th>Email</th>
                   <th>Рабочих часов в день</th>
                   <th>Экспертиза</th>
@@ -716,56 +844,47 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                 </tr>
               </thead>
               <tbody>
-                {isAllCompanyView
-                  ? employees.map((emp) => (
-                      <tr key={emp.id}>
-                        <td>
-                          <PersonCell
-                            employeeId={emp.id}
-                            name={emp.fullName}
-                            photoUrl={emp.photoUrl}
-                            onOpen={openEmployeeCard}
-                          />
-                        </td>
-                        <td>{formatDepartments(emp.departments)}</td>
-                        <td>{emp.position ?? '—'}</td>
-                        <td>{emp.managerName ?? '—'}</td>
-                        <td>{emp.email ?? '—'}</td>
-                        <td>{emp.dailyWorkHours}</td>
-                        <td>{formatExpertises(emp.expertises)}</td>
-                      </tr>
-                    ))
-                  : members.map((member) => {
-                      const emp = employeeById.get(member.employeeId)
-                      return (
-                        <tr key={member.id}>
-                          <td>
-                            <PersonCell
-                              employeeId={member.employeeId}
-                              name={member.employeeName}
-                              photoUrl={member.photoUrl ?? emp?.photoUrl}
-                              onOpen={openEmployeeCard}
-                            />
-                          </td>
-                          <td>{member.teamRoleName ?? '—'}</td>
-                          <td>{member.displayPosition ?? '—'}</td>
-                          <td>{member.managerName ?? '—'}</td>
-                          <td>{member.displayEmail ?? emp?.email ?? '—'}</td>
-                          <td>{emp?.dailyWorkHours ?? '—'}</td>
-                          <td>{formatExpertises(emp?.expertises)}</td>
-                          {canManage ? (
-                            <td className="org-table-actions">
-                              <button type="button" className="btn-ghost" onClick={() => openEditMember(member)}>
-                                Изм.
-                              </button>
-                              <button type="button" className="btn-ghost" onClick={() => void removeMember(member.id)}>
-                                ✕
-                              </button>
-                            </td>
-                          ) : null}
-                        </tr>
-                      )
-                    })}
+                {rosterRows.map((row) => (
+                  <tr key={row.key}>
+                    <td>
+                      <PersonCell
+                        employeeId={row.employeeId}
+                        name={row.fullName}
+                        photoUrl={row.photoUrl}
+                        onOpen={openEmployeeCard}
+                      />
+                    </td>
+                    <td>{row.secondary}</td>
+                    <td>{row.position}</td>
+                    <td>{row.managerName}</td>
+                    <td>{row.email}</td>
+                    <td>{row.dailyWorkHours}</td>
+                    <td>{row.expertise}</td>
+                    {canManage && !isAllCompanyView ? (
+                      <td className="org-table-actions">
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() => {
+                            const member = members.find((item) => item.id === row.memberId)
+                            if (member) openEditMember(member)
+                          }}
+                        >
+                          Изм.
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() => {
+                            if (row.memberId != null) void removeMember(row.memberId)
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}
