@@ -14,7 +14,7 @@ interface SafariGestureEvent extends Event {
 
 const MIN_SCALE = 0.12
 const MAX_SCALE = 2.5
-const ZOOM_STEP = 1.2
+const ZOOM_STEP = 1.4
 const PINCH_ZOOM_SENSITIVITY = 0.0036
 const FIT_MARGIN = 36
 
