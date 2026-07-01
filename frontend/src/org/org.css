@@ -1840,7 +1840,7 @@
 }
 
 .org-vacation-day-selected {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 80%, transparent 20%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #2563eb 82%, transparent 18%);
 }
 
 .org-vacation-cell {
@@ -1858,7 +1858,7 @@
 }
 
 .org-vacation-cell-selected-day {
-  outline: 1px dashed color-mix(in srgb, var(--brand) 54%, transparent 46%);
+  outline: 1px dashed color-mix(in srgb, #2563eb 70%, transparent 30%);
   outline-offset: -2px;
 }
 
@@ -1889,7 +1889,7 @@
 
 .org-vacation-today {
   box-shadow: none;
-  outline: 1px dashed color-mix(in srgb, var(--brand) 44%, transparent 56%);
+  outline: 1px dashed color-mix(in srgb, #111827 72%, transparent 28%);
   outline-offset: -2px;
 }
 
@@ -2137,7 +2137,7 @@
   position: relative;
   color: var(--text-primary) !important;
   font-weight: 600;
-  outline: 1px dashed color-mix(in srgb, var(--brand) 44%, transparent 56%);
+  outline: 1px dashed color-mix(in srgb, #111827 72%, transparent 28%);
   outline-offset: -2px;
 }
 
@@ -2394,7 +2394,7 @@
 
 /* Keep selected day visible even on "in office" cells. */
 .org-office-presence-panel .org-vacation-cell.org-vacation-cell-selected-day {
-  outline: 1px dashed color-mix(in srgb, var(--brand) 58%, transparent 42%);
+  outline: 1px dashed color-mix(in srgb, #2563eb 76%, transparent 24%);
   outline-offset: -2px;
 }
 

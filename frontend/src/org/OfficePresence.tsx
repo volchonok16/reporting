@@ -363,6 +363,7 @@ export default function OfficePresence() {
                                 'org-office-presence-cell',
                                 placeName || officeMarked ? 'org-office-presence-in' : 'org-workspace-free',
                                 dayOff ? 'org-vacation-weekend' : '',
+                                dayKey === todayKey ? 'org-vacation-today' : '',
                                 dayKey === selectedDayKey ? 'org-vacation-cell-selected-day' : '',
                               ]
                                 .filter(Boolean)

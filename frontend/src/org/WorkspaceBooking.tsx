@@ -105,6 +105,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   const today = new Date()
   const currentYear = today.getFullYear()
   const currentMonth = today.getMonth()
+  const currentDay = today.getDate()
   const savedOrgUi = loadOrgUiState()
   const [year, setYear] = useState(savedOrgUi.workspaceYear)
   const [data, setData] = useState<WorkspaceBookingScheduleData | null>(null)
@@ -115,6 +116,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   const [editMode, setEditMode] = useState(false)
   const [draftChanges, setDraftChanges] = useState<Map<string, DraftBooking>>(() => new Map())
   const [bookForEmployeeId, setBookForEmployeeId] = useState<number | null>(null)
+  const [selectedDayKey, setSelectedDayKey] = useState(() => toDayKey(new Date()))
   const [isDragScrolling, setIsDragScrolling] = useState(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const dragStateRef = useRef<{
@@ -173,6 +175,12 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
       setBookForEmployeeId(data.employees[0].id)
     }
   }, [data, bookForEmployeeId])
+
+  useEffect(() => {
+    if (selectedDayKey.startsWith(`${year}-`)) return
+    const fallbackDate = year === currentYear ? new Date(year, currentMonth, currentDay) : new Date(year, 0, 1)
+    setSelectedDayKey(toDayKey(fallbackDate))
+  }, [year, selectedDayKey, currentYear, currentMonth, currentDay])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -333,6 +341,10 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     if (editMode) return
     if (event.pointerType === 'mouse' && event.button !== 0) return
     if (!scrollRef.current) return
+    const target = event.target as Element | null
+    if (target?.closest('.org-vacation-day-head')) {
+      return
+    }
     dragStateRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -581,10 +593,12 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                             'org-workspace-day-head',
                             dayOff ? 'org-workspace-weekend-head' : '',
                             key === todayKey ? 'org-workspace-today-head' : '',
+                            key === selectedDayKey ? 'org-vacation-day-selected' : '',
                           ]
                             .filter(Boolean)
                             .join(' ')}
                           title={key}
+                          onClick={() => setSelectedDayKey(key)}
                         >
                           {day.getDate()}
                         </th>
@@ -634,6 +648,8 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                                   : 'org-workspace-busy'
                                 : 'org-workspace-free',
                               dayOff ? 'org-workspace-weekend' : '',
+                              dayKey === todayKey ? 'org-vacation-today' : '',
+                              dayKey === selectedDayKey ? 'org-vacation-cell-selected-day' : '',
                               pending ? 'org-workspace-pending' : '',
                               isEditable ? 'org-vacation-editable' : '',
                             ]
