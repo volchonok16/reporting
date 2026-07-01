@@ -2084,14 +2084,14 @@
   --schedule-head-row-2: 20px;
   --schedule-head-row-3: 28px;
   --vac-cell-size: 26px;
-  --vac-name-col-width: 128px;
+  --vac-name-col-width: 108px;
   box-shadow: var(--shadow-sm);
   border-radius: 12px;
 }
 
 .org-workspace-chart .org-schedule-names {
-  flex-basis: 128px;
-  width: 128px;
+  flex-basis: 108px;
+  width: 108px;
   background: var(--surface-1);
 }
 
@@ -2111,10 +2111,10 @@
 }
 
 .org-workspace-chart .org-schedule-names-grid .org-vacation-name {
-  width: 128px;
-  max-width: 128px;
-  min-width: 128px;
-  padding: 6px 10px !important;
+  width: 108px;
+  max-width: 108px;
+  min-width: 108px;
+  padding: 6px 8px !important;
 }
 
 .org-workspace-panel .org-workspace-place-name {
