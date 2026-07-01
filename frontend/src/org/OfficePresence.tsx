@@ -29,6 +29,21 @@ type EmployeeGroup = {
   employees: VacationEmployee[]
 }
 
+function sortLeadersFirst(employees: VacationEmployee[]): VacationEmployee[] {
+  const leaderIds = new Set<number>()
+  for (const employee of employees) {
+    if (employee.managerId != null) {
+      leaderIds.add(employee.managerId)
+    }
+  }
+  return [...employees].sort((a, b) => {
+    const aLeader = leaderIds.has(a.id)
+    const bLeader = leaderIds.has(b.id)
+    if (aLeader !== bLeader) return aLeader ? -1 : 1
+    return a.fullName.localeCompare(b.fullName, 'ru')
+  })
+}
+
 function groupEmployeesByDepartment(employees: VacationEmployee[]): EmployeeGroup[] {
   const namedGroups = new Map<string, VacationEmployee[]>()
   const noDepartment: VacationEmployee[] = []
@@ -46,10 +61,14 @@ function groupEmployeesByDepartment(employees: VacationEmployee[]): EmployeeGrou
   const groups = Array.from(namedGroups.entries()).map(([label, groupEmployees]) => ({
     key: label,
     label,
-    employees: groupEmployees,
+    employees: sortLeadersFirst(groupEmployees),
   }))
   if (noDepartment.length > 0) {
-    groups.unshift({ key: '__no_department__', label: 'Без отдела', employees: noDepartment })
+    groups.unshift({
+      key: '__no_department__',
+      label: 'Без отдела',
+      employees: sortLeadersFirst(noDepartment),
+    })
   }
   return groups
 }
