@@ -115,7 +115,7 @@ export default function WorkbookApp({
 
       <div className="workbook-content">
         {activeSheet === 'zni' ? (
-          <Dashboard />
+          <Dashboard canSyncTfs={canSyncTfs} />
         ) : activeSheet === 'roadmap' ? (
           <div className="app">
             <Roadmap

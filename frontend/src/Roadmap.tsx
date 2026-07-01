@@ -229,6 +229,7 @@ export default function Roadmap({
   }, [])
 
   const handleSyncFromTfs = async () => {
+    if (!canSyncTfs) return
     setSyncing(true)
     setSyncProgress('Старт…')
     setError(null)
@@ -412,16 +413,15 @@ export default function Roadmap({
             {formatRuDate(from)} — {formatRuDate(to)}
           </span>
 
-          {canSyncTfs ? (
-            <button
-              type="button"
-              className="btn-secondary roadmap-sync-btn"
-              onClick={() => void handleSyncFromTfs()}
-              disabled={syncing || loading}
-            >
-              {syncing ? 'Обновление…' : 'Обновить из TFS'}
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="btn-secondary roadmap-sync-btn"
+            onClick={() => void handleSyncFromTfs()}
+            disabled={syncing || loading || !canSyncTfs}
+            title={canSyncTfs ? undefined : 'Только администратор может обновлять данные из TFS'}
+          >
+            {syncing ? 'Обновление…' : 'Обновить из TFS'}
+          </button>
         </div>
 
         <div className="roadmap-priority-legend" aria-label="Легенда приоритетов">

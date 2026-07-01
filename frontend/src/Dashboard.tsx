@@ -387,7 +387,11 @@ function isMetricFilter(value: string | undefined): value is MetricFilter {
   )
 }
 
-export default function Dashboard() {
+type DashboardProps = {
+  canSyncTfs?: boolean
+}
+
+export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
   const savedUi = loadDashboardUiState()
   const defaultQuarter = currentQuarterIsoRange()
   const [boards, setBoards] = useState<Board[]>([])
@@ -589,6 +593,7 @@ export default function Dashboard() {
   }, [])
 
   const handleSync = async () => {
+    if (!canSyncTfs) return
     setSyncing(true)
     setSyncProgress('Старт…')
     setError(null)
@@ -765,7 +770,13 @@ export default function Dashboard() {
         </div>
 
         <div className="toolbar-right">
-          <button type="button" className="btn-secondary" onClick={handleSync} disabled={syncing || exporting}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={handleSync}
+            disabled={syncing || exporting || !canSyncTfs}
+            title={canSyncTfs ? undefined : 'Только администратор может обновлять данные из TFS'}
+          >
             {syncing ? 'Синхронизация…' : 'Обновить из TFS'}
           </button>
           <button type="button" className="btn-primary" onClick={handleExport} disabled={syncing || exporting}>

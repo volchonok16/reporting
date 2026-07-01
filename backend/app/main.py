@@ -96,6 +96,14 @@ def require_full_app_access(
         raise HTTPException(status_code=403, detail="Недостаточно прав.")
 
 
+def _can_sync_tfs(auth: TfsAuth | None, meta: dict) -> bool:
+    if auth is None or not auth.pat:
+        return False
+    if meta.get("auth_mode") == "pat":
+        return True
+    return meta.get("org_user_role") == "admin"
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -117,7 +125,7 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
     if auth is None:
         return TfsAuthStatusOut(authenticated=False)
     app_role = meta.get("app_role") or "full"
-    can_sync_tfs = bool(auth.pat)
+    can_sync_tfs = _can_sync_tfs(auth, meta)
     org_user_role = meta.get("org_user_role")
     auth_mode = meta.get("auth_mode")
     can_manage_org = (
@@ -483,6 +491,8 @@ async def start_sync(
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
 ) -> SyncRunOut:
     _, meta = get_session_with_meta(x_session_id)
+    if not _can_sync_tfs(get_session(x_session_id), meta):
+        raise HTTPException(status_code=403, detail="Недостаточно прав для обновления из TFS.")
     denied = sync_board_denied_reason(meta.get("app_role"), board)
     if denied:
         raise HTTPException(status_code=403, detail=denied)
