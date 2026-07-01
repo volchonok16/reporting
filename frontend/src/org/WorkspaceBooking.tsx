@@ -319,7 +319,14 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     [setIsDragScrolling],
   )
 
+  useEffect(() => {
+    if (editMode) {
+      finishDragScroll()
+    }
+  }, [editMode, finishDragScroll])
+
   const handleScrollPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (editMode) return
     if (event.pointerType === 'mouse' && event.button !== 0) return
     if (!scrollRef.current) return
     dragStateRef.current = {
@@ -333,6 +340,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   }
 
   const handleScrollPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (editMode) return
     const drag = dragStateRef.current
     if (!drag || !scrollRef.current) return
     const deltaX = event.clientX - drag.startX
@@ -346,10 +354,12 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   }
 
   const handleScrollPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (editMode) return
     finishDragScroll(event.pointerId)
   }
 
   const handleScrollPointerCancel = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (editMode) return
     finishDragScroll(event.pointerId)
   }
 

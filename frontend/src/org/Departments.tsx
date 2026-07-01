@@ -156,6 +156,10 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const [rosterNamePrefix, setRosterNamePrefix] = useState('')
   const [rosterManagerFilter, setRosterManagerFilter] = useState('')
   const [rosterNameSort, setRosterNameSort] = useState<'asc' | 'desc'>('asc')
+  const [activeRosterFilter, setActiveRosterFilter] = useState<'name' | 'manager' | 'department' | null>(
+    null,
+  )
+  const [rosterDepartmentFilter, setRosterDepartmentFilter] = useState('')
   const photoInputRef = useRef<HTMLInputElement>(null)
   const userPickedAllCompany = useRef(savedOrgUi.allCompany)
 
@@ -292,6 +296,26 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   }, [loadBase])
 
   useEffect(() => {
+    if (!activeRosterFilter) return
+    const handleDocumentMouseDown = (event: MouseEvent) => {
+      const target = event.target as Element | null
+      if (target?.closest('.org-th-filter')) return
+      setActiveRosterFilter(null)
+    }
+    const handleDocumentKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setActiveRosterFilter(null)
+      }
+    }
+    document.addEventListener('mousedown', handleDocumentMouseDown)
+    document.addEventListener('keydown', handleDocumentKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentMouseDown)
+      document.removeEventListener('keydown', handleDocumentKeyDown)
+    }
+  }, [activeRosterFilter])
+
+  useEffect(() => {
     if (panel === 'roster' && selectedDepartmentId !== null) {
       void loadMembers(selectedDepartmentId).catch((err) =>
         setError(err instanceof Error ? err.message : 'Ошибка'),
@@ -307,6 +331,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   useEffect(() => {
     setRosterNamePrefix('')
     setRosterManagerFilter('')
+    setRosterDepartmentFilter('')
     setRosterNameSort('asc')
   }, [selectedDepartmentId, isAllCompanyView])
 
@@ -350,6 +375,13 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
           : true,
       )
       .filter((row) => (rosterManagerFilter ? row.managerName === rosterManagerFilter : true))
+      .filter((row) => {
+        if (!isAllCompanyView || !rosterDepartmentFilter) return true
+        if (rosterDepartmentFilter === '__without_department__') {
+          return row.secondary === '—'
+        }
+        return row.secondary === rosterDepartmentFilter
+      })
       .sort((a, b) => {
         const cmp = a.fullName.localeCompare(b.fullName, 'ru')
         return rosterNameSort === 'asc' ? cmp : -cmp
@@ -361,6 +393,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
     employeeById,
     rosterNamePrefix,
     rosterManagerFilter,
+    rosterDepartmentFilter,
     rosterNameSort,
   ])
 
@@ -382,6 +415,24 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
     }
     return [...options].sort((a, b) => a.localeCompare(b, 'ru'))
   }, [rosterRows])
+
+  const rosterDepartmentOptions = useMemo(() => {
+    if (!isAllCompanyView) return []
+    const options = new Set<string>()
+    for (const employee of employees) {
+      for (const department of employee.departments) {
+        if (department.departmentName) {
+          options.add(department.departmentName)
+        }
+      }
+    }
+    return [...options].sort((a, b) => a.localeCompare(b, 'ru'))
+  }, [isAllCompanyView, employees])
+
+  const hasEmployeesWithoutDepartment = useMemo(
+    () => isAllCompanyView && employees.some((employee) => employee.departments.length === 0),
+    [isAllCompanyView, employees],
+  )
 
   const refreshAll = async () => {
     setLoading(true)
@@ -704,6 +755,10 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
     }
   }
 
+  const toggleRosterFilter = (filter: 'name' | 'manager' | 'department') => {
+    setActiveRosterFilter((value) => (value === filter ? null : filter))
+  }
+
   const removeEmployeeExpertise = async (expertiseId: number) => {
     if (!editingEmployeeId || !canManage) return
     if (!window.confirm('Удалить экспертизу?')) return
@@ -789,52 +844,136 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                 <tr>
                   <th>
                     <div className="org-th-filter">
-                      <span>ФИО</span>
-                      <div className="org-th-filter-controls">
-                        <select
-                          value={rosterNamePrefix}
-                          onChange={(e) => setRosterNamePrefix(e.target.value)}
-                          aria-label="Фильтр ФИО по букве"
-                        >
-                          <option value="">Все</option>
-                          {rosterNamePrefixOptions.map((letter) => (
-                            <option key={letter} value={letter}>
-                              {letter}
-                            </option>
-                          ))}
-                        </select>
+                      <div className="org-th-filter-head">
+                        <span>ФИО</span>
                         <button
                           type="button"
-                          className="btn-ghost org-th-sort-btn"
-                          onClick={() =>
-                            setRosterNameSort((value) => (value === 'asc' ? 'desc' : 'asc'))
-                          }
-                          title={rosterNameSort === 'asc' ? 'Сортировка А-Я' : 'Сортировка Я-А'}
+                          className={`btn-ghost org-th-filter-icon-btn${
+                            activeRosterFilter === 'name' ? ' org-th-filter-icon-btn-active' : ''
+                          }`}
+                          aria-label="Открыть фильтр ФИО"
+                          aria-expanded={activeRosterFilter === 'name'}
+                          onClick={() => toggleRosterFilter('name')}
                         >
-                          {rosterNameSort === 'asc' ? 'А-Я' : 'Я-А'}
+                          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                            <path d="M2 3.25c0-.69.56-1.25 1.25-1.25h9.5c.69 0 1.25.56 1.25 1.25 0 .3-.1.58-.29.82L10 8.57V12a1 1 0 0 1-.55.9l-2 1A1 1 0 0 1 6 13V8.57L2.29 4.07A1.25 1.25 0 0 1 2 3.25Z" />
+                          </svg>
                         </button>
                       </div>
+                      {activeRosterFilter === 'name' ? (
+                        <div className="org-th-filter-popover">
+                          <div className="org-th-filter-controls">
+                            <select
+                              value={rosterNamePrefix}
+                              onChange={(e) => setRosterNamePrefix(e.target.value)}
+                              aria-label="Фильтр ФИО по букве"
+                            >
+                              <option value="">Все</option>
+                              {rosterNamePrefixOptions.map((letter) => (
+                                <option key={letter} value={letter}>
+                                  {letter}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              className="btn-ghost org-th-sort-btn"
+                              onClick={() =>
+                                setRosterNameSort((value) => (value === 'asc' ? 'desc' : 'asc'))
+                              }
+                              title={rosterNameSort === 'asc' ? 'Сортировка А-Я' : 'Сортировка Я-А'}
+                            >
+                              {rosterNameSort === 'asc' ? 'А-Я' : 'Я-А'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   </th>
-                  <th>{isAllCompanyView ? 'Отдел' : 'Роль'}</th>
+                  <th>
+                    {isAllCompanyView ? (
+                      <div className="org-th-filter">
+                        <div className="org-th-filter-head">
+                          <span>Отдел</span>
+                          <button
+                            type="button"
+                            className={`btn-ghost org-th-filter-icon-btn${
+                              activeRosterFilter === 'department'
+                                ? ' org-th-filter-icon-btn-active'
+                                : ''
+                            }`}
+                            aria-label="Открыть фильтр отдела"
+                            aria-expanded={activeRosterFilter === 'department'}
+                            onClick={() => toggleRosterFilter('department')}
+                          >
+                            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                              <path d="M2 3.25c0-.69.56-1.25 1.25-1.25h9.5c.69 0 1.25.56 1.25 1.25 0 .3-.1.58-.29.82L10 8.57V12a1 1 0 0 1-.55.9l-2 1A1 1 0 0 1 6 13V8.57L2.29 4.07A1.25 1.25 0 0 1 2 3.25Z" />
+                            </svg>
+                          </button>
+                        </div>
+                        {activeRosterFilter === 'department' ? (
+                          <div className="org-th-filter-popover">
+                            <div className="org-th-filter-controls">
+                              <select
+                                value={rosterDepartmentFilter}
+                                onChange={(e) => setRosterDepartmentFilter(e.target.value)}
+                                aria-label="Фильтр по отделу"
+                              >
+                                <option value="">Все</option>
+                                {hasEmployeesWithoutDepartment ? (
+                                  <option value="__without_department__">Без отдела</option>
+                                ) : null}
+                                {rosterDepartmentOptions.map((department) => (
+                                  <option key={department} value={department}>
+                                    {department}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      'Роль'
+                    )}
+                  </th>
                   <th>Должность</th>
                   <th>
                     <div className="org-th-filter">
-                      <span>Руководитель</span>
-                      <div className="org-th-filter-controls">
-                        <select
-                          value={rosterManagerFilter}
-                          onChange={(e) => setRosterManagerFilter(e.target.value)}
-                          aria-label="Фильтр по руководителю"
+                      <div className="org-th-filter-head">
+                        <span>Руководитель</span>
+                        <button
+                          type="button"
+                          className={`btn-ghost org-th-filter-icon-btn${
+                            activeRosterFilter === 'manager' ? ' org-th-filter-icon-btn-active' : ''
+                          }`}
+                          aria-label="Открыть фильтр руководителя"
+                          aria-expanded={activeRosterFilter === 'manager'}
+                          onClick={() => toggleRosterFilter('manager')}
                         >
-                          <option value="">Все</option>
-                          {rosterManagerOptions.map((manager) => (
-                            <option key={manager} value={manager}>
-                              {manager}
-                            </option>
-                          ))}
-                        </select>
+                          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                            <path d="M2 3.25c0-.69.56-1.25 1.25-1.25h9.5c.69 0 1.25.56 1.25 1.25 0 .3-.1.58-.29.82L10 8.57V12a1 1 0 0 1-.55.9l-2 1A1 1 0 0 1 6 13V8.57L2.29 4.07A1.25 1.25 0 0 1 2 3.25Z" />
+                          </svg>
+                        </button>
                       </div>
+                      {activeRosterFilter === 'manager' ? (
+                        <div className="org-th-filter-popover">
+                          <div className="org-th-filter-controls">
+                            <select
+                              value={rosterManagerFilter}
+                              onChange={(e) => setRosterManagerFilter(e.target.value)}
+                              aria-label="Фильтр по руководителю"
+                            >
+                              <option value="">Все</option>
+                              {rosterManagerOptions.map((manager) => (
+                                <option key={manager} value={manager}>
+                                  {manager}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   </th>
                   <th>Email</th>
