@@ -15,26 +15,20 @@ interface SafariGestureEvent extends Event {
 const MIN_SCALE = 0.12
 const MAX_SCALE = 2.5
 const ZOOM_STEP = 1.15
-const WHEEL_ZOOM_SENSITIVITY = 0.0028
+const PINCH_ZOOM_SENSITIVITY = 0.0028
 const FIT_MARGIN = 36
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
-function wheelZoomFactor(deltaY: number): number {
+function pinchZoomFactor(deltaY: number): number {
   const delta = clamp(-deltaY, -120, 120)
-  return Math.exp(delta * WHEEL_ZOOM_SENSITIVITY)
+  return Math.exp(delta * PINCH_ZOOM_SENSITIVITY)
 }
 
-function normalizeWheelDelta(event: WheelEvent, stageHeight: number): number {
-  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
-    return event.deltaY * 16
-  }
-  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
-    return event.deltaY * stageHeight
-  }
-  return event.deltaY
+function isPinchZoomWheel(event: WheelEvent): boolean {
+  return event.ctrlKey || event.metaKey
 }
 
 function isInteractiveTarget(target: EventTarget | null): boolean {
@@ -160,11 +154,18 @@ export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
 
     const onWheel = (event: WheelEvent) => {
       event.preventDefault()
-      const rect = stage.getBoundingClientRect()
-      const anchorX = event.clientX - rect.left
-      const anchorY = event.clientY - rect.top
-      const delta = normalizeWheelDelta(event, rect.height)
-      applyZoom(scaleRef.current * wheelZoomFactor(delta), anchorX, anchorY)
+
+      if (isPinchZoomWheel(event)) {
+        const rect = stage.getBoundingClientRect()
+        applyZoom(
+          scaleRef.current * pinchZoomFactor(event.deltaY),
+          event.clientX - rect.left,
+          event.clientY - rect.top,
+        )
+        return
+      }
+
+      applyPan(event.deltaX, event.deltaY)
     }
 
     const onGestureStart = (event: Event) => {
@@ -198,7 +199,7 @@ export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
       stage.removeEventListener('gesturechange', onGestureChange as EventListener)
       stage.removeEventListener('gestureend', onGestureEnd as EventListener)
     }
-  }, [applyZoom])
+  }, [applyPan, applyZoom])
 
   const zoomBy = useCallback(
     (factor: number) => {
