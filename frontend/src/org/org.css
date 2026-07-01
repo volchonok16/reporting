@@ -1124,11 +1124,34 @@
 }
 
 .org-dept-frame-body {
-  --org-tree-gap: var(--space-3xl, 48px);
-  --org-tree-card-line-gap: var(--space-md, 12px);
+  --org-tree-gap: var(--space-xl, 24px);
+  --org-tree-card-line-gap: 0;
   display: flex;
   justify-content: center;
   padding: var(--space-sm) var(--space-md) var(--space-xs);
+}
+
+/* Пирамида отдельного отдела — без соединительных линий */
+.org-dept-frame .org-tree-children::before,
+.org-dept-frame .org-tree-children > .org-tree-node::before,
+.org-dept-frame .org-tree-children > .org-tree-node::after,
+.org-dept-frame .org-tree-children > .org-tree-node > .org-person-card::before,
+.org-dept-frame .org-tree-node > .org-person-card::after,
+.org-dept-frame .org-tree-children-stacked > .org-tree-children-row + .org-tree-children-row::before {
+  display: none !important;
+}
+
+.org-dept-frame .org-tree-children,
+.org-dept-frame .org-tree-children:has(> .org-tree-node:only-child) {
+  padding-top: var(--org-tree-gap, 24px);
+}
+
+.org-dept-frame .org-tree-children-stacked {
+  --org-tree-row-gap: var(--org-tree-gap, 24px);
+}
+
+.org-dept-frame .org-tree-chart {
+  gap: var(--org-tree-gap, 24px);
 }
 
 .org-dept-block {
