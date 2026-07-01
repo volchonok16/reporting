@@ -1662,7 +1662,9 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface-1);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: calc(100vh - 220px);
 }
 
 .org-schedule-names {
@@ -1677,7 +1679,7 @@
   flex: 1 1 auto;
   min-width: 0;
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: visible;
   background: var(--surface-1);
 }
 
@@ -1694,6 +1696,7 @@
 .org-vacation-scroll {
   overflow: auto;
   max-width: 100%;
+  max-height: calc(100vh - 220px);
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface-1);
@@ -1702,6 +1705,9 @@
 .org-schedule-dates.org-vacation-scroll {
   border: none;
   border-radius: 0;
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 
 .org-schedule-names-grid .org-vacation-names-head {
@@ -1737,6 +1743,8 @@
   --vac-cell-size: 26px;
   --vac-row-height: 38px;
   --vac-name-col-width: 220px;
+  --schedule-head-row-1: 31px;
+  --schedule-head-row-2: 29px;
   --org-cell-radius: 6px;
   --org-cell-ring: color-mix(in srgb, var(--border-strong) 34%, transparent 66%);
   --org-cell-hover-ring: color-mix(in srgb, var(--brand) 42%, transparent 58%);
@@ -1754,6 +1762,24 @@
   padding: 0;
 }
 
+.org-vacation-grid thead th {
+  position: sticky;
+  background: var(--table-head-bg);
+  z-index: 4;
+}
+
+.org-vacation-grid thead tr:first-child th {
+  top: 0;
+}
+
+.org-vacation-grid thead tr:nth-child(2) th {
+  top: var(--schedule-head-row-1);
+}
+
+.org-vacation-grid thead tr:nth-child(3) th {
+  top: calc(var(--schedule-head-row-1) + var(--schedule-head-row-2));
+}
+
 .org-vacation-sticky-col {
   position: sticky;
   left: 0;
@@ -1763,7 +1789,7 @@
 }
 
 .org-vacation-grid thead .org-vacation-sticky-col {
-  z-index: 3;
+  z-index: 7;
   background: var(--table-head-bg);
 }
 
