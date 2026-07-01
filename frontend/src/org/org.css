@@ -1994,15 +1994,15 @@
 
 .org-workspace-panel {
   overflow: visible;
-  --workspace-free-fill: var(--org-status-free-bg);
+  --workspace-free-fill: color-mix(in srgb, var(--surface-1) 94%, var(--surface-2) 6%);
   --workspace-free-border: var(--org-status-free-border);
   --workspace-self-fill: var(--org-status-green-bg);
   --workspace-self-border: var(--org-status-green-border);
   --workspace-busy-fill: var(--org-status-busy-bg);
   --workspace-busy-border: var(--org-status-busy-border);
-  --workspace-weekend-fill: var(--org-status-weekend-bg);
-  --workspace-weekend-head-fill: var(--org-status-weekend-head-bg);
-  --workspace-weekend-text: var(--org-status-weekend-text);
+  --workspace-weekend-fill: color-mix(in srgb, var(--day-off-tint) 28%, var(--surface-1) 72%);
+  --workspace-weekend-head-fill: color-mix(in srgb, var(--day-off-tint) 32%, var(--table-head-bg) 68%);
+  --workspace-weekend-text: color-mix(in srgb, var(--day-off-tint) 70%, var(--text-primary) 30%);
 }
 
 .org-workspace-month-picker {
@@ -2298,7 +2298,7 @@
 
 .org-workspace-grid .org-workspace-cell.org-workspace-weekend.org-workspace-free {
   background: var(--workspace-weekend-fill) !important;
-  box-shadow: none;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--day-off-tint) 34%, transparent 66%);
 }
 
 .org-workspace-grid .org-workspace-cell.org-workspace-weekend.org-workspace-self {
@@ -2362,6 +2362,13 @@
 [data-theme='dark'] .org-vacation-grid {
   --org-selected-date-color: #38bdf8;
   --org-today-date-color: #f8fafc;
+}
+
+[data-theme='dark'] .org-workspace-panel {
+  --workspace-free-fill: color-mix(in srgb, var(--surface-1) 86%, var(--surface-2) 14%);
+  --workspace-weekend-fill: color-mix(in srgb, var(--day-off-tint) 42%, var(--surface-2) 58%);
+  --workspace-weekend-head-fill: color-mix(in srgb, var(--day-off-tint) 48%, var(--table-head-bg) 52%);
+  --workspace-weekend-text: color-mix(in srgb, #fecdd3 74%, white 26%);
 }
 
 [data-theme='dark'] .org-workspace-grid .org-workspace-cell.org-workspace-free {
