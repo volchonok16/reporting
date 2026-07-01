@@ -29,6 +29,13 @@ type EmployeeGroup = {
   employees: VacationEmployee[]
 }
 
+const PROJECT_OFFICE_LABEL = 'проектный офис'
+const BALMASHEV_LABEL = 'балмашев'
+
+function includesName(value: string, needle: string): boolean {
+  return value.toLocaleLowerCase('ru').includes(needle)
+}
+
 function buildHierarchyRank(employees: VacationEmployee[]): Map<number, number> {
   const reports = new Map<number, VacationEmployee[]>()
   for (const employee of employees) {
@@ -102,9 +109,20 @@ function groupEmployeesByDepartment(employees: VacationEmployee[]): EmployeeGrou
       }),
     })
   }
+  const balmashevRank = employees
+    .filter((employee) => includesName(employee.fullName, BALMASHEV_LABEL))
+    .map((employee) => rank.get(employee.id) ?? Number.MAX_SAFE_INTEGER)
+    .sort((a, b) => a - b)[0]
+  const groupSortRank = (group: EmployeeGroup) => {
+    const groupRank = Math.min(...group.employees.map((employee) => rank.get(employee.id) ?? Number.MAX_SAFE_INTEGER))
+    if (Number.isFinite(balmashevRank) && includesName(group.label, PROJECT_OFFICE_LABEL)) {
+      return balmashevRank - 0.5
+    }
+    return groupRank
+  }
   groups.sort((a, b) => {
-    const aRank = Math.min(...a.employees.map((employee) => rank.get(employee.id) ?? Number.MAX_SAFE_INTEGER))
-    const bRank = Math.min(...b.employees.map((employee) => rank.get(employee.id) ?? Number.MAX_SAFE_INTEGER))
+    const aRank = groupSortRank(a)
+    const bRank = groupSortRank(b)
     if (aRank !== bRank) return aRank - bRank
     return a.label.localeCompare(b.label, 'ru')
   })
