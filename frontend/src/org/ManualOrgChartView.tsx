@@ -410,6 +410,7 @@ export default function ManualOrgChartView({
 }: ManualOrgChartViewProps) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const dragMovedRef = useRef(false)
+  const edgePointDragMovedRef = useRef(false)
   const items = useMemo(
     () => buildChartItems(organizationHead, departments, standaloneRoots),
     [organizationHead, departments, standaloneRoots],
@@ -740,7 +741,14 @@ export default function ManualOrgChartView({
     event.preventDefault()
     const element = event.currentTarget
     element.setPointerCapture(event.pointerId)
+    const startX = event.clientX
+    const startY = event.clientY
+    edgePointDragMovedRef.current = false
+
     const onMove = (moveEvent: PointerEvent) => {
+      if (Math.abs(moveEvent.clientX - startX) > 2 || Math.abs(moveEvent.clientY - startY) > 2) {
+        edgePointDragMovedRef.current = true
+      }
       const point = eventToCanvasPoint(moveEvent)
       if (point) moveEdgePoint(edgeIdValue, pointIndex, point)
     }
@@ -808,6 +816,10 @@ export default function ManualOrgChartView({
           onPointerDown={(event) => editing && event.stopPropagation()}
           onClick={(event) => {
             if (!editing || !selectedEdgeId) return
+            if (edgePointDragMovedRef.current) {
+              edgePointDragMovedRef.current = false
+              return
+            }
             event.stopPropagation()
             const point = eventToCanvasPoint(event)
             if (point) addPointToSelectedEdge(point)
@@ -829,17 +841,16 @@ export default function ManualOrgChartView({
                     setSelectedEdgeId(edge.id)
                   }}
                 />
-                {junctionPoints.map((point, pointIndex) => (
-                  <circle
-                    key={`${edge.id}:junction:${pointIndex}`}
-                    className={`org-manual-line-junction${
-                      selectedEdgeId === edge.id ? ' org-manual-line-junction-selected' : ''
-                    }`}
-                    cx={point.x}
-                    cy={point.y}
-                    r={editing ? 4 : 3.5}
-                  />
-                ))}
+                {(!editing || selectedEdgeId !== edge.id) &&
+                  junctionPoints.map((point, pointIndex) => (
+                    <circle
+                      key={`${edge.id}:junction:${pointIndex}`}
+                      className="org-manual-line-junction"
+                      cx={point.x}
+                      cy={point.y}
+                      r={3.5}
+                    />
+                  ))}
               </g>
             )
           })}
@@ -864,6 +875,7 @@ export default function ManualOrgChartView({
                 cy={point.y}
                 r={7}
                 onPointerDown={(event) => handleEdgePointPointerDown(event, edge.id, pointIndex)}
+                onClick={(event) => event.stopPropagation()}
               />
             ))) : null}
         </svg>
