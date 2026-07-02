@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useLayoutEffect, useRef } from 'react'
+import { forwardRef, memo, useImperativeHandle, useLayoutEffect, useRef } from 'react'
 import {
   applyCellStylePatch,
   applyStyleToSelection,
@@ -51,7 +51,7 @@ function renderSegments(inner: string, container: HTMLElement) {
   }
 }
 
-const ProductStatusCell = forwardRef<ProductStatusCellHandle, ProductStatusCellProps>(
+const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatusCellProps>(
   function ProductStatusCell(
     { value, className, ariaLabel, onChange, onFocus, onBlur },
     ref,
@@ -128,5 +128,13 @@ const ProductStatusCell = forwardRef<ProductStatusCellHandle, ProductStatusCellP
     )
   },
 )
+
+const ProductStatusCell = memo(ProductStatusCellInner, (prev, next) => {
+  return (
+    prev.value === next.value &&
+    prev.className === next.className &&
+    prev.ariaLabel === next.ariaLabel
+  )
+})
 
 export default ProductStatusCell

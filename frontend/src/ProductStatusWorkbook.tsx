@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { getJson, apiFetch, postJson, readApiError } from './api'
 import { dismissToast, notifyLoading, notifyProblem, notifySuccess, notifyWarning } from './toast'
-import ProductStatusCell, { type ProductStatusCellHandle } from './ProductStatusCell'
+import { type ProductStatusCellHandle } from './ProductStatusCell'
 import ProductStatusFormatToolbar from './ProductStatusFormatToolbar'
+import ProductStatusTableRow, { type ActiveCell } from './ProductStatusTableRow'
 import {
   collectZniNumbers,
   isZniColumn,
-  normalizeZniCellValue,
-  parseZniNumber,
 } from './productStatusZni'
-import { resolveBooleanColors, styledBooleanValue } from './productStatusBoolean'
+import { resolveBooleanColors } from './productStatusBoolean'
 import { displayCellText, type CellStyle, type TextStyleSegment } from './productStatusRichText'
 import {
   clearProductStatusCache,
@@ -44,11 +43,6 @@ type ProductStatusCellUpdate = {
 
 type ProductStatusSavePayload = {
   updates: ProductStatusCellUpdate[]
-}
-
-type ActiveCell = {
-  rowIndex: number
-  column: string
 }
 
 export type ProductStatusWorkbookConfig = {
@@ -413,6 +407,9 @@ export default function ProductStatusWorkbook({
                   ? savedGid
                   : cachedMeta.sheets[0]?.gid ?? null
               setActiveGid(initialGid)
+              if (initialGid) {
+                setSheetLoadingGid(initialGid)
+              }
               setLoading(false)
               dismissToast(mainToastId)
 
@@ -441,6 +438,9 @@ export default function ProductStatusWorkbook({
               ? savedGid
               : meta.sheets[0]?.gid ?? null
           setActiveGid(initialGid)
+          if (initialGid) {
+            setSheetLoadingGid(initialGid)
+          }
           setLoading(false)
           dismissToast(mainToastId)
 
@@ -655,6 +655,16 @@ export default function ProductStatusWorkbook({
     )
   }, [activeGid, sheets])
 
+  const handleActiveCellFocus = useCallback((cell: ActiveCell) => {
+    setActiveCell(cell)
+  }, [])
+
+  const handleActiveCellBlur = useCallback((cell: ActiveCell) => {
+    setActiveCell((current) =>
+      current?.rowIndex === cell.rowIndex && current.column === cell.column ? null : current,
+    )
+  }, [])
+
   const handleRefresh = useCallback(() => {
     if (dirty && !window.confirm('Есть несохранённые изменения. Обновить из Google Sheets?')) {
       return
@@ -699,8 +709,11 @@ export default function ProductStatusWorkbook({
   }, [activeSheet, zniColumn])
 
   useEffect(() => {
+    setZniLookup({})
+  }, [activeGid])
+
+  useEffect(() => {
     if (!zniNumbersKey) {
-      setZniLookup({})
       return
     }
 
@@ -740,8 +753,10 @@ export default function ProductStatusWorkbook({
 
   const exporting = exportingPresentation || exportingExcel
   const sheetLoading = sheetLoadingGid !== null
-  const busy = loading || sheetLoading || saving || exporting
+  const toolbarBusy = loading || sheetLoading || saving || exporting
+  const cellBusy = saving || exporting
   const activeSheetReady = Boolean(activeSheet && activeSheet.columns.length > 0)
+  const tablePending = Boolean(activeSheetReady && sheetLoading && sheetLoadingGid === activeGid)
 
   const applyTextStyle = useCallback((patch: Partial<TextStyleSegment>) => {
     activeCellRef.current?.applyTextStyle(patch)
@@ -790,7 +805,7 @@ export default function ProductStatusWorkbook({
             type="button"
             className="btn-primary"
             onClick={() => void handleSave()}
-            disabled={busy || sheets.length === 0 || !dirty}
+            disabled={toolbarBusy || sheets.length === 0 || !dirty}
           >
             Сохранить
           </button>
@@ -799,7 +814,7 @@ export default function ProductStatusWorkbook({
               type="button"
               className="btn-secondary"
               onClick={() => void handleExportExcel()}
-              disabled={busy || sheets.length === 0}
+              disabled={toolbarBusy || sheets.length === 0}
             >
               Скачать Excel
             </button>
@@ -809,12 +824,12 @@ export default function ProductStatusWorkbook({
               type="button"
               className="btn-secondary"
               onClick={() => void handleExportPresentation()}
-              disabled={busy || sheets.length === 0}
+              disabled={toolbarBusy || sheets.length === 0}
             >
               Скачать презентацию
             </button>
           ) : null}
-          <button type="button" className="btn-secondary" onClick={handleRefresh} disabled={busy}>
+          <button type="button" className="btn-secondary" onClick={handleRefresh} disabled={toolbarBusy}>
             Обновить
           </button>
         </div>
@@ -832,6 +847,13 @@ export default function ProductStatusWorkbook({
                 activeSheet?.gid === sheet.gid ? ' product-status-sheet-tab-active' : ''
               }`}
               onClick={() => {
+                const needsLoad =
+                  lazySheets &&
+                  (!loadedGids.has(sheet.gid) ||
+                    !sheets.find((item) => item.gid === sheet.gid && item.columns.length > 0))
+                if (needsLoad) {
+                  setSheetLoadingGid(sheet.gid)
+                }
                 setActiveGid(sheet.gid)
                 if (lazySheets) {
                   void ensureSheetLoaded(sheet.gid)
@@ -846,7 +868,7 @@ export default function ProductStatusWorkbook({
       )}
 
       <ProductStatusFormatToolbar
-        disabled={busy}
+        disabled={toolbarBusy}
         hasActiveCell={activeCell !== null}
         onTextStyle={applyTextStyle}
         onCellStyle={applyCellStyle}
@@ -870,7 +892,7 @@ export default function ProductStatusWorkbook({
               type="button"
               className="btn-secondary"
               onClick={addRow}
-              disabled={busy || !activeSheetReady}
+              disabled={toolbarBusy || !activeSheetReady}
             >
               + Строка
             </button>
@@ -878,24 +900,32 @@ export default function ProductStatusWorkbook({
               type="button"
               className="btn-secondary"
               onClick={addColumn}
-              disabled={busy || !activeSheetReady}
+              disabled={toolbarBusy || !activeSheetReady}
             >
               + Столбец
             </button>
           </div>
         </div>
         <div className="table">
-          <div className="table-scroll">
-            {activeSheet && activeSheet.columns.length > 0 ? (
+          <div
+            className={[
+              'table-scroll',
+              'product-status-table-scroll',
+              tablePending ? 'product-status-table-scroll--pending' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          >
+            {activeSheetReady ? (
               <table className="product-status-table">
                 <colgroup>
-                  {activeSheet.columns.map((column, index) => (
+                  {activeSheet!.columns.map((column, index) => (
                     <col key={index} className={resolveColumnClass(column)} />
                   ))}
                 </colgroup>
                 <thead>
                   <tr>
-                    {activeSheet.columns.map((column) => (
+                    {activeSheet!.columns.map((column) => (
                       <th
                         key={column}
                         className={[
@@ -911,10 +941,10 @@ export default function ProductStatusWorkbook({
                   </tr>
                 </thead>
                 <tbody>
-                  {activeSheet.rows.map((row, rowIndex) => {
+                  {activeSheet!.rows.map((row, rowIndex) => {
                     const { isPresentation, isAttention } = resolveRowHighlight(
                       row,
-                      activeSheet.columns,
+                      activeSheet!.columns,
                     )
                     const rowClassName = [
                       isPresentation ? 'product-status-row--presentation' : '',
@@ -924,125 +954,44 @@ export default function ProductStatusWorkbook({
                       .join(' ')
 
                     return (
-                    <tr key={`${activeSheet.gid}-${rowIndex}`} className={rowClassName || undefined}>
-                      {activeSheet.columns.map((column) => {
-                        const isActive =
-                          activeCell?.rowIndex === rowIndex && activeCell.column === column
-                        const colClass = resolveColumnClass(column)
-                        const cellClassName = [
-                          colClass,
-                          isBooleanColumn(column) ? 'product-status-bool-cell' : 'product-status-multiline',
-                        ]
-                          .filter(Boolean)
-                          .join(' ')
-
-                        if (isBooleanColumn(column)) {
-                          const cellValue = row[column] ?? ''
-                          return (
-                            <td
-                              key={`${rowIndex}-${column}`}
-                              className={cellClassName}
-                            >
-                              <input
-                                type="checkbox"
-                                className="product-status-bool-checkbox"
-                                checked={isYesValue(cellValue)}
-                                aria-label={column}
-                                disabled={busy}
-                                onChange={(event) => {
-                                  const colors =
-                                    booleanColorsByColumn[column] ??
-                                    resolveBooleanColors(activeSheet.rows, column)
-                                  updateCell(
-                                    activeSheet.gid,
-                                    rowIndex,
-                                    column,
-                                    styledBooleanValue(event.target.checked, colors),
-                                  )
-                                }}
-                              />
-                            </td>
-                          )
-                        }
-
-                        const zniNumber = isZniColumn(column)
-                          ? parseZniNumber(row[column] ?? '')
-                          : null
-                        const matchedZni = zniNumber ? zniLookup[zniNumber] : undefined
-                        const showZniTrigger = Boolean(matchedZni && zniNumber && !isActive)
-                        const cellValue = isZniColumn(column)
-                          ? normalizeZniCellValue(row[column] ?? '')
-                          : row[column] ?? ''
-
-                        return (
-                          <td
-                            key={`${rowIndex}-${column}`}
-                            className={[
-                              cellClassName,
-                              matchedZni ? 'product-status-zni-cell--matched' : '',
-                            ]
-                              .filter(Boolean)
-                              .join(' ')}
-                            onDoubleClick={() => {
-                              if (showZniTrigger) {
-                                setActiveCell({ rowIndex, column })
-                              }
-                            }}
-                          >
-                            {showZniTrigger ? (
-                              <button
-                                type="button"
-                                className="zni-link product-status-zni-trigger"
-                                onClick={() => {
-                                  if (matchedZni) openZniModal(matchedZni)
-                                }}
-                              >
-                                {zniNumber}
-                              </button>
-                            ) : (
-                            <ProductStatusCell
-                              ref={(handle) => {
-                                if (isActive) {
-                                  activeCellRef.current = handle
-                                }
-                              }}
-                              className="product-status-cell-input"
-                              value={cellValue}
-                              ariaLabel={column}
-                              onFocus={() =>
-                                setActiveCell({
-                                  rowIndex,
-                                  column,
-                                })
-                              }
-                              onBlur={() => {
-                                setActiveCell((current) =>
-                                  current?.rowIndex === rowIndex && current.column === column
-                                    ? null
-                                    : current,
-                                )
-                              }}
-                              onChange={(nextValue) =>
-                                updateCell(activeSheet.gid, rowIndex, column, nextValue)
-                              }
-                            />
-                            )}
-                          </td>
-                        )
-                      })}
-                    </tr>
+                      <ProductStatusTableRow
+                        key={`${activeSheet!.gid}-${rowIndex}`}
+                        sheetGid={activeSheet!.gid}
+                        rowIndex={rowIndex}
+                        row={row}
+                        columns={activeSheet!.columns}
+                        rowClassName={rowClassName || undefined}
+                        cellBusy={cellBusy}
+                        activeCell={activeCell}
+                        booleanColorsByColumn={booleanColorsByColumn}
+                        zniLookup={zniLookup}
+                        onUpdateCell={updateCell}
+                        onActiveCellFocus={handleActiveCellFocus}
+                        onActiveCellBlur={handleActiveCellBlur}
+                        onOpenZniModal={openZniModal}
+                        activeCellRef={activeCellRef}
+                        resolveColumnClass={resolveColumnClass}
+                        isBooleanColumn={isBooleanColumn}
+                      />
                     )
                   })}
                 </tbody>
               </table>
             ) : loading || sheetLoading ? (
-              <div className="table-empty" aria-busy="true" aria-label="Загрузка" />
+              <div
+                className="table-empty product-status-table-placeholder"
+                aria-busy="true"
+                aria-label="Загрузка"
+              />
             ) : (
               <div className="table-empty">Нет данных в таблице.</div>
             )}
-            {activeSheet && !loading && activeSheet.rows.length === 0 && (
+            {tablePending ? (
+              <div className="product-status-table-loading-overlay" aria-hidden="true" />
+            ) : null}
+            {activeSheet && !loading && activeSheet.rows.length === 0 && activeSheetReady ? (
               <div className="table-empty">На этом листе нет данных.</div>
-            )}
+            ) : null}
           </div>
         </div>
       </section>

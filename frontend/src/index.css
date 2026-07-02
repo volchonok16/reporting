@@ -1423,6 +1423,26 @@ body {
   margin-bottom: 8px;
 }
 
+.product-status-table-scroll {
+  position: relative;
+}
+
+.product-status-table-placeholder {
+  min-height: min(70vh, 640px);
+}
+
+.product-status-table-scroll--pending .product-status-table {
+  pointer-events: none;
+  opacity: 0.55;
+}
+
+.product-status-table-loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--bg) 35%, transparent);
+  pointer-events: none;
+}
+
 .product-status-table-toolbar-actions {
   display: flex;
   gap: 8px;
