@@ -4,7 +4,7 @@ import { notifyError, notifyProblem, notifyWarning } from '../toast'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgPhoto from './OrgPhoto'
 import { buildHolidayKeySet } from './ruPublicHolidays'
-import { getMonthGroups, getYearDays, isDayOff, toDayKey } from './scheduleUtils'
+import { getMonthGroups, getYearDays, isDayOff, MONTH_NAMES_FULL, toDayKey } from './scheduleUtils'
 import type { EditableTimeOffKind, TimeOffKind, VacationEmployee, VacationScheduleData } from './types'
 
 type VacationScheduleProps = {
@@ -133,6 +133,23 @@ function groupEmployeesByDepartment(employees: VacationEmployee[]): EmployeeGrou
     return a.label.localeCompare(b.label, 'ru')
   })
   return groups
+}
+
+function formatVacationCellTip(
+  employeeName: string,
+  day: Date,
+  kind: TimeOffKind | undefined,
+  dayOff: boolean,
+): string {
+  const dateLabel = `${day.getDate()} ${MONTH_NAMES_FULL[day.getMonth()].toLowerCase()} ${day.getFullYear()}`
+  const base = `${employeeName} · ${dateLabel}`
+  if (kind) {
+    return `${base} · ${KIND_META[kind].label}`
+  }
+  if (dayOff) {
+    return `${base} · Выходной или праздник`
+  }
+  return `${base} · Рабочий день`
 }
 
 function buildRangeDays(fromDay: string, toDay: string): string[] {
@@ -449,6 +466,7 @@ export default function VacationSchedule({
                             rangeStart?.employeeId === employee.id && previewDays.has(dayKey)
                           const isSelecting =
                             rangeStart?.employeeId === employee.id && rangeStart.day === dayKey
+                          const tip = formatVacationCellTip(employee.fullName, day, kind, dayOff)
                           return (
                             <td
                               key={dayKey}
@@ -464,7 +482,8 @@ export default function VacationSchedule({
                               ]
                                 .filter(Boolean)
                                 .join(' ')}
-                              title={kind ? KIND_META[kind].label : undefined}
+                              data-tip={tip}
+                              aria-label={tip}
                               onClick={() => handleCellClick(employee.id, dayKey, employee.canEdit)}
                               onMouseEnter={() => {
                                 if (rangeStart?.employeeId === employee.id) setHoverDay(dayKey)

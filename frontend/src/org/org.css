@@ -2115,6 +2115,48 @@
   outline-offset: -2px;
 }
 
+.org-vacation-panel .org-vacation-cell[data-tip]:hover {
+  z-index: 6;
+  box-shadow:
+    inset 0 0 0 1px var(--org-cell-ring),
+    inset 0 0 0 2px var(--org-cell-hover-ring);
+}
+
+.org-vacation-panel .org-vacation-cell[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--tooltip-bg, #0f172a);
+  color: var(--tooltip-text, #f8fafc);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: normal;
+  width: max-content;
+  max-width: 280px;
+  text-align: center;
+  border: 1px solid var(--tooltip-bg, #0f172a);
+  box-shadow: var(--shadow-md);
+  z-index: 30;
+  pointer-events: none;
+}
+
+.org-vacation-panel .org-vacation-cell[data-tip]:hover::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--tooltip-bg, #0f172a);
+  z-index: 30;
+  pointer-events: none;
+}
+
 .vac-kind-vacation {
   background: var(--org-status-green-bg) !important;
 }
@@ -2169,6 +2211,17 @@
 
 .org-vacation-cell.org-vacation-weekend.vac-kind-business-trip {
   background: color-mix(in srgb, var(--org-status-purple-bg) 74%, var(--day-off-tint) 26%) !important;
+}
+
+[data-theme='dark'] .org-vacation-panel .org-vacation-cell[data-tip]:hover::after {
+  background: #1a2438;
+  color: #f5f8ff;
+  border: 1px solid color-mix(in srgb, #93c5fd 32%, transparent 68%);
+  box-shadow: 0 12px 30px rgb(3 8 20 / 0.55);
+}
+
+[data-theme='dark'] .org-vacation-panel .org-vacation-cell[data-tip]:hover::before {
+  border-top-color: #1a2438;
 }
 
 .org-workspace-panel {
