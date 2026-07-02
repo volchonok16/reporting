@@ -1,87 +1,66 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Reporting">
   <defs>
-    <linearGradient id="bg" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#1a1030" />
-      <stop offset="0.45" stop-color="#121820" />
-      <stop offset="1" stop-color="#0b1824" />
+    <linearGradient id="bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0a0a0a" />
+      <stop offset="1" stop-color="#151515" />
     </linearGradient>
-    <linearGradient id="panel" x1="12" y1="12" x2="52" y2="52" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#a78bfa" stop-opacity="0.14" />
-      <stop offset="0.55" stop-color="#40b3d8" stop-opacity="0.08" />
-      <stop offset="1" stop-color="#c8f000" stop-opacity="0.06" />
+    <linearGradient id="t2-pink" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#ff4db8" />
+      <stop offset="1" stop-color="#ff0090" />
     </linearGradient>
-    <linearGradient id="bar-purple" x1="0" y1="0" x2="0" y2="1">
-      <stop stop-color="#c4b5fd" />
-      <stop offset="1" stop-color="#7c3aed" />
-    </linearGradient>
-    <linearGradient id="bar-cyan" x1="0" y1="0" x2="0" y2="1">
+    <linearGradient id="t2-cyan" x1="0" y1="0" x2="0" y2="1">
       <stop stop-color="#67e8f9" />
       <stop offset="1" stop-color="#40b3d8" />
     </linearGradient>
-    <linearGradient id="bar-lime" x1="0" y1="0" x2="0" y2="1">
+    <linearGradient id="t2-lime" x1="0" y1="0" x2="0" y2="1">
       <stop stop-color="#eaff00" />
       <stop offset="1" stop-color="#c8f000" />
     </linearGradient>
-    <linearGradient id="trend" x1="15" y1="42" x2="48" y2="16" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#a78bfa" />
-      <stop offset="0.5" stop-color="#40b3d8" />
+    <linearGradient id="t2-flow" x1="22" y1="42" x2="50" y2="16" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff0090" />
+      <stop offset="0.48" stop-color="#40b3d8" />
       <stop offset="1" stop-color="#c8f000" />
     </linearGradient>
-    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#8b5cf6" />
-      <stop offset="0.5" stop-color="#40b3d8" />
-      <stop offset="1" stop-color="#c8f000" />
-    </linearGradient>
-    <filter id="lime-glow" x="-30%" y="-30%" width="160%" height="160%">
-      <feDropShadow dx="0" dy="0" stdDeviation="1.4" flood-color="#c8f000" flood-opacity="0.55" />
+    <filter id="pink-glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.1" flood-color="#ff0090" flood-opacity="0.45" />
     </filter>
-    <filter id="soft-glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="0" stdDeviation="0.8" flood-color="#7c3aed" flood-opacity="0.25" />
+    <filter id="lime-glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.3" flood-color="#c8f000" flood-opacity="0.5" />
     </filter>
   </defs>
 
   <rect width="64" height="64" rx="15" fill="url(#bg)" />
 
-  <!-- T2 tri-color arc -->
-  <path
-    d="M10 34c8-14 20-20 32-18"
-    fill="none"
-    stroke="url(#ring)"
-    stroke-width="2.2"
-    stroke-linecap="round"
-    opacity="0.55"
-  />
+  <!-- T2 signature pink mark -->
+  <rect x="11" y="15" width="8" height="34" rx="2" fill="url(#t2-pink)" filter="url(#pink-glow)" />
 
-  <!-- dashboard card -->
+  <!-- analytics card -->
   <rect
-    x="11"
-    y="14"
-    width="42"
-    height="37"
-    rx="8"
-    fill="url(#panel)"
-    stroke="url(#ring)"
-    stroke-opacity="0.28"
-    stroke-width="1"
-    filter="url(#soft-glow)"
+    x="22"
+    y="16"
+    width="31"
+    height="33"
+    rx="7"
+    fill="#ffffff"
+    fill-opacity="0.04"
+    stroke="#ffffff"
+    stroke-opacity="0.1"
   />
-  <rect x="16" y="19" width="13" height="3" rx="1.5" fill="#c4b5fd" fill-opacity="0.55" />
-  <rect x="16" y="25" width="20" height="2" rx="1" fill="#67e8f9" fill-opacity="0.35" />
 
-  <!-- KPI: purple → cyan → acid green -->
-  <rect x="16.5" y="39" width="7.5" height="9" rx="2" fill="url(#bar-purple)" />
-  <rect x="26.5" y="31" width="7.5" height="17" rx="2" fill="url(#bar-cyan)" />
-  <rect x="36.5" y="22" width="7.5" height="26" rx="2" fill="url(#bar-lime)" filter="url(#lime-glow)" />
+  <!-- KPI bars: pink → cyan → lime -->
+  <rect x="26" y="38" width="6" height="8" rx="1.8" fill="url(#t2-pink)" />
+  <rect x="34.5" y="31" width="6" height="15" rx="1.8" fill="url(#t2-cyan)" />
+  <rect x="43" y="22" width="6" height="24" rx="1.8" fill="url(#t2-lime)" filter="url(#lime-glow)" />
 
-  <!-- growth line -->
+  <!-- growth curve -->
   <path
-    d="M15 41.5 27 33.5 37 26.5 47.5 19"
+    d="M24 41.5 34.5 33.5 43.5 26.5 50.5 19.5"
     fill="none"
-    stroke="url(#trend)"
-    stroke-width="2.8"
+    stroke="url(#t2-flow)"
+    stroke-width="2.7"
     stroke-linecap="round"
     stroke-linejoin="round"
   />
-  <circle cx="47.5" cy="19" r="3.2" fill="#c8f000" filter="url(#lime-glow)" />
-  <circle cx="47.5" cy="19" r="1.15" fill="#ffffff" fill-opacity="0.9" />
+  <circle cx="50.5" cy="19.5" r="3" fill="#c8f000" filter="url(#lime-glow)" />
+  <circle cx="50.5" cy="19.5" r="1.1" fill="#ffffff" fill-opacity="0.92" />
 </svg>
