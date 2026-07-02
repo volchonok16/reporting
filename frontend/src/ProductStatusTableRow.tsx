@@ -158,7 +158,11 @@ function ProductStatusTableRow({
         return (
           <td
             key={column}
-            className={[cellClassName, matchedZni.length > 0 ? 'product-status-zni-cell--matched' : '']
+            className={[
+              cellClassName,
+              isActive ? 'product-status-cell-active' : '',
+              matchedZni.length > 0 ? 'product-status-zni-cell--matched' : '',
+            ]
               .filter(Boolean)
               .join(' ')}
             onDoubleClick={() => {

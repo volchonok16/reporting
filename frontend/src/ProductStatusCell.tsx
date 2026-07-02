@@ -1,7 +1,7 @@
 import { forwardRef, memo, useImperativeHandle, useLayoutEffect, useRef } from 'react'
 import {
   applyCellStylePatch,
-  applyStyleToSelection,
+  applyStyleToCellOrSelection,
   clearFormattingInCell,
   createStyledMark,
   normalizeCellValue,
@@ -82,7 +82,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       applyTextStyle(patch) {
         const element = elementRef.current
         if (!element) return false
-        const applied = applyStyleToSelection(element, patch)
+        const applied = applyStyleToCellOrSelection(element, patch)
         if (!applied) return false
         commitValue(serializeEditableCell(element, cellStyleRef.current))
         return true

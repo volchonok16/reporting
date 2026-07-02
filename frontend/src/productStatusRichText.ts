@@ -347,6 +347,95 @@ export function applyStyleToSelection(root: HTMLElement, patch: Partial<TextStyl
   return true
 }
 
+function readSegmentsFromRoot(root: HTMLElement): TextStyleSegment[] {
+  const segments: TextStyleSegment[] = []
+  root.childNodes.forEach((node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent ?? ''
+      if (text) {
+        segments.push({
+          text,
+          bg: null,
+          fg: null,
+          strike: false,
+          bold: false,
+          italic: false,
+        })
+      }
+      return
+    }
+    if (!(node instanceof HTMLElement)) return
+    if (node.classList.contains('product-status-highlight')) {
+      const text = node.textContent ?? ''
+      if (text) {
+        segments.push(readMarkStyle(node))
+      }
+      return
+    }
+    const text = node.textContent ?? ''
+    if (text) {
+      segments.push({
+        text,
+        bg: null,
+        fg: null,
+        strike: false,
+        bold: false,
+        italic: false,
+      })
+    }
+  })
+  return segments
+}
+
+function renderSegmentsToRoot(root: HTMLElement, segments: TextStyleSegment[]) {
+  root.replaceChildren()
+  for (const segment of segments) {
+    if (!segment.text) continue
+    const normalized = normalizeTextSegment(segment)
+    const hasStyle =
+      normalized.bg || normalized.fg || normalized.strike || normalized.bold || normalized.italic
+    if (!hasStyle) {
+      root.append(document.createTextNode(normalized.text))
+    } else {
+      root.append(createStyledMark(normalized))
+    }
+  }
+  if (!root.childNodes.length) {
+    root.append(document.createTextNode(''))
+  }
+}
+
+/** Применяет стиль к выделению или ко всему содержимому ячейки, если выделения нет. */
+export function applyStyleToCellOrSelection(
+  root: HTMLElement,
+  patch: Partial<TextStyleSegment>,
+): boolean {
+  if (applyStyleToSelection(root, patch)) {
+    return true
+  }
+
+  const segments = readSegmentsFromRoot(root)
+  if (segments.length === 0) {
+    const styled = applyPatchToSegment(
+      { text: '\u00A0', bg: null, fg: null, strike: false, bold: false, italic: false },
+      patch,
+    )
+    const hasStyle =
+      styled.bg || styled.fg || styled.strike || styled.bold || styled.italic
+    if (!hasStyle) {
+      return false
+    }
+    root.replaceChildren(createStyledMark(styled))
+    return true
+  }
+
+  renderSegmentsToRoot(
+    root,
+    segments.map((segment) => applyPatchToSegment(segment, patch)),
+  )
+  return true
+}
+
 export function clearFormattingInCell(root: HTMLElement): boolean {
   const selection = window.getSelection()
   if (selection && selection.rangeCount > 0) {

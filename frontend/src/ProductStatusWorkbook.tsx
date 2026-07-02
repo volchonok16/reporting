@@ -339,6 +339,7 @@ export default function ProductStatusWorkbook({
   const [loadedGids, setLoadedGids] = useState<Set<string>>(() => new Set())
   const [sheetLoadingGid, setSheetLoadingGid] = useState<string | null>(null)
   const activeCellRef = useRef<ProductStatusCellHandle | null>(null)
+  const blurTimerRef = useRef<number | null>(null)
   const baselineByGidRef = useRef<Map<string, ProductStatusSheet>>(new Map())
 
   const rememberBaseline = useCallback((sheet: ProductStatusSheet) => {
@@ -800,13 +801,29 @@ export default function ProductStatusWorkbook({
   }, [activeGid, sheets])
 
   const handleActiveCellFocus = useCallback((cell: ActiveCell) => {
+    if (blurTimerRef.current !== null) {
+      window.clearTimeout(blurTimerRef.current)
+      blurTimerRef.current = null
+    }
     setActiveCell(cell)
   }, [])
 
   const handleActiveCellBlur = useCallback((cell: ActiveCell) => {
-    setActiveCell((current) =>
-      current?.rowIndex === cell.rowIndex && current.column === cell.column ? null : current,
-    )
+    if (blurTimerRef.current !== null) {
+      window.clearTimeout(blurTimerRef.current)
+    }
+    blurTimerRef.current = window.setTimeout(() => {
+      const focused = document.activeElement
+      if (focused?.closest('.product-status-format-toolbar')) {
+        return
+      }
+      if (focused?.closest('.product-status-cell-input')) {
+        return
+      }
+      setActiveCell((current) =>
+        current?.rowIndex === cell.rowIndex && current.column === cell.column ? null : current,
+      )
+    }, 0)
   }, [])
 
   const handleRefresh = useCallback(async () => {
@@ -924,7 +941,10 @@ export default function ProductStatusWorkbook({
   const tablePending = Boolean(activeSheetReady && sheetLoading && sheetLoadingGid === activeGid)
 
   const applyTextStyle = useCallback((patch: Partial<TextStyleSegment>) => {
-    activeCellRef.current?.applyTextStyle(patch)
+    const applied = activeCellRef.current?.applyTextStyle(patch)
+    if (!applied) {
+      notifyWarning('Не удалось применить форматирование')
+    }
   }, [])
 
   const applyCellStyle = useCallback((patch: Partial<CellStyle>) => {
