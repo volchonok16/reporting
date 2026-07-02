@@ -2510,29 +2510,71 @@
   box-shadow: inset 0 0 0 1px var(--text-secondary) !important;
 }
 
-.org-workspace-timeoff-vacation,
-.org-workspace-vacation-blocked {
-  background: color-mix(in srgb, var(--org-office-vacation-bg, #7dd3fc) 28%, var(--surface-2) 72%) !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--org-office-vacation-border, #7dd3fc) 40%, transparent 60%) !important;
+.org-office-presence-panel .org-vacation-cell.org-office-presence-in,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-office-presence-in {
+  background: var(--org-office-in-bg) !important;
+  box-shadow:
+    inset 0 0 0 1px var(--org-office-in-border),
+    inset 0 0 0 2px color-mix(in srgb, var(--org-office-in-border) 28%, transparent 72%);
+}
+
+.org-office-presence-panel .org-vacation-cell.org-office-presence-vacation,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-office-presence-vacation {
+  background: var(--org-office-vacation-bg) !important;
+  box-shadow:
+    inset 0 0 0 1px var(--org-office-vacation-border),
+    inset 0 0 0 2px color-mix(in srgb, var(--org-office-vacation-border) 28%, transparent 72%);
+}
+
+.org-office-presence-panel .org-vacation-cell.org-office-presence-dayoff,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-office-presence-dayoff {
+  background: var(--org-office-dayoff-bg) !important;
+  box-shadow:
+    inset 0 0 0 1px var(--org-office-dayoff-border),
+    inset 0 0 0 2px color-mix(in srgb, var(--org-office-dayoff-border) 28%, transparent 72%);
+}
+
+.org-office-presence-panel .org-vacation-cell.org-office-presence-sick,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-office-presence-sick {
+  background: var(--org-office-sick-bg) !important;
+  box-shadow:
+    inset 0 0 0 1px var(--org-office-sick-border),
+    inset 0 0 0 2px color-mix(in srgb, var(--org-office-sick-border) 28%, transparent 72%);
+}
+
+.org-office-presence-panel .org-vacation-cell.org-office-presence-business-trip,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-office-presence-business-trip {
+  background: var(--org-office-business-trip-bg) !important;
+  box-shadow:
+    inset 0 0 0 1px var(--org-office-business-trip-border),
+    inset 0 0 0 2px color-mix(in srgb, var(--org-office-business-trip-border) 28%, transparent 72%);
+}
+
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-office-presence-vacation,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-office-presence-dayoff,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-office-presence-sick,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-office-presence-business-trip {
   cursor: not-allowed;
 }
 
-.org-workspace-timeoff-dayoff {
-  background: color-mix(in srgb, var(--org-office-dayoff-bg, var(--org-status-violet-bg)) 28%, var(--surface-2) 72%) !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--org-office-dayoff-border, var(--org-status-violet-border)) 40%, transparent 60%) !important;
-  cursor: not-allowed;
+.org-office-presence-panel .org-vacation-cell.org-vacation-weekend.org-office-presence-vacation,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-workspace-weekend.org-office-presence-vacation {
+  background: color-mix(in srgb, var(--org-office-vacation-bg) 74%, var(--day-off-tint) 26%) !important;
 }
 
-.org-workspace-timeoff-sick {
-  background: color-mix(in srgb, var(--org-office-sick-bg, var(--org-status-amber-bg)) 28%, var(--surface-2) 72%) !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--org-office-sick-border, var(--org-status-amber-border)) 40%, transparent 60%) !important;
-  cursor: not-allowed;
+.org-office-presence-panel .org-vacation-cell.org-vacation-weekend.org-office-presence-dayoff,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-workspace-weekend.org-office-presence-dayoff {
+  background: color-mix(in srgb, var(--org-office-dayoff-bg) 74%, var(--day-off-tint) 26%) !important;
 }
 
-.org-workspace-timeoff-business-trip {
-  background: color-mix(in srgb, var(--org-office-business-trip-bg, var(--org-status-purple-bg)) 28%, var(--surface-2) 72%) !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--org-office-business-trip-border, var(--org-status-purple-border)) 40%, transparent 60%) !important;
-  cursor: not-allowed;
+.org-office-presence-panel .org-vacation-cell.org-vacation-weekend.org-office-presence-sick,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-workspace-weekend.org-office-presence-sick {
+  background: color-mix(in srgb, var(--org-office-sick-bg) 74%, var(--day-off-tint) 26%) !important;
+}
+
+.org-office-presence-panel .org-vacation-cell.org-vacation-weekend.org-office-presence-business-trip,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-workspace-weekend.org-office-presence-business-trip {
+  background: color-mix(in srgb, var(--org-office-business-trip-bg) 74%, var(--day-off-tint) 26%) !important;
 }
 
 .org-vacation-legend-item.org-workspace-free {
@@ -2557,30 +2599,6 @@
   background: var(--workspace-weekend-fill, var(--org-status-weekend-bg));
   border: 1px solid var(--workspace-weekend-border);
   color: var(--workspace-weekend-text, var(--org-status-weekend-text));
-}
-
-.org-vacation-legend-item.org-workspace-vacation-legend {
-  background: var(--org-office-vacation-bg);
-  border: 1px solid var(--org-office-vacation-border);
-  color: var(--text-primary);
-}
-
-.org-vacation-legend-item.org-workspace-dayoff-legend {
-  background: var(--org-office-dayoff-bg);
-  border: 1px solid var(--org-office-dayoff-border);
-  color: var(--text-primary);
-}
-
-.org-vacation-legend-item.org-workspace-sick-legend {
-  background: var(--org-office-sick-bg);
-  border: 1px solid var(--org-office-sick-border);
-  color: var(--text-primary);
-}
-
-.org-vacation-legend-item.org-workspace-business-trip-legend {
-  background: var(--org-office-business-trip-bg);
-  border: 1px solid var(--org-office-business-trip-border);
-  color: var(--text-primary);
 }
 
 .org-vacation-legend-item.org-workspace-pending-legend {
@@ -2639,13 +2657,6 @@
   border-color: color-mix(in srgb, var(--border-strong) 70%, transparent 30%);
 }
 
-[data-theme='dark'] .org-vacation-legend-item.org-workspace-vacation-legend,
-[data-theme='dark'] .org-vacation-legend-item.org-workspace-dayoff-legend,
-[data-theme='dark'] .org-vacation-legend-item.org-workspace-sick-legend,
-[data-theme='dark'] .org-vacation-legend-item.org-workspace-business-trip-legend {
-  color: var(--text-primary);
-}
-
 [data-theme='dark'] .org-workspace-weekday-head,
 [data-theme='dark'] .org-workspace-day-head,
 [data-theme='dark'] .org-workspace-chart .org-vacation-month {
@@ -2686,7 +2697,19 @@
   --org-office-business-trip-border: color-mix(in srgb, var(--vac-business-trip-bg) 52%, var(--border-strong) 48%);
 }
 
-[data-theme='dark'] .org-office-presence-panel {
+.org-workspace-panel {
+  --org-office-vacation-bg: #7dd3fc;
+  --org-office-vacation-border: color-mix(in srgb, #7dd3fc 52%, var(--border-strong) 48%);
+  --org-office-dayoff-bg: var(--vac-dayoff-bg);
+  --org-office-dayoff-border: color-mix(in srgb, var(--vac-dayoff-bg) 52%, var(--border-strong) 48%);
+  --org-office-sick-bg: var(--vac-sick-bg);
+  --org-office-sick-border: color-mix(in srgb, var(--vac-sick-bg) 52%, var(--border-strong) 48%);
+  --org-office-business-trip-bg: var(--vac-business-trip-bg);
+  --org-office-business-trip-border: color-mix(in srgb, var(--vac-business-trip-bg) 52%, var(--border-strong) 48%);
+}
+
+[data-theme='dark'] .org-office-presence-panel,
+[data-theme='dark'] .org-workspace-panel {
   --org-office-in-bg: color-mix(in srgb, #22c55e 44%, var(--surface-2) 56%);
   --org-office-in-border: color-mix(in srgb, #86efac 58%, transparent 42%);
   --org-office-vacation-bg: color-mix(in srgb, #38bdf8 46%, var(--surface-2) 54%);
@@ -2697,57 +2720,6 @@
   --org-office-sick-border: color-mix(in srgb, #fcd34d 60%, transparent 40%);
   --org-office-business-trip-bg: color-mix(in srgb, #e879f9 50%, var(--surface-2) 50%);
   --org-office-business-trip-border: color-mix(in srgb, #f0abfc 62%, transparent 38%);
-}
-
-.org-office-presence-panel .org-vacation-cell.org-office-presence-in {
-  background: var(--org-office-in-bg) !important;
-  box-shadow:
-    inset 0 0 0 1px var(--org-office-in-border),
-    inset 0 0 0 2px color-mix(in srgb, var(--org-office-in-border) 28%, transparent 72%);
-}
-
-.org-office-presence-panel .org-vacation-cell.org-office-presence-vacation {
-  background: var(--org-office-vacation-bg) !important;
-  box-shadow:
-    inset 0 0 0 1px var(--org-office-vacation-border),
-    inset 0 0 0 2px color-mix(in srgb, var(--org-office-vacation-border) 28%, transparent 72%);
-}
-
-.org-office-presence-panel .org-vacation-cell.org-office-presence-dayoff {
-  background: var(--org-office-dayoff-bg) !important;
-  box-shadow:
-    inset 0 0 0 1px var(--org-office-dayoff-border),
-    inset 0 0 0 2px color-mix(in srgb, var(--org-office-dayoff-border) 28%, transparent 72%);
-}
-
-.org-office-presence-panel .org-vacation-cell.org-office-presence-sick {
-  background: var(--org-office-sick-bg) !important;
-  box-shadow:
-    inset 0 0 0 1px var(--org-office-sick-border),
-    inset 0 0 0 2px color-mix(in srgb, var(--org-office-sick-border) 28%, transparent 72%);
-}
-
-.org-office-presence-panel .org-vacation-cell.org-office-presence-business-trip {
-  background: var(--org-office-business-trip-bg) !important;
-  box-shadow:
-    inset 0 0 0 1px var(--org-office-business-trip-border),
-    inset 0 0 0 2px color-mix(in srgb, var(--org-office-business-trip-border) 28%, transparent 72%);
-}
-
-.org-office-presence-panel .org-vacation-cell.org-vacation-weekend.org-office-presence-vacation {
-  background: color-mix(in srgb, var(--org-office-vacation-bg) 74%, var(--day-off-tint) 26%) !important;
-}
-
-.org-office-presence-panel .org-vacation-cell.org-vacation-weekend.org-office-presence-dayoff {
-  background: color-mix(in srgb, var(--org-office-dayoff-bg) 74%, var(--day-off-tint) 26%) !important;
-}
-
-.org-office-presence-panel .org-vacation-cell.org-vacation-weekend.org-office-presence-sick {
-  background: color-mix(in srgb, var(--org-office-sick-bg) 74%, var(--day-off-tint) 26%) !important;
-}
-
-.org-office-presence-panel .org-vacation-cell.org-vacation-weekend.org-office-presence-business-trip {
-  background: color-mix(in srgb, var(--org-office-business-trip-bg) 74%, var(--day-off-tint) 26%) !important;
 }
 
 .org-office-presence-panel .org-vacation-cell.org-vacation-weekend {

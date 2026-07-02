@@ -26,30 +26,11 @@ type SaveOperation = {
   employeeId?: number
 }
 
-const TIME_OFF_META: Record<
-  TimeOffKind,
-  { label: string; cellClassName: string; legendClassName: string }
-> = {
-  vacation: {
-    label: 'Отпуск',
-    cellClassName: 'org-workspace-timeoff-vacation',
-    legendClassName: 'org-workspace-vacation-legend',
-  },
-  dayoff: {
-    label: 'Отгул',
-    cellClassName: 'org-workspace-timeoff-dayoff',
-    legendClassName: 'org-workspace-dayoff-legend',
-  },
-  sick_leave: {
-    label: 'Больничный',
-    cellClassName: 'org-workspace-timeoff-sick',
-    legendClassName: 'org-workspace-sick-legend',
-  },
-  business_trip: {
-    label: 'Командировка',
-    cellClassName: 'org-workspace-timeoff-business-trip',
-    legendClassName: 'org-workspace-business-trip-legend',
-  },
+const TIME_OFF_META: Record<TimeOffKind, { label: string; className: string }> = {
+  vacation: { label: 'Отпуск', className: 'org-office-presence-vacation' },
+  dayoff: { label: 'Отгул', className: 'org-office-presence-dayoff' },
+  sick_leave: { label: 'Больничный', className: 'org-office-presence-sick' },
+  business_trip: { label: 'Командировка', className: 'org-office-presence-business-trip' },
 }
 
 function timeOffDayKey(employeeId: number, day: string): string {
@@ -586,7 +567,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
         <span className="org-vacation-legend-item org-workspace-weekend-legend">Выходной или праздник</span>
         {(Object.entries(TIME_OFF_META) as Array<[TimeOffKind, (typeof TIME_OFF_META)[TimeOffKind]]>).map(
           ([kind, meta]) => (
-            <span key={kind} className={`org-vacation-legend-item ${meta.legendClassName}`}>
+            <span key={kind} className={`org-vacation-legend-item ${meta.className}`}>
               {meta.label}
             </span>
           ),
@@ -723,21 +704,24 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                             pending,
                           )
 
+                      const bookingClass = booking
+                        ? booking.isSelf
+                          ? 'org-workspace-self'
+                          : 'org-workspace-busy'
+                        : 'org-workspace-free'
+                      const statusClass =
+                        onTimeOff && !booking && timeOffKind
+                          ? TIME_OFF_META[timeOffKind].className
+                          : bookingClass
+
                       return (
                         <td
                           key={`${place.id}-${dayKey}`}
                           className={[
                             'org-vacation-cell',
                             'org-workspace-cell',
-                            booking
-                              ? booking.isSelf
-                                ? 'org-workspace-self'
-                                : 'org-workspace-busy'
-                              : 'org-workspace-free',
+                            statusClass,
                             dayOff ? 'org-workspace-weekend' : '',
-                            onTimeOff && !booking && timeOffKind
-                              ? TIME_OFF_META[timeOffKind].cellClassName
-                              : '',
                             dayKey === todayKey ? 'org-vacation-today' : '',
                             dayKey === selectedDayKey ? 'org-vacation-cell-selected-day' : '',
                             pending ? 'org-workspace-pending' : '',
