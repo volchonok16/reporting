@@ -79,6 +79,8 @@ export type ProductStatusWorkbookConfig = {
   enableRowDelete?: boolean
   enableHistory?: boolean
   canEditAdminColumns?: boolean
+  /** Правки в БД только по «Обновить»; до этого можно откатить */
+  commitOnRefresh?: boolean
 }
 
 const ADMIN_ONLY_COLUMNS = new Set(['Проект координация'])
@@ -313,6 +315,7 @@ export default function ProductStatusWorkbook({
   enableRowDelete = false,
   enableHistory = false,
   canEditAdminColumns = false,
+  commitOnRefresh = false,
 }: ProductStatusWorkbookConfig) {
   const isSection = variant === 'section'
   const RootTag = isSection ? 'section' : 'div'
@@ -586,12 +589,12 @@ export default function ProductStatusWorkbook({
     [apiBase, enableHistory],
   )
 
-  const handleSave = useCallback(async () => {
-    if (sheets.length === 0) return
+  const handleSave = useCallback(async (): Promise<boolean> => {
+    if (sheets.length === 0) return true
     const payload = collectSheetUpdates(baselineByGidRef.current, sheets, loadedGids)
     if (payload.updates.length === 0 && payload.deletedRows.length === 0) {
       setDirty(false)
-      return
+      return true
     }
     setSaving(true)
     const toastId = notifyLoading('Сохранение…', 'product-status-save')
@@ -610,18 +613,49 @@ export default function ProductStatusWorkbook({
       if (enableHistory && activeGid && viewMode === 'history') {
         void loadHistory(activeGid)
       }
-      notifySuccess('Сохранено', toastId)
+      notifySuccess(commitOnRefresh ? 'Изменения применены' : 'Сохранено', toastId)
+      return true
     } catch (err) {
       notifyProblem(err, 'Ошибка сохранения', toastId)
+      return false
     } finally {
       setSaving(false)
     }
-  }, [activeGid, apiBase, enableHistory, loadHistory, loadedGids, sheets, syncBaselinesFromSheets, viewMode])
+  }, [
+    activeGid,
+    apiBase,
+    commitOnRefresh,
+    enableHistory,
+    loadHistory,
+    loadedGids,
+    sheets,
+    syncBaselinesFromSheets,
+    viewMode,
+  ])
+
+  const handleRevert = useCallback(() => {
+    if (!dirty) return
+    if (!window.confirm('Отменить все неприменённые изменения и вернуть последнюю сохранённую версию?')) {
+      return
+    }
+    setSheets((current) =>
+      current.map((sheet) => {
+        const baseline = baselineByGidRef.current.get(sheet.gid)
+        if (!baseline || !loadedGids.has(sheet.gid)) {
+          return sheet
+        }
+        return cloneSheet(baseline)
+      }),
+    )
+    setDirty(false)
+    setActiveCell(null)
+    notifySuccess('Изменения отменены')
+  }, [dirty, loadedGids])
 
   const deleteRow = useCallback(
     (rowIndex: number) => {
       if (!activeGid) return
-      if (!window.confirm('Удалить строку? Изменение попадёт в презентацию после сохранения.')) {
+      if (!window.confirm('Удалить строку? Изменение применится после «Обновить».')) {
         return
       }
       setDirty(true)
@@ -775,12 +809,20 @@ export default function ProductStatusWorkbook({
     )
   }, [])
 
-  const handleRefresh = useCallback(() => {
+  const handleRefresh = useCallback(async () => {
+    if (commitOnRefresh) {
+      if (dirty) {
+        const saved = await handleSave()
+        if (!saved) return
+      }
+      void loadData({ refresh: true })
+      return
+    }
     if (dirty && !window.confirm('Есть несохранённые изменения. Обновить данные?')) {
       return
     }
     void loadData({ refresh: true })
-  }, [dirty, loadData])
+  }, [commitOnRefresh, dirty, handleSave, loadData])
 
   const loadDataRef = useRef(loadData)
   loadDataRef.current = loadData
@@ -899,11 +941,20 @@ export default function ProductStatusWorkbook({
   }, [])
 
   const openHistory = useCallback(() => {
+    if (commitOnRefresh && dirty) {
+      if (
+        !window.confirm(
+          'Есть неприменённые изменения. В истории только уже применённые правки. Открыть историю?',
+        )
+      ) {
+        return
+      }
+    }
     if (activeGid) {
       void loadHistory(activeGid)
     }
     setViewMode('history')
-  }, [activeGid, loadHistory])
+  }, [activeGid, commitOnRefresh, dirty, loadHistory])
 
   return (
     <RootTag className={rootClassName}>
@@ -948,17 +999,35 @@ export default function ProductStatusWorkbook({
               ) : null}
             </p>
           )}
-          {dirty ? <p className="product-status-dirty">Есть несохранённые изменения</p> : null}
+          {dirty ? (
+            <p className="product-status-dirty">
+              {commitOnRefresh
+                ? 'Есть неприменённые изменения · «Обновить» — применить, «Откатить» — отменить'
+                : 'Есть несохранённые изменения'}
+            </p>
+          ) : null}
         </div>
         <div className="product-status-toolbar-actions">
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => void handleSave()}
-            disabled={toolbarBusy || sheets.length === 0 || !dirty}
-          >
-            Сохранить
-          </button>
+          {!commitOnRefresh ? (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => void handleSave()}
+              disabled={toolbarBusy || sheets.length === 0 || !dirty}
+            >
+              Сохранить
+            </button>
+          ) : null}
+          {commitOnRefresh && dirty ? (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={handleRevert}
+              disabled={toolbarBusy}
+            >
+              Откатить
+            </button>
+          ) : null}
           {enableExcelExport ? (
             <button
               type="button"
@@ -979,7 +1048,12 @@ export default function ProductStatusWorkbook({
               Скачать презентацию
             </button>
           ) : null}
-          <button type="button" className="btn-secondary" onClick={handleRefresh} disabled={toolbarBusy}>
+          <button
+            type="button"
+            className={commitOnRefresh && dirty ? 'btn-primary' : 'btn-secondary'}
+            onClick={() => void handleRefresh()}
+            disabled={toolbarBusy || sheets.length === 0}
+          >
             Обновить
           </button>
         </div>
@@ -998,6 +1072,17 @@ export default function ProductStatusWorkbook({
                   activeSheet?.gid === sheet.gid ? ' product-status-sheet-tab-active' : ''
                 }`}
                 onClick={() => {
+                  if (dirty && commitOnRefresh) {
+                    if (
+                      !window.confirm(
+                        'Есть неприменённые изменения. Переключить офис без применения?',
+                      )
+                    ) {
+                      return
+                    }
+                  } else if (dirty && !window.confirm('Есть несохранённые изменения. Переключить лист?')) {
+                    return
+                  }
                   const needsLoad =
                     lazySheets &&
                     (!loadedGids.has(sheet.gid) ||

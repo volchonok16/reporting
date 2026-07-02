@@ -82,6 +82,7 @@ export default function ProductStatusB2B({ canManageOrg = false }: ProductStatus
           enableRowDelete
           enableHistory
           canEditAdminColumns={canManageOrg}
+          commitOnRefresh
         />
       ) : null}
       {panel === 'news' ? (
