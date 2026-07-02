@@ -15,11 +15,7 @@ import {
   readProductStatusCache,
   writeProductStatusCache,
 } from './productStatusClientCache'
-import {
-  copyFullColumnsToPresentation,
-  formatProductStatusColumnHeader,
-  resolvePresentationCopyPairs,
-} from './productStatusColumns'
+import { formatProductStatusColumnHeader } from './productStatusColumns'
 import type { ChangeRequest, TaskLookupResponse } from './zniTypes'
 import ZniDetailModal from './ZniDetailModal'
 
@@ -889,30 +885,6 @@ export default function ProductStatusWorkbook({
     )
   }, [activeGid, sheets])
 
-  const handleCopyToPresentation = useCallback(() => {
-    const sheet = sheets.find((item) => item.gid === activeGid) ?? sheets[0] ?? null
-    if (!sheet) return
-    const pairs = resolvePresentationCopyPairs(sheet.columns)
-    if (pairs.length === 0) {
-      notifyWarning('На листе нет пар столбцов «полное → презентация»')
-      return
-    }
-
-    const { sheet: nextSheet, copiedCells } = copyFullColumnsToPresentation(sheet, {
-      onlyPresentationRows: true,
-      isPresentationRow: (row) => resolveRowHighlight(row, sheet.columns).isPresentation,
-    })
-
-    if (copiedCells === 0) {
-      notifyWarning('Нечего копировать: у строк с «Идет в презентацию» заполните полные столбцы')
-      return
-    }
-
-    setDirty(true)
-    setSheets((current) => current.map((item) => (item.gid === nextSheet.gid ? nextSheet : item)))
-    notifySuccess(`Скопировано в презентацию: ${copiedCells}`)
-  }, [activeGid, sheets])
-
   const addColumn = useCallback(() => {
     if (!activeGid) return
     const sheet = sheets.find((item) => item.gid === activeGid)
@@ -1008,11 +980,6 @@ export default function ProductStatusWorkbook({
   const activeSheet = useMemo(
     () => sheets.find((sheet) => sheet.gid === activeGid) ?? sheets[0] ?? null,
     [activeGid, sheets],
-  )
-
-  const presentationCopyPairs = useMemo(
-    () => (activeSheet ? resolvePresentationCopyPairs(activeSheet.columns) : []),
-    [activeSheet],
   )
 
   const booleanColorsByColumn = useMemo(() => {
@@ -1438,17 +1405,6 @@ export default function ProductStatusWorkbook({
             )}
           </p>
           <div className="product-status-table-toolbar-actions">
-            {presentationCopyPairs.length > 0 ? (
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={handleCopyToPresentation}
-                disabled={toolbarBusy || !activeSheetReady}
-                title="Скопировать «полное описание» и «зачем (полное)» в столбцы для презентации у строк с галочкой «Идет в презентацию»"
-              >
-                Скопировать в презентацию
-              </button>
-            ) : null}
             <button
               type="button"
               className="btn-secondary"
