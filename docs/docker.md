@@ -205,6 +205,8 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 
 Дополнительные рабочие места для брони — `db/migrations/012_workspace_places_99_106.sql`: в справочник `workspace_place` добавляются места **99–106** (без дубликатов, если номер уже есть).
 
+Статус продукта B2B в PostgreSQL — `db/migrations/013_b2b_product_status.sql`: таблицы `b2b_product_status_office`, `b2b_product_status_row`, `b2b_product_status_history` и seed вкладок офисов. Миграция также подхватывается при старте backend (`ensure_startup_schema`).
+
 Если права нужно обновить вручную (новые таблицы org/vacation, backend создал таблицы от alex):
 
 ```bash

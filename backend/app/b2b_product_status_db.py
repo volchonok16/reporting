@@ -1,0 +1,473 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from typing import Any
+
+from fastapi import HTTPException
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.schemas import (
+    ProductStatusB2BOut,
+    ProductStatusCellUpdate,
+    ProductStatusHistoryEntryOut,
+    ProductStatusHistoryOut,
+    ProductStatusSaveIn,
+    ProductStatusSheetOut,
+)
+
+ROW_ID_KEY = "__rowId"
+
+B2B_PRODUCT_STATUS_COLUMNS: tuple[str, ...] = (
+    "Дата запуска",
+    "Проект координация",
+    "Полное Описание проекта и статус",
+    "Для презентации Описание проекта и статус",
+    "Зачем и для чего делаем полное описание",
+    "Зачем и для чего делаем для презентации",
+    "ЗНИ",
+    "Идет в презентацию",
+    "Обратить внимание",
+)
+
+ADMIN_ONLY_COLUMNS: frozenset[str] = frozenset({"Проект координация"})
+
+_TITLE = "Статус продукта B2B"
+
+
+def _empty_cells() -> dict[str, str]:
+    return {column: "" for column in B2B_PRODUCT_STATUS_COLUMNS}
+
+
+def _row_has_content(cells: dict[str, str]) -> bool:
+    return any(str(value).strip() for value in cells.values())
+
+
+def _normalize_cells(raw: dict[str, Any] | None) -> dict[str, str]:
+    source = raw or {}
+    cells = _empty_cells()
+    for column in B2B_PRODUCT_STATUS_COLUMNS:
+        value = source.get(column, "")
+        cells[column] = "" if value is None else str(value)
+    return cells
+
+
+def _sheet_from_rows(*, gid: str, name: str, rows: list[dict[str, Any]]) -> ProductStatusSheetOut:
+    sheet_rows: list[dict[str, str]] = []
+    for row in rows:
+        cells = _normalize_cells(row.get("cells"))
+        if not _row_has_content(cells):
+            continue
+        payload = dict(cells)
+        payload[ROW_ID_KEY] = str(row["id"])
+        sheet_rows.append(payload)
+    return ProductStatusSheetOut(
+        gid=gid,
+        name=name,
+        columns=list(B2B_PRODUCT_STATUS_COLUMNS),
+        rows=sheet_rows,
+        totalShown=len(sheet_rows),
+    )
+
+
+def _load_offices(db: Session) -> list[dict[str, Any]]:
+    result = db.execute(
+        text(
+            """
+            SELECT id, gid, name
+            FROM b2b_product_status_office
+            WHERE is_active = TRUE
+            ORDER BY sort_order, id
+            """
+        )
+    )
+    return [dict(row._mapping) for row in result]
+
+
+def _load_office(db: Session, *, gid: str) -> dict[str, Any] | None:
+    result = db.execute(
+        text(
+            """
+            SELECT id, gid, name
+            FROM b2b_product_status_office
+            WHERE gid = :gid AND is_active = TRUE
+            """
+        ),
+        {"gid": gid},
+    )
+    row = result.first()
+    return dict(row._mapping) if row else None
+
+
+def _load_office_rows(db: Session, *, office_id: int) -> list[dict[str, Any]]:
+    result = db.execute(
+        text(
+            """
+            SELECT id, cells, sort_order
+            FROM b2b_product_status_row
+            WHERE office_id = :office_id
+            ORDER BY sort_order, id
+            """
+        ),
+        {"office_id": office_id},
+    )
+    rows: list[dict[str, Any]] = []
+    for row in result:
+        mapping = dict(row._mapping)
+        cells = mapping.get("cells")
+        mapping["cells"] = cells if isinstance(cells, dict) else {}
+        rows.append(mapping)
+    return rows
+
+
+def load_b2b_product_status_from_db(
+    db: Session,
+    *,
+    gid: str | None = None,
+    meta_only: bool = False,
+) -> ProductStatusB2BOut:
+    offices = _load_offices(db)
+    if not offices:
+        raise HTTPException(
+            status_code=503,
+            detail="Таблицы статуса продукта B2B не инициализированы.",
+        )
+
+    if gid:
+        offices = [office for office in offices if office["gid"] == gid]
+        if not offices:
+            raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
+
+    sheets: list[ProductStatusSheetOut] = []
+    for office in offices:
+        if meta_only:
+            sheets.append(
+                ProductStatusSheetOut(
+                    gid=office["gid"],
+                    name=office["name"],
+                    columns=list(B2B_PRODUCT_STATUS_COLUMNS),
+                    rows=[],
+                    totalShown=0,
+                )
+            )
+            continue
+        rows = _load_office_rows(db, office_id=int(office["id"]))
+        sheets.append(
+            _sheet_from_rows(
+                gid=office["gid"],
+                name=office["name"],
+                rows=rows,
+            )
+        )
+
+    return ProductStatusB2BOut(
+        title=_TITLE,
+        sourceUrl=None,
+        presentationReferenceUrl=(
+            settings.b2b_product_status_presentation_reference_url or None
+        ),
+        sheets=sheets,
+    )
+
+
+def _append_history(
+    db: Session,
+    *,
+    row_id: int | None,
+    office_id: int,
+    office_name: str,
+    action: str,
+    field_name: str | None,
+    old_value: str | None,
+    new_value: str | None,
+    changed_by: str | None,
+) -> None:
+    db.execute(
+        text(
+            """
+            INSERT INTO b2b_product_status_history (
+                row_id, office_id, office_name, action,
+                field_name, old_value, new_value, changed_by
+            ) VALUES (
+                :row_id, :office_id, :office_name, :action,
+                :field_name, :old_value, :new_value, :changed_by
+            )
+            """
+        ),
+        {
+            "row_id": row_id,
+            "office_id": office_id,
+            "office_name": office_name,
+            "action": action,
+            "field_name": field_name,
+            "old_value": old_value,
+            "new_value": new_value,
+            "changed_by": changed_by,
+        },
+    )
+
+
+def _can_edit_admin_columns(meta: dict[str, Any]) -> bool:
+    auth_mode = meta.get("auth_mode")
+    app_role = meta.get("app_role") or "full"
+    org_user_role = meta.get("org_user_role")
+    return (
+        auth_mode == "pat"
+        or (auth_mode == "app_user" and app_role == "full" and org_user_role is None)
+        or org_user_role == "admin"
+    )
+
+
+def _resolve_changed_by(meta: dict[str, Any]) -> str | None:
+    login = meta.get("app_login")
+    if isinstance(login, str) and login.strip():
+        return login.strip()
+    return None
+
+
+def save_b2b_product_status_to_db(
+    db: Session,
+    payload: ProductStatusSaveIn,
+    *,
+    meta: dict[str, Any],
+) -> None:
+    can_edit_admin = _can_edit_admin_columns(meta)
+    changed_by = _resolve_changed_by(meta)
+    updates_by_gid: dict[str, list[ProductStatusCellUpdate]] = {}
+    for update in payload.updates:
+        updates_by_gid.setdefault(update.gid, []).append(update)
+
+    deleted_by_gid: dict[str, set[int]] = {}
+    for item in payload.deletedRows:
+        deleted_by_gid.setdefault(item.gid, set()).add(item.rowId)
+
+    processed_gids = set(updates_by_gid) | set(deleted_by_gid)
+    for gid in processed_gids:
+        office = _load_office(db, gid=gid)
+        if office is None:
+            raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
+
+        updates = updates_by_gid.get(gid, [])
+        for update in updates:
+            if update.rowIndex < 1:
+                continue
+            column = (
+                update.column
+                if update.column in B2B_PRODUCT_STATUS_COLUMNS
+                else B2B_PRODUCT_STATUS_COLUMNS[update.columnIndex]
+                if update.columnIndex < len(B2B_PRODUCT_STATUS_COLUMNS)
+                else None
+            )
+            if column in ADMIN_ONLY_COLUMNS and not can_edit_admin:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Недостаточно прав для редактирования «{column}».",
+                )
+
+        office_id = int(office["id"])
+        office_name = str(office["name"])
+        db_rows = _load_office_rows(db, office_id=office_id)
+        row_by_id = {int(row["id"]): row for row in db_rows}
+        deleted_ids = deleted_by_gid.get(gid, set())
+
+        for row_id in deleted_ids:
+            row = row_by_id.get(row_id)
+            if row is None:
+                continue
+            cells = _normalize_cells(row.get("cells"))
+            _append_history(
+                db,
+                row_id=row_id,
+                office_id=office_id,
+                office_name=office_name,
+                action="delete",
+                field_name=None,
+                old_value=str(cells.get("Проект координация") or cells.get("Дата запуска") or ""),
+                new_value=None,
+                changed_by=changed_by,
+            )
+            db.execute(
+                text("DELETE FROM b2b_product_status_row WHERE id = :row_id AND office_id = :office_id"),
+                {"row_id": row_id, "office_id": office_id},
+            )
+            row_by_id.pop(row_id, None)
+
+        db_rows = [row for row in db_rows if int(row["id"]) not in deleted_ids]
+
+        updates = updates_by_gid.get(gid, [])
+        data_updates = [item for item in updates if item.rowIndex >= 1]
+        max_row_index = max((item.rowIndex for item in data_updates), default=0)
+
+        while len(db_rows) < max_row_index:
+            insert = db.execute(
+                text(
+                    """
+                    INSERT INTO b2b_product_status_row (office_id, sort_order, cells)
+                    VALUES (:office_id, :sort_order, CAST(:cells AS jsonb))
+                    RETURNING id, cells, sort_order
+                    """
+                ),
+                {
+                    "office_id": office_id,
+                    "sort_order": len(db_rows),
+                    "cells": _empty_cells(),
+                },
+            )
+            created = dict(insert.first()._mapping)
+            created["cells"] = _normalize_cells(created.get("cells"))
+            db_rows.append(created)
+            _append_history(
+                db,
+                row_id=int(created["id"]),
+                office_id=office_id,
+                office_name=office_name,
+                action="create",
+                field_name=None,
+                old_value=None,
+                new_value=None,
+                changed_by=changed_by,
+            )
+
+        for update in data_updates:
+            row = db_rows[update.rowIndex - 1]
+            row_id = int(row["id"])
+            column = (
+                update.column
+                if update.column in B2B_PRODUCT_STATUS_COLUMNS
+                else B2B_PRODUCT_STATUS_COLUMNS[update.columnIndex]
+                if update.columnIndex < len(B2B_PRODUCT_STATUS_COLUMNS)
+                else None
+            )
+            if column is None:
+                continue
+            if column in ADMIN_ONLY_COLUMNS and not can_edit_admin:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Недостаточно прав для редактирования «{column}».",
+                )
+
+            cells = _normalize_cells(row.get("cells"))
+            old_value = cells.get(column, "")
+            new_value = update.value
+            if old_value == new_value:
+                continue
+
+            cells[column] = new_value
+            db.execute(
+                text(
+                    """
+                    UPDATE b2b_product_status_row
+                    SET cells = CAST(:cells AS jsonb),
+                        updated_at = :updated_at
+                    WHERE id = :row_id
+                    """
+                ),
+                {
+                    "cells": cells,
+                    "updated_at": datetime.now(UTC),
+                    "row_id": row_id,
+                },
+            )
+            row["cells"] = cells
+            _append_history(
+                db,
+                row_id=row_id,
+                office_id=office_id,
+                office_name=office_name,
+                action="update",
+                field_name=column,
+                old_value=old_value,
+                new_value=new_value,
+                changed_by=changed_by,
+            )
+
+        for index, row in enumerate(db_rows):
+            db.execute(
+                text(
+                    """
+                    UPDATE b2b_product_status_row
+                    SET sort_order = :sort_order
+                    WHERE id = :row_id
+                    """
+                ),
+                {"sort_order": index, "row_id": int(row["id"])},
+            )
+
+    db.commit()
+
+
+def delete_b2b_product_status_row(
+    db: Session,
+    *,
+    gid: str,
+    row_id: int,
+    meta: dict[str, Any],
+) -> None:
+    office = _load_office(db, gid=gid)
+    if office is None:
+        raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
+
+    office_id = int(office["id"])
+    rows = _load_office_rows(db, office_id=office_id)
+    row = next((item for item in rows if int(item["id"]) == row_id), None)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Строка не найдена.")
+
+    cells = _normalize_cells(row.get("cells"))
+    _append_history(
+        db,
+        row_id=row_id,
+        office_id=office_id,
+        office_name=str(office["name"]),
+        action="delete",
+        field_name=None,
+        old_value=str(cells.get("Проект координация") or cells.get("Дата запуска") or ""),
+        new_value=None,
+        changed_by=_resolve_changed_by(meta),
+    )
+    db.execute(
+        text("DELETE FROM b2b_product_status_row WHERE id = :row_id AND office_id = :office_id"),
+        {"row_id": row_id, "office_id": office_id},
+    )
+    db.commit()
+
+
+def load_b2b_product_status_history(
+    db: Session,
+    *,
+    gid: str,
+    limit: int = 100,
+) -> ProductStatusHistoryOut:
+    office = _load_office(db, gid=gid)
+    if office is None:
+        raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
+
+    result = db.execute(
+        text(
+            """
+            SELECT id, row_id, office_name, action, field_name,
+                   old_value, new_value, changed_by, changed_at
+            FROM b2b_product_status_history
+            WHERE office_id = :office_id
+            ORDER BY changed_at DESC, id DESC
+            LIMIT :limit
+            """
+        ),
+        {"office_id": int(office["id"]), "limit": limit},
+    )
+    items = [
+        ProductStatusHistoryEntryOut(
+            id=int(row.id),
+            rowId=int(row.row_id) if row.row_id is not None else None,
+            officeName=str(row.office_name),
+            action=str(row.action),
+            fieldName=str(row.field_name) if row.field_name else None,
+            oldValue=str(row.old_value) if row.old_value is not None else None,
+            newValue=str(row.new_value) if row.new_value is not None else None,
+            changedBy=str(row.changed_by) if row.changed_by else None,
+            changedAt=row.changed_at.isoformat() if row.changed_at else "",
+        )
+        for row in result
+    ]
+    return ProductStatusHistoryOut(items=items)

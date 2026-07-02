@@ -173,3 +173,13 @@
 | layout_json | jsonb | `nodes` с координатами карточек и `edges` с нарисованными линиями |
 
 Применение: вкладка «Пирамида» показывает всем пользователям сохранённую администратором ручную раскладку оргструктуры.
+
+## b2b_product_status_* — статус продукта B2B
+
+| Таблица | Ключевые поля | Назначение |
+|---------|---------------|------------|
+| `b2b_product_status_office` | `gid`, `name`, `sort_order` | Вкладки офисов (SMS, VOICE, CORE…) |
+| `b2b_product_status_row` | `office_id`, `sort_order`, `cells` | Строки таблицы; `cells` — jsonb с колонками и rich-text |
+| `b2b_product_status_history` | `office_id`, `row_id`, `action`, `field_name` | Журнал create/update/delete |
+
+Колонка «Проект координация» в `cells` доступна на запись только админам (`canManageOrg`).

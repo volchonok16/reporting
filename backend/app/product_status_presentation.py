@@ -1319,7 +1319,16 @@ def _read_presentation_sections(prs: Presentation) -> list[tuple[str, list[int]]
 def generate_b2b_product_status_presentation(
     data: ProductStatusB2BOut | None = None,
 ) -> tuple[bytes, str]:
-    payload = data if data is not None else load_b2b_product_status()
+    if data is None:
+        from app.db import SessionLocal, close_db_session
+
+        db = SessionLocal()
+        try:
+            payload = load_b2b_product_status(db=db)
+        finally:
+            close_db_session(db)
+    else:
+        payload = data
 
     prs = _open_template_presentation()
 

@@ -3,7 +3,7 @@ import { getJson, apiFetch, postJson, readApiError } from './api'
 import { notifyLoading, notifyProblem, notifySuccess, notifyWarning } from './toast'
 import { type ProductStatusCellHandle } from './ProductStatusCell'
 import ProductStatusFormatToolbar from './ProductStatusFormatToolbar'
-import ProductStatusTableRow, { type ActiveCell } from './ProductStatusTableRow'
+import ProductStatusTableRow, { type ActiveCell, PRODUCT_STATUS_ROW_ID_KEY } from './ProductStatusTableRow'
 import {
   collectZniNumbers,
   isZniColumn,
@@ -43,6 +43,23 @@ type ProductStatusCellUpdate = {
 
 type ProductStatusSavePayload = {
   updates: ProductStatusCellUpdate[]
+  deletedRows: Array<{ gid: string; rowId: number }>
+}
+
+type ProductStatusHistoryEntry = {
+  id: number
+  rowId: number | null
+  officeName: string
+  action: string
+  fieldName: string | null
+  oldValue: string | null
+  newValue: string | null
+  changedBy: string | null
+  changedAt: string
+}
+
+type ProductStatusHistoryData = {
+  items: ProductStatusHistoryEntry[]
 }
 
 export type ProductStatusWorkbookConfig = {
@@ -58,7 +75,13 @@ export type ProductStatusWorkbookConfig = {
   presentationFilename?: string
   excelFilename?: string
   lazySheets?: boolean
+  fixedColumns?: boolean
+  enableRowDelete?: boolean
+  enableHistory?: boolean
+  canEditAdminColumns?: boolean
 }
+
+const ADMIN_ONLY_COLUMNS = new Set(['Проект координация'])
 
 function cloneSheet(sheet: ProductStatusSheet): ProductStatusSheet {
   return {
@@ -157,12 +180,34 @@ function diffSheetToUpdates(baseline: ProductStatusSheet, current: ProductStatus
   return updates
 }
 
+function collectDeletedRows(
+  baseline: ProductStatusSheet,
+  current: ProductStatusSheet,
+): Array<{ gid: string; rowId: number }> {
+  const currentIds = new Set(
+    current.rows
+      .map((row) => row[PRODUCT_STATUS_ROW_ID_KEY])
+      .filter((value): value is string => Boolean(value)),
+  )
+  const deleted: Array<{ gid: string; rowId: number }> = []
+  for (const row of baseline.rows) {
+    const rowId = row[PRODUCT_STATUS_ROW_ID_KEY]
+    if (!rowId || currentIds.has(rowId)) continue
+    const parsed = Number(rowId)
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      deleted.push({ gid: current.gid, rowId: parsed })
+    }
+  }
+  return deleted
+}
+
 function collectSheetUpdates(
   baselineByGid: Map<string, ProductStatusSheet>,
   sheets: ProductStatusSheet[],
   loadedGids: Set<string>,
 ): ProductStatusSavePayload {
   const updates: ProductStatusCellUpdate[] = []
+  const deletedRows: Array<{ gid: string; rowId: number }> = []
   for (const sheet of sheets) {
     if (!loadedGids.has(sheet.gid) || sheet.columns.length === 0) {
       continue
@@ -172,8 +217,9 @@ function collectSheetUpdates(
       continue
     }
     updates.push(...diffSheetToUpdates(baseline, sheet))
+    deletedRows.push(...collectDeletedRows(baseline, sheet))
   }
-  return { updates }
+  return { updates, deletedRows }
 }
 
 function isPresentationFlagColumn(column: string): boolean {
@@ -188,6 +234,7 @@ function isAttentionColumn(column: string): boolean {
 function resolveColumnClass(column: string): string | undefined {
   const key = column.trim().toLowerCase()
   if (key === 'зни') return 'col-zni'
+  if (key.includes('координац')) return 'col-project'
   if (isPresentationFlagColumn(column) || isAttentionColumn(column)) return 'col-presentation-flag'
   if (key === 'дата' || key.startsWith('дата')) return 'col-date'
   if (key === 'новость') return 'col-news'
@@ -196,6 +243,10 @@ function resolveColumnClass(column: string): string | undefined {
   if (key.includes('полное описание') || key.includes('для презентации')) return 'col-description'
   if (key.includes('описание')) return 'col-description'
   return undefined
+}
+
+function isAdminOnlyColumn(column: string): boolean {
+  return ADMIN_ONLY_COLUMNS.has(column.trim())
 }
 
 function isBooleanColumn(column: string): boolean {
@@ -243,6 +294,10 @@ export default function ProductStatusWorkbook({
   presentationFilename = 'workbook.pptx',
   excelFilename = 'workbook.xlsx',
   lazySheets = false,
+  fixedColumns = false,
+  enableRowDelete = false,
+  enableHistory = false,
+  canEditAdminColumns = false,
 }: ProductStatusWorkbookConfig) {
   const isSection = variant === 'section'
   const RootTag = isSection ? 'section' : 'div'
@@ -260,6 +315,8 @@ export default function ProductStatusWorkbook({
   const [dirty, setDirty] = useState(false)
   const [zniLookup, setZniLookup] = useState<Record<string, ChangeRequest>>({})
   const [zniModalItem, setZniModalItem] = useState<ChangeRequest | null>(null)
+  const [historyItems, setHistoryItems] = useState<ProductStatusHistoryEntry[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
   const [loadedGids, setLoadedGids] = useState<Set<string>>(() => new Set())
   const [sheetLoadingGid, setSheetLoadingGid] = useState<string | null>(null)
   const activeCellRef = useRef<ProductStatusCellHandle | null>(null)
@@ -358,7 +415,7 @@ export default function ProductStatusWorkbook({
       setLoading(true)
       const showToast = Boolean(options?.refresh)
       const mainToastId = showToast
-        ? notifyLoading('Обновление из Google Sheets…', 'product-status-load')
+        ? notifyLoading('Обновление данных…', 'product-status-load')
         : null
       const completeMainToast = (err?: unknown) => {
         if (!showToast || mainToastId == null) return
@@ -494,10 +551,29 @@ export default function ProductStatusWorkbook({
     [apiBase, lazySheets, loadGid, loadSheetQuiet, rememberBaseline, resetBaselines],
   )
 
+  const loadHistory = useCallback(
+    async (gid: string) => {
+      if (!enableHistory) return
+      setHistoryLoading(true)
+      try {
+        const payload = await getJson<ProductStatusHistoryData>(
+          `${apiBase}/history?${new URLSearchParams({ gid })}`,
+        )
+        setHistoryItems(payload.items)
+      } catch (err) {
+        setHistoryItems([])
+        notifyProblem(err, 'Ошибка загрузки истории')
+      } finally {
+        setHistoryLoading(false)
+      }
+    },
+    [apiBase, enableHistory],
+  )
+
   const handleSave = useCallback(async () => {
     if (sheets.length === 0) return
     const payload = collectSheetUpdates(baselineByGidRef.current, sheets, loadedGids)
-    if (payload.updates.length === 0) {
+    if (payload.updates.length === 0 && payload.deletedRows.length === 0) {
       setDirty(false)
       return
     }
@@ -515,13 +591,50 @@ export default function ProductStatusWorkbook({
       syncBaselinesFromSheets(sheets, loadedGids)
       setDirty(false)
       clearProductStatusCache(apiBase)
+      if (enableHistory && activeGid) {
+        void loadHistory(activeGid)
+      }
       notifySuccess('Сохранено', toastId)
     } catch (err) {
       notifyProblem(err, 'Ошибка сохранения', toastId)
     } finally {
       setSaving(false)
     }
-  }, [apiBase, loadedGids, sheets, syncBaselinesFromSheets])
+  }, [activeGid, apiBase, enableHistory, loadHistory, loadedGids, sheets, syncBaselinesFromSheets])
+
+  const deleteRow = useCallback(
+    (rowIndex: number) => {
+      if (!activeGid) return
+      if (!window.confirm('Удалить строку? Изменение попадёт в презентацию после сохранения.')) {
+        return
+      }
+      setDirty(true)
+      setSheets((current) =>
+        current.map((sheet) => {
+          if (sheet.gid !== activeGid) return sheet
+          return {
+            ...sheet,
+            rows: sheet.rows.filter((_, index) => index !== rowIndex),
+            totalShown: sheet.rows.length - 1,
+          }
+        }),
+      )
+      setActiveCell((current) => {
+        if (!current) return null
+        if (current.rowIndex === rowIndex) return null
+        if (current.rowIndex > rowIndex) {
+          return { ...current, rowIndex: current.rowIndex - 1 }
+        }
+        return current
+      })
+    },
+    [activeGid],
+  )
+
+  const isReadOnlyColumn = useCallback(
+    (column: string) => isAdminOnlyColumn(column) && !canEditAdminColumns,
+    [canEditAdminColumns],
+  )
 
   const handleExportPresentation = useCallback(async () => {
     if (!enablePresentationExport || sheets.length === 0) return
@@ -647,7 +760,7 @@ export default function ProductStatusWorkbook({
   }, [])
 
   const handleRefresh = useCallback(() => {
-    if (dirty && !window.confirm('Есть несохранённые изменения. Обновить из Google Sheets?')) {
+    if (dirty && !window.confirm('Есть несохранённые изменения. Обновить данные?')) {
       return
     }
     void loadData({ refresh: true })
@@ -665,6 +778,14 @@ export default function ProductStatusWorkbook({
       saveGid(activeGid)
     }
   }, [activeGid, saveGid])
+
+  useEffect(() => {
+    if (!enableHistory || !activeGid || !loadedGids.has(activeGid)) {
+      setHistoryItems([])
+      return
+    }
+    void loadHistory(activeGid)
+  }, [activeGid, enableHistory, loadHistory, loadedGids])
 
   const activeSheet = useMemo(
     () => sheets.find((sheet) => sheet.gid === activeGid) ?? sheets[0] ?? null,
@@ -822,7 +943,7 @@ export default function ProductStatusWorkbook({
       {afterHeader}
 
       {sheets.length > 0 && (
-        <nav className="product-status-sheet-tabs" aria-label="Листы Google Sheets">
+        <nav className="product-status-sheet-tabs" aria-label="Продуктовые офисы">
           {sheets.map((sheet) => (
             <button
               key={sheet.gid}
@@ -880,14 +1001,16 @@ export default function ProductStatusWorkbook({
             >
               + Строка
             </button>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={addColumn}
-              disabled={toolbarBusy || !activeSheetReady}
-            >
-              + Столбец
-            </button>
+            {!fixedColumns ? (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={addColumn}
+                disabled={toolbarBusy || !activeSheetReady}
+              >
+                + Столбец
+              </button>
+            ) : null}
           </div>
         </div>
         <div className="table">
@@ -903,12 +1026,16 @@ export default function ProductStatusWorkbook({
             {activeSheetReady ? (
               <table className="product-status-table">
                 <colgroup>
+                  {enableRowDelete ? <col className="col-row-actions" /> : null}
                   {activeSheet!.columns.map((column, index) => (
                     <col key={index} className={resolveColumnClass(column)} />
                   ))}
                 </colgroup>
                 <thead>
                   <tr>
+                    {enableRowDelete ? (
+                      <th className="product-status-row-actions-header" aria-label="Действия" />
+                    ) : null}
                     {activeSheet!.columns.map((column) => (
                       <th
                         key={column}
@@ -939,7 +1066,7 @@ export default function ProductStatusWorkbook({
 
                     return (
                       <ProductStatusTableRow
-                        key={`${activeSheet!.gid}-${rowIndex}`}
+                        key={`${activeSheet!.gid}-${row[PRODUCT_STATUS_ROW_ID_KEY] ?? rowIndex}`}
                         sheetGid={activeSheet!.gid}
                         rowIndex={rowIndex}
                         row={row}
@@ -956,6 +1083,9 @@ export default function ProductStatusWorkbook({
                         activeCellRef={activeCellRef}
                         resolveColumnClass={resolveColumnClass}
                         isBooleanColumn={isBooleanColumn}
+                        isReadOnlyColumn={isReadOnlyColumn}
+                        enableRowDelete={enableRowDelete}
+                        onDeleteRow={deleteRow}
                       />
                     )
                   })}
@@ -979,6 +1109,56 @@ export default function ProductStatusWorkbook({
           </div>
         </div>
       </section>
+
+      {enableHistory ? (
+        <section className="table-section product-status-history-section">
+          <div className="product-status-table-toolbar">
+            <h3 className="product-status-history-title">История изменений</h3>
+            <p className="table-meta">
+              {activeSheet ? `Офис «${activeSheet.name}»` : 'Выберите офис'}
+              {historyLoading ? ' · загрузка…' : ` · записей ${historyItems.length}`}
+            </p>
+          </div>
+          <div className="table">
+            <div className="table-scroll product-status-history-scroll">
+              {historyItems.length > 0 ? (
+                <table className="product-status-history-table">
+                  <thead>
+                    <tr>
+                      <th>Когда</th>
+                      <th>Действие</th>
+                      <th>Поле</th>
+                      <th>Было</th>
+                      <th>Стало</th>
+                      <th>Кто</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyItems.map((entry) => (
+                      <tr key={entry.id}>
+                        <td>{new Date(entry.changedAt).toLocaleString('ru-RU')}</td>
+                        <td>{entry.action}</td>
+                        <td>{entry.fieldName ?? '—'}</td>
+                        <td className="product-status-history-value">
+                          {entry.oldValue ? displayCellText(entry.oldValue) : '—'}
+                        </td>
+                        <td className="product-status-history-value">
+                          {entry.newValue ? displayCellText(entry.newValue) : '—'}
+                        </td>
+                        <td>{entry.changedBy ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="table-empty">
+                  {historyLoading ? 'Загрузка истории…' : 'Изменений пока нет.'}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      ) : null}
     </RootTag>
   )
 }

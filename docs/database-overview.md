@@ -105,6 +105,9 @@
 | `department` | Отделы |
 | `department_member` | Состав отдела |
 | `org_chart_layout` | Сохранённая ручная раскладка оргсхемы (координаты карточек и линии) |
+| `b2b_product_status_office` | Продуктовые офисы B2B (вкладки статуса продукта) |
+| `b2b_product_status_row` | Строки таблицы «Статус продукта B2B» (`cells` jsonb) |
+| `b2b_product_status_history` | История изменений строк статуса продукта B2B |
 | `person` | Человек |
 | `person_external` | ID пользователя в Jira/TFS/Trello |
 

@@ -148,11 +148,33 @@ class ProductStatusCellUpdate(BaseModel):
     column: str | None = None
 
 
+class ProductStatusRowDelete(BaseModel):
+    gid: str
+    rowId: int = Field(ge=1)
+
+
 class ProductStatusSaveIn(BaseModel):
     updates: list[ProductStatusCellUpdate] = Field(
         default_factory=list,
         max_length=50_000,
     )
+    deletedRows: list[ProductStatusRowDelete] = Field(default_factory=list)
+
+
+class ProductStatusHistoryEntryOut(BaseModel):
+    id: int
+    rowId: int | None = None
+    officeName: str
+    action: str
+    fieldName: str | None = None
+    oldValue: str | None = None
+    newValue: str | None = None
+    changedBy: str | None = None
+    changedAt: str
+
+
+class ProductStatusHistoryOut(BaseModel):
+    items: list[ProductStatusHistoryEntryOut] = Field(default_factory=list)
 
 
 class TaskLookupIn(BaseModel):

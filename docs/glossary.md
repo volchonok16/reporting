@@ -794,6 +794,51 @@
 
 ---
 
+## b2b_product_status_office — продуктовые офисы B2B
+
+Вкладки экрана «Статус продукта B2B» (SMS, VOICE, CORE и т.д.). Данные таблицы хранятся в PostgreSQL, без Google Sheets.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `gid` | varchar(32) | Стабильный идентификатор вкладки для API/UI |
+| `name` | varchar(255) | Подпись вкладки, напр. «Офис: SMS» |
+| `sort_order` | int | Порядок вкладок |
+| `is_active` | boolean | Скрыть офис без удаления |
+
+---
+
+## b2b_product_status_row — строка статуса продукта
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `office_id` | bigint | FK → `b2b_product_status_office` |
+| `sort_order` | int | Порядок строк на вкладке |
+| `cells` | jsonb | Значения колонок (rich-text разметка `product_status_rich_text`) |
+
+Фиксированные ключи в `cells`: «Дата запуска», «Проект координация» (редактируют только админы), «Полное Описание проекта и статус», «Для презентации Описание проекта и статус», «Зачем и для чего делаем полное описание», «Зачем и для чего делаем для презентации», «ЗНИ» (несколько номеров через запятую), «Идет в презентацию», «Обратить внимание».
+
+---
+
+## b2b_product_status_history — история правок статуса продукта
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `row_id` | bigint | FK → `b2b_product_status_row` (nullable после удаления строки) |
+| `office_id` | bigint | FK → `b2b_product_status_office` |
+| `office_name` | varchar(255) | Снимок названия офиса |
+| `action` | varchar(32) | `create`, `update`, `delete` |
+| `field_name` | varchar(255) | Колонка при `update` |
+| `old_value` / `new_value` | text | Значения до/после |
+| `changed_by` | varchar(255) | Логин пользователя |
+| `changed_at` | timestamptz | Время изменения |
+
+API: `GET /api/product-status/b2b/history?gid=`, сохранение — `POST /api/product-status/b2b/save`, удаление строки — через `deletedRows` в save или `DELETE /api/product-status/b2b/rows/{row_id}?gid=`.
+
+---
+
 ## Вкладка «Отделы» (UI)
 
 | Раздел | API |

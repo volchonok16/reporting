@@ -1485,6 +1485,68 @@ body {
   cursor: pointer;
 }
 
+.product-status-zni-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.product-status-row-actions,
+.product-status-row-actions-header {
+  width: 42px;
+  min-width: 42px;
+  max-width: 42px;
+  text-align: center;
+  vertical-align: middle;
+  padding: 6px 4px;
+}
+
+.product-status-row-delete {
+  min-width: 28px;
+  padding: 2px 8px;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.product-status-cell-readonly-value {
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.product-status-history-section {
+  margin-top: 24px;
+}
+
+.product-status-history-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.product-status-history-scroll {
+  max-height: 320px;
+}
+
+.product-status-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.product-status-history-table th,
+.product-status-history-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  text-align: left;
+}
+
+.product-status-history-value {
+  max-width: 280px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .zni-modal-overlay {
   position: fixed;
   inset: 0;

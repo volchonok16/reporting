@@ -143,7 +143,7 @@ export default function WorkbookApp({
           </div>
         ) : (
           <div className="app">
-            <ProductStatusB2B />
+            <ProductStatusB2B canManageOrg={canManageOrg} />
           </div>
         )}
       </div>

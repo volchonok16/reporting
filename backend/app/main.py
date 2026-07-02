@@ -16,13 +16,17 @@ from app.org_photo_service import photo_public_url
 from app.org_service import get_employee_for_org_user
 from app.models import SyncRun
 from app.b2b_news_service import load_b2b_news
+from app.b2b_product_status_db import (
+    delete_b2b_product_status_row,
+    load_b2b_product_status_history,
+    save_b2b_product_status_to_db,
+)
 from app.product_status_service import load_b2b_product_status
 from app.product_status_excel import generate_b2b_product_status_excel
 from app.product_status_presentation import generate_b2b_product_status_presentation
 from app.google_sheets_workbook import invalidate_workbook_cache
 from app.product_status_sheets_write import (
     save_b2b_news_to_google,
-    save_b2b_product_status_to_google,
 )
 from app.report_service import export_csv, load_change_requests, load_change_requests_by_numbers
 from app.business_value_service import update_business_value
@@ -40,6 +44,7 @@ from app.schemas import (
     ChangeRequestOut,
     DashboardOut,
     ProductStatusB2BOut,
+    ProductStatusHistoryOut,
     ProductStatusSaveIn,
     SyncRunOut,
     TaskLookupIn,
@@ -368,21 +373,28 @@ def patch_roadmap_comment(
 
 @app.get("/api/product-status/b2b", response_model=ProductStatusB2BOut)
 def product_status_b2b(
+    db: Session = Depends(get_db),
     gid: str | None = Query(default=None),
     meta_only: bool = Query(default=False),
     refresh: bool = Query(default=False),
     _: None = Depends(require_full_app_access),
 ) -> ProductStatusB2BOut:
+    del refresh
     return load_b2b_product_status(
+        db=db,
         gid=gid,
         meta_only=meta_only,
-        use_cache=not refresh,
     )
 
 
 @app.get("/api/product-status/b2b/presentation")
-def product_status_b2b_presentation(_: None = Depends(require_full_app_access)) -> Response:
-    content, filename = generate_b2b_product_status_presentation()
+def product_status_b2b_presentation(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_full_app_access),
+) -> Response:
+    content, filename = generate_b2b_product_status_presentation(
+        load_b2b_product_status(db=db),
+    )
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -391,8 +403,11 @@ def product_status_b2b_presentation(_: None = Depends(require_full_app_access)) 
 
 
 @app.get("/api/product-status/b2b/excel")
-def product_status_b2b_excel(_: None = Depends(require_full_app_access)) -> Response:
-    content, filename = generate_b2b_product_status_excel(load_b2b_product_status())
+def product_status_b2b_excel(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_full_app_access),
+) -> Response:
+    content, filename = generate_b2b_product_status_excel(load_b2b_product_status(db=db))
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -429,11 +444,36 @@ def product_status_b2b_presentation_from_payload(
 @app.post("/api/product-status/b2b/save")
 def product_status_b2b_save(
     payload: ProductStatusSaveIn,
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
     _: None = Depends(require_full_app_access),
 ) -> dict[str, str]:
-    save_b2b_product_status_to_google(payload)
-    invalidate_workbook_cache(settings.b2b_product_status_spreadsheet_id)
+    _, meta = get_session_with_meta(x_session_id)
+    save_b2b_product_status_to_db(db, payload, meta=meta)
     return {"status": "ok"}
+
+
+@app.delete("/api/product-status/b2b/rows/{row_id}")
+def product_status_b2b_delete_row(
+    row_id: int,
+    gid: str = Query(...),
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_full_app_access),
+) -> dict[str, str]:
+    _, meta = get_session_with_meta(x_session_id)
+    delete_b2b_product_status_row(db, gid=gid, row_id=row_id, meta=meta)
+    return {"status": "ok"}
+
+
+@app.get("/api/product-status/b2b/history", response_model=ProductStatusHistoryOut)
+def product_status_b2b_history(
+    gid: str = Query(...),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_full_app_access),
+) -> ProductStatusHistoryOut:
+    return load_b2b_product_status_history(db, gid=gid, limit=limit)
 
 
 @app.get("/api/b2b-news", response_model=ProductStatusB2BOut)

@@ -4,7 +4,8 @@ import { resolveBooleanColors, styledBooleanValue } from './productStatusBoolean
 import {
   isZniColumn,
   normalizeZniCellValue,
-  parseZniNumber,
+  parseZniNumbers,
+  PRODUCT_STATUS_ROW_ID_KEY,
 } from './productStatusZni'
 import { displayCellText } from './productStatusRichText'
 import type { ChangeRequest } from './zniTypes'
@@ -31,6 +32,9 @@ type ProductStatusTableRowProps = {
   activeCellRef: React.MutableRefObject<ProductStatusCellHandle | null>
   resolveColumnClass: (column: string) => string | undefined
   isBooleanColumn: (column: string) => boolean
+  isReadOnlyColumn?: (column: string) => boolean
+  enableRowDelete?: boolean
+  onDeleteRow?: (rowIndex: number) => void
 }
 
 function booleanCellValue(value: string): string {
@@ -68,6 +72,9 @@ function ProductStatusTableRow({
   activeCellRef,
   resolveColumnClass,
   isBooleanColumn,
+  isReadOnlyColumn,
+  enableRowDelete = false,
+  onDeleteRow,
 }: ProductStatusTableRowProps) {
   const cellHandleRef = useRef<ProductStatusCellHandle | null>(null)
   const rowActive = activeCell?.rowIndex === rowIndex
@@ -80,12 +87,28 @@ function ProductStatusTableRow({
 
   return (
     <tr className={rowClassName || undefined}>
+      {enableRowDelete ? (
+        <td className="product-status-row-actions">
+          <button
+            type="button"
+            className="btn-secondary product-status-row-delete"
+            disabled={cellBusy}
+            aria-label="Удалить строку"
+            title="Удалить строку"
+            onClick={() => onDeleteRow?.(rowIndex)}
+          >
+            ×
+          </button>
+        </td>
+      ) : null}
       {columns.map((column) => {
         const isActive = rowActive && activeCell?.column === column
         const colClass = resolveColumnClass(column)
+        const readOnly = isReadOnlyColumn?.(column) ?? false
         const cellClassName = [
           colClass,
           isBooleanColumn(column) ? 'product-status-bool-cell' : 'product-status-multiline',
+          readOnly ? 'product-status-cell-readonly' : '',
         ]
           .filter(Boolean)
           .join(' ')
@@ -115,17 +138,27 @@ function ProductStatusTableRow({
           )
         }
 
-        const zniNumber = isZniColumn(column) ? parseZniNumber(row[column] ?? '') : null
-        const matchedZni = zniNumber ? zniLookup[zniNumber] : undefined
-        const showZniTrigger = Boolean(matchedZni && zniNumber && !isActive)
+        const zniNumbers = isZniColumn(column) ? parseZniNumbers(row[column] ?? '') : []
+        const matchedZni = zniNumbers
+          .map((number) => ({ number, item: zniLookup[number] }))
+          .filter((entry): entry is { number: string; item: ChangeRequest } => Boolean(entry.item))
+        const showZniTrigger = matchedZni.length > 0 && !isActive
         const cellValue = isZniColumn(column)
           ? normalizeZniCellValue(row[column] ?? '')
           : row[column] ?? ''
 
+        if (readOnly) {
+          return (
+            <td key={column} className={cellClassName}>
+              <div className="product-status-cell-readonly-value">{displayCellText(cellValue) || '—'}</div>
+            </td>
+          )
+        }
+
         return (
           <td
             key={column}
-            className={[cellClassName, matchedZni ? 'product-status-zni-cell--matched' : '']
+            className={[cellClassName, matchedZni.length > 0 ? 'product-status-zni-cell--matched' : '']
               .filter(Boolean)
               .join(' ')}
             onDoubleClick={() => {
@@ -135,15 +168,18 @@ function ProductStatusTableRow({
             }}
           >
             {showZniTrigger ? (
-              <button
-                type="button"
-                className="zni-link product-status-zni-trigger"
-                onClick={() => {
-                  if (matchedZni) onOpenZniModal(matchedZni)
-                }}
-              >
-                {zniNumber}
-              </button>
+              <div className="product-status-zni-links">
+                {matchedZni.map(({ number, item }) => (
+                  <button
+                    key={number}
+                    type="button"
+                    className="zni-link product-status-zni-trigger"
+                    onClick={() => onOpenZniModal(item)}
+                  >
+                    {number}
+                  </button>
+                ))}
+              </div>
             ) : (
               <ProductStatusCell
                 ref={(handle) => {
@@ -175,8 +211,11 @@ export default memo(ProductStatusTableRow, (prev, next) => {
   if (prev.cellBusy !== next.cellBusy) return false
   if (prev.booleanColorsByColumn !== next.booleanColorsByColumn) return false
   if (prev.zniLookup !== next.zniLookup) return false
+  if (prev.enableRowDelete !== next.enableRowDelete) return false
   if (rowNeedsActiveCellUpdate(prev.activeCell, next.activeCell, prev.rowIndex)) {
     return false
   }
   return true
 })
+
+export { PRODUCT_STATUS_ROW_ID_KEY }
