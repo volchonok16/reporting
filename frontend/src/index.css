@@ -1137,12 +1137,33 @@ body {
 .product-status-sheet-tabs {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-xs);
   margin-bottom: var(--space-lg);
   padding: var(--space-xs);
   background: var(--bg-muted);
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
+}
+
+.product-status-sheet-tabs-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.product-status-sheet-tabs-sep {
+  width: 1px;
+  height: 24px;
+  margin: 0 4px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.product-status-sheet-tab-context {
+  color: var(--text-primary);
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--brand-accent) 45%, transparent);
 }
 
 .product-status-sheet-tab {
@@ -1515,16 +1536,11 @@ body {
 }
 
 .product-status-history-section {
-  margin-top: 24px;
-}
-
-.product-status-history-title {
-  margin: 0;
-  font-size: 1rem;
+  margin-top: 0;
 }
 
 .product-status-history-scroll {
-  max-height: 320px;
+  max-height: min(70vh, 720px);
 }
 
 .product-status-history-table {

@@ -83,6 +83,21 @@ export type ProductStatusWorkbookConfig = {
 
 const ADMIN_ONLY_COLUMNS = new Set(['Проект координация'])
 
+type WorkbookViewMode = 'table' | 'history'
+
+function historyActionLabel(action: string): string {
+  switch (action) {
+    case 'create':
+      return 'Создание'
+    case 'update':
+      return 'Изменение'
+    case 'delete':
+      return 'Удаление'
+    default:
+      return action
+  }
+}
+
 function cloneSheet(sheet: ProductStatusSheet): ProductStatusSheet {
   return {
     ...sheet,
@@ -307,6 +322,7 @@ export default function ProductStatusWorkbook({
   const [data, setData] = useState<ProductStatusData | null>(null)
   const [sheets, setSheets] = useState<ProductStatusSheet[]>([])
   const [activeGid, setActiveGid] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<WorkbookViewMode>('table')
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -591,7 +607,7 @@ export default function ProductStatusWorkbook({
       syncBaselinesFromSheets(sheets, loadedGids)
       setDirty(false)
       clearProductStatusCache(apiBase)
-      if (enableHistory && activeGid) {
+      if (enableHistory && activeGid && viewMode === 'history') {
         void loadHistory(activeGid)
       }
       notifySuccess('Сохранено', toastId)
@@ -600,7 +616,7 @@ export default function ProductStatusWorkbook({
     } finally {
       setSaving(false)
     }
-  }, [activeGid, apiBase, enableHistory, loadHistory, loadedGids, sheets, syncBaselinesFromSheets])
+  }, [activeGid, apiBase, enableHistory, loadHistory, loadedGids, sheets, syncBaselinesFromSheets, viewMode])
 
   const deleteRow = useCallback(
     (rowIndex: number) => {
@@ -780,12 +796,14 @@ export default function ProductStatusWorkbook({
   }, [activeGid, saveGid])
 
   useEffect(() => {
-    if (!enableHistory || !activeGid || !loadedGids.has(activeGid)) {
-      setHistoryItems([])
+    if (!enableHistory || viewMode !== 'history' || !activeGid || !loadedGids.has(activeGid)) {
+      if (viewMode !== 'history') {
+        setHistoryItems([])
+      }
       return
     }
     void loadHistory(activeGid)
-  }, [activeGid, enableHistory, loadHistory, loadedGids])
+  }, [activeGid, enableHistory, loadHistory, loadedGids, viewMode])
 
   const activeSheet = useMemo(
     () => sheets.find((sheet) => sheet.gid === activeGid) ?? sheets[0] ?? null,
@@ -944,42 +962,136 @@ export default function ProductStatusWorkbook({
 
       {sheets.length > 0 && (
         <nav className="product-status-sheet-tabs" aria-label="Продуктовые офисы">
-          {sheets.map((sheet) => (
-            <button
-              key={sheet.gid}
-              type="button"
-              className={`product-status-sheet-tab${
-                activeSheet?.gid === sheet.gid ? ' product-status-sheet-tab-active' : ''
-              }`}
-              onClick={() => {
-                const needsLoad =
-                  lazySheets &&
-                  (!loadedGids.has(sheet.gid) ||
-                    !sheets.find((item) => item.gid === sheet.gid && item.columns.length > 0))
-                if (needsLoad) {
-                  setSheetLoadingGid(sheet.gid)
-                }
-                setActiveGid(sheet.gid)
-                if (lazySheets) {
-                  void ensureSheetLoaded(sheet.gid)
-                }
-              }}
-              aria-selected={activeSheet?.gid === sheet.gid}
-            >
-              {sheet.name}
-            </button>
-          ))}
+          <div className="product-status-sheet-tabs-list">
+            {sheets.map((sheet) => (
+              <button
+                key={sheet.gid}
+                type="button"
+                className={`product-status-sheet-tab${
+                  viewMode === 'table' && activeSheet?.gid === sheet.gid
+                    ? ' product-status-sheet-tab-active'
+                    : ''
+                }${
+                  viewMode === 'history' && activeGid === sheet.gid
+                    ? ' product-status-sheet-tab-context'
+                    : ''
+                }`}
+                onClick={() => {
+                  const needsLoad =
+                    lazySheets &&
+                    viewMode === 'table' &&
+                    (!loadedGids.has(sheet.gid) ||
+                      !sheets.find((item) => item.gid === sheet.gid && item.columns.length > 0))
+                  if (needsLoad) {
+                    setSheetLoadingGid(sheet.gid)
+                  }
+                  setActiveGid(sheet.gid)
+                  if (viewMode === 'history') {
+                    void loadHistory(sheet.gid)
+                    return
+                  }
+                  setViewMode('table')
+                  if (lazySheets) {
+                    void ensureSheetLoaded(sheet.gid)
+                  }
+                }}
+                aria-selected={viewMode === 'table' && activeSheet?.gid === sheet.gid}
+              >
+                {sheet.name}
+              </button>
+            ))}
+          </div>
+          {enableHistory ? (
+            <>
+              <span className="product-status-sheet-tabs-sep" aria-hidden="true" />
+              <button
+                type="button"
+                className={`product-status-sheet-tab product-status-sheet-tab-history${
+                  viewMode === 'history' ? ' product-status-sheet-tab-active' : ''
+                }`}
+                onClick={() => {
+                  if (activeGid) {
+                    void loadHistory(activeGid)
+                  }
+                  setViewMode('history')
+                }}
+                aria-selected={viewMode === 'history'}
+              >
+                История
+              </button>
+            </>
+          ) : null}
         </nav>
       )}
 
-      <ProductStatusFormatToolbar
-        disabled={toolbarBusy}
-        hasActiveCell={activeCell !== null}
-        onTextStyle={applyTextStyle}
-        onCellStyle={applyCellStyle}
-        onClearFormatting={clearFormatting}
-      />
+      {viewMode === 'table' ? (
+        <ProductStatusFormatToolbar
+          disabled={toolbarBusy}
+          hasActiveCell={activeCell !== null}
+          onTextStyle={applyTextStyle}
+          onCellStyle={applyCellStyle}
+          onClearFormatting={clearFormatting}
+        />
+      ) : null}
 
+      {viewMode === 'history' && enableHistory ? (
+        <section className="table-section product-status-history-section">
+          <div className="product-status-table-toolbar">
+            <p className="table-meta">
+              {activeSheet ? (
+                <>
+                  История · {activeSheet.name}
+                  {historyLoading ? ' · загрузка…' : ` · записей ${historyItems.length}`}
+                </>
+              ) : (
+                <>Выберите офис для просмотра истории</>
+              )}
+            </p>
+          </div>
+          <div className="table">
+            <div className="table-scroll product-status-history-scroll">
+              {historyItems.length > 0 ? (
+                <table className="product-status-history-table">
+                  <thead>
+                    <tr>
+                      <th>Когда</th>
+                      <th>Действие</th>
+                      <th>Поле</th>
+                      <th>Было</th>
+                      <th>Стало</th>
+                      <th>Кто</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyItems.map((entry) => (
+                      <tr key={entry.id}>
+                        <td>{new Date(entry.changedAt).toLocaleString('ru-RU')}</td>
+                        <td>{historyActionLabel(entry.action)}</td>
+                        <td>{entry.fieldName ?? '—'}</td>
+                        <td className="product-status-history-value">
+                          {entry.oldValue ? displayCellText(entry.oldValue) : '—'}
+                        </td>
+                        <td className="product-status-history-value">
+                          {entry.newValue ? displayCellText(entry.newValue) : '—'}
+                        </td>
+                        <td>{entry.changedBy ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="table-empty">
+                  {historyLoading
+                    ? 'Загрузка истории…'
+                    : activeSheet
+                      ? 'Изменений пока нет.'
+                      : 'Сначала выберите офис в списке слева.'}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      ) : (
       <section className="table-section product-status-table-section">
         <div className="product-status-table-toolbar">
           <p className="table-meta">
@@ -1109,56 +1221,7 @@ export default function ProductStatusWorkbook({
           </div>
         </div>
       </section>
-
-      {enableHistory ? (
-        <section className="table-section product-status-history-section">
-          <div className="product-status-table-toolbar">
-            <h3 className="product-status-history-title">История изменений</h3>
-            <p className="table-meta">
-              {activeSheet ? `Офис «${activeSheet.name}»` : 'Выберите офис'}
-              {historyLoading ? ' · загрузка…' : ` · записей ${historyItems.length}`}
-            </p>
-          </div>
-          <div className="table">
-            <div className="table-scroll product-status-history-scroll">
-              {historyItems.length > 0 ? (
-                <table className="product-status-history-table">
-                  <thead>
-                    <tr>
-                      <th>Когда</th>
-                      <th>Действие</th>
-                      <th>Поле</th>
-                      <th>Было</th>
-                      <th>Стало</th>
-                      <th>Кто</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {historyItems.map((entry) => (
-                      <tr key={entry.id}>
-                        <td>{new Date(entry.changedAt).toLocaleString('ru-RU')}</td>
-                        <td>{entry.action}</td>
-                        <td>{entry.fieldName ?? '—'}</td>
-                        <td className="product-status-history-value">
-                          {entry.oldValue ? displayCellText(entry.oldValue) : '—'}
-                        </td>
-                        <td className="product-status-history-value">
-                          {entry.newValue ? displayCellText(entry.newValue) : '—'}
-                        </td>
-                        <td>{entry.changedBy ?? '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <div className="table-empty">
-                  {historyLoading ? 'Загрузка истории…' : 'Изменений пока нет.'}
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-      ) : null}
+      )}
     </RootTag>
   )
 }
