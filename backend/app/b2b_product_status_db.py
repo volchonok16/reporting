@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -51,6 +52,10 @@ def _normalize_cells(raw: dict[str, Any] | None) -> dict[str, str]:
         value = source.get(column, "")
         cells[column] = "" if value is None else str(value)
     return cells
+
+
+def _cells_json(cells: dict[str, str]) -> str:
+    return json.dumps(cells, ensure_ascii=False)
 
 
 def _sheet_from_rows(*, gid: str, name: str, rows: list[dict[str, Any]]) -> ProductStatusSheetOut:
@@ -311,7 +316,7 @@ def save_b2b_product_status_to_db(
                 {
                     "office_id": office_id,
                     "sort_order": len(db_rows),
-                    "cells": _empty_cells(),
+                    "cells": _cells_json(_empty_cells()),
                 },
             )
             created = dict(insert.first()._mapping)
@@ -364,7 +369,7 @@ def save_b2b_product_status_to_db(
                     """
                 ),
                 {
-                    "cells": cells,
+                    "cells": _cells_json(cells),
                     "updated_at": datetime.now(UTC),
                     "row_id": row_id,
                 },

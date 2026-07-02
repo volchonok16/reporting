@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock
 
 import pytest
@@ -9,6 +10,7 @@ from app.b2b_product_status_db import (
     ADMIN_ONLY_COLUMNS,
     B2B_PRODUCT_STATUS_COLUMNS,
     ROW_ID_KEY,
+    _cells_json,
     _normalize_cells,
     _row_has_content,
     save_b2b_product_status_to_db,
@@ -35,6 +37,14 @@ def test_normalize_cells_fills_missing_columns() -> None:
 def test_row_has_content() -> None:
     assert _row_has_content(_normalize_cells({"Дата запуска": "01.07"}))
     assert not _row_has_content(_normalize_cells({}))
+
+
+def test_cells_json_serializes_for_psycopg() -> None:
+    payload = _cells_json(_normalize_cells({"Дата запуска": "01.07", "ЗНИ": "123456"}))
+    parsed = json.loads(payload)
+    assert parsed["Дата запуска"] == "01.07"
+    assert parsed["ЗНИ"] == "123456"
+    assert isinstance(payload, str)
 
 
 def test_save_rejects_admin_column_for_non_admin() -> None:
