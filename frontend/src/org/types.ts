@@ -193,7 +193,7 @@ export type OrgPanel =
   | 'workspace'
   | 'office_presence'
 
-export type TimeOffKind = 'vacation' | 'dayoff' | 'sick_leave'
+export type TimeOffKind = 'vacation' | 'dayoff' | 'sick_leave' | 'business_trip'
 export type EditableTimeOffKind = TimeOffKind | 'erase'
 
 export type VacationEmployee = {

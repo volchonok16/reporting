@@ -141,7 +141,7 @@
 | employee_id | bigint | FK на сотрудника (`employee.id`) |
 | day | date | День, когда сотрудник отметил «в офисе» |
 
-Применение: вкладка «Сотрудники в офисе» учитывает `workspace_booking` (с местом) и `employee_office_day` (без места), а также исключения по `employee_time_off_day`.
+Применение: вкладка «Сотрудники в офисе» учитывает `workspace_booking` (с местом) и `employee_office_day` (без места), а также исключения по `employee_time_off_day` (отпуск, отгул, больничный, командировка).
 
 ## org_chart_layout — ручная оргсхема
 

@@ -17,7 +17,8 @@ from app.org_schemas import (
     VacationTimeOffDayOut,
 )
 
-EDITABLE_KINDS = frozenset({"vacation", "dayoff", "sick_leave"})
+EDITABLE_KINDS = frozenset({"vacation", "dayoff", "sick_leave", "business_trip"})
+ABSENCE_KINDS = frozenset({"vacation", "dayoff", "sick_leave", "business_trip"})
 
 
 def _parse_day(value: str) -> date:
@@ -206,8 +207,8 @@ def upsert_vacation_range(db: Session, data: VacationRangeIn, meta: dict) -> Vac
                 affected += 1
             cursor += timedelta(days=1)
 
-        # Employee cannot keep a workspace booking on vacation days.
-        if data.kind == "vacation":
+        # Employee cannot keep a workspace booking on absence days.
+        if data.kind in ABSENCE_KINDS:
             db.execute(
                 delete(WorkspaceBooking).where(
                     WorkspaceBooking.employee_id == data.employeeId,

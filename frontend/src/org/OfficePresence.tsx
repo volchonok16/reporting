@@ -10,6 +10,7 @@ const TIME_OFF_META: Record<TimeOffKind, { label: string; className: string }> =
   vacation: { label: 'Отпуск', className: 'org-office-presence-vacation' },
   dayoff: { label: 'Отгул', className: 'org-office-presence-dayoff' },
   sick_leave: { label: 'Больничный', className: 'org-office-presence-sick' },
+  business_trip: { label: 'Командировка', className: 'org-office-presence-business-trip' },
 }
 
 function presenceKey(employeeId: number, day: string): string {

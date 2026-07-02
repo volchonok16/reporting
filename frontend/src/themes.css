@@ -101,6 +101,7 @@
   --vac-vacation-bg: #86efac;
   --vac-dayoff-bg: #c4b5fd;
   --vac-sick-bg: #fcd34d;
+  --vac-business-trip-bg: #a855f7;
   --vac-erase-bg: var(--surface-2);
   --workspace-self-bg: #86efac;
   --workspace-busy-bg: color-mix(in srgb, var(--surface-2) 78%, var(--text-muted) 22%);
@@ -209,6 +210,7 @@
   --vac-vacation-bg: #166534;
   --vac-dayoff-bg: #5b21b6;
   --vac-sick-bg: #92400e;
+  --vac-business-trip-bg: #6b21a8;
   --vac-erase-bg: var(--surface-3);
   --workspace-self-bg: #166534;
   --workspace-busy-bg: color-mix(in srgb, var(--surface-3) 82%, var(--text-muted) 18%);

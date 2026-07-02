@@ -245,11 +245,7 @@ def get_workspace_office_presence(
         )
         for row in time_off_rows
     ]
-    vacation_keys = {
-        (row.employee_id, row.day)
-        for row in time_off_rows
-        if row.kind == "vacation"
-    }
+    time_off_keys = {(row.employee_id, row.day) for row in time_off_rows}
 
     presence_rows = db.scalars(
         select(WorkspaceBooking)
@@ -269,7 +265,7 @@ def get_workspace_office_presence(
             placeName=row.place.name if row.place else "",
         )
         for row in presence_rows
-        if (row.employee_id, row.day) not in vacation_keys
+        if (row.employee_id, row.day) not in time_off_keys
     ]
 
     office_rows = db.scalars(
@@ -284,7 +280,7 @@ def get_workspace_office_presence(
     office_days = [
         OfficeDayOut(employeeId=row.employee_id, day=row.day.isoformat())
         for row in office_rows
-        if (row.employee_id, row.day) not in vacation_keys
+        if (row.employee_id, row.day) not in time_off_keys
     ]
 
     return WorkspaceOfficePresenceOut(

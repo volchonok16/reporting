@@ -319,8 +319,8 @@ class SelectOptionOut(BaseModel):
     name: str
 
 
-TimeOffKind = Literal["vacation", "dayoff", "sick_leave"]
-EditableTimeOffKind = Literal["vacation", "dayoff", "sick_leave", "erase"]
+TimeOffKind = Literal["vacation", "dayoff", "sick_leave", "business_trip"]
+EditableTimeOffKind = Literal["vacation", "dayoff", "sick_leave", "business_trip", "erase"]
 
 
 class VacationEmployeeOut(BaseModel):

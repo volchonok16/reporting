@@ -741,7 +741,7 @@
 | `id` | bigserial | PK |
 | `employee_id` | bigint | FK → `employee` |
 | `day` | date | Календарный день |
-| `kind` | varchar(32) | `vacation` — отпуск, `dayoff` — отгул, `sick_leave` — больничный |
+| `kind` | varchar(32) | `vacation` — отпуск, `dayoff` — отгул, `sick_leave` — больничный, `business_trip` — командировка |
 
 Уникальность: `(employee_id, day)`.
 

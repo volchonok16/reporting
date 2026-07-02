@@ -17,12 +17,14 @@ const KIND_META: Record<TimeOffKind, { label: string; className: string }> = {
   vacation: { label: 'Отпуск', className: 'vac-kind-vacation' },
   dayoff: { label: 'Отгул', className: 'vac-kind-dayoff' },
   sick_leave: { label: 'Больничный', className: 'vac-kind-sick' },
+  business_trip: { label: 'Командировка', className: 'vac-kind-business-trip' },
 }
 
 const BRUSHES: Array<{ id: EditableTimeOffKind; label: string; className: string }> = [
   { id: 'vacation', label: 'Отпуск', className: 'vac-kind-vacation' },
   { id: 'dayoff', label: 'Отгул', className: 'vac-kind-dayoff' },
   { id: 'sick_leave', label: 'Больничный', className: 'vac-kind-sick' },
+  { id: 'business_trip', label: 'Командировка', className: 'vac-kind-business-trip' },
   { id: 'erase', label: 'Рабочий', className: 'vac-kind-erase' },
 ]
 
