@@ -715,3 +715,52 @@ CREATE INDEX idx_b2b_product_status_snapshot_office
 
 COMMENT ON TABLE b2b_product_status_snapshot IS 'Снимки строк офиса после сохранения; используются для отката к версии';
 COMMENT ON COLUMN b2b_product_status_snapshot.rows IS 'JSON: {"rows": [{"cells": {...}}, ...]} — полный порядок строк офиса';
+
+-- -----------------------------------------------------------------------------
+-- Новости и запуски B2B
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE b2b_news_section (
+    id              BIGSERIAL PRIMARY KEY,
+    gid             VARCHAR(32)  NOT NULL UNIQUE,
+    name            VARCHAR(255) NOT NULL,
+    sort_order      INT          NOT NULL DEFAULT 0,
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE b2b_news_row (
+    id              BIGSERIAL PRIMARY KEY,
+    section_id      BIGINT       NOT NULL REFERENCES b2b_news_section(id) ON DELETE CASCADE,
+    sort_order      INT          NOT NULL DEFAULT 0,
+    cells           JSONB        NOT NULL DEFAULT '{}'::jsonb,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_b2b_news_row_section ON b2b_news_row (section_id, sort_order);
+
+CREATE TABLE b2b_news_history (
+    id              BIGSERIAL PRIMARY KEY,
+    row_id          BIGINT       REFERENCES b2b_news_row(id) ON DELETE SET NULL,
+    section_id      BIGINT       NOT NULL REFERENCES b2b_news_section(id) ON DELETE CASCADE,
+    section_name    VARCHAR(255) NOT NULL,
+    action          VARCHAR(32)  NOT NULL,
+    field_name      VARCHAR(255),
+    old_value       TEXT,
+    new_value       TEXT,
+    changed_by      VARCHAR(255),
+    changed_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_b2b_news_history_section ON b2b_news_history (section_id, changed_at DESC);
+
+CREATE TABLE b2b_news_snapshot (
+    id              BIGSERIAL PRIMARY KEY,
+    section_id      BIGINT       NOT NULL REFERENCES b2b_news_section(id) ON DELETE CASCADE,
+    rows            JSONB        NOT NULL,
+    changed_by      VARCHAR(255),
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_b2b_news_snapshot_section ON b2b_news_snapshot (section_id, created_at DESC, id DESC);

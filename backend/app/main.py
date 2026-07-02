@@ -15,7 +15,14 @@ from app.db import close_db_session, ensure_startup_schema, get_db
 from app.org_photo_service import photo_public_url
 from app.org_service import get_employee_for_org_user
 from app.models import SyncRun
-from app.b2b_news_service import load_b2b_news
+from app.b2b_news_service import (
+    delete_b2b_news_row,
+    load_b2b_news,
+    load_b2b_news_history,
+    load_b2b_news_snapshots,
+    restore_b2b_news_snapshot,
+    save_b2b_news_to_db,
+)
 from app.b2b_product_status_db import (
     delete_b2b_product_status_row,
     load_b2b_product_status_history,
@@ -26,10 +33,6 @@ from app.b2b_product_status_db import (
 from app.product_status_service import load_b2b_product_status
 from app.product_status_excel import generate_b2b_product_status_excel
 from app.product_status_presentation import generate_b2b_product_status_presentation
-from app.google_sheets_workbook import invalidate_workbook_cache
-from app.product_status_sheets_write import (
-    save_b2b_news_to_google,
-)
 from app.report_service import export_csv, load_change_requests, load_change_requests_by_numbers
 from app.business_value_service import update_business_value
 from app.roadmap_priority_service import update_roadmap_comment, update_roadmap_priority
@@ -397,6 +400,7 @@ def product_status_b2b_presentation(
 ) -> Response:
     content, filename = generate_b2b_product_status_presentation(
         load_b2b_product_status(db=db),
+        db=db,
     )
     return Response(
         content=content,
@@ -507,22 +511,72 @@ def b2b_news(
     gid: str | None = Query(default=None),
     meta_only: bool = Query(default=False),
     refresh: bool = Query(default=False),
+    db: Session = Depends(get_db),
     _: None = Depends(require_full_app_access),
 ) -> ProductStatusB2BOut:
+    del refresh
     return load_b2b_news(
+        db=db,
         gid=gid,
         meta_only=meta_only,
-        use_cache=not refresh,
     )
 
 
 @app.post("/api/b2b-news/save")
 def b2b_news_save(
     payload: ProductStatusSaveIn,
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
     _: None = Depends(require_full_app_access),
 ) -> dict[str, str]:
-    save_b2b_news_to_google(payload)
-    invalidate_workbook_cache(settings.b2b_news_spreadsheet_id)
+    _, meta = get_session_with_meta(x_session_id)
+    save_b2b_news_to_db(db, payload, meta=meta)
+    return {"status": "ok"}
+
+
+@app.delete("/api/b2b-news/rows/{row_id}")
+def b2b_news_delete_row(
+    row_id: int,
+    gid: str = Query(...),
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_full_app_access),
+) -> dict[str, str]:
+    _, meta = get_session_with_meta(x_session_id)
+    delete_b2b_news_row(db, gid=gid, row_id=row_id, meta=meta)
+    return {"status": "ok"}
+
+
+@app.get("/api/b2b-news/history", response_model=ProductStatusHistoryOut)
+def b2b_news_history(
+    gid: str = Query(...),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_full_app_access),
+) -> ProductStatusHistoryOut:
+    return load_b2b_news_history(db, gid=gid, limit=limit)
+
+
+@app.get("/api/b2b-news/snapshots", response_model=ProductStatusSnapshotsOut)
+def b2b_news_snapshots(
+    gid: str = Query(...),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_full_app_access),
+) -> ProductStatusSnapshotsOut:
+    return load_b2b_news_snapshots(db, gid=gid, limit=limit)
+
+
+@app.post("/api/b2b-news/snapshots/{snapshot_id}/restore")
+def b2b_news_restore_snapshot(
+    snapshot_id: int,
+    gid: str = Query(...),
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_full_app_access),
+) -> dict[str, str]:
+    _, meta = get_session_with_meta(x_session_id)
+    restore_b2b_news_snapshot(db, snapshot_id=snapshot_id, gid=gid, meta=meta)
     return {"status": "ok"}
 
 

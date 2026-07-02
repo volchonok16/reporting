@@ -853,6 +853,44 @@ API: `GET /api/product-status/b2b/history?gid=`, `GET /api/product-status/b2b/sn
 
 ---
 
+## b2b_news_section — вкладки «Новости и запуски»
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `gid` | varchar(32) | Стабильный ключ вкладки (`news`, `launches`) |
+| `name` | varchar(255) | Название вкладки («Новости», «Запуски») |
+| `sort_order` | int | Порядок вкладок в UI |
+| `is_active` | boolean | Активна ли вкладка |
+
+Seed: `news` → «Новости», `launches` → «Запуски».
+
+---
+
+## b2b_news_row — строка новостей или запусков
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `section_id` | bigint | FK → `b2b_news_section` |
+| `sort_order` | int | Порядок строки |
+| `cells` | jsonb | Значения колонок с rich-text |
+
+Колонки **«Новости»** (`gid=news`): «Дата», «Новость», «Описание».  
+Колонки **«Запуски»** (`gid=launches`): «Дата», «Продукт», «Описание».
+
+---
+
+## b2b_news_history / b2b_news_snapshot
+
+Аналогично `b2b_product_status_history` / `b2b_product_status_snapshot`, но для вкладок новостей (`section_id`, `section_name`).
+
+API: `GET /api/b2b-news`, `POST /api/b2b-news/save`, `GET /api/b2b-news/history?gid=`, `GET /api/b2b-news/snapshots?gid=`, `POST /api/b2b-news/snapshots/{id}/restore?gid=`, удаление строки — через `deletedRows` в save.
+
+Данные для слайда «Новости рынка» в презентации берутся из вкладки `gid=news` в БД.
+
+---
+
 ## Вкладка «Отделы» (UI)
 
 | Раздел | API |

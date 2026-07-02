@@ -109,6 +109,10 @@
 | `b2b_product_status_row` | Строки таблицы «Статус продукта B2B» (`cells` jsonb) |
 | `b2b_product_status_history` | История изменений строк статуса продукта B2B |
 | `b2b_product_status_snapshot` | Снимки версий офиса для отката к сохранённому состоянию |
+| `b2b_news_section` | Вкладки «Новости» и «Запуски» |
+| `b2b_news_row` | Строки таблицы новостей/запусков (`cells` jsonb) |
+| `b2b_news_history` | История изменений новостей и запусков |
+| `b2b_news_snapshot` | Снимки версий вкладки для отката |
 | `person` | Человек |
 | `person_external` | ID пользователя в Jira/TFS/Trello |
 

@@ -183,4 +183,13 @@
 | `b2b_product_status_history` | `office_id`, `row_id`, `action`, `field_name` | Журнал create/update/delete/restore |
 | `b2b_product_status_snapshot` | `office_id`, `rows`, `changed_by` | Снимок всех строк офиса после сохранения |
 
+## b2b_news_* — новости и запуски B2B
+
+| Таблица | Ключевые поля | Назначение |
+|---------|---------------|------------|
+| `b2b_news_section` | `gid`, `name`, `sort_order` | Вкладки «Новости», «Запуски» |
+| `b2b_news_row` | `section_id`, `sort_order`, `cells` | Строки; колонки зависят от вкладки |
+| `b2b_news_history` | `section_id`, `row_id`, `action` | Журнал create/update/delete/restore |
+| `b2b_news_snapshot` | `section_id`, `rows`, `changed_by` | Снимок для отката версии |
+
 Колонка «Проект координация» в `cells` доступна на запись только админам (`canManageOrg`).

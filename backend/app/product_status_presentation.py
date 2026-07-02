@@ -1121,11 +1121,20 @@ def _fill_market_news_slides(prs: Presentation, sheet: ProductStatusSheetOut) ->
         _fill_market_news_slide_lines(slide, chunk)
 
 
-def _try_load_market_news_sheet() -> ProductStatusSheetOut | None:
+def _try_load_market_news_sheet(db: Session | None = None) -> ProductStatusSheetOut | None:
+    from app.db import SessionLocal, close_db_session
+
+    owns_session = db is None
+    if owns_session:
+        db = SessionLocal()
     try:
-        news_data = load_b2b_news()
-    except HTTPException:
+        news_data = load_b2b_news(db=db, gid="news")
+    except Exception:
+        logger.warning("Не удалось загрузить новости для презентации", exc_info=True)
         return None
+    finally:
+        if owns_session and db is not None:
+            close_db_session(db)
     return _find_news_sheet(news_data)
 
 
@@ -1320,15 +1329,21 @@ def _read_presentation_sections(prs: Presentation) -> list[tuple[str, list[int]]
 
 def generate_b2b_product_status_presentation(
     data: ProductStatusB2BOut | None = None,
+    *,
+    db: Session | None = None,
 ) -> tuple[bytes, str]:
-    if data is None:
-        from app.db import SessionLocal, close_db_session
+    from app.db import SessionLocal, close_db_session
 
-        db = SessionLocal()
+    owns_session = db is None and data is None
+    if data is None:
+        if db is None:
+            db = SessionLocal()
         try:
             payload = load_b2b_product_status(db=db)
         finally:
-            close_db_session(db)
+            if owns_session:
+                close_db_session(db)
+                db = None
     else:
         payload = data
 
@@ -1366,7 +1381,7 @@ def generate_b2b_product_status_presentation(
         if index >= FIXED_SLIDE_COUNT:
             _delete_slide(prs, index)
 
-    news_sheet = _try_load_market_news_sheet()
+    news_sheet = _try_load_market_news_sheet(db)
     if news_sheet is not None:
         _fill_market_news_slides(prs, news_sheet)
 

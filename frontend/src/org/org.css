@@ -1,7 +1,8 @@
 .org-page {
-  padding: var(--page-gutter);
-  max-width: 1400px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
 }
 
 .org-dept-filter {
@@ -2843,10 +2844,6 @@
 }
 
 @media (max-width: 768px) {
-  .org-page {
-    padding: var(--space-md);
-  }
-
   .org-subtabs {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -2958,10 +2955,6 @@
 }
 
 @media (max-width: 480px) {
-  .org-page {
-    padding: var(--space-sm);
-  }
-
   .org-schedule-names {
     flex: 0 0 112px;
     width: 112px;

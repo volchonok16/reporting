@@ -93,6 +93,10 @@ export default function ProductStatusB2B({ canManageOrg = false }: ProductStatus
           saveGid={saveB2bNewsGid}
           headerTitle={renderTitleSwitcher()}
           lazySheets
+          fixedColumns
+          enableRowDelete
+          enableHistory
+          commitOnRefresh
         />
       ) : null}
     </>
