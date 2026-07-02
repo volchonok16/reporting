@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { apiFetch, getJson, HttpError, readApiError, setSessionId } from './api'
 import { notifyProblem, notifyWarning } from './toast'
+import PasswordInput from './org/PasswordInput'
 import ThemeToggle from './ThemeToggle'
 
 type AuthDefaults = {
@@ -120,10 +121,9 @@ export default function Login({ onSuccess }: LoginProps) {
               </label>
               <label>
                 Пароль
-                <input
-                  type="password"
+                <PasswordInput
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={setPassword}
                   autoComplete="current-password"
                 />
               </label>
@@ -141,10 +141,9 @@ export default function Login({ onSuccess }: LoginProps) {
               </label>
               <label>
                 PAT-токен
-                <input
-                  type="password"
+                <PasswordInput
                   value={pat}
-                  onChange={(e) => setPat(e.target.value)}
+                  onChange={setPat}
                   placeholder="Personal Access Token"
                   autoComplete="off"
                 />

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { getJson, apiFetch, postJson, readApiError } from './api'
-import { notifyProblem, notifyWarning } from './toast'
+import { dismissToast, notifyLoading, notifyProblem, notifySuccess, notifyWarning } from './toast'
 import ProductStatusCell, { type ProductStatusCellHandle } from './ProductStatusCell'
 import ProductStatusFormatToolbar from './ProductStatusFormatToolbar'
 import {
@@ -333,27 +333,64 @@ export default function ProductStatusWorkbook({
     [apiBase, defaultTitle, rememberBaseline],
   )
 
+  const resolveSheetName = useCallback(
+    (gid: string, sheetList: ProductStatusSheet[] = sheets) =>
+      sheetList.find((sheet) => sheet.gid === gid)?.name ??
+      data?.sheets.find((sheet) => sheet.gid === gid)?.name ??
+      'Лист',
+    [data?.sheets, sheets],
+  )
+
+  const loadSheetWithToast = useCallback(
+    async (gid: string, options?: { refresh?: boolean }) => {
+      const toastId = notifyLoading(
+        `${resolveSheetName(gid)}: загрузка…`,
+        `product-status-sheet-${gid}`,
+      )
+      setSheetLoadingGid(gid)
+      try {
+        await loadSheetData(gid, options)
+        dismissToast(toastId)
+      } catch (err) {
+        notifyProblem(err, 'Ошибка загрузки листа', toastId)
+        throw err
+      } finally {
+        setSheetLoadingGid((current) => (current === gid ? null : current))
+      }
+    },
+    [loadSheetData, resolveSheetName],
+  )
+
   const ensureSheetLoaded = useCallback(
     async (gid: string, options?: { refresh?: boolean }) => {
       const existing = sheets.find((sheet) => sheet.gid === gid)
       if (!options?.refresh && loadedGids.has(gid) && existing && existing.columns.length > 0) {
         return
       }
-      setSheetLoadingGid(gid)
-      try {
-        await loadSheetData(gid, options)
-      } catch (err) {
-        notifyProblem(err, 'Ошибка загрузки листа')
-      } finally {
-        setSheetLoadingGid((current) => (current === gid ? null : current))
-      }
+      await loadSheetWithToast(gid, options)
     },
-    [loadSheetData, loadedGids, sheets],
+    [loadedGids, loadSheetWithToast, sheets],
   )
 
   const loadData = useCallback(
     async (options?: { refresh?: boolean }) => {
       setLoading(true)
+      const mainToastId = notifyLoading(
+        options?.refresh ? 'Обновление из Google Sheets…' : 'Загрузка…',
+        'product-status-load',
+      )
+      const completeMainToast = (err?: unknown) => {
+        if (err) {
+          notifyProblem(err, 'Ошибка загрузки', mainToastId)
+          return
+        }
+        if (options?.refresh) {
+          notifySuccess('Данные обновлены', mainToastId)
+          return
+        }
+        dismissToast(mainToastId)
+      }
+
       try {
         if (options?.refresh) {
           clearProductStatusCache(apiBase)
@@ -377,16 +414,10 @@ export default function ProductStatusWorkbook({
                   : cachedMeta.sheets[0]?.gid ?? null
               setActiveGid(initialGid)
               setLoading(false)
+              dismissToast(mainToastId)
 
               if (initialGid) {
-                setSheetLoadingGid(initialGid)
-                try {
-                  await loadSheetData(initialGid, options)
-                } catch (err) {
-                  notifyProblem(err, 'Ошибка загрузки листа')
-                } finally {
-                  setSheetLoadingGid(null)
-                }
+                await loadSheetWithToast(initialGid, options)
               }
               return
             }
@@ -411,16 +442,12 @@ export default function ProductStatusWorkbook({
               : meta.sheets[0]?.gid ?? null
           setActiveGid(initialGid)
           setLoading(false)
+          dismissToast(mainToastId)
 
           if (initialGid) {
-            setSheetLoadingGid(initialGid)
-            try {
-              await loadSheetData(initialGid, options)
-            } catch (err) {
-              notifyProblem(err, 'Ошибка загрузки листа')
-            } finally {
-              setSheetLoadingGid(null)
-            }
+            await loadSheetWithToast(initialGid, options)
+          } else {
+            completeMainToast()
           }
           return
         }
@@ -448,6 +475,7 @@ export default function ProductStatusWorkbook({
               }
               return cached.sheets[0]?.gid ?? null
             })
+            completeMainToast()
             return
           }
         }
@@ -475,13 +503,14 @@ export default function ProductStatusWorkbook({
           }
           return payload.sheets[0]?.gid ?? null
         })
+        completeMainToast()
       } catch (err) {
-        notifyProblem(err, 'Ошибка загрузки')
+        completeMainToast(err)
       } finally {
         setLoading(false)
       }
     },
-    [apiBase, lazySheets, loadGid, loadSheetData, rememberBaseline, resetBaselines],
+    [apiBase, lazySheets, loadGid, loadSheetWithToast, rememberBaseline, resetBaselines],
   )
 
   const handleSave = useCallback(async () => {
@@ -492,6 +521,7 @@ export default function ProductStatusWorkbook({
       return
     }
     setSaving(true)
+    const toastId = notifyLoading('Сохранение…', 'product-status-save')
     try {
       const response = await apiFetch(`${apiBase}/save`, {
         method: 'POST',
@@ -504,8 +534,9 @@ export default function ProductStatusWorkbook({
       syncBaselinesFromSheets(sheets, loadedGids)
       setDirty(false)
       clearProductStatusCache(apiBase)
+      notifySuccess('Сохранено', toastId)
     } catch (err) {
-      notifyProblem(err, 'Ошибка сохранения')
+      notifyProblem(err, 'Ошибка сохранения', toastId)
     } finally {
       setSaving(false)
     }
@@ -514,6 +545,7 @@ export default function ProductStatusWorkbook({
   const handleExportPresentation = useCallback(async () => {
     if (!enablePresentationExport || sheets.length === 0) return
     setExportingPresentation(true)
+    const toastId = notifyLoading('Формирование презентации…', 'product-status-presentation')
     try {
       const response = await apiFetch(
         `${apiBase}/presentation`,
@@ -533,8 +565,9 @@ export default function ProductStatusWorkbook({
         blob,
         filenameFromDisposition(response.headers.get('Content-Disposition') ?? '', presentationFilename),
       )
+      notifySuccess('Презентация сформирована', toastId)
     } catch (err) {
-      notifyProblem(err, 'Ошибка выгрузки презентации')
+      notifyProblem(err, 'Ошибка выгрузки презентации', toastId)
     } finally {
       setExportingPresentation(false)
     }
@@ -543,6 +576,7 @@ export default function ProductStatusWorkbook({
   const handleExportExcel = useCallback(async () => {
     if (!enableExcelExport || sheets.length === 0) return
     setExportingExcel(true)
+    const toastId = notifyLoading('Формирование Excel…', 'product-status-excel')
     try {
       const response = await apiFetch(
         `${apiBase}/excel`,
@@ -562,8 +596,9 @@ export default function ProductStatusWorkbook({
         blob,
         filenameFromDisposition(response.headers.get('Content-Disposition') ?? '', excelFilename),
       )
+      notifySuccess('Excel сформирован', toastId)
     } catch (err) {
-      notifyProblem(err, 'Ошибка выгрузки Excel')
+      notifyProblem(err, 'Ошибка выгрузки Excel', toastId)
     } finally {
       setExportingExcel(false)
     }
@@ -757,7 +792,7 @@ export default function ProductStatusWorkbook({
             onClick={() => void handleSave()}
             disabled={busy || sheets.length === 0 || !dirty}
           >
-            {saving ? 'Сохранение…' : 'Сохранить'}
+            Сохранить
           </button>
           {enableExcelExport ? (
             <button
@@ -766,7 +801,7 @@ export default function ProductStatusWorkbook({
               onClick={() => void handleExportExcel()}
               disabled={busy || sheets.length === 0}
             >
-              {exportingExcel ? 'Формирование…' : 'Скачать Excel'}
+              Скачать Excel
             </button>
           ) : null}
           {enablePresentationExport ? (
@@ -776,11 +811,11 @@ export default function ProductStatusWorkbook({
               onClick={() => void handleExportPresentation()}
               disabled={busy || sheets.length === 0}
             >
-              {exportingPresentation ? 'Формирование…' : 'Скачать презентацию'}
+              Скачать презентацию
             </button>
           ) : null}
-          <button type="button" className="btn-secondary" onClick={handleRefresh} disabled={loading}>
-            {loading ? 'Загрузка…' : 'Обновить'}
+          <button type="button" className="btn-secondary" onClick={handleRefresh} disabled={busy}>
+            Обновить
           </button>
         </div>
       </header>
@@ -829,7 +864,6 @@ export default function ProductStatusWorkbook({
             ) : (
               <>Показано строк 0</>
             )}
-            {loading || sheetLoading ? ' · загрузка…' : ''}
           </p>
           <div className="product-status-table-toolbar-actions">
             <button
@@ -1002,7 +1036,7 @@ export default function ProductStatusWorkbook({
                 </tbody>
               </table>
             ) : loading || sheetLoading ? (
-              <div className="table-empty">Загрузка…</div>
+              <div className="table-empty" aria-busy="true" aria-label="Загрузка" />
             ) : (
               <div className="table-empty">Нет данных в таблице.</div>
             )}
