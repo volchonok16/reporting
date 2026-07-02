@@ -1367,24 +1367,41 @@ body {
 
 .product-status-table tbody tr.product-status-row--presentation td {
   background-color: var(--presentation-row-bg);
+  border-color: color-mix(in srgb, var(--border-strong) 58%, #15803d 42%);
 }
 
 .product-status-table tbody tr.product-status-row--presentation:hover td {
   background-color: var(--presentation-row-bg-hover);
+  border-color: color-mix(in srgb, var(--border-strong) 52%, #166534 48%);
 }
 
 .product-status-table tbody tr.product-status-row--presentation .product-status-cell-input {
-  background: transparent;
-  border-color: color-mix(in srgb, var(--border) 62%, var(--presentation-row-bg) 38%);
+  background: color-mix(in srgb, var(--presentation-row-bg) 86%, var(--surface-1) 14%);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 62%, #166534 38%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #ffffff 28%, transparent);
 }
 
 .product-status-table tbody tr.product-status-row--presentation .product-status-cell-input:hover {
-  background: color-mix(in srgb, var(--presentation-row-bg-hover) 78%, var(--surface-1) 22%);
+  background: color-mix(in srgb, var(--presentation-row-bg-hover) 82%, var(--surface-1) 18%);
+  border-color: color-mix(in srgb, var(--border-strong) 55%, #14532d 45%);
 }
 
 .product-status-table tbody tr.product-status-row--presentation .product-status-cell-active .product-status-cell-input,
 .product-status-table tbody tr.product-status-row--presentation .product-status-cell-input:focus {
-  background: color-mix(in srgb, var(--presentation-row-bg) 84%, var(--surface-1) 16%);
+  background: color-mix(in srgb, var(--presentation-row-bg) 78%, var(--surface-1) 22%);
+  border-color: var(--brand-accent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, #ffffff 22%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--brand-accent) 35%, transparent);
+}
+
+.product-status-table tbody tr.product-status-row--presentation .product-status-cell-readonly-value {
+  min-height: 3em;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 62%, #166534 38%);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--presentation-row-bg) 86%, var(--surface-1) 14%);
+  box-sizing: border-box;
 }
 
 .product-status-table tbody tr.product-status-row--attention td:not(.product-status-bool-cell) {
@@ -1431,7 +1448,7 @@ body {
   padding: 8px 10px;
   border: 1px solid color-mix(in srgb, var(--border) 85%, var(--text-primary));
   border-radius: 6px;
-  background: transparent;
+  background: color-mix(in srgb, var(--surface-1) 88%, var(--bg-muted));
   color: inherit;
   font: inherit;
   line-height: inherit;
@@ -1598,7 +1615,7 @@ body {
 .product-status-cell-input:focus {
   outline: none;
   border-color: var(--input-focus-border);
-  background: color-mix(in srgb, var(--surface-1) 72%, transparent);
+  background: var(--surface-1);
   box-shadow: 0 0 0 2px var(--focus-ring);
 }
 

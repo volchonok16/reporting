@@ -29,7 +29,7 @@ type ProductStatusCellProps = {
 }
 
 function applyCellStyle(element: HTMLElement, cellStyle: CellStyle) {
-  element.style.backgroundColor = cellStyle.bg ? `#${cellStyle.bg}` : 'transparent'
+  element.style.backgroundColor = cellStyle.bg ? `#${cellStyle.bg}` : ''
   element.style.border = cellStyle.border ? `2px solid #${cellStyle.border}` : ''
 }
 
