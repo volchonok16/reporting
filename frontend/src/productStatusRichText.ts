@@ -14,6 +14,9 @@ export type TextStyleSegment = {
 
 export type HighlightSegment = TextStyleSegment
 
+/** Красный текста — тот же оттенок, что строка «Обратить внимание» (--attention-text). */
+export const PRODUCT_STATUS_ATTENTION_FG = 'B91C1C'
+
 /** Цвет текста без фоновой подсветки — как в Google Sheets и экспорте PPTX. */
 export function normalizeTextSegment(segment: TextStyleSegment): TextStyleSegment {
   if (segment.fg && segment.bg) {
@@ -282,9 +285,17 @@ function decorateStyledText(element: HTMLElement, segment: TextStyleSegment) {
   }
   if (normalized.fg) {
     element.dataset.fg = normalized.fg
-    element.style.color = `#${normalized.fg}`
+    element.classList.remove('product-status-fg-attention')
+    const fg = normalized.fg.toUpperCase()
+    if (fg === PRODUCT_STATUS_ATTENTION_FG || fg === 'FF0000' || fg === 'C00000') {
+      element.classList.add('product-status-fg-attention')
+      element.style.color = ''
+    } else {
+      element.style.color = `#${normalized.fg}`
+    }
   } else {
     delete element.dataset.fg
+    element.classList.remove('product-status-fg-attention')
     element.style.color = ''
   }
   if (normalized.strike) {

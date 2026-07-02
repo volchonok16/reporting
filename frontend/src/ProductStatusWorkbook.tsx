@@ -9,7 +9,7 @@ import {
   isZniColumn,
 } from './productStatusZni'
 import { resolveBooleanColors } from './productStatusBoolean'
-import { displayCellText, type CellStyle, type TextStyleSegment } from './productStatusRichText'
+import { displayCellText, type TextStyleSegment } from './productStatusRichText'
 import {
   clearProductStatusCache,
   readProductStatusCache,
@@ -62,6 +62,17 @@ type ProductStatusHistoryData = {
   items: ProductStatusHistoryEntry[]
 }
 
+type ProductStatusSnapshot = {
+  id: number
+  rowCount: number
+  changedBy: string | null
+  createdAt: string
+}
+
+type ProductStatusSnapshotsData = {
+  items: ProductStatusSnapshot[]
+}
+
 export type ProductStatusWorkbookConfig = {
   apiBase: string
   defaultTitle: string
@@ -95,6 +106,8 @@ function historyActionLabel(action: string): string {
       return 'Изменение'
     case 'delete':
       return 'Удаление'
+    case 'restore':
+      return 'Восстановление версии'
     default:
       return action
   }
@@ -259,6 +272,7 @@ function resolveColumnClass(column: string): string | undefined {
   if (key.includes('зачем')) return 'col-why'
   if (key.includes('полное описание') || key.includes('для презентации')) return 'col-description'
   if (key.includes('описание')) return 'col-description'
+  if (key.includes('комментар')) return 'col-comment'
   return undefined
 }
 
@@ -336,6 +350,9 @@ export default function ProductStatusWorkbook({
   const [zniModalItem, setZniModalItem] = useState<ChangeRequest | null>(null)
   const [historyItems, setHistoryItems] = useState<ProductStatusHistoryEntry[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [snapshotItems, setSnapshotItems] = useState<ProductStatusSnapshot[]>([])
+  const [snapshotLoading, setSnapshotLoading] = useState(false)
+  const [restoringSnapshotId, setRestoringSnapshotId] = useState<number | null>(null)
   const [loadedGids, setLoadedGids] = useState<Set<string>>(() => new Set())
   const [sheetLoadingGid, setSheetLoadingGid] = useState<string | null>(null)
   const activeCellRef = useRef<ProductStatusCellHandle | null>(null)
@@ -590,6 +607,25 @@ export default function ProductStatusWorkbook({
     [apiBase, enableHistory],
   )
 
+  const loadSnapshots = useCallback(
+    async (gid: string) => {
+      if (!enableHistory) return
+      setSnapshotLoading(true)
+      try {
+        const payload = await getJson<ProductStatusSnapshotsData>(
+          `${apiBase}/snapshots?${new URLSearchParams({ gid })}`,
+        )
+        setSnapshotItems(payload.items)
+      } catch (err) {
+        setSnapshotItems([])
+        notifyProblem(err, 'Ошибка загрузки версий')
+      } finally {
+        setSnapshotLoading(false)
+      }
+    },
+    [apiBase, enableHistory],
+  )
+
   const handleSave = useCallback(async (): Promise<boolean> => {
     if (sheets.length === 0) return true
     const payload = collectSheetUpdates(baselineByGidRef.current, sheets, loadedGids)
@@ -613,6 +649,7 @@ export default function ProductStatusWorkbook({
       clearProductStatusCache(apiBase)
       if (enableHistory && activeGid && viewMode === 'history') {
         void loadHistory(activeGid)
+        void loadSnapshots(activeGid)
       }
       notifySuccess(commitOnRefresh ? 'Изменения применены' : 'Сохранено', toastId)
       return true
@@ -628,6 +665,7 @@ export default function ProductStatusWorkbook({
     commitOnRefresh,
     enableHistory,
     loadHistory,
+    loadSnapshots,
     loadedGids,
     sheets,
     syncBaselinesFromSheets,
@@ -653,10 +691,65 @@ export default function ProductStatusWorkbook({
     notifySuccess('Изменения отменены')
   }, [dirty, loadedGids])
 
+  const handleRestoreSnapshot = useCallback(
+    async (snapshotId: number) => {
+      if (!activeGid) return
+      if (commitOnRefresh && dirty) {
+        if (
+          !window.confirm(
+            'Есть неприменённые изменения. Они будут потеряны. Восстановить сохранённую версию?',
+          )
+        ) {
+          return
+        }
+      } else if (
+        !window.confirm(
+          'Восстановить таблицу до выбранной версии? Текущие данные в базе будут заменены.',
+        )
+      ) {
+        return
+      }
+      setRestoringSnapshotId(snapshotId)
+      const toastId = notifyLoading('Восстановление версии…', 'product-status-restore')
+      try {
+        const response = await apiFetch(
+          `${apiBase}/snapshots/${snapshotId}/restore?${new URLSearchParams({ gid: activeGid })}`,
+          { method: 'POST' },
+        )
+        if (!response.ok) {
+          throw new Error(await readApiError(response))
+        }
+        clearProductStatusCache(apiBase)
+        if (loadedGids.has(activeGid)) {
+          await loadSheetData(activeGid, { refresh: true })
+        }
+        setDirty(false)
+        setActiveCell(null)
+        void loadHistory(activeGid)
+        void loadSnapshots(activeGid)
+        notifySuccess('Версия восстановлена', toastId)
+      } catch (err) {
+        notifyProblem(err, 'Ошибка восстановления', toastId)
+      } finally {
+        setRestoringSnapshotId(null)
+      }
+    },
+    [
+      activeGid,
+      apiBase,
+      commitOnRefresh,
+      dirty,
+      loadHistory,
+      loadSheetData,
+      loadSnapshots,
+      loadedGids,
+    ],
+  )
+
   const deleteRow = useCallback(
     (rowIndex: number) => {
       if (!activeGid) return
-      if (!window.confirm('Удалить строку? Изменение применится после «Обновить».')) {
+      if (!window.confirm('Удалить строку? Изменение применится после «Сохранить».')) {
         return
       }
       setDirty(true)
@@ -855,14 +948,16 @@ export default function ProductStatusWorkbook({
   }, [activeGid, saveGid])
 
   useEffect(() => {
-    if (!enableHistory || viewMode !== 'history' || !activeGid || !loadedGids.has(activeGid)) {
+    if (!enableHistory || viewMode !== 'history' || !activeGid) {
       if (viewMode !== 'history') {
         setHistoryItems([])
+        setSnapshotItems([])
       }
       return
     }
     void loadHistory(activeGid)
-  }, [activeGid, enableHistory, loadHistory, loadedGids, viewMode])
+    void loadSnapshots(activeGid)
+  }, [activeGid, enableHistory, loadHistory, loadSnapshots, viewMode])
 
   const activeSheet = useMemo(
     () => sheets.find((sheet) => sheet.gid === activeGid) ?? sheets[0] ?? null,
@@ -947,10 +1042,6 @@ export default function ProductStatusWorkbook({
     }
   }, [])
 
-  const applyCellStyle = useCallback((patch: Partial<CellStyle>) => {
-    activeCellRef.current?.applyCellStyle(patch)
-  }, [])
-
   const clearFormatting = useCallback(() => {
     activeCellRef.current?.clearFormatting()
   }, [])
@@ -972,9 +1063,10 @@ export default function ProductStatusWorkbook({
     }
     if (activeGid) {
       void loadHistory(activeGid)
+      void loadSnapshots(activeGid)
     }
     setViewMode('history')
-  }, [activeGid, commitOnRefresh, dirty, loadHistory])
+  }, [activeGid, commitOnRefresh, dirty, loadHistory, loadSnapshots])
 
   return (
     <RootTag className={rootClassName}>
@@ -1022,7 +1114,7 @@ export default function ProductStatusWorkbook({
           {dirty ? (
             <p className="product-status-dirty">
               {commitOnRefresh
-                ? 'Есть неприменённые изменения · «Обновить» — применить, «Откатить» — отменить'
+                ? 'Есть неприменённые изменения · «Сохранить» — применить, «Отменить изменения» — отменить'
                 : 'Есть несохранённые изменения'}
             </p>
           ) : null}
@@ -1045,7 +1137,7 @@ export default function ProductStatusWorkbook({
               onClick={handleRevert}
               disabled={toolbarBusy}
             >
-              Откатить
+              Отменить изменения
             </button>
           ) : null}
           {enableExcelExport ? (
@@ -1072,9 +1164,9 @@ export default function ProductStatusWorkbook({
             type="button"
             className={commitOnRefresh && dirty ? 'btn-primary' : 'btn-secondary'}
             onClick={() => void handleRefresh()}
-            disabled={toolbarBusy || sheets.length === 0}
+            disabled={toolbarBusy || sheets.length === 0 || (commitOnRefresh && !dirty)}
           >
-            Обновить
+            {commitOnRefresh ? 'Сохранить' : 'Обновить'}
           </button>
         </div>
       </header>
@@ -1137,6 +1229,7 @@ export default function ProductStatusWorkbook({
                 onClick={() => {
                   setActiveGid(sheet.gid)
                   void loadHistory(sheet.gid)
+                  void loadSnapshots(sheet.gid)
                 }}
                 aria-selected={activeGid === sheet.gid}
               >
@@ -1152,18 +1245,83 @@ export default function ProductStatusWorkbook({
           disabled={toolbarBusy}
           hasActiveCell={activeCell !== null}
           onTextStyle={applyTextStyle}
-          onCellStyle={applyCellStyle}
           onClearFormatting={clearFormatting}
         />
       ) : null}
 
       {viewMode === 'history' && enableHistory ? (
+        <>
         <section className="table-section product-status-history-section">
           <div className="product-status-table-toolbar">
             <p className="table-meta">
               {activeSheet ? (
                 <>
-                  История · {activeSheet.name}
+                  Версии сохранений · {activeSheet.name}
+                  {snapshotLoading ? ' · загрузка…' : ` · версий ${snapshotItems.length}`}
+                </>
+              ) : (
+                <>Выберите офис для просмотра версий</>
+              )}
+            </p>
+          </div>
+          <div className="table">
+            <div className="table-scroll product-status-history-scroll">
+              {snapshotItems.length > 0 ? (
+                <table className="product-status-history-table">
+                  <thead>
+                    <tr>
+                      <th>Когда</th>
+                      <th>Строк</th>
+                      <th>Кто</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {snapshotItems.map((entry, index) => (
+                      <tr key={entry.id}>
+                        <td>{new Date(entry.createdAt).toLocaleString('ru-RU')}</td>
+                        <td>{entry.rowCount}</td>
+                        <td>{entry.changedBy ?? '—'}</td>
+                        <td className="product-status-history-actions">
+                          {index === 0 ? (
+                            <span className="product-status-history-current">Текущая</span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              disabled={
+                                toolbarBusy ||
+                                restoringSnapshotId !== null ||
+                                snapshotLoading
+                              }
+                              onClick={() => void handleRestoreSnapshot(entry.id)}
+                            >
+                              {restoringSnapshotId === entry.id ? 'Восстановление…' : 'Восстановить'}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="table-empty">
+                  {snapshotLoading
+                    ? 'Загрузка версий…'
+                    : activeSheet
+                      ? 'Версий пока нет. Снимок создаётся после каждого «Сохранить».'
+                      : 'Сначала выберите офис в списке выше.'}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+        <section className="table-section product-status-history-section">
+          <div className="product-status-table-toolbar">
+            <p className="table-meta">
+              {activeSheet ? (
+                <>
+                  Детали изменений · {activeSheet.name}
                   {historyLoading ? ' · загрузка…' : ` · записей ${historyItems.length}`}
                 </>
               ) : (
@@ -1208,12 +1366,13 @@ export default function ProductStatusWorkbook({
                     ? 'Загрузка истории…'
                     : activeSheet
                       ? 'Изменений пока нет.'
-                      : 'Сначала выберите офис в списке слева.'}
+                      : 'Сначала выберите офис в списке выше.'}
                 </div>
               )}
             </div>
           </div>
         </section>
+        </>
       ) : (
       <section className="table-section product-status-table-section">
         <div className="product-status-table-toolbar">

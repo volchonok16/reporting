@@ -177,6 +177,17 @@ class ProductStatusHistoryOut(BaseModel):
     items: list[ProductStatusHistoryEntryOut] = Field(default_factory=list)
 
 
+class ProductStatusSnapshotOut(BaseModel):
+    id: int
+    rowCount: int
+    changedBy: str | None = None
+    createdAt: str
+
+
+class ProductStatusSnapshotsOut(BaseModel):
+    items: list[ProductStatusSnapshotOut] = Field(default_factory=list)
+
+
 class TaskLookupIn(BaseModel):
     numbers: list[str] = Field(default_factory=list, max_length=200)
 

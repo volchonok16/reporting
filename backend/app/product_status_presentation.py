@@ -319,6 +319,8 @@ def _is_presentation_internal_column(column: str) -> bool:
         return True
     if re.search(r"обратить.*вним", key):
         return True
+    if re.search(r"комментар", key):
+        return True
     if _is_full_description_notes_column(column):
         return True
     if _is_full_why_notes_column(column):

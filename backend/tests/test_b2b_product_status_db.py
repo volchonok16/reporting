@@ -10,8 +10,9 @@ from app.b2b_product_status_db import (
     ADMIN_ONLY_COLUMNS,
     B2B_PRODUCT_STATUS_COLUMNS,
     ROW_ID_KEY,
-    _cells_json,
+    _office_snapshot_json,
     _normalize_cells,
+    _cells_json,
     _row_has_content,
     save_b2b_product_status_to_db,
 )
@@ -22,6 +23,7 @@ def test_columns_include_coordination_and_flags() -> None:
     assert "Проект координация" in B2B_PRODUCT_STATUS_COLUMNS
     assert "Идет в презентацию" in B2B_PRODUCT_STATUS_COLUMNS
     assert "Обратить внимание" in B2B_PRODUCT_STATUS_COLUMNS
+    assert "Комментарий" in B2B_PRODUCT_STATUS_COLUMNS
     assert "ЗНИ" in B2B_PRODUCT_STATUS_COLUMNS
     assert "Проект координация" in ADMIN_ONLY_COLUMNS
 
@@ -74,3 +76,14 @@ def test_save_rejects_admin_column_for_non_admin() -> None:
 
 def test_row_id_key_is_private_meta() -> None:
     assert ROW_ID_KEY == "__rowId"
+
+
+def test_office_snapshot_json_roundtrip() -> None:
+    rows = [
+        {"cells": {"Дата запуска": "01.07", "ЗНИ": "123"}},
+        {"cells": {"Дата запуска": ""}},
+    ]
+    payload = json.loads(_office_snapshot_json(rows))
+    assert len(payload["rows"]) == 2
+    assert payload["rows"][0]["cells"]["Дата запуска"] == "01.07"
+    assert payload["rows"][1]["cells"]["Проект координация"] == ""

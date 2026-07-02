@@ -700,4 +700,18 @@ CREATE INDEX idx_b2b_product_status_history_office
     ON b2b_product_status_history (office_id, changed_at DESC);
 
 COMMENT ON TABLE b2b_product_status_history IS 'История изменений строк статуса продукта B2B';
-COMMENT ON COLUMN b2b_product_status_history.action IS 'create | update | delete';
+COMMENT ON COLUMN b2b_product_status_history.action IS 'create | update | delete | restore';
+
+CREATE TABLE b2b_product_status_snapshot (
+    id              BIGSERIAL PRIMARY KEY,
+    office_id       BIGINT       NOT NULL REFERENCES b2b_product_status_office(id) ON DELETE CASCADE,
+    rows            JSONB        NOT NULL,
+    changed_by      VARCHAR(255),
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_b2b_product_status_snapshot_office
+    ON b2b_product_status_snapshot (office_id, created_at DESC, id DESC);
+
+COMMENT ON TABLE b2b_product_status_snapshot IS 'Снимки строк офиса после сохранения; используются для отката к версии';
+COMMENT ON COLUMN b2b_product_status_snapshot.rows IS 'JSON: {"rows": [{"cells": {...}}, ...]} — полный порядок строк офиса';

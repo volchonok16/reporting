@@ -817,7 +817,7 @@
 | `sort_order` | int | Порядок строк на вкладке |
 | `cells` | jsonb | Значения колонок (rich-text разметка `product_status_rich_text`) |
 
-Фиксированные ключи в `cells`: «Дата запуска», «Проект координация» (редактируют только админы), «Полное Описание проекта и статус», «Для презентации Описание проекта и статус», «Зачем и для чего делаем полное описание», «Зачем и для чего делаем для презентации», «ЗНИ» (несколько номеров через запятую), «Идет в презентацию», «Обратить внимание».
+Фиксированные ключи в `cells`: «Дата запуска», «Проект координация» (редактируют только админы), «Полное Описание проекта и статус», «Для презентации Описание проекта и статус», «Зачем и для чего делаем полное описание», «Зачем и для чего делаем для презентации», «ЗНИ» (несколько номеров через запятую), «Идет в презентацию», «Обратить внимание», «Комментарий» (служебный, не в презентацию).
 
 ---
 
@@ -829,13 +829,27 @@
 | `row_id` | bigint | FK → `b2b_product_status_row` (nullable после удаления строки) |
 | `office_id` | bigint | FK → `b2b_product_status_office` |
 | `office_name` | varchar(255) | Снимок названия офиса |
-| `action` | varchar(32) | `create`, `update`, `delete` |
+| `action` | varchar(32) | `create`, `update`, `delete`, `restore` |
 | `field_name` | varchar(255) | Колонка при `update` |
 | `old_value` / `new_value` | text | Значения до/после |
 | `changed_by` | varchar(255) | Логин пользователя |
 | `changed_at` | timestamptz | Время изменения |
 
-API: `GET /api/product-status/b2b/history?gid=`, сохранение — `POST /api/product-status/b2b/save`, удаление строки — через `deletedRows` в save или `DELETE /api/product-status/b2b/rows/{row_id}?gid=`.
+API: `GET /api/product-status/b2b/history?gid=`, `GET /api/product-status/b2b/snapshots?gid=`, `POST /api/product-status/b2b/snapshots/{id}/restore?gid=`, сохранение — `POST /api/product-status/b2b/save`, удаление строки — через `deletedRows` в save или `DELETE /api/product-status/b2b/rows/{row_id}?gid=`.
+
+---
+
+## b2b_product_status_snapshot — снимки версий статуса продукта
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `office_id` | bigint | FK → `b2b_product_status_office` |
+| `rows` | jsonb | Полный снимок строк офиса: `{"rows": [{"cells": {...}}, ...]}` |
+| `changed_by` | varchar(255) | Логин пользователя при сохранении/восстановлении |
+| `created_at` | timestamptz | Время снимка |
+
+Снимок создаётся после каждого успешного «Сохранить» и после восстановления версии. В UI вкладки «История» — блок «Версии сохранений» с кнопкой «Восстановить» (кроме текущей версии).
 
 ---
 

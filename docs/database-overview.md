@@ -108,6 +108,7 @@
 | `b2b_product_status_office` | Продуктовые офисы B2B (вкладки статуса продукта) |
 | `b2b_product_status_row` | Строки таблицы «Статус продукта B2B» (`cells` jsonb) |
 | `b2b_product_status_history` | История изменений строк статуса продукта B2B |
+| `b2b_product_status_snapshot` | Снимки версий офиса для отката к сохранённому состоянию |
 | `person` | Человек |
 | `person_external` | ID пользователя в Jira/TFS/Trello |
 

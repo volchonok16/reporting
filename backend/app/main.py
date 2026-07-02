@@ -19,6 +19,8 @@ from app.b2b_news_service import load_b2b_news
 from app.b2b_product_status_db import (
     delete_b2b_product_status_row,
     load_b2b_product_status_history,
+    load_b2b_product_status_snapshots,
+    restore_b2b_product_status_snapshot,
     save_b2b_product_status_to_db,
 )
 from app.product_status_service import load_b2b_product_status
@@ -46,6 +48,7 @@ from app.schemas import (
     ProductStatusB2BOut,
     ProductStatusHistoryOut,
     ProductStatusSaveIn,
+    ProductStatusSnapshotsOut,
     SyncRunOut,
     TaskLookupIn,
     TaskLookupOut,
@@ -474,6 +477,29 @@ def product_status_b2b_history(
     _: None = Depends(require_full_app_access),
 ) -> ProductStatusHistoryOut:
     return load_b2b_product_status_history(db, gid=gid, limit=limit)
+
+
+@app.get("/api/product-status/b2b/snapshots", response_model=ProductStatusSnapshotsOut)
+def product_status_b2b_snapshots(
+    gid: str = Query(...),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_full_app_access),
+) -> ProductStatusSnapshotsOut:
+    return load_b2b_product_status_snapshots(db, gid=gid, limit=limit)
+
+
+@app.post("/api/product-status/b2b/snapshots/{snapshot_id}/restore")
+def product_status_b2b_restore_snapshot(
+    snapshot_id: int,
+    gid: str = Query(...),
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_full_app_access),
+) -> dict[str, str]:
+    _, meta = get_session_with_meta(x_session_id)
+    restore_b2b_product_status_snapshot(db, snapshot_id=snapshot_id, gid=gid, meta=meta)
+    return {"status": "ok"}
 
 
 @app.get("/api/b2b-news", response_model=ProductStatusB2BOut)

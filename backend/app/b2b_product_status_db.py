@@ -16,6 +16,8 @@ from app.schemas import (
     ProductStatusHistoryOut,
     ProductStatusSaveIn,
     ProductStatusSheetOut,
+    ProductStatusSnapshotOut,
+    ProductStatusSnapshotsOut,
 )
 
 ROW_ID_KEY = "__rowId"
@@ -30,6 +32,7 @@ B2B_PRODUCT_STATUS_COLUMNS: tuple[str, ...] = (
     "ЗНИ",
     "Идет в презентацию",
     "Обратить внимание",
+    "Комментарий",
 )
 
 ADMIN_ONLY_COLUMNS: frozenset[str] = frozenset({"Проект координация"})
@@ -56,6 +59,62 @@ def _normalize_cells(raw: dict[str, Any] | None) -> dict[str, str]:
 
 def _cells_json(cells: dict[str, str]) -> str:
     return json.dumps(cells, ensure_ascii=False)
+
+
+def _office_snapshot_json(rows: list[dict[str, Any]]) -> str:
+    payload = {
+        "rows": [{"cells": _normalize_cells(row.get("cells"))} for row in rows],
+    }
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _save_office_snapshot(
+    db: Session,
+    *,
+    office_id: int,
+    changed_by: str | None,
+) -> None:
+    rows = _load_office_rows(db, office_id=office_id)
+    db.execute(
+        text(
+            """
+            INSERT INTO b2b_product_status_snapshot (office_id, rows, changed_by)
+            VALUES (:office_id, CAST(:rows AS jsonb), :changed_by)
+            """
+        ),
+        {
+            "office_id": office_id,
+            "rows": _office_snapshot_json(rows),
+            "changed_by": changed_by,
+        },
+    )
+
+
+def _replace_office_rows_from_snapshot(
+    db: Session,
+    *,
+    office_id: int,
+    snapshot_rows: list[dict[str, Any]],
+) -> None:
+    db.execute(
+        text("DELETE FROM b2b_product_status_row WHERE office_id = :office_id"),
+        {"office_id": office_id},
+    )
+    for index, item in enumerate(snapshot_rows):
+        cells = item.get("cells") if isinstance(item, dict) else {}
+        db.execute(
+            text(
+                """
+                INSERT INTO b2b_product_status_row (office_id, sort_order, cells)
+                VALUES (:office_id, :sort_order, CAST(:cells AS jsonb))
+                """
+            ),
+            {
+                "office_id": office_id,
+                "sort_order": index,
+                "cells": _cells_json(_normalize_cells(cells if isinstance(cells, dict) else {})),
+            },
+        )
 
 
 def _sheet_from_rows(*, gid: str, name: str, rows: list[dict[str, Any]]) -> ProductStatusSheetOut:
@@ -399,6 +458,12 @@ def save_b2b_product_status_to_db(
                 {"sort_order": index, "row_id": int(row["id"])},
             )
 
+        _save_office_snapshot(
+            db,
+            office_id=office_id,
+            changed_by=changed_by,
+        )
+
     db.commit()
 
 
@@ -476,3 +541,101 @@ def load_b2b_product_status_history(
         for row in result
     ]
     return ProductStatusHistoryOut(items=items)
+
+
+def load_b2b_product_status_snapshots(
+    db: Session,
+    *,
+    gid: str,
+    limit: int = 50,
+) -> ProductStatusSnapshotsOut:
+    office = _load_office(db, gid=gid)
+    if office is None:
+        raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
+
+    result = db.execute(
+        text(
+            """
+            SELECT id, rows, changed_by, created_at
+            FROM b2b_product_status_snapshot
+            WHERE office_id = :office_id
+            ORDER BY created_at DESC, id DESC
+            LIMIT :limit
+            """
+        ),
+        {"office_id": int(office["id"]), "limit": limit},
+    )
+    items: list[ProductStatusSnapshotOut] = []
+    for row in result:
+        raw_rows = row.rows if isinstance(row.rows, dict) else {}
+        snapshot_rows = raw_rows.get("rows") if isinstance(raw_rows, dict) else []
+        row_count = len(snapshot_rows) if isinstance(snapshot_rows, list) else 0
+        items.append(
+            ProductStatusSnapshotOut(
+                id=int(row.id),
+                rowCount=row_count,
+                changedBy=str(row.changed_by) if row.changed_by else None,
+                createdAt=row.created_at.isoformat() if row.created_at else "",
+            )
+        )
+    return ProductStatusSnapshotsOut(items=items)
+
+
+def restore_b2b_product_status_snapshot(
+    db: Session,
+    *,
+    snapshot_id: int,
+    gid: str,
+    meta: dict[str, Any],
+) -> None:
+    office = _load_office(db, gid=gid)
+    if office is None:
+        raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
+
+    office_id = int(office["id"])
+    office_name = str(office["name"])
+    result = db.execute(
+        text(
+            """
+            SELECT id, rows, created_at
+            FROM b2b_product_status_snapshot
+            WHERE id = :snapshot_id AND office_id = :office_id
+            """
+        ),
+        {"snapshot_id": snapshot_id, "office_id": office_id},
+    )
+    snapshot = result.first()
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="Версия не найдена.")
+
+    raw_rows = snapshot.rows if isinstance(snapshot.rows, dict) else {}
+    snapshot_rows = raw_rows.get("rows") if isinstance(raw_rows, dict) else []
+    if not isinstance(snapshot_rows, list):
+        raise HTTPException(status_code=400, detail="Некорректный снимок версии.")
+
+    changed_by = _resolve_changed_by(meta)
+    version_label = (
+        snapshot.created_at.isoformat() if snapshot.created_at else str(snapshot_id)
+    )
+    _replace_office_rows_from_snapshot(
+        db,
+        office_id=office_id,
+        snapshot_rows=snapshot_rows,
+    )
+    _append_history(
+        db,
+        row_id=None,
+        office_id=office_id,
+        office_name=office_name,
+        action="restore",
+        field_name=None,
+        old_value=None,
+        new_value=f"Версия от {version_label}",
+        changed_by=changed_by,
+    )
+    _save_office_snapshot(
+        db,
+        office_id=office_id,
+        changed_by=changed_by,
+    )
+    db.commit()

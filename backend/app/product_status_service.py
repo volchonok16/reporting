@@ -5,6 +5,8 @@ from app.b2b_product_status_db import (
     delete_b2b_product_status_row,
     load_b2b_product_status_from_db,
     load_b2b_product_status_history,
+    load_b2b_product_status_snapshots,
+    restore_b2b_product_status_snapshot,
     save_b2b_product_status_to_db,
 )
 from app.config import settings
@@ -18,6 +20,8 @@ __all__ = [
     "load_b2b_product_status",
     "load_b2b_product_status_from_db",
     "load_b2b_product_status_history",
+    "load_b2b_product_status_snapshots",
+    "restore_b2b_product_status_snapshot",
     "save_b2b_product_status_to_db",
 ]
 

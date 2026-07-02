@@ -1330,6 +1330,10 @@ body {
   width: 300px;
 }
 
+.product-status-table col.col-comment {
+  width: 180px;
+}
+
 .product-status-table thead th {
   position: sticky;
   top: 0;
@@ -1443,20 +1447,14 @@ body {
 
 .product-status-format-toolbar {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
   margin: 0 0 12px;
   padding: 10px 12px;
   border: 1px solid var(--format-toolbar-border);
   border-radius: var(--radius-sm);
   background: var(--format-toolbar-bg);
-}
-
-.product-status-format-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
 }
 
 .product-status-format-label {
@@ -1485,34 +1483,43 @@ body {
 .product-status-swatch-yellow {
   background: #ffff00 !important;
   color: #000 !important;
+  border-color: #d4c400 !important;
 }
 
 .product-status-swatch-green {
   background: #c6efce !important;
   color: #000 !important;
+  border-color: #9fd4a8 !important;
 }
 
 .product-status-swatch-pink {
   background: #ffc7ce !important;
   color: #000 !important;
+  border-color: #e8a0a8 !important;
 }
 
 .product-status-swatch-blue {
   background: #bdd7ee !important;
   color: #000 !important;
+  border-color: #94b8d8 !important;
+}
+
+.product-status-fg-attention,
+.product-status-format-btn.product-status-fg-attention {
+  color: var(--attention-text) !important;
+}
+
+.product-status-highlight.product-status-fg-attention {
+  color: var(--attention-text) !important;
+}
+
+.product-status-fg-blue {
+  color: #0000ff !important;
 }
 
 .product-status-fg-black {
   color: #000 !important;
   background: #fff !important;
-}
-
-.product-status-fg-red {
-  color: #ff0000 !important;
-}
-
-.product-status-fg-blue {
-  color: #0000ff !important;
 }
 
 .product-status-fg-green {
@@ -1647,6 +1654,20 @@ body {
   max-width: 280px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.product-status-history-actions {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.product-status-history-current {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.product-status-history-section + .product-status-history-section {
+  margin-top: 16px;
 }
 
 .zni-modal-overlay {
