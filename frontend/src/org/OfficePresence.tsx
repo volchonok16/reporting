@@ -22,7 +22,7 @@ function formatPresenceTip(
   placeName: string | null,
   officeMarked: boolean,
   timeOffKind: TimeOffKind | undefined,
-): string | undefined {
+): string {
   if (timeOffKind) {
     return TIME_OFF_META[timeOffKind].label
   }
@@ -32,7 +32,7 @@ function formatPresenceTip(
   if (officeMarked) {
     return 'В офисе · без места'
   }
-  return undefined
+  return 'Не в офисе'
 }
 
 type EmployeeGroup = {

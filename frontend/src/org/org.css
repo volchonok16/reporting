@@ -1675,6 +1675,12 @@
   --org-status-weekend-text: color-mix(in srgb, var(--day-off-tint) 55%, var(--text-muted) 45%);
   --org-office-vacation-bg: #7dd3fc;
   --org-office-vacation-border: color-mix(in srgb, #7dd3fc 52%, var(--border-strong) 48%);
+  --org-office-dayoff-bg: var(--vac-dayoff-bg);
+  --org-office-dayoff-border: color-mix(in srgb, var(--vac-dayoff-bg) 52%, var(--border-strong) 48%);
+  --org-office-sick-bg: var(--vac-sick-bg);
+  --org-office-sick-border: color-mix(in srgb, var(--vac-sick-bg) 52%, var(--border-strong) 48%);
+  --org-office-business-trip-bg: var(--vac-business-trip-bg);
+  --org-office-business-trip-border: color-mix(in srgb, var(--vac-business-trip-bg) 52%, var(--border-strong) 48%);
 }
 
 [data-theme='dark'] .org-vacation-panel,
@@ -1696,6 +1702,12 @@
   --org-status-weekend-text: color-mix(in srgb, #fecdd3 64%, var(--text-primary) 36%);
   --org-office-vacation-bg: color-mix(in srgb, #38bdf8 46%, var(--surface-2) 54%);
   --org-office-vacation-border: color-mix(in srgb, #7dd3fc 58%, transparent 42%);
+  --org-office-dayoff-bg: color-mix(in srgb, #8b5cf6 48%, var(--surface-2) 52%);
+  --org-office-dayoff-border: color-mix(in srgb, #c4b5fd 58%, transparent 42%);
+  --org-office-sick-bg: color-mix(in srgb, #f59e0b 44%, var(--surface-2) 56%);
+  --org-office-sick-border: color-mix(in srgb, #fcd34d 60%, transparent 40%);
+  --org-office-business-trip-bg: color-mix(in srgb, #e879f9 50%, var(--surface-2) 50%);
+  --org-office-business-trip-border: color-mix(in srgb, #f0abfc 62%, transparent 38%);
 }
 
 .org-vacation-toolbar {
@@ -2553,9 +2565,28 @@
   box-shadow: inset 0 0 0 1px var(--text-secondary) !important;
 }
 
+.org-workspace-timeoff-vacation,
 .org-workspace-vacation-blocked {
   background: color-mix(in srgb, var(--org-office-vacation-bg, #7dd3fc) 28%, var(--surface-2) 72%) !important;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--org-office-vacation-border, #7dd3fc) 40%, transparent 60%) !important;
+  cursor: not-allowed;
+}
+
+.org-workspace-timeoff-dayoff {
+  background: color-mix(in srgb, var(--org-office-dayoff-bg, var(--org-status-violet-bg)) 28%, var(--surface-2) 72%) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--org-office-dayoff-border, var(--org-status-violet-border)) 40%, transparent 60%) !important;
+  cursor: not-allowed;
+}
+
+.org-workspace-timeoff-sick {
+  background: color-mix(in srgb, var(--org-office-sick-bg, var(--org-status-amber-bg)) 28%, var(--surface-2) 72%) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--org-office-sick-border, var(--org-status-amber-border)) 40%, transparent 60%) !important;
+  cursor: not-allowed;
+}
+
+.org-workspace-timeoff-business-trip {
+  background: color-mix(in srgb, var(--org-office-business-trip-bg, var(--org-status-purple-bg)) 28%, var(--surface-2) 72%) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--org-office-business-trip-border, var(--org-status-purple-border)) 40%, transparent 60%) !important;
   cursor: not-allowed;
 }
 
@@ -2586,6 +2617,24 @@
 .org-vacation-legend-item.org-workspace-vacation-legend {
   background: var(--org-office-vacation-bg);
   border: 1px solid var(--org-office-vacation-border);
+  color: var(--text-primary);
+}
+
+.org-vacation-legend-item.org-workspace-dayoff-legend {
+  background: var(--org-office-dayoff-bg);
+  border: 1px solid var(--org-office-dayoff-border);
+  color: var(--text-primary);
+}
+
+.org-vacation-legend-item.org-workspace-sick-legend {
+  background: var(--org-office-sick-bg);
+  border: 1px solid var(--org-office-sick-border);
+  color: var(--text-primary);
+}
+
+.org-vacation-legend-item.org-workspace-business-trip-legend {
+  background: var(--org-office-business-trip-bg);
+  border: 1px solid var(--org-office-business-trip-border);
   color: var(--text-primary);
 }
 
@@ -2645,7 +2694,10 @@
   border-color: color-mix(in srgb, var(--border-strong) 70%, transparent 30%);
 }
 
-[data-theme='dark'] .org-vacation-legend-item.org-workspace-vacation-legend {
+[data-theme='dark'] .org-vacation-legend-item.org-workspace-vacation-legend,
+[data-theme='dark'] .org-vacation-legend-item.org-workspace-dayoff-legend,
+[data-theme='dark'] .org-vacation-legend-item.org-workspace-sick-legend,
+[data-theme='dark'] .org-vacation-legend-item.org-workspace-business-trip-legend {
   color: var(--text-primary);
 }
 

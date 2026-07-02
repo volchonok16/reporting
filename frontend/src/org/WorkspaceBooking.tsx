@@ -11,7 +11,7 @@ import {
   toDayKey,
 } from './scheduleUtils'
 import { buildHolidayKeySet } from './ruPublicHolidays'
-import type { WorkspaceBookingCell, WorkspaceBookingScheduleData } from './types'
+import type { TimeOffKind, WorkspaceBookingCell, WorkspaceBookingScheduleData } from './types'
 
 type WorkspaceBookingProps = {
   orgEmployeeId: number | null
@@ -26,19 +26,47 @@ type SaveOperation = {
   employeeId?: number
 }
 
-function vacationDayKey(employeeId: number, day: string): string {
+const TIME_OFF_META: Record<
+  TimeOffKind,
+  { label: string; cellClassName: string; legendClassName: string }
+> = {
+  vacation: {
+    label: 'Отпуск',
+    cellClassName: 'org-workspace-timeoff-vacation',
+    legendClassName: 'org-workspace-vacation-legend',
+  },
+  dayoff: {
+    label: 'Отгул',
+    cellClassName: 'org-workspace-timeoff-dayoff',
+    legendClassName: 'org-workspace-dayoff-legend',
+  },
+  sick_leave: {
+    label: 'Больничный',
+    cellClassName: 'org-workspace-timeoff-sick',
+    legendClassName: 'org-workspace-sick-legend',
+  },
+  business_trip: {
+    label: 'Командировка',
+    cellClassName: 'org-workspace-timeoff-business-trip',
+    legendClassName: 'org-workspace-business-trip-legend',
+  },
+}
+
+function timeOffDayKey(employeeId: number, day: string): string {
   return `${employeeId}:${day}`
 }
 
-function vacationBookingMessage(
+function timeOffBookingMessage(
+  kind: TimeOffKind,
   targetEmployeeId: number,
   actorEmployeeId: number | null,
   employeeName: string,
 ): string {
+  const kindLabel = TIME_OFF_META[kind].label.toLowerCase()
   if (actorEmployeeId != null && actorEmployeeId === targetEmployeeId) {
-    return 'У вас запланирован отпуск на эти даты.'
+    return `У вас запланирован ${kindLabel} на эти даты.`
   }
-  return `У ${employeeName} запланирован отпуск на эти даты.`
+  return `У ${employeeName} запланирован ${kindLabel} на эти даты.`
 }
 
 function cellKey(placeId: number, day: string): string {
@@ -153,19 +181,27 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     return map
   }, [data])
 
-  const vacationDaySet = useMemo(() => {
-    const set = new Set<string>()
+  const timeOffByEmployeeDay = useMemo(() => {
+    const map = new Map<string, TimeOffKind>()
     for (const row of data?.timeOffDays ?? []) {
-      if (row.kind === 'vacation') {
-        set.add(vacationDayKey(row.employeeId, row.day))
-      }
+      map.set(timeOffDayKey(row.employeeId, row.day), row.kind)
     }
-    return set
+    return map
   }, [data?.timeOffDays])
 
-  const isVacationDay = useCallback(
-    (employeeId: number, day: string) => vacationDaySet.has(vacationDayKey(employeeId, day)),
-    [vacationDaySet],
+  const timeOffSubjectId = useMemo(() => {
+    if (!data) return null
+    if (editMode && data.isAdmin) {
+      return bookForEmployeeId
+    }
+    return data.actorEmployeeId ?? null
+  }, [data, editMode, bookForEmployeeId])
+
+  const getTimeOffKind = useCallback(
+    (employeeId: number, day: string): TimeOffKind | undefined => {
+      return timeOffByEmployeeDay.get(timeOffDayKey(employeeId, day))
+    },
+    [timeOffByEmployeeDay],
   )
 
   const getEffectiveBooking = useCallback(
@@ -247,9 +283,21 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     return () => window.cancelAnimationFrame(rafId)
   }, [year, data, currentYear, currentMonth, yearDays])
 
+  const resetBookForSelf = useCallback(() => {
+    if (!data?.isAdmin) return
+    if (data.actorEmployeeId != null) {
+      setBookForEmployeeId(data.actorEmployeeId)
+      return
+    }
+    if (data.employees.length > 0) {
+      setBookForEmployeeId(data.employees[0].id)
+    }
+  }, [data])
+
   const cancelEdit = () => {
     setDraftChanges(new Map())
     setEditMode(false)
+    resetBookForSelf()
   }
 
   const toggleDraftCell = (placeId: number, day: string) => {
@@ -308,9 +356,10 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     const employee = data.employees.find((item) => item.id === targetEmployeeId)
     if (!employee) return
 
-    if (isVacationDay(targetEmployeeId, day)) {
+    const timeOffKind = getTimeOffKind(targetEmployeeId, day)
+    if (timeOffKind) {
       notifyWarning(
-        vacationBookingMessage(targetEmployeeId, actorId, employee.fullName),
+        timeOffBookingMessage(timeOffKind, targetEmployeeId, actorId, employee.fullName),
       )
       return
     }
@@ -438,6 +487,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
       }
       setDraftChanges(new Map())
       setEditMode(false)
+      resetBookForSelf()
       await load()
     } catch (err) {
       notifyProblem(err, 'Ошибка сохранения')
@@ -534,7 +584,13 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
         <span className="org-vacation-legend-item org-workspace-self">Ваша бронь</span>
         <span className="org-vacation-legend-item org-workspace-busy">Занято</span>
         <span className="org-vacation-legend-item org-workspace-weekend-legend">Выходной или праздник</span>
-        <span className="org-vacation-legend-item org-workspace-vacation-legend">Отпуск</span>
+        {(Object.entries(TIME_OFF_META) as Array<[TimeOffKind, (typeof TIME_OFF_META)[TimeOffKind]]>).map(
+          ([kind, meta]) => (
+            <span key={kind} className={`org-vacation-legend-item ${meta.legendClassName}`}>
+              {meta.label}
+            </span>
+          ),
+        )}
         {editMode ? (
           <span className="org-vacation-legend-item org-workspace-pending-legend">Не сохранено</span>
         ) : null}
@@ -636,13 +692,15 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                       const booking = getEffectiveBooking(place.id, dayKey)
                       const pending = isDraftCell(cellKey(place.id, dayKey), draftChanges, serverBooking)
                       const dayOff = isDayOff(day, holidayKeys)
-                      const targetEmployeeId = data.isAdmin ? bookForEmployeeId : data.actorEmployeeId ?? null
-                      const onVacation =
-                        targetEmployeeId != null && isVacationDay(targetEmployeeId, dayKey)
+                      const timeOffKind =
+                        timeOffSubjectId != null
+                          ? getTimeOffKind(timeOffSubjectId, dayKey)
+                          : undefined
+                      const onTimeOff = timeOffKind != null
                       const canBook =
                         editMode &&
                         !booking &&
-                        !onVacation &&
+                        !onTimeOff &&
                         (data.isAdmin ? bookForEmployeeId != null : data.actorEmployeeId != null)
                       const canRelease =
                         editMode &&
@@ -651,9 +709,11 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                             (booking.canRelease || booking.isSelf || data.isAdmin),
                         )
                       const isEditable = canBook || canRelease
-                      const tip = onVacation && editMode && !booking
-                        ? `${place.name} · ${MONTH_NAMES_FULL[day.getMonth()].toLowerCase()} ${day.getDate()} ${day.getFullYear()} · отпуск · бронь недоступна`
-                        : formatWorkspaceCellTip(
+                      const timeOffLabel = timeOffKind ? TIME_OFF_META[timeOffKind].label.toLowerCase() : null
+                      const tip =
+                        onTimeOff && editMode && !booking && timeOffLabel
+                          ? `${place.name} · ${MONTH_NAMES_FULL[day.getMonth()].toLowerCase()} ${day.getDate()} ${day.getFullYear()} · ${timeOffLabel} · бронь недоступна`
+                          : formatWorkspaceCellTip(
                             place.name,
                             day,
                             booking,
@@ -675,7 +735,9 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                                 : 'org-workspace-busy'
                               : 'org-workspace-free',
                             dayOff ? 'org-workspace-weekend' : '',
-                            onVacation && !booking ? 'org-workspace-vacation-blocked' : '',
+                            onTimeOff && !booking && timeOffKind
+                              ? TIME_OFF_META[timeOffKind].cellClassName
+                              : '',
                             dayKey === todayKey ? 'org-vacation-today' : '',
                             dayKey === selectedDayKey ? 'org-vacation-cell-selected-day' : '',
                             pending ? 'org-workspace-pending' : '',

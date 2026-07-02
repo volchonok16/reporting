@@ -2,7 +2,7 @@ import { toast } from 'sonner'
 import { HttpError } from './api'
 
 const WARNING_MESSAGE_PATTERNS = [
-  /запланирован отпуск/i,
+  /запланирован/i,
   /уже (есть|занят|добавлен|состоит)/i,
   /недостаточно прав/i,
   /нельзя/i,

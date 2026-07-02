@@ -33,7 +33,12 @@ from app.org_schemas import (
     WorkspacePlaceOut,
     WorkspacePlaceUpdateIn,
 )
-from app.org_vacation_service import _actor_employee_id, _is_org_admin, can_edit_employee_vacation
+from app.org_vacation_service import (
+    ABSENCE_KINDS,
+    _actor_employee_id,
+    _is_org_admin,
+    can_edit_employee_vacation,
+)
 
 
 def _parse_day(value: str) -> date:
@@ -69,7 +74,7 @@ def _delete_vacation_conflicting_bookings(
         .where(
             WorkspaceBooking.day >= day_from,
             WorkspaceBooking.day <= day_to,
-            EmployeeTimeOffDay.kind == "vacation",
+            EmployeeTimeOffDay.kind.in_(tuple(ABSENCE_KINDS)),
         )
     ).all()
     for row in rows:
@@ -123,15 +128,39 @@ def _load_primary_department_names(db: Session, employee_ids: list[int]) -> dict
     return names
 
 
+TIME_OFF_KIND_LABELS = {
+    "vacation": "отпуск",
+    "dayoff": "отгул",
+    "sick_leave": "больничный",
+    "business_trip": "командировка",
+}
+
+
+def _time_off_booking_message(
+    *,
+    kind: str,
+    target_employee_id: int,
+    actor_employee_id: int | None,
+    employee_name: str,
+) -> str:
+    kind_label = TIME_OFF_KIND_LABELS.get(kind, "отсутствие")
+    if actor_employee_id is not None and actor_employee_id == target_employee_id:
+        return f"У вас запланирован {kind_label} на эти даты."
+    return f"У {employee_name} запланирован {kind_label} на эти даты."
+
+
 def _vacation_booking_message(
     *,
     target_employee_id: int,
     actor_employee_id: int | None,
     employee_name: str,
 ) -> str:
-    if actor_employee_id is not None and actor_employee_id == target_employee_id:
-        return "У вас запланирован отпуск на эти даты."
-    return f"У {employee_name} запланирован отпуск на эти даты."
+    return _time_off_booking_message(
+        kind="vacation",
+        target_employee_id=target_employee_id,
+        actor_employee_id=actor_employee_id,
+        employee_name=employee_name,
+    )
 
 
 def get_workspace_booking_schedule(
@@ -482,17 +511,18 @@ def toggle_workspace_booking(db: Session, data: WorkspaceBookingToggleIn, meta: 
     if employee is None or not employee.is_active:
         raise HTTPException(status_code=404, detail="Сотрудник не найден.")
 
-    vacation_day = db.scalar(
+    time_off_day = db.scalar(
         select(EmployeeTimeOffDay).where(
             EmployeeTimeOffDay.employee_id == target_employee_id,
             EmployeeTimeOffDay.day == day,
-            EmployeeTimeOffDay.kind == "vacation",
+            EmployeeTimeOffDay.kind.in_(tuple(ABSENCE_KINDS)),
         )
     )
-    if vacation_day is not None:
+    if time_off_day is not None:
         raise HTTPException(
             status_code=409,
-            detail=_vacation_booking_message(
+            detail=_time_off_booking_message(
+                kind=time_off_day.kind,
                 target_employee_id=target_employee_id,
                 actor_employee_id=actor_employee_id,
                 employee_name=employee.full_name,
