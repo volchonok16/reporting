@@ -1673,6 +1673,8 @@
   --org-status-weekend-bg: color-mix(in srgb, var(--surface-2) 86%, var(--day-off-tint) 14%);
   --org-status-weekend-head-bg: color-mix(in srgb, var(--table-head-bg) 84%, var(--day-off-tint) 16%);
   --org-status-weekend-text: color-mix(in srgb, var(--day-off-tint) 55%, var(--text-muted) 45%);
+  --org-office-vacation-bg: #7dd3fc;
+  --org-office-vacation-border: color-mix(in srgb, #7dd3fc 52%, var(--border-strong) 48%);
 }
 
 [data-theme='dark'] .org-vacation-panel,
@@ -1692,6 +1694,8 @@
   --org-status-weekend-bg: color-mix(in srgb, var(--day-off-tint) 28%, var(--surface-2) 72%);
   --org-status-weekend-head-bg: color-mix(in srgb, var(--day-off-tint) 34%, var(--table-head-bg) 66%);
   --org-status-weekend-text: color-mix(in srgb, #fecdd3 64%, var(--text-primary) 36%);
+  --org-office-vacation-bg: color-mix(in srgb, #38bdf8 46%, var(--surface-2) 54%);
+  --org-office-vacation-border: color-mix(in srgb, #7dd3fc 58%, transparent 42%);
 }
 
 .org-vacation-toolbar {
@@ -2526,6 +2530,12 @@
   color: var(--workspace-weekend-text, var(--org-status-weekend-text));
 }
 
+.org-vacation-legend-item.org-workspace-vacation-legend {
+  background: var(--org-office-vacation-bg);
+  border: 1px solid var(--org-office-vacation-border);
+  color: var(--text-primary);
+}
+
 .org-vacation-legend-item.org-workspace-pending-legend {
   background: var(--surface-1);
   border: 1px dashed var(--text-tertiary);
@@ -2580,6 +2590,10 @@
 [data-theme='dark'] .org-vacation-legend-item.org-workspace-pending-legend {
   color: var(--text-primary);
   border-color: color-mix(in srgb, var(--border-strong) 70%, transparent 30%);
+}
+
+[data-theme='dark'] .org-vacation-legend-item.org-workspace-vacation-legend {
+  color: var(--text-primary);
 }
 
 [data-theme='dark'] .org-workspace-weekday-head,
