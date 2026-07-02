@@ -1373,6 +1373,20 @@ body {
   background-color: var(--presentation-row-bg-hover);
 }
 
+.product-status-table tbody tr.product-status-row--presentation .product-status-cell-input {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--border) 62%, var(--presentation-row-bg) 38%);
+}
+
+.product-status-table tbody tr.product-status-row--presentation .product-status-cell-input:hover {
+  background: color-mix(in srgb, var(--presentation-row-bg-hover) 78%, var(--surface-1) 22%);
+}
+
+.product-status-table tbody tr.product-status-row--presentation .product-status-cell-active .product-status-cell-input,
+.product-status-table tbody tr.product-status-row--presentation .product-status-cell-input:focus {
+  background: color-mix(in srgb, var(--presentation-row-bg) 84%, var(--surface-1) 16%);
+}
+
 .product-status-table tbody tr.product-status-row--attention td:not(.product-status-bool-cell) {
   color: var(--attention-text);
 }
@@ -1417,7 +1431,7 @@ body {
   padding: 8px 10px;
   border: 1px solid color-mix(in srgb, var(--border) 85%, var(--text-primary));
   border-radius: 6px;
-  background: color-mix(in srgb, var(--surface-1) 88%, var(--bg-muted));
+  background: transparent;
   color: inherit;
   font: inherit;
   line-height: inherit;
@@ -1584,7 +1598,7 @@ body {
 .product-status-cell-input:focus {
   outline: none;
   border-color: var(--input-focus-border);
-  background: var(--surface-1);
+  background: color-mix(in srgb, var(--surface-1) 72%, transparent);
   box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
