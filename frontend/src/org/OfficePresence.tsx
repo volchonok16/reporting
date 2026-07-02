@@ -4,7 +4,13 @@ import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgPhoto from './OrgPhoto'
 import { buildHolidayKeySet } from './ruPublicHolidays'
 import { getMonthGroups, getYearDays, isDayOff, toDayKey } from './scheduleUtils'
-import type { VacationEmployee, WorkspaceOfficePresenceData } from './types'
+import type { TimeOffKind, VacationEmployee, WorkspaceOfficePresenceData } from './types'
+
+const TIME_OFF_META: Record<TimeOffKind, { label: string; className: string }> = {
+  vacation: { label: 'Отпуск', className: 'org-office-presence-vacation' },
+  dayoff: { label: 'Отгул', className: 'org-office-presence-dayoff' },
+  sick_leave: { label: 'Больничный', className: 'org-office-presence-sick' },
+}
 
 function presenceKey(employeeId: number, day: string): string {
   return `${employeeId}:${day}`
@@ -13,7 +19,11 @@ function presenceKey(employeeId: number, day: string): string {
 function formatPresenceTip(
   placeName: string | null,
   officeMarked: boolean,
+  timeOffKind: TimeOffKind | undefined,
 ): string | undefined {
+  if (timeOffKind) {
+    return TIME_OFF_META[timeOffKind].label
+  }
   if (placeName) {
     return `В офисе · ${placeName}`
   }
@@ -167,6 +177,14 @@ export default function OfficePresence() {
     }
     return set
   }, [data])
+
+  const dayKindMap = useMemo(() => {
+    const map = new Map<string, TimeOffKind>()
+    for (const row of data?.timeOffDays ?? []) {
+      map.set(presenceKey(row.employeeId, row.day), row.kind)
+    }
+    return map
+  }, [data])
   const employeeGroups = useMemo(() => groupEmployeesByDepartment(data?.employees ?? []), [data?.employees])
 
   useEffect(() => {
@@ -283,6 +301,11 @@ export default function OfficePresence() {
 
       <div className="org-vacation-legend">
         <span className="org-vacation-legend-item org-office-presence-in">В офисе</span>
+        {Object.entries(TIME_OFF_META).map(([kind, meta]) => (
+          <span key={kind} className={`org-vacation-legend-item ${meta.className}`}>
+            {meta.label}
+          </span>
+        ))}
         <span className="org-vacation-legend-item org-workspace-free">Нет отметки</span>
         <span className="org-vacation-legend-item org-vacation-weekend">Выходной и праздник</span>
       </div>
@@ -369,17 +392,24 @@ export default function OfficePresence() {
                         </td>
                         {yearDays.map((day) => {
                           const dayKey = toDayKey(day)
-                          const placeName = presenceMap.get(presenceKey(employee.id, dayKey)) ?? null
-                          const officeMarked = officeDaysSet.has(presenceKey(employee.id, dayKey))
+                          const cellKey = presenceKey(employee.id, dayKey)
+                          const placeName = presenceMap.get(cellKey) ?? null
+                          const officeMarked = officeDaysSet.has(cellKey)
+                          const timeOffKind = dayKindMap.get(cellKey)
                           const dayOff = isDayOff(day, holidayKeys)
-                          const tip = formatPresenceTip(placeName, officeMarked)
+                          const tip = formatPresenceTip(placeName, officeMarked, timeOffKind)
+                          const statusClass = timeOffKind
+                            ? TIME_OFF_META[timeOffKind].className
+                            : placeName || officeMarked
+                              ? 'org-office-presence-in'
+                              : 'org-workspace-free'
                           return (
                             <td
                               key={dayKey}
                               className={[
                                 'org-vacation-cell',
                                 'org-office-presence-cell',
-                                placeName || officeMarked ? 'org-office-presence-in' : 'org-workspace-free',
+                                statusClass,
                                 dayOff ? 'org-vacation-weekend' : '',
                                 dayKey === todayKey ? 'org-vacation-today' : '',
                                 dayKey === selectedDayKey ? 'org-vacation-cell-selected-day' : '',
