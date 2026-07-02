@@ -893,6 +893,18 @@ export default function ProductStatusWorkbook({
     activeCellRef.current?.clearFormatting()
   }, [])
 
+  const backToTable = useCallback(() => {
+    setViewMode('table')
+    setActiveCell(null)
+  }, [])
+
+  const openHistory = useCallback(() => {
+    if (activeGid) {
+      void loadHistory(activeGid)
+    }
+    setViewMode('history')
+  }, [activeGid, loadHistory])
+
   return (
     <RootTag className={rootClassName}>
       <ZniDetailModal item={zniModalItem} onClose={closeZniModal} />
@@ -901,14 +913,14 @@ export default function ProductStatusWorkbook({
           {headerTitle ?? (
             <TitleTag className={titleClassName}>{data?.title ?? defaultTitle}</TitleTag>
           )}
-          {(data?.sourceUrl || data?.presentationReferenceUrl) && (
+          {(data?.sourceUrl || data?.presentationReferenceUrl || enableHistory) && (
             <p className="product-status-subtitle">
               {data?.sourceUrl ? (
                 <a className="zni-link" href={data.sourceUrl} target="_blank" rel="noreferrer">
                   Открыть таблицу
                 </a>
               ) : null}
-              {data?.sourceUrl && data?.presentationReferenceUrl ? ' · ' : null}
+              {data?.sourceUrl && (data?.presentationReferenceUrl || enableHistory) ? ' · ' : null}
               {data?.presentationReferenceUrl ? (
                 <a
                   className="zni-link"
@@ -918,6 +930,21 @@ export default function ProductStatusWorkbook({
                 >
                   Эталон в Google Slides
                 </a>
+              ) : null}
+              {data?.presentationReferenceUrl && enableHistory ? ' · ' : null}
+              {enableHistory && viewMode === 'table' ? (
+                <button type="button" className="product-status-subtitle-link" onClick={openHistory}>
+                  История
+                </button>
+              ) : null}
+              {enableHistory && viewMode === 'history' ? (
+                <>
+                  <span className="product-status-subtitle-current">История</span>
+                  {' · '}
+                  <button type="button" className="product-status-subtitle-link" onClick={backToTable}>
+                    К таблице
+                  </button>
+                </>
               ) : null}
             </p>
           )}
@@ -960,7 +987,7 @@ export default function ProductStatusWorkbook({
 
       {afterHeader}
 
-      {sheets.length > 0 && (
+      {sheets.length > 0 && viewMode === 'table' ? (
         <nav className="product-status-sheet-tabs" aria-label="Продуктовые офисы">
           <div className="product-status-sheet-tabs-list">
             {sheets.map((sheet) => (
@@ -968,61 +995,52 @@ export default function ProductStatusWorkbook({
                 key={sheet.gid}
                 type="button"
                 className={`product-status-sheet-tab${
-                  viewMode === 'table' && activeSheet?.gid === sheet.gid
-                    ? ' product-status-sheet-tab-active'
-                    : ''
-                }${
-                  viewMode === 'history' && activeGid === sheet.gid
-                    ? ' product-status-sheet-tab-context'
-                    : ''
+                  activeSheet?.gid === sheet.gid ? ' product-status-sheet-tab-active' : ''
                 }`}
                 onClick={() => {
                   const needsLoad =
                     lazySheets &&
-                    viewMode === 'table' &&
                     (!loadedGids.has(sheet.gid) ||
                       !sheets.find((item) => item.gid === sheet.gid && item.columns.length > 0))
                   if (needsLoad) {
                     setSheetLoadingGid(sheet.gid)
                   }
                   setActiveGid(sheet.gid)
-                  if (viewMode === 'history') {
-                    void loadHistory(sheet.gid)
-                    return
-                  }
-                  setViewMode('table')
                   if (lazySheets) {
                     void ensureSheetLoaded(sheet.gid)
                   }
                 }}
-                aria-selected={viewMode === 'table' && activeSheet?.gid === sheet.gid}
+                aria-selected={activeSheet?.gid === sheet.gid}
               >
                 {sheet.name}
               </button>
             ))}
           </div>
-          {enableHistory ? (
-            <>
-              <span className="product-status-sheet-tabs-sep" aria-hidden="true" />
+        </nav>
+      ) : null}
+
+      {viewMode === 'history' && enableHistory && sheets.length > 0 ? (
+        <nav className="product-status-sheet-tabs product-status-sheet-tabs-compact" aria-label="Офис для истории">
+          <div className="product-status-sheet-tabs-list">
+            {sheets.map((sheet) => (
               <button
+                key={sheet.gid}
                 type="button"
-                className={`product-status-sheet-tab product-status-sheet-tab-history${
-                  viewMode === 'history' ? ' product-status-sheet-tab-active' : ''
+                className={`product-status-sheet-tab${
+                  activeGid === sheet.gid ? ' product-status-sheet-tab-active' : ''
                 }`}
                 onClick={() => {
-                  if (activeGid) {
-                    void loadHistory(activeGid)
-                  }
-                  setViewMode('history')
+                  setActiveGid(sheet.gid)
+                  void loadHistory(sheet.gid)
                 }}
-                aria-selected={viewMode === 'history'}
+                aria-selected={activeGid === sheet.gid}
               >
-                История
+                {sheet.name}
               </button>
-            </>
-          ) : null}
+            ))}
+          </div>
         </nav>
-      )}
+      ) : null}
 
       {viewMode === 'table' ? (
         <ProductStatusFormatToolbar
