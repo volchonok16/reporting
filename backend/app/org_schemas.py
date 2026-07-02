@@ -400,6 +400,7 @@ class WorkspaceBookingScheduleOut(BaseModel):
     places: list[WorkspacePlaceOut] = Field(default_factory=list)
     bookings: list[WorkspaceBookingCellOut] = Field(default_factory=list)
     employees: list[VacationEmployeeOut] = Field(default_factory=list)
+    timeOffDays: list[VacationTimeOffDayOut] = Field(default_factory=list)
 
 
 class WorkspacePresenceCellOut(BaseModel):

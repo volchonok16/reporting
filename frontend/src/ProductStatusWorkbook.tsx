@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { getJson, apiFetch, postJson, readApiError } from './api'
+import { notifyProblem, notifyWarning } from './toast'
 import ProductStatusCell, { type ProductStatusCellHandle } from './ProductStatusCell'
 import ProductStatusFormatToolbar from './ProductStatusFormatToolbar'
 import {
@@ -263,7 +264,6 @@ export default function ProductStatusWorkbook({
   const [exportingPresentation, setExportingPresentation] = useState(false)
   const [exportingExcel, setExportingExcel] = useState(false)
   const [dirty, setDirty] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [zniLookup, setZniLookup] = useState<Record<string, ChangeRequest>>({})
   const [zniModalItem, setZniModalItem] = useState<ChangeRequest | null>(null)
   const [loadedGids, setLoadedGids] = useState<Set<string>>(() => new Set())
@@ -340,11 +340,10 @@ export default function ProductStatusWorkbook({
         return
       }
       setSheetLoadingGid(gid)
-      setError(null)
       try {
         await loadSheetData(gid, options)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Ошибка загрузки листа')
+        notifyProblem(err, 'Ошибка загрузки листа')
       } finally {
         setSheetLoadingGid((current) => (current === gid ? null : current))
       }
@@ -355,7 +354,6 @@ export default function ProductStatusWorkbook({
   const loadData = useCallback(
     async (options?: { refresh?: boolean }) => {
       setLoading(true)
-      setError(null)
       try {
         if (options?.refresh) {
           clearProductStatusCache(apiBase)
@@ -385,7 +383,7 @@ export default function ProductStatusWorkbook({
                 try {
                   await loadSheetData(initialGid, options)
                 } catch (err) {
-                  setError(err instanceof Error ? err.message : 'Ошибка загрузки листа')
+                  notifyProblem(err, 'Ошибка загрузки листа')
                 } finally {
                   setSheetLoadingGid(null)
                 }
@@ -419,7 +417,7 @@ export default function ProductStatusWorkbook({
             try {
               await loadSheetData(initialGid, options)
             } catch (err) {
-              setError(err instanceof Error ? err.message : 'Ошибка загрузки листа')
+              notifyProblem(err, 'Ошибка загрузки листа')
             } finally {
               setSheetLoadingGid(null)
             }
@@ -478,7 +476,7 @@ export default function ProductStatusWorkbook({
           return payload.sheets[0]?.gid ?? null
         })
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Ошибка загрузки')
+        notifyProblem(err, 'Ошибка загрузки')
       } finally {
         setLoading(false)
       }
@@ -494,7 +492,6 @@ export default function ProductStatusWorkbook({
       return
     }
     setSaving(true)
-    setError(null)
     try {
       const response = await apiFetch(`${apiBase}/save`, {
         method: 'POST',
@@ -508,7 +505,7 @@ export default function ProductStatusWorkbook({
       setDirty(false)
       clearProductStatusCache(apiBase)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка сохранения')
+      notifyProblem(err, 'Ошибка сохранения')
     } finally {
       setSaving(false)
     }
@@ -517,7 +514,6 @@ export default function ProductStatusWorkbook({
   const handleExportPresentation = useCallback(async () => {
     if (!enablePresentationExport || sheets.length === 0) return
     setExportingPresentation(true)
-    setError(null)
     try {
       const response = await apiFetch(
         `${apiBase}/presentation`,
@@ -538,7 +534,7 @@ export default function ProductStatusWorkbook({
         filenameFromDisposition(response.headers.get('Content-Disposition') ?? '', presentationFilename),
       )
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка выгрузки презентации')
+      notifyProblem(err, 'Ошибка выгрузки презентации')
     } finally {
       setExportingPresentation(false)
     }
@@ -547,7 +543,6 @@ export default function ProductStatusWorkbook({
   const handleExportExcel = useCallback(async () => {
     if (!enableExcelExport || sheets.length === 0) return
     setExportingExcel(true)
-    setError(null)
     try {
       const response = await apiFetch(
         `${apiBase}/excel`,
@@ -568,7 +563,7 @@ export default function ProductStatusWorkbook({
         filenameFromDisposition(response.headers.get('Content-Disposition') ?? '', excelFilename),
       )
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка выгрузки Excel')
+      notifyProblem(err, 'Ошибка выгрузки Excel')
     } finally {
       setExportingExcel(false)
     }
@@ -607,7 +602,7 @@ export default function ProductStatusWorkbook({
     const name = proposed?.trim()
     if (!name) return
     if (sheet.columns.includes(name)) {
-      setError(`Столбец «${name}» уже есть на этом листе`)
+      notifyWarning(`Столбец «${name}» уже есть на этом листе`)
       return
     }
 
@@ -686,9 +681,10 @@ export default function ProductStatusWorkbook({
           }
           setZniLookup(next)
         })
-        .catch(() => {
+        .catch((err) => {
           if (!cancelled) {
             setZniLookup({})
+            notifyProblem(err, 'Не удалось загрузить данные ЗНИ')
           }
         })
     }, 300)
@@ -821,8 +817,6 @@ export default function ProductStatusWorkbook({
         onCellStyle={applyCellStyle}
         onClearFormatting={clearFormatting}
       />
-
-      {error && <p className="banner-error">{error}</p>}
 
       <section className="table-section product-status-table-section">
         <div className="product-status-table-toolbar">
@@ -965,7 +959,9 @@ export default function ProductStatusWorkbook({
                               <button
                                 type="button"
                                 className="zni-link product-status-zni-trigger"
-                                onClick={() => openZniModal(matchedZni)}
+                                onClick={() => {
+                                  if (matchedZni) openZniModal(matchedZni)
+                                }}
                               >
                                 {zniNumber}
                               </button>

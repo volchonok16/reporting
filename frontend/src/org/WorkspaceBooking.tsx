@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getJson, putJson } from '../api'
+import { notifyError, notifyWarning, notifyProblem } from '../toast'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import {
   MONTH_NAMES_FULL,
@@ -7,7 +8,6 @@ import {
   getMonthGroups,
   getYearDays,
   isDayOff,
-  isWeekendDay,
   toDayKey,
 } from './scheduleUtils'
 import { buildHolidayKeySet } from './ruPublicHolidays'
@@ -24,6 +24,21 @@ type SaveOperation = {
   day: string
   action: 'book' | 'release'
   employeeId?: number
+}
+
+function vacationDayKey(employeeId: number, day: string): string {
+  return `${employeeId}:${day}`
+}
+
+function vacationBookingMessage(
+  targetEmployeeId: number,
+  actorEmployeeId: number | null,
+  employeeName: string,
+): string {
+  if (actorEmployeeId != null && actorEmployeeId === targetEmployeeId) {
+    return 'У вас запланирован отпуск на эти даты.'
+  }
+  return `У ${employeeName} запланирован отпуск на эти даты.`
 }
 
 function cellKey(placeId: number, day: string): string {
@@ -109,8 +124,6 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   const savedOrgUi = loadOrgUiState()
   const [year, setYear] = useState(savedOrgUi.workspaceYear)
   const [data, setData] = useState<WorkspaceBookingScheduleData | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editMode, setEditMode] = useState(false)
@@ -140,6 +153,21 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     return map
   }, [data])
 
+  const vacationDaySet = useMemo(() => {
+    const set = new Set<string>()
+    for (const row of data?.timeOffDays ?? []) {
+      if (row.kind === 'vacation') {
+        set.add(vacationDayKey(row.employeeId, row.day))
+      }
+    }
+    return set
+  }, [data?.timeOffDays])
+
+  const isVacationDay = useCallback(
+    (employeeId: number, day: string) => vacationDaySet.has(vacationDayKey(employeeId, day)),
+    [vacationDaySet],
+  )
+
   const getEffectiveBooking = useCallback(
     (placeId: number, day: string): WorkspaceBookingCell | undefined => {
       const key = cellKey(placeId, day)
@@ -161,8 +189,6 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   useEffect(() => {
     setDraftChanges(new Map())
     setEditMode(false)
-    setError(null)
-    setNotice(null)
   }, [year])
 
   useEffect(() => {
@@ -184,7 +210,6 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
 
   const load = useCallback(async () => {
     setLoading(true)
-    setError(null)
     try {
       const query = new URLSearchParams({
         year: String(year),
@@ -194,7 +219,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
       )
       setData(response)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка загрузки')
+      notifyError(err, 'Ошибка загрузки')
     } finally {
       setLoading(false)
     }
@@ -225,8 +250,6 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   const cancelEdit = () => {
     setDraftChanges(new Map())
     setEditMode(false)
-    setError(null)
-    setNotice(null)
   }
 
   const toggleDraftCell = (placeId: number, day: string) => {
@@ -234,7 +257,10 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     setSelectedDayKey(day)
     if (saving || !data) return
     if (!editMode) {
-      if (!canEditAny) return
+      if (!canEditAny) {
+        notifyWarning('Бронирование недоступно без карточки сотрудника.')
+        return
+      }
       setEditMode(true)
     }
 
@@ -248,7 +274,10 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     if (effectiveBooking) {
       const canRelease =
         effectiveBooking.canRelease || effectiveBooking.isSelf || isAdmin
-      if (!canRelease) return
+      if (!canRelease) {
+        notifyWarning('Недостаточно прав для снятия брони.')
+        return
+      }
 
       setDraftChanges((prev) => {
         const next = new Map(prev)
@@ -259,7 +288,6 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
         }
         return next
       })
-      setError(null)
       return
     }
 
@@ -269,17 +297,23 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
         next.delete(key)
         return next
       })
-      setError(null)
       return
     }
 
     if (targetEmployeeId == null) {
-      setError('Выберите сотрудника для бронирования.')
+      notifyWarning('Выберите сотрудника для бронирования.')
       return
     }
 
     const employee = data.employees.find((item) => item.id === targetEmployeeId)
     if (!employee) return
+
+    if (isVacationDay(targetEmployeeId, day)) {
+      notifyWarning(
+        vacationBookingMessage(targetEmployeeId, actorId, employee.fullName),
+      )
+      return
+    }
 
     setDraftChanges((prev) => {
       const next = new Map(prev)
@@ -315,7 +349,6 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
       })
       return next
     })
-    setError(null)
   }
 
   const finishDragScroll = useCallback(
@@ -395,27 +428,19 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     }
 
     setSaving(true)
-    setError(null)
     try {
-      let lastNotice: string | null = null
       for (const operation of operations) {
-        const response = await putJson<{
+        await putJson<{
           action: 'book' | 'release'
           booked: boolean
           employeeId?: number
-          notice?: string
         }>('/api/org/workspace/bookings/toggle', operation)
-        if (response.notice) {
-          lastNotice = response.notice
-        }
       }
       setDraftChanges(new Map())
       setEditMode(false)
-      setNotice(lastNotice)
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка сохранения')
-      setNotice(null)
+      notifyProblem(err, 'Ошибка сохранения')
     } finally {
       setSaving(false)
     }
@@ -514,8 +539,6 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
         ) : null}
       </div>
 
-      {error ? <p className="org-error">{error}</p> : null}
-      {notice ? <p className="org-success">{notice}</p> : null}
       {loading && !data ? <p>Загрузка…</p> : null}
 
       {data ? (
@@ -612,9 +635,13 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                       const booking = getEffectiveBooking(place.id, dayKey)
                       const pending = isDraftCell(cellKey(place.id, dayKey), draftChanges, serverBooking)
                       const dayOff = isDayOff(day, holidayKeys)
+                      const targetEmployeeId = data.isAdmin ? bookForEmployeeId : data.actorEmployeeId ?? null
+                      const onVacation =
+                        targetEmployeeId != null && isVacationDay(targetEmployeeId, dayKey)
                       const canBook =
                         editMode &&
                         !booking &&
+                        !onVacation &&
                         (data.isAdmin ? bookForEmployeeId != null : data.actorEmployeeId != null)
                       const canRelease =
                         editMode &&
@@ -623,15 +650,17 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                             (booking.canRelease || booking.isSelf || data.isAdmin),
                         )
                       const isEditable = canBook || canRelease
-                      const tip = formatWorkspaceCellTip(
-                        place.name,
-                        day,
-                        booking,
-                        editMode,
-                        canBook,
-                        canRelease,
-                        pending,
-                      )
+                      const tip = onVacation && editMode && !booking
+                        ? `${place.name} · ${MONTH_NAMES_FULL[day.getMonth()].toLowerCase()} ${day.getDate()} ${day.getFullYear()} · отпуск · бронь недоступна`
+                        : formatWorkspaceCellTip(
+                            place.name,
+                            day,
+                            booking,
+                            editMode,
+                            canBook,
+                            canRelease,
+                            pending,
+                          )
 
                       return (
                         <td
@@ -645,6 +674,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                                 : 'org-workspace-busy'
                               : 'org-workspace-free',
                             dayOff ? 'org-workspace-weekend' : '',
+                            onVacation && !booking ? 'org-workspace-vacation-blocked' : '',
                             dayKey === todayKey ? 'org-vacation-today' : '',
                             dayKey === selectedDayKey ? 'org-vacation-cell-selected-day' : '',
                             pending ? 'org-workspace-pending' : '',

@@ -123,6 +123,17 @@ def _load_primary_department_names(db: Session, employee_ids: list[int]) -> dict
     return names
 
 
+def _vacation_booking_message(
+    *,
+    target_employee_id: int,
+    actor_employee_id: int | None,
+    employee_name: str,
+) -> str:
+    if actor_employee_id is not None and actor_employee_id == target_employee_id:
+        return "У вас запланирован отпуск на эти даты."
+    return f"У {employee_name} запланирован отпуск на эти даты."
+
+
 def get_workspace_booking_schedule(
     db: Session,
     *,
@@ -167,7 +178,25 @@ def get_workspace_booking_schedule(
             )
 
     employees = _load_booking_employees(db)
-    department_names = _load_primary_department_names(db, [emp.id for emp in employees])
+    employee_ids = [emp.id for emp in employees]
+    department_names = _load_primary_department_names(db, employee_ids)
+    time_off_rows = db.scalars(
+        select(EmployeeTimeOffDay)
+        .where(
+            EmployeeTimeOffDay.day >= day_from,
+            EmployeeTimeOffDay.day <= day_to,
+            EmployeeTimeOffDay.employee_id.in_(employee_ids) if employee_ids else False,
+        )
+        .order_by(EmployeeTimeOffDay.employee_id, EmployeeTimeOffDay.day)
+    ).all()
+    time_off_days = [
+        VacationTimeOffDayOut(
+            employeeId=row.employee_id,
+            day=row.day.isoformat(),
+            kind=row.kind,  # type: ignore[arg-type]
+        )
+        for row in time_off_rows
+    ]
     employee_out = [
         VacationEmployeeOut(
             id=emp.id,
@@ -192,6 +221,7 @@ def get_workspace_booking_schedule(
         ],
         bookings=bookings_out,
         employees=employee_out,
+        timeOffDays=time_off_days,
     )
 
 
@@ -460,20 +490,13 @@ def toggle_workspace_booking(db: Session, data: WorkspaceBookingToggleIn, meta: 
         )
     )
     if vacation_day is not None:
-        employee_day_booking = db.scalar(
-            select(WorkspaceBooking).where(
-                WorkspaceBooking.employee_id == target_employee_id,
-                WorkspaceBooking.day == day,
-            )
-        )
-        if employee_day_booking is not None:
-            db.delete(employee_day_booking)
-            db.commit()
-        return WorkspaceBookingToggleOut(
-            action="book",
-            booked=False,
-            employeeId=target_employee_id,
-            notice="У вас запланирован отпуск на эти даты.",
+        raise HTTPException(
+            status_code=409,
+            detail=_vacation_booking_message(
+                target_employee_id=target_employee_id,
+                actor_employee_id=actor_employee_id,
+                employee_name=employee.full_name,
+            ),
         )
 
     if existing is not None:

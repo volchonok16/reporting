@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { apiFetch, getJson, readApiError, setSessionId } from './api'
+import { apiFetch, getJson, HttpError, readApiError, setSessionId } from './api'
+import { notifyProblem, notifyWarning } from './toast'
 import ThemeToggle from './ThemeToggle'
 
 type AuthDefaults = {
@@ -23,7 +24,6 @@ export default function Login({ onSuccess }: LoginProps) {
   const [password, setPassword] = useState('')
   const [pat, setPat] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     void getJson<AuthDefaults>('/api/auth/defaults')
@@ -39,16 +39,15 @@ export default function Login({ onSuccess }: LoginProps) {
     event.preventDefault()
     if (mode === 'account') {
       if (!username.trim() || !password) {
-        setError('Введите логин и пароль.')
+        notifyWarning('Введите логин и пароль.')
         return
       }
     } else if (!pat.trim()) {
-      setError('Введите PAT-токен TFS.')
+      notifyWarning('Введите PAT-токен TFS.')
       return
     }
 
     setLoading(true)
-    setError(null)
     try {
       const body =
         mode === 'account'
@@ -72,13 +71,13 @@ export default function Login({ onSuccess }: LoginProps) {
         body: JSON.stringify(body),
       })
       if (!response.ok) {
-        throw new Error(await readApiError(response))
+        throw new HttpError(await readApiError(response), response.status)
       }
       const payload = (await response.json()) as { sessionId: string }
       setSessionId(payload.sessionId)
       onSuccess()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось войти')
+      notifyProblem(err, 'Не удалось войти')
     } finally {
       setLoading(false)
     }
@@ -153,7 +152,6 @@ export default function Login({ onSuccess }: LoginProps) {
             </>
           )}
 
-          {error && <p className="error">{error}</p>}
           <button type="submit" disabled={loading}>
             {loading ? 'Проверка…' : 'Войти'}
           </button>

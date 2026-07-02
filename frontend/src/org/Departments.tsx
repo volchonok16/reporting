@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { deleteJson, getJson, patchJson, postForm, postJson, putJson, resolvePhotoUrl } from '../api'
+import { notifyProblem } from '../toast'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgChartCanvas from './OrgChartCanvas'
 import OrgChartView from './OrgChartView'
@@ -129,7 +130,6 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const [expertiseDirections, setExpertiseDirections] = useState<ExpertiseDirection[]>([])
   const [employeeOptions, setEmployeeOptions] = useState<SelectOption[]>([])
   const [orgChart, setOrgChart] = useState<OrgChartData | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   const [employeeForm, setEmployeeForm] = useState({ ...EMPTY_EMPLOYEE })
@@ -226,7 +226,6 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   }, [panel, selectedDepartmentId])
 
   const loadBase = useCallback(async () => {
-    setError(null)
     try {
       const [deptData, empData, posData, roleData, dirData, optData] = await Promise.all([
         getJson<Department[]>('/api/org/departments'),
@@ -255,7 +254,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
         return deptData[0].id
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка загрузки')
+      notifyProblem(err, 'Ошибка загрузки')
     }
   }, [])
 
@@ -284,7 +283,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
         )
         setEmployeeOfficeDays(response)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Ошибка загрузки дней офиса')
+        notifyProblem(err, 'Ошибка загрузки дней офиса')
       } finally {
         setLoadingEmployeeOfficeDays(false)
       }
@@ -319,12 +318,12 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   useEffect(() => {
     if (panel === 'roster' && selectedDepartmentId !== null) {
       void loadMembers(selectedDepartmentId).catch((err) =>
-        setError(err instanceof Error ? err.message : 'Ошибка'),
+        notifyProblem(err, 'Ошибка')
       )
     }
     if (panel === 'pyramid') {
       void loadChart(selectedDepartmentId).catch((err) =>
-        setError(err instanceof Error ? err.message : 'Ошибка'),
+        notifyProblem(err, 'Ошибка')
       )
     }
   }, [panel, selectedDepartmentId, loadMembers, loadChart])
@@ -528,7 +527,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       })
       await loadEmployeeOfficeDays(editingEmployeeId, employeeOfficeYear, employeeOfficeMonth)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка сохранения дней офиса')
+      notifyProblem(err, 'Ошибка сохранения дней офиса')
     } finally {
       setSavingEmployeeOfficeDay(null)
     }
@@ -555,7 +554,6 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const saveEmployee = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!canManage || savingEmployee) return
-    setError(null)
     const body = {
       fullName: employeeForm.fullName.trim(),
       email: employeeForm.email.trim() || null,
@@ -595,7 +593,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       closeEmployeeModal()
       await refreshAll()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка сохранения сотрудника')
+      notifyProblem(err, 'Ошибка сохранения сотрудника')
     } finally {
       setSavingEmployee(false)
     }
@@ -607,7 +605,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       await deleteJson(`/api/org/employees/${id}`)
       await refreshAll()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка удаления')
+      notifyProblem(err, 'Ошибка удаления')
     }
   }
 
@@ -648,7 +646,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       setShowDepartmentModal(false)
       await refreshAll()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка сохранения отдела')
+      notifyProblem(err, 'Ошибка сохранения отдела')
     }
   }
 
@@ -659,7 +657,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       if (selectedDepartmentId === id) setSelectedDepartmentId(null)
       await refreshAll()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка удаления')
+      notifyProblem(err, 'Ошибка удаления')
     }
   }
 
@@ -703,7 +701,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       await loadMembers(selectedDepartmentId)
       await loadBase()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка сохранения участника')
+      notifyProblem(err, 'Ошибка сохранения участника')
     }
   }
 
@@ -714,7 +712,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       await loadMembers(selectedDepartmentId)
       await loadBase()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка удаления')
+      notifyProblem(err, 'Ошибка удаления')
     }
   }
 
@@ -725,7 +723,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       await postJson('/api/org/job-positions', { name: name.trim() })
       await loadBase()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка')
+      notifyProblem(err, 'Ошибка')
     }
   }
 
@@ -736,13 +734,12 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       await postJson('/api/org/expertise-directions', { name: name.trim() })
       await loadBase()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка')
+      notifyProblem(err, 'Ошибка')
     }
   }
 
   const addEmployeeExpertise = async () => {
     if (!editingEmployeeId || !expertiseDirectionId || !canManage) return
-    setError(null)
     try {
       await postJson(`/api/org/employees/${editingEmployeeId}/expertise`, {
         expertiseDirectionId: Number(expertiseDirectionId),
@@ -752,7 +749,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       setExpertiseLevel('')
       await loadBase()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка добавления экспертизы')
+      notifyProblem(err, 'Ошибка добавления экспертизы')
     }
   }
 
@@ -763,12 +760,11 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const removeEmployeeExpertise = async (expertiseId: number) => {
     if (!editingEmployeeId || !canManage) return
     if (!window.confirm('Удалить экспертизу?')) return
-    setError(null)
     try {
       await deleteJson(`/api/org/employees/${editingEmployeeId}/expertise/${expertiseId}`)
       await loadBase()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка удаления экспертизы')
+      notifyProblem(err, 'Ошибка удаления экспертизы')
     }
   }
 
@@ -824,7 +820,6 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
         </div>
       ) : null}
 
-      {error ? <p className="org-error">{error}</p> : null}
       {loading ? <p>Обновление…</p> : null}
 
       {panel === 'roster' ? (

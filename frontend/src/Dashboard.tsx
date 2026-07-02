@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { apiFetch, getJson } from './api'
+import { notifyError, notifyLoading, notifyProblem, notifySuccess, notifyWarning, updateLoading } from './toast'
 import { loadDashboardUiState, saveDashboardUiState } from './uiState'
 
 const ALL_BOARDS = 'all'
@@ -416,14 +417,12 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
   const [syncing, setSyncing] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [savingBusinessValueId, setSavingBusinessValueId] = useState<string | null>(null)
-  const [syncProgress, setSyncProgress] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set())
 
   useEffect(() => {
     void getJson<Board[]>('/api/boards')
       .then((items) => setBoards(items))
-      .catch((err) => setError(err instanceof Error ? err.message : 'Ошибка загрузки досок'))
+      .catch((err) => notifyError(err, 'Ошибка загрузки досок'))
   }, [])
 
   useEffect(() => {
@@ -469,7 +468,6 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
   const loadDashboard = useCallback(async () => {
     if (!boardCode) return
     setLoading(true)
-    setError(null)
     const params = new URLSearchParams({ board: boardCode, sort })
     if (search.trim()) params.set('search', search.trim())
     if (dateFrom) params.set('date_from', dateFrom)
@@ -490,7 +488,7 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
       const payload = await getJson<DashboardData>(`/api/dashboard?${params}`)
       setData(payload)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка загрузки')
+      notifyError(err, 'Ошибка загрузки')
     } finally {
       setLoading(false)
     }
@@ -549,7 +547,7 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
     void loadDashboard()
   }, [loadDashboard])
 
-  const waitForSync = useCallback(async (targetBoard: string) => {
+  const waitForSync = useCallback(async (targetBoard: string, onProgress?: (message: string) => void) => {
     const params = `?board=${encodeURIComponent(targetBoard)}`
     const response = await apiFetch(`/api/sync${params}`, { method: 'POST' })
     if (!response.ok) {
@@ -564,7 +562,7 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
         progressMessage?: string | null
       }>(`/api/sync/${sync.id}`)
       if (status.progressMessage) {
-        setSyncProgress(status.progressMessage)
+        onProgress?.(status.progressMessage)
       }
       if (status.status === 'running') {
         await new Promise((resolve) => setTimeout(resolve, 1500))
@@ -595,15 +593,13 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
   const handleSync = async () => {
     if (!canSyncTfs) return
     setSyncing(true)
-    setSyncProgress('Старт…')
-    setError(null)
+    const toastId = notifyLoading('Старт…', 'dashboard-sync')
     try {
-      await waitForSync(boardCode)
-      setSyncProgress(null)
+      await waitForSync(boardCode, (message) => updateLoading(message, toastId))
+      notifySuccess('Синхронизация завершена', toastId)
       await loadDashboard()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка синхронизации')
-      setSyncProgress(null)
+      notifyError(err, 'Ошибка синхронизации', toastId)
     } finally {
       setSyncing(false)
     }
@@ -611,20 +607,20 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
 
   const handleExport = async () => {
     setExporting(true)
-    setError(null)
+    const toastId = notifyLoading('Подготовка выгрузки…', 'dashboard-export')
     try {
       if (boardCode === ALL_BOARDS) {
-        await waitForSync(ALL_BOARDS)
-        setSyncProgress('Формирование CSV…')
+        await waitForSync(ALL_BOARDS, (message) => updateLoading(message, toastId))
+        updateLoading('Формирование CSV…', toastId)
         await downloadCsv(ALL_BOARDS, 'zni-report-all.csv')
-        setSyncProgress(null)
+        notifySuccess('Отчёт выгружен', toastId)
         await loadDashboard()
         return
       }
       await downloadCsv(boardCode, 'zni-report.csv')
+      notifySuccess('Отчёт выгружен', toastId)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка выгрузки')
-      setSyncProgress(null)
+      notifyError(err, 'Ошибка выгрузки', toastId)
     } finally {
       setExporting(false)
     }
@@ -641,13 +637,12 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
     const trimmed = rawValue.trim()
     const parsed = trimmed === '' ? null : Number.parseInt(trimmed, 10)
     if (trimmed !== '' && (!Number.isFinite(parsed) || parsed! < 1)) {
-      setError('Ценность для бизнеса — целое число от 1')
+      notifyWarning('Ценность для бизнеса — целое число от 1')
       return
     }
     if (parsed === item.businessValue) return
 
     setSavingBusinessValueId(item.number)
-    setError(null)
     try {
       const response = await apiFetch(`/api/tasks/${encodeURIComponent(item.number)}/business-value`, {
         method: 'PATCH',
@@ -669,7 +664,7 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
         }
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка сохранения')
+      notifyProblem(err, 'Ошибка сохранения')
     } finally {
       setSavingBusinessValueId(null)
     }
@@ -784,9 +779,6 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
           </button>
         </div>
       </header>
-
-      {syncProgress && <p className="banner-info">{syncProgress}</p>}
-      {error && <p className="banner-error">{error}</p>}
 
       <section className="metrics">
         <button

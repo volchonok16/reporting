@@ -8,6 +8,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { getJson, putJson } from '../api'
+import { notifyLoading, notifyProblem, notifySuccess } from '../toast'
 import type {
   DepartmentBlock,
   OrgChartLayout,
@@ -71,10 +72,6 @@ function departmentEmployeeNodeId(departmentId: number, employeeId: number): str
 
 function departmentNodeId(departmentId: number): string {
   return `department:${departmentId}`
-}
-
-function edgeId(fromNodeId: string, toNodeId: string): string {
-  return `${fromNodeId}->${toNodeId}`
 }
 
 function anchoredEdgeId(fromNodeId: string, toNodeId: string, fromAnchor: EdgeAnchor, toAnchor: EdgeAnchor): string {
@@ -425,7 +422,6 @@ export default function ManualOrgChartView({
     point: Point
   } | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
-  const [status, setStatus] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -674,15 +670,15 @@ export default function ManualOrgChartView({
   }
 
   const saveLayout = async () => {
-    setStatus('Сохраняем...')
+    const toastId = notifyLoading('Сохраняем…', 'org-chart-save')
     try {
       const saved = await putJson<OrgChartLayout>('/api/org/org-chart-layout?scope=company', { layout })
       setLayout(reconcileLayout(saved.layout, items))
-      setStatus('Схема сохранена')
+      notifySuccess('Схема сохранена', toastId)
       setEditing(false)
       setConnectFrom(null)
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Не удалось сохранить схему')
+      notifyProblem(error, 'Не удалось сохранить схему', toastId)
     }
   }
 
@@ -801,7 +797,6 @@ export default function ManualOrgChartView({
               </button>
             </>
           ) : null}
-          {status ? <span className="org-manual-status">{status}</span> : null}
         </div>
       ) : null}
       <div

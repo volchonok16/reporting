@@ -1594,6 +1594,61 @@
   gap: 8px;
 }
 
+.org-form label .org-password-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.org-password-input {
+  position: relative;
+  display: flex;
+  width: 100%;
+  align-items: center;
+}
+
+.org-password-input input {
+  width: 100%;
+  flex: 1;
+  min-width: 0;
+  padding-right: 44px;
+}
+
+.org-password-input-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.org-password-input-toggle svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.org-password-input-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.org-password-input-toggle:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
 @media (max-width: 640px) {
   .org-inline-form {
     grid-template-columns: 1fr;
@@ -2439,6 +2494,12 @@
 
 .org-workspace-pending {
   box-shadow: inset 0 0 0 1px var(--text-secondary) !important;
+}
+
+.org-workspace-vacation-blocked {
+  background: color-mix(in srgb, var(--org-office-vacation-bg, #7dd3fc) 28%, var(--surface-2) 72%) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--org-office-vacation-border, #7dd3fc) 40%, transparent 60%) !important;
+  cursor: not-allowed;
 }
 
 .org-vacation-legend-item.org-workspace-free {

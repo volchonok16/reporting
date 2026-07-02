@@ -61,6 +61,16 @@ export function clearSessionId() {
   localStorage.removeItem(SESSION_KEY)
 }
 
+export class HttpError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'HttpError'
+    this.status = status
+  }
+}
+
 export async function readApiError(response: Response): Promise<string> {
   const text = await response.text()
   try {
@@ -72,6 +82,12 @@ export async function readApiError(response: Response): Promise<string> {
     /* not json */
   }
   return text || response.statusText
+}
+
+async function ensureOk(response: Response): Promise<void> {
+  if (!response.ok) {
+    throw new HttpError(await readApiError(response), response.status)
+  }
 }
 
 function formatFetchError(path: string, cause: unknown): Error {
@@ -95,9 +111,7 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
 
 export async function getJson<T>(path: string): Promise<T> {
   const response = await apiFetch(path)
-  if (!response.ok) {
-    throw new Error(await readApiError(response))
-  }
+  await ensureOk(response)
   return (await response.json()) as T
 }
 
@@ -107,9 +121,7 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!response.ok) {
-    throw new Error(await readApiError(response))
-  }
+  await ensureOk(response)
   return (await response.json()) as T
 }
 
@@ -119,9 +131,7 @@ export async function patchJson<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!response.ok) {
-    throw new Error(await readApiError(response))
-  }
+  await ensureOk(response)
   return (await response.json()) as T
 }
 
@@ -131,17 +141,13 @@ export async function putJson<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!response.ok) {
-    throw new Error(await readApiError(response))
-  }
+  await ensureOk(response)
   return (await response.json()) as T
 }
 
 export async function deleteJson(path: string): Promise<void> {
   const response = await apiFetch(path, { method: 'DELETE' })
-  if (!response.ok) {
-    throw new Error(await readApiError(response))
-  }
+  await ensureOk(response)
 }
 
 export async function postForm<T>(path: string, formData: FormData): Promise<T> {
@@ -149,8 +155,6 @@ export async function postForm<T>(path: string, formData: FormData): Promise<T> 
     method: 'POST',
     body: formData,
   })
-  if (!response.ok) {
-    throw new Error(await readApiError(response))
-  }
+  await ensureOk(response)
   return (await response.json()) as T
 }

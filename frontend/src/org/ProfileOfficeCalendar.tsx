@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getJson, putJson } from '../api'
+import { notifyError, notifyProblem } from '../toast'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import { MONTH_NAMES_FULL, WEEKDAY_NAMES, getMonthDays, isWeekendDay, toDayKey } from './scheduleUtils'
 import { buildHolidayKeySet } from './ruPublicHolidays'
@@ -18,7 +19,6 @@ export default function ProfileOfficeCalendar({ enabled }: ProfileOfficeCalendar
   const [days, setDays] = useState<OfficeDay[]>([])
   const [loading, setLoading] = useState(false)
   const [savingDay, setSavingDay] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
 
   const monthDays = useMemo(() => getMonthDays(year, month), [year, month])
   const holidayKeys = useMemo(() => buildHolidayKeySet(year), [year])
@@ -31,7 +31,6 @@ export default function ProfileOfficeCalendar({ enabled }: ProfileOfficeCalendar
   const load = useCallback(async () => {
     if (!enabled) return
     setLoading(true)
-    setError(null)
     try {
       const query = new URLSearchParams({
         year: String(year),
@@ -40,7 +39,7 @@ export default function ProfileOfficeCalendar({ enabled }: ProfileOfficeCalendar
       const response = await getJson<OfficeDay[]>(`/api/profile/office-days?${query.toString()}`)
       setDays(response)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка загрузки календаря офиса')
+      notifyError(err, 'Ошибка загрузки календаря офиса')
     } finally {
       setLoading(false)
     }
@@ -53,7 +52,6 @@ export default function ProfileOfficeCalendar({ enabled }: ProfileOfficeCalendar
   const toggleDay = async (dayKey: string) => {
     if (!enabled || savingDay) return
     setSavingDay(dayKey)
-    setError(null)
     const present = !daySet.has(dayKey)
     try {
       await putJson('/api/profile/office-days/range', {
@@ -63,7 +61,7 @@ export default function ProfileOfficeCalendar({ enabled }: ProfileOfficeCalendar
       })
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка сохранения даты')
+      notifyProblem(err, 'Ошибка сохранения даты')
       await load()
     } finally {
       setSavingDay(null)
@@ -112,7 +110,6 @@ export default function ProfileOfficeCalendar({ enabled }: ProfileOfficeCalendar
         </div>
       </div>
       <p className="org-hint">Клик по дате переключает признак «в офисе». Эти дни видны во вкладке «Сотрудники в офисе».</p>
-      {error ? <p className="org-error">{error}</p> : null}
       {loading ? <p>Загрузка…</p> : null}
       <div className="org-profile-office-grid">
         {monthDays.map((day) => {

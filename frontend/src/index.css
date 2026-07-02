@@ -10,6 +10,10 @@ body {
   color: var(--text-primary);
 }
 
+[data-sonner-toaster] {
+  z-index: 100000;
+}
+
 .loading {
   min-height: 100vh;
   display: grid;

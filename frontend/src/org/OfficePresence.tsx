@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getJson } from '../api'
+import { notifyError } from '../toast'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgPhoto from './OrgPhoto'
 import { buildHolidayKeySet } from './ruPublicHolidays'
@@ -146,7 +147,6 @@ export default function OfficePresence() {
   const savedOrgUi = loadOrgUiState()
   const [year, setYear] = useState(savedOrgUi.workspaceYear)
   const [data, setData] = useState<WorkspaceOfficePresenceData | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [selectedDayKey, setSelectedDayKey] = useState(() => toDayKey(new Date()))
   const [isDragScrolling, setIsDragScrolling] = useState(false)
@@ -203,7 +203,6 @@ export default function OfficePresence() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    setError(null)
     try {
       const query = new URLSearchParams({ year: String(year) })
       const response = await getJson<WorkspaceOfficePresenceData>(
@@ -211,7 +210,7 @@ export default function OfficePresence() {
       )
       setData(response)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка загрузки')
+      notifyError(err, 'Ошибка загрузки')
     } finally {
       setLoading(false)
     }
@@ -311,7 +310,6 @@ export default function OfficePresence() {
         <span className="org-vacation-legend-item org-vacation-weekend">Выходной и праздник</span>
       </div>
 
-      {error ? <p className="org-error">{error}</p> : null}
       {loading && !data ? <p>Загрузка…</p> : null}
 
       {data && !loading ? (

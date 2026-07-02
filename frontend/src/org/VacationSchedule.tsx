@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getJson, putJson } from '../api'
+import { notifyError, notifyProblem, notifyWarning } from '../toast'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgPhoto from './OrgPhoto'
 import { buildHolidayKeySet } from './ruPublicHolidays'
@@ -163,7 +164,6 @@ export default function VacationSchedule({
   const [internalYear, setInternalYear] = useState(savedOrgUi.vacationYear)
   const year = yearProp ?? internalYear
   const [data, setData] = useState<VacationScheduleData | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editMode, setEditMode] = useState(false)
@@ -211,13 +211,12 @@ export default function VacationSchedule({
     if (!options?.silent) {
       setLoading(true)
     }
-    setError(null)
     try {
       const query = new URLSearchParams({ year: String(year) })
       const response = await getJson<VacationScheduleData>(`/api/org/vacations?${query.toString()}`)
       setData(response)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка загрузки')
+      notifyError(err, 'Ошибка загрузки')
     } finally {
       if (!options?.silent) {
         setLoading(false)
@@ -246,7 +245,6 @@ export default function VacationSchedule({
 
   const applyRange = async (employeeId: number, fromDay: string, toDay: string) => {
     setSaving(true)
-    setError(null)
     try {
       await putJson<{ affectedDays: number }>('/api/org/vacations/range', {
         employeeId,
@@ -256,7 +254,7 @@ export default function VacationSchedule({
       })
       await load({ silent: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка сохранения')
+      notifyProblem(err, 'Ошибка сохранения')
     } finally {
       setSaving(false)
       setRangeStart(null)
@@ -265,7 +263,11 @@ export default function VacationSchedule({
   }
 
   const handleCellClick = (employeeId: number, day: string, canEdit: boolean) => {
-    if (!editMode || !canEdit || saving) return
+    if (!editMode || saving) return
+    if (!canEdit) {
+      notifyWarning('Редактирование доступно только для своей строки.')
+      return
+    }
     if (rangeStart === null) {
       setRangeStart({ employeeId, day })
       return
@@ -358,7 +360,6 @@ export default function VacationSchedule({
         </div>
       )}
 
-      {error ? <p className="org-error">{error}</p> : null}
       {loading && !data ? <p>Загрузка…</p> : null}
 
       {data ? (

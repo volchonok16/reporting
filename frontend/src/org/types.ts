@@ -250,6 +250,7 @@ export type WorkspaceBookingScheduleData = {
   places: WorkspacePlace[]
   bookings: WorkspaceBookingCell[]
   employees: VacationEmployee[]
+  timeOffDays: VacationTimeOffDay[]
 }
 
 export type WorkspacePresenceCell = {
