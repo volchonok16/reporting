@@ -1215,7 +1215,7 @@ def _fill_white_cell(
             run.font.italic = segment.italic
             run.font.color.rgb = _hex_to_rgb(segment.fg) if segment.fg else default_text_color
             _set_run_strike(run, enabled=segment.strike)
-            if segment.bg and not segment.fg:
+            if segment.bg:
                 _set_run_highlight(run, segment.bg)
 
     if not cell_style.bg:

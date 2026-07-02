@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { getJson, apiFetch, postJson, readApiError } from './api'
-import { notifyLoading, notifyProblem, notifySuccess, notifyWarning } from './toast'
+import { dismissToast, notifyLoading, notifyProblem, notifySuccess, notifyWarning } from './toast'
 import { type ProductStatusCellHandle } from './ProductStatusCell'
 import ProductStatusFormatToolbar from './ProductStatusFormatToolbar'
 import ProductStatusTableRow, { type ActiveCell, PRODUCT_STATUS_ROW_ID_KEY } from './ProductStatusTableRow'
@@ -15,6 +15,11 @@ import {
   readProductStatusCache,
   writeProductStatusCache,
 } from './productStatusClientCache'
+import {
+  copyFullColumnsToPresentation,
+  formatProductStatusColumnHeader,
+  resolvePresentationCopyPairs,
+} from './productStatusColumns'
 import type { ChangeRequest, TaskLookupResponse } from './zniTypes'
 import ZniDetailModal from './ZniDetailModal'
 
@@ -785,6 +790,13 @@ export default function ProductStatusWorkbook({
     setExportingPresentation(true)
     const toastId = notifyLoading('Формирование презентации…', 'product-status-presentation')
     try {
+      if (dirty) {
+        const saved = await handleSave()
+        if (!saved) {
+          dismissToast(toastId)
+          return
+        }
+      }
       const response = await apiFetch(
         `${apiBase}/presentation`,
         lazySheets
@@ -809,7 +821,17 @@ export default function ProductStatusWorkbook({
     } finally {
       setExportingPresentation(false)
     }
-  }, [apiBase, data, defaultTitle, enablePresentationExport, lazySheets, presentationFilename, sheets])
+  }, [
+    apiBase,
+    data,
+    defaultTitle,
+    dirty,
+    enablePresentationExport,
+    handleSave,
+    lazySheets,
+    presentationFilename,
+    sheets,
+  ])
 
   const handleExportExcel = useCallback(async () => {
     if (!enableExcelExport || sheets.length === 0) return
@@ -865,7 +887,29 @@ export default function ProductStatusWorkbook({
         return { ...sheet, rows: [...sheet.rows, emptyRow], totalShown: sheet.rows.length + 1 }
       }),
     )
-  }, [activeGid])
+  }, [activeGid, sheets])
+
+  const handleCopyToPresentation = useCallback(() => {
+    if (!activeSheet) return
+    if (presentationCopyPairs.length === 0) {
+      notifyWarning('На листе нет пар столбцов «полное → презентация»')
+      return
+    }
+
+    const { sheet: nextSheet, copiedCells } = copyFullColumnsToPresentation(activeSheet, {
+      onlyPresentationRows: true,
+      isPresentationRow: (row) => resolveRowHighlight(row, activeSheet.columns).isPresentation,
+    })
+
+    if (copiedCells === 0) {
+      notifyWarning('Нечего копировать: у строк с «Идет в презентацию» заполните полные столбцы')
+      return
+    }
+
+    setDirty(true)
+    setSheets((current) => current.map((sheet) => (sheet.gid === nextSheet.gid ? nextSheet : sheet)))
+    notifySuccess(`Скопировано в презентацию: ${copiedCells}`)
+  }, [activeSheet, presentationCopyPairs.length])
 
   const addColumn = useCallback(() => {
     if (!activeGid) return
@@ -962,6 +1006,11 @@ export default function ProductStatusWorkbook({
   const activeSheet = useMemo(
     () => sheets.find((sheet) => sheet.gid === activeGid) ?? sheets[0] ?? null,
     [activeGid, sheets],
+  )
+
+  const presentationCopyPairs = useMemo(
+    () => (activeSheet ? resolvePresentationCopyPairs(activeSheet.columns) : []),
+    [activeSheet],
   )
 
   const booleanColorsByColumn = useMemo(() => {
@@ -1387,6 +1436,17 @@ export default function ProductStatusWorkbook({
             )}
           </p>
           <div className="product-status-table-toolbar-actions">
+            {presentationCopyPairs.length > 0 ? (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleCopyToPresentation}
+                disabled={toolbarBusy || !activeSheetReady}
+                title="Скопировать «полное описание» и «зачем (полное)» в столбцы для презентации у строк с галочкой «Идет в презентацию»"
+              >
+                Скопировать в презентацию
+              </button>
+            ) : null}
             <button
               type="button"
               className="btn-secondary"
@@ -1440,7 +1500,7 @@ export default function ProductStatusWorkbook({
                           .filter(Boolean)
                           .join(' ')}
                       >
-                        {column}
+                        <span title={column}>{formatProductStatusColumnHeader(column)}</span>
                       </th>
                     ))}
                   </tr>
