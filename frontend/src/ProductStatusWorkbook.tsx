@@ -889,28 +889,6 @@ export default function ProductStatusWorkbook({
     )
   }, [activeGid, sheets])
 
-  const handleCopyToPresentation = useCallback(() => {
-    if (!activeSheet) return
-    if (presentationCopyPairs.length === 0) {
-      notifyWarning('На листе нет пар столбцов «полное → презентация»')
-      return
-    }
-
-    const { sheet: nextSheet, copiedCells } = copyFullColumnsToPresentation(activeSheet, {
-      onlyPresentationRows: true,
-      isPresentationRow: (row) => resolveRowHighlight(row, activeSheet.columns).isPresentation,
-    })
-
-    if (copiedCells === 0) {
-      notifyWarning('Нечего копировать: у строк с «Идет в презентацию» заполните полные столбцы')
-      return
-    }
-
-    setDirty(true)
-    setSheets((current) => current.map((sheet) => (sheet.gid === nextSheet.gid ? nextSheet : sheet)))
-    notifySuccess(`Скопировано в презентацию: ${copiedCells}`)
-  }, [activeSheet, presentationCopyPairs.length])
-
   const addColumn = useCallback(() => {
     if (!activeGid) return
     const sheet = sheets.find((item) => item.gid === activeGid)
@@ -1012,6 +990,28 @@ export default function ProductStatusWorkbook({
     () => (activeSheet ? resolvePresentationCopyPairs(activeSheet.columns) : []),
     [activeSheet],
   )
+
+  const handleCopyToPresentation = useCallback(() => {
+    if (!activeSheet) return
+    if (presentationCopyPairs.length === 0) {
+      notifyWarning('На листе нет пар столбцов «полное → презентация»')
+      return
+    }
+
+    const { sheet: nextSheet, copiedCells } = copyFullColumnsToPresentation(activeSheet, {
+      onlyPresentationRows: true,
+      isPresentationRow: (row) => resolveRowHighlight(row, activeSheet.columns).isPresentation,
+    })
+
+    if (copiedCells === 0) {
+      notifyWarning('Нечего копировать: у строк с «Идет в презентацию» заполните полные столбцы')
+      return
+    }
+
+    setDirty(true)
+    setSheets((current) => current.map((sheet) => (sheet.gid === nextSheet.gid ? nextSheet : sheet)))
+    notifySuccess(`Скопировано в презентацию: ${copiedCells}`)
+  }, [activeSheet, presentationCopyPairs.length])
 
   const booleanColorsByColumn = useMemo(() => {
     if (!activeSheet) return {}
