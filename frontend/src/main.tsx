@@ -4,6 +4,7 @@ import App from './App'
 import { initTheme } from './theme'
 import './themes.css'
 import './index.css'
+import './mobile.css'
 
 initTheme()
 
