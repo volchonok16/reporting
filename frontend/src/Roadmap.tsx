@@ -363,8 +363,8 @@ export default function Roadmap({
     <div className="roadmap-page">
       <div className="roadmap-toolbar">
         <div className="roadmap-toolbar-title">
-          <h1>Планы</h1>
-          <p>Digital · планирование по Start Date</p>
+          <h1>Планы Digital</h1>
+          <p>Планирование по Start Date</p>
         </div>
 
         <div className="roadmap-period">
