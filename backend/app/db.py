@@ -124,6 +124,7 @@ def ensure_startup_schema() -> None:
         "009_employee_office_days.sql",
         "010_org_chart_layout.sql",
         "013_b2b_product_status.sql",
+        "014_b2b_product_status_snapshots.sql",
     )
     org_migrations: list[str] = []
     for migration_name in org_migration_names:
