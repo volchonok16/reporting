@@ -11,7 +11,7 @@ from app.auth_service import login_with_app_user, login_with_pat
 from app.auth_sessions import delete_session, get_session, get_session_with_meta
 from app.boards import ALL_BOARDS_CODE, BOARDS, boards_for_sync
 from app.config import settings
-from app.db import close_db_session, ensure_startup_schema, get_db
+from app.db import close_db_session, ensure_startup_schema, get_db, purge_stale_b2b_audit_records
 from app.org_photo_service import photo_public_url
 from app.org_service import get_employee_for_org_user
 from app.models import SyncRun
@@ -78,6 +78,7 @@ app.add_middleware(
 @app.on_event("startup")
 def startup() -> None:
     ensure_startup_schema()
+    purge_stale_b2b_audit_records()
 
 
 app.include_router(org_router)

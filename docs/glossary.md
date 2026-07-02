@@ -851,6 +851,8 @@ API: `GET /api/product-status/b2b/history?gid=`, `GET /api/product-status/b2b/sn
 
 Снимок создаётся после каждого успешного «Сохранить» и после восстановления версии. В UI вкладки «История» — блок «Версии сохранений» с кнопкой «Восстановить» (кроме текущей версии).
 
+Записи `b2b_product_status_history` и `b2b_product_status_snapshot` старше **28 дней** (настройка `B2B_AUDIT_RETENTION_DAYS`) удаляются при старте backend; строки `b2b_product_status_row` не затрагиваются.
+
 ---
 
 ## b2b_news_section — вкладки «Новости и запуски»
@@ -888,6 +890,8 @@ Seed: `news` → «Новости», `launches` → «Запуски».
 API: `GET /api/b2b-news`, `POST /api/b2b-news/save`, `GET /api/b2b-news/history?gid=`, `GET /api/b2b-news/snapshots?gid=`, `POST /api/b2b-news/snapshots/{id}/restore?gid=`, удаление строки — через `deletedRows` в save.
 
 Данные для слайда «Новости рынка» в презентации берутся из вкладки `gid=news` в БД.
+
+История и снимки версий (`b2b_news_history`, `b2b_news_snapshot`) старше 28 дней удаляются автоматически (см. `B2B_AUDIT_RETENTION_DAYS`); строки `b2b_news_row` не удаляются.
 
 ---
 

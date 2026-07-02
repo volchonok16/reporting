@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Serialize startup DDL when uvicorn runs multiple workers (see docker-compose.prod.yml).
 _STARTUP_MIGRATION_LOCK_ID = 847291736
+_B2B_AUDIT_RETENTION_LOCK_ID = 847291737
 
 
 class Base(DeclarativeBase):
@@ -155,6 +156,23 @@ def ensure_startup_schema() -> None:
             for sql in org_migrations:
                 _execute_startup_sql(conn, sql)
             _ensure_app_user_grants(conn)
+
+
+def purge_stale_b2b_audit_records() -> None:
+    """Удаляет историю и снимки версий B2B старше срока хранения (при старте, один воркер)."""
+    from app.b2b_audit_retention import purge_old_b2b_audit_records
+
+    with engine.connect() as conn:
+        with conn.begin():
+            conn.execute(
+                text("SELECT pg_advisory_xact_lock(:lock_id)"),
+                {"lock_id": _B2B_AUDIT_RETENTION_LOCK_ID},
+            )
+            session = Session(bind=conn)
+            try:
+                purge_old_b2b_audit_records(session)
+            finally:
+                session.close()
 
 
 def get_db() -> Generator[Session, None, None]:
