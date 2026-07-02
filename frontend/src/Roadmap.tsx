@@ -424,10 +424,13 @@ export default function Roadmap({
         <div className="roadmap-sheet">
           {isTodayVisible ? (
             <div className="roadmap-today-layer" aria-hidden>
-              <div
-                className="roadmap-today-line"
-                style={{ '--today-left': `${todayLeft}%` } as CSSProperties}
-              />
+              <div className="roadmap-today-sidebar" />
+              <div className="roadmap-today-track">
+                <div
+                  className="roadmap-today-line"
+                  style={{ '--today-left': `${todayLeft}%` } as CSSProperties}
+                />
+              </div>
             </div>
           ) : null}
 

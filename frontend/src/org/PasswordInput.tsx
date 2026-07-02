@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import './password-input.css'
+import '../password-input.css'
 
 type PasswordInputProps = {
   value: string
