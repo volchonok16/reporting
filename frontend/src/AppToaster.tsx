@@ -28,6 +28,7 @@ export default function AppToaster() {
       position="top-right"
       richColors
       closeButton
+      visibleToasts={3}
       toastOptions={{ duration: 5000 }}
       style={{ zIndex: 100000 }}
     />

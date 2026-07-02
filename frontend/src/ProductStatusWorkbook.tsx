@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { getJson, apiFetch, postJson, readApiError } from './api'
-import { dismissToast, notifyLoading, notifyProblem, notifySuccess, notifyWarning } from './toast'
+import { notifyLoading, notifyProblem, notifySuccess, notifyWarning } from './toast'
 import { type ProductStatusCellHandle } from './ProductStatusCell'
 import ProductStatusFormatToolbar from './ProductStatusFormatToolbar'
 import ProductStatusTableRow, { type ActiveCell } from './ProductStatusTableRow'
@@ -327,32 +327,19 @@ export default function ProductStatusWorkbook({
     [apiBase, defaultTitle, rememberBaseline],
   )
 
-  const resolveSheetName = useCallback(
-    (gid: string, sheetList: ProductStatusSheet[] = sheets) =>
-      sheetList.find((sheet) => sheet.gid === gid)?.name ??
-      data?.sheets.find((sheet) => sheet.gid === gid)?.name ??
-      'Лист',
-    [data?.sheets, sheets],
-  )
-
-  const loadSheetWithToast = useCallback(
+  const loadSheetQuiet = useCallback(
     async (gid: string, options?: { refresh?: boolean }) => {
-      const toastId = notifyLoading(
-        `${resolveSheetName(gid)}: загрузка…`,
-        `product-status-sheet-${gid}`,
-      )
       setSheetLoadingGid(gid)
       try {
         await loadSheetData(gid, options)
-        dismissToast(toastId)
       } catch (err) {
-        notifyProblem(err, 'Ошибка загрузки листа', toastId)
+        notifyProblem(err, 'Ошибка загрузки листа')
         throw err
       } finally {
         setSheetLoadingGid((current) => (current === gid ? null : current))
       }
     },
-    [loadSheetData, resolveSheetName],
+    [loadSheetData],
   )
 
   const ensureSheetLoaded = useCallback(
@@ -361,28 +348,25 @@ export default function ProductStatusWorkbook({
       if (!options?.refresh && loadedGids.has(gid) && existing && existing.columns.length > 0) {
         return
       }
-      await loadSheetWithToast(gid, options)
+      await loadSheetQuiet(gid, options)
     },
-    [loadedGids, loadSheetWithToast, sheets],
+    [loadedGids, loadSheetQuiet, sheets],
   )
 
   const loadData = useCallback(
     async (options?: { refresh?: boolean }) => {
       setLoading(true)
-      const mainToastId = notifyLoading(
-        options?.refresh ? 'Обновление из Google Sheets…' : 'Загрузка…',
-        'product-status-load',
-      )
+      const showToast = Boolean(options?.refresh)
+      const mainToastId = showToast
+        ? notifyLoading('Обновление из Google Sheets…', 'product-status-load')
+        : null
       const completeMainToast = (err?: unknown) => {
+        if (!showToast || mainToastId == null) return
         if (err) {
           notifyProblem(err, 'Ошибка загрузки', mainToastId)
           return
         }
-        if (options?.refresh) {
-          notifySuccess('Данные обновлены', mainToastId)
-          return
-        }
-        dismissToast(mainToastId)
+        notifySuccess('Данные обновлены', mainToastId)
       }
 
       try {
@@ -411,10 +395,9 @@ export default function ProductStatusWorkbook({
                 setSheetLoadingGid(initialGid)
               }
               setLoading(false)
-              dismissToast(mainToastId)
 
               if (initialGid) {
-                await loadSheetWithToast(initialGid, options)
+                await loadSheetQuiet(initialGid, options)
               }
               return
             }
@@ -442,13 +425,11 @@ export default function ProductStatusWorkbook({
             setSheetLoadingGid(initialGid)
           }
           setLoading(false)
-          dismissToast(mainToastId)
 
           if (initialGid) {
-            await loadSheetWithToast(initialGid, options)
-          } else {
-            completeMainToast()
+            await loadSheetQuiet(initialGid, options)
           }
+          completeMainToast()
           return
         }
 
@@ -510,7 +491,7 @@ export default function ProductStatusWorkbook({
         setLoading(false)
       }
     },
-    [apiBase, lazySheets, loadGid, loadSheetWithToast, rememberBaseline, resetBaselines],
+    [apiBase, lazySheets, loadGid, loadSheetQuiet, rememberBaseline, resetBaselines],
   )
 
   const handleSave = useCallback(async () => {
@@ -672,9 +653,12 @@ export default function ProductStatusWorkbook({
     void loadData({ refresh: true })
   }, [dirty, loadData])
 
+  const loadDataRef = useRef(loadData)
+  loadDataRef.current = loadData
+
   useEffect(() => {
-    void loadData()
-  }, [loadData])
+    void loadDataRef.current()
+  }, [apiBase])
 
   useEffect(() => {
     if (activeGid) {
