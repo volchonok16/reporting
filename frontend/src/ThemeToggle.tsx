@@ -10,6 +10,7 @@ export default function ThemeToggle({ className = '', compact = false }: ThemeTo
   const [theme, setThemeState] = useState<Theme>(() => resolveTheme())
 
   const pick = (next: Theme) => {
+    if (next === theme) return
     setThemeState(next)
     setTheme(next)
   }

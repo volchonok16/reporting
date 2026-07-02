@@ -203,6 +203,8 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 
 Для ручной оргсхемы добавлена миграция `db/migrations/010_org_chart_layout.sql`: таблица `org_chart_layout` хранит координаты карточек и линии вкладки «Пирамида».
 
+Дополнительные рабочие места для брони — `db/migrations/012_workspace_places_99_106.sql`: в справочник `workspace_place` добавляются места **99–106** (без дубликатов, если номер уже есть).
+
 Если права нужно обновить вручную (новые таблицы org/vacation, backend создал таблицы от alex):
 
 ```bash
@@ -235,6 +237,7 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 ./scripts/migrate.sh 008_workspace_booking.sql
 ./scripts/migrate.sh 009_employee_office_days.sql
 ./scripts/migrate.sh 011_business_trip_time_off.sql
+./scripts/migrate.sh db/migrations/012_workspace_places_99_106.sql
 ./scripts/grant-db-users.sh
 ```
 

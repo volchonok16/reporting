@@ -233,7 +233,13 @@ body {
   margin: 0;
   background: var(--bg-app);
   color: var(--text-primary);
-  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+html.theme-switch-instant,
+html.theme-switch-instant *,
+html.theme-switch-instant *::before,
+html.theme-switch-instant *::after {
+  transition: none !important;
 }
 
 * {

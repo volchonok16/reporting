@@ -1,7 +1,8 @@
 # Словарь данных (краткая выжимка)
 
 > **Полный глоссарий:** [glossary.md](glossary.md)  
-> **Команды (подробно):** [teams.md](teams.md)
+> **Команды (подробно):** [teams.md](teams.md)  
+> **Аудит пробелов в документации:** [documentation-gaps.md](documentation-gaps.md)
 
 ## team — каноническая команда
 
@@ -133,6 +134,26 @@
 | records_fetched | Получено из API |
 | records_upserted | Записано в `task` |
 | parameters_json | `board`, фильтры |
+
+## workspace_place — рабочие места (бронь)
+
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| name | varchar | Отображаемое имя (`Место 23`, …) |
+| sort_order | int | Номер места и порядок строк в сетке «Бронь мест» |
+| is_active | boolean | Скрыть место из брони без удаления |
+
+Наполнение: `008_workspace_booking.sql` (23–53), `012_workspace_places_99_106.sql` (99–106). Подробнее — [glossary.md](glossary.md#workspace_place--справочник-рабочих-мест).
+
+## workspace_booking — бронь на день
+
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| place_id | bigint | FK → `workspace_place` |
+| employee_id | bigint | FK → `employee` |
+| day | date | Календарный день |
+
+Уникальность: одно место в день, один сотрудник — одно место в день.
 
 ## employee_office_day — присутствие в офисе без места
 

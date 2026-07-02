@@ -20,6 +20,7 @@
 | **Диаграммы** | [docs/diagrams.md](docs/diagrams.md) |
 | Обзор всех таблиц | [docs/database-overview.md](docs/database-overview.md) |
 | **Глоссарий** | [docs/glossary.md](docs/glossary.md) |
+| **Пробелы в docs** | [docs/documentation-gaps.md](docs/documentation-gaps.md) |
 | Docker | [docs/docker.md](docs/docker.md) |
 
 ```bash

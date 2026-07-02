@@ -1,19 +1,19 @@
 import { useEffect, useState } from 'react'
 import { Toaster } from 'sonner'
-import { resolveTheme, type Theme } from './theme'
+import { THEME_CHANGE_EVENT, resolveTheme, type Theme } from './theme'
+
+function readDocumentTheme(): Theme {
+  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'
+}
 
 function useDocumentTheme(): Theme {
   const [theme, setTheme] = useState<Theme>(() => resolveTheme())
 
   useEffect(() => {
-    const root = document.documentElement
-    const sync = () => {
-      setTheme(root.dataset.theme === 'dark' ? 'dark' : 'light')
-    }
+    const sync = () => setTheme(readDocumentTheme())
     sync()
-    const observer = new MutationObserver(sync)
-    observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] })
-    return () => observer.disconnect()
+    window.addEventListener(THEME_CHANGE_EVENT, sync)
+    return () => window.removeEventListener(THEME_CHANGE_EVENT, sync)
   }, [])
 
   return theme

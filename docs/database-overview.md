@@ -1,4 +1,6 @@
-# Обзор базы данных reporting
+# Обзор базы данных
+
+> **Пробелы и устаревшие места в docs:** [documentation-gaps.md](documentation-gaps.md) reporting
 
 Документ для просмотра **структуры без тестовых данных**. DDL: `db/schema.sql`. Диаграммы: [diagrams.md](diagrams.md).
 
@@ -97,7 +99,7 @@
 | `employee` | Сотрудники организации |
 | `employee_expertise` | Экспертиза сотрудника |
 | `employee_time_off_day` | График отпусков (день + тип) |
-| `workspace_place` | Справочник рабочих мест |
+| `workspace_place` | Справочник рабочих мест (номера 23–53 и 99–106; см. миграции `008`, `012`) |
 | `workspace_booking` | Бронь места на календарный день |
 | `employee_office_day` | Дни присутствия сотрудника в офисе без привязки к месту |
 | `department` | Отделы |

@@ -2,7 +2,7 @@
 
 Описание **всех таблиц**, **полей** и **представлений** единой PostgreSQL-базы. Имена полей одинаковы для задач из Jira, TFS, Trello и прочих систем; сырые значения источника хранятся отдельно там, где это указано.
 
-**Связанные документы:** [teams.md](teams.md) · [database-overview.md](database-overview.md) · [data-dictionary.md](data-dictionary.md) · DDL: [../db/schema.sql](../db/schema.sql)
+**Связанные документы:** [teams.md](teams.md) · [database-overview.md](database-overview.md) · [data-dictionary.md](data-dictionary.md) · [documentation-gaps.md](documentation-gaps.md) · DDL: [../db/schema.sql](../db/schema.sql)
 
 ---
 
@@ -754,9 +754,13 @@
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `id` | bigint | PK |
-| `name` | varchar(255) | Название (`Место 23`, …) |
-| `sort_order` | int | Порядок в сетке |
+| `name` | varchar(255) | Название (`Место 23`, `Место 99`, …) |
+| `sort_order` | int | Порядок в сетке; номер места |
 | `is_active` | boolean | Показывать в брони |
+
+**Начальное наполнение:** миграция `008_workspace_booking.sql` — места **23–53**. Дополнительно миграция `012_workspace_places_99_106.sql` — места **99–106** (идемпотентная вставка по `sort_order`).
+
+См. также [database-overview.md](database-overview.md), [data-dictionary.md](data-dictionary.md).
 
 ---
 
