@@ -1631,8 +1631,8 @@
 
 [data-theme='dark'] .org-vacation-panel,
 [data-theme='dark'] .org-workspace-panel {
-  --org-status-green-bg: color-mix(in srgb, #22c55e 44%, var(--surface-2) 56%);
-  --org-status-green-border: color-mix(in srgb, #86efac 58%, transparent 42%);
+  --org-status-green-bg: color-mix(in srgb, #38bdf8 46%, var(--surface-2) 54%);
+  --org-status-green-border: color-mix(in srgb, #7dd3fc 58%, transparent 42%);
   --org-status-violet-bg: color-mix(in srgb, #8b5cf6 48%, var(--surface-2) 52%);
   --org-status-violet-border: color-mix(in srgb, #c4b5fd 58%, transparent 42%);
   --org-status-purple-bg: color-mix(in srgb, #e879f9 50%, var(--surface-2) 50%);
@@ -2186,8 +2186,8 @@
   overflow: visible;
   --workspace-free-fill: #ffffff;
   --workspace-free-border: #d1d5db;
-  --workspace-self-fill: var(--org-status-green-bg);
-  --workspace-self-border: var(--org-status-green-border);
+  --workspace-self-fill: var(--workspace-self-bg);
+  --workspace-self-border: color-mix(in srgb, var(--workspace-self-bg) 52%, var(--border-strong) 48%);
   --workspace-busy-fill: var(--org-status-busy-bg);
   --workspace-busy-border: var(--org-status-busy-border);
   --workspace-weekend-fill: var(--org-status-weekend-bg);
@@ -2585,8 +2585,8 @@
 }
 
 .org-vacation-legend-item.org-workspace-self {
-  background: var(--workspace-self-fill, var(--org-status-green-bg));
-  border: 1px solid var(--workspace-self-border, var(--org-status-green-border));
+  background: var(--workspace-self-fill, var(--workspace-self-bg));
+  border: 1px solid var(--workspace-self-border, color-mix(in srgb, var(--workspace-self-bg) 52%, var(--border-strong) 48%));
   color: var(--text-primary);
 }
 
