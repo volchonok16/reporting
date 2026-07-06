@@ -1072,20 +1072,37 @@ body {
   font-weight: 500;
 }
 
+.zni-table tbody td.cell-business-value,
+.zni-table tbody td.cell-status,
+.zni-table tbody td.cell-quarter,
+.zni-table tbody td.cell-reservation {
+  vertical-align: middle;
+}
+
 .cell-status {
-  display: grid;
-  gap: 4px;
   font-size: 13px;
+}
+
+.status-stack {
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 4px;
 }
 
 .status-board {
   font-weight: 500;
   color: var(--text-primary);
+  line-height: 1.35;
 }
 
 .status-workflow {
   font-size: 12px;
   color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+.status-workflow-empty {
+  visibility: hidden;
 }
 
 @media (max-width: 1100px) {
@@ -1631,9 +1648,28 @@ body {
 }
 
 .product-status-zni-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 10px;
+  display: block;
+  line-height: 1.45;
+}
+
+.product-status-zni-token {
+  display: inline;
+  white-space: nowrap;
+}
+
+.product-status-zni-sep {
+  color: var(--text-secondary);
+}
+
+.product-status-zni-plain {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.product-status-cell-input:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-secondary);
+  pointer-events: none;
 }
 
 .product-status-row-actions,
@@ -1646,11 +1682,56 @@ body {
   padding: 6px 4px;
 }
 
+.product-status-row-actions-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
 .product-status-row-delete {
   min-width: 28px;
   padding: 2px 8px;
   font-size: 1.1rem;
   line-height: 1;
+}
+
+.product-status-row-drag {
+  min-width: 28px;
+  padding: 4px 6px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.product-status-row-drag:active {
+  cursor: grabbing;
+}
+
+.product-status-row-drag:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.product-status-row-drag-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 14px;
+}
+
+.product-status-row-drag-bars span {
+  display: block;
+  height: 2px;
+  border-radius: 1px;
+  background: #e85d2c;
+}
+
+.product-status-table tbody tr.product-status-row--dragging td {
+  opacity: 0.55;
+}
+
+.product-status-table tbody tr.product-status-row--drag-over td {
+  box-shadow: inset 0 3px 0 #e85d2c;
 }
 
 .product-status-cell-readonly-value {

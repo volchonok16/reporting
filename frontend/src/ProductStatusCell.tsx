@@ -23,6 +23,7 @@ type ProductStatusCellProps = {
   value: string
   className?: string
   ariaLabel: string
+  placeholder?: string
   onChange: (value: string) => void
   onFocus?: () => void
   onBlur?: () => void
@@ -53,7 +54,7 @@ function renderSegments(inner: string, container: HTMLElement) {
 
 const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatusCellProps>(
   function ProductStatusCell(
-    { value, className, ariaLabel, onChange, onFocus, onBlur },
+    { value, className, ariaLabel, placeholder, onChange, onFocus, onBlur },
     ref,
   ) {
     const elementRef = useRef<HTMLDivElement>(null)
@@ -117,6 +118,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         contentEditable
         suppressContentEditableWarning
         className={className}
+        data-placeholder={placeholder}
         onFocus={onFocus}
         onBlur={(event) => {
           const serialized = serializeEditableCell(event.currentTarget, cellStyleRef.current)

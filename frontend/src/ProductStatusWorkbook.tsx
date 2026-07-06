@@ -89,6 +89,7 @@ export type ProductStatusWorkbookConfig = {
   lazySheets?: boolean
   fixedColumns?: boolean
   enableRowDelete?: boolean
+  enableRowReorder?: boolean
   enableHistory?: boolean
   canEditAdminColumns?: boolean
   /** Правки в БД только по «Обновить»; до этого можно откатить */
@@ -328,6 +329,7 @@ export default function ProductStatusWorkbook({
   lazySheets = false,
   fixedColumns = false,
   enableRowDelete = false,
+  enableRowReorder = false,
   enableHistory = false,
   canEditAdminColumns = false,
   commitOnRefresh = false,
@@ -356,6 +358,9 @@ export default function ProductStatusWorkbook({
   const [restoringSnapshotId, setRestoringSnapshotId] = useState<number | null>(null)
   const [loadedGids, setLoadedGids] = useState<Set<string>>(() => new Set())
   const [sheetLoadingGid, setSheetLoadingGid] = useState<string | null>(null)
+  const [draggingRowIndex, setDraggingRowIndex] = useState<number | null>(null)
+  const [dragOverRowIndex, setDragOverRowIndex] = useState<number | null>(null)
+  const dragSourceRowIndexRef = useRef<number | null>(null)
   const activeCellRef = useRef<ProductStatusCellHandle | null>(null)
   const blurTimerRef = useRef<number | null>(null)
   const baselineByGidRef = useRef<Map<string, ProductStatusSheet>>(new Map())
@@ -775,6 +780,66 @@ export default function ProductStatusWorkbook({
     },
     [activeGid],
   )
+
+  const moveRow = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      if (!activeGid || fromIndex === toIndex) return
+      setDirty(true)
+      setSheets((current) =>
+        current.map((sheet) => {
+          if (sheet.gid !== activeGid) return sheet
+          const rows = [...sheet.rows]
+          const [moved] = rows.splice(fromIndex, 1)
+          rows.splice(toIndex, 0, moved)
+          return { ...sheet, rows }
+        }),
+      )
+      setActiveCell((current) => {
+        if (!current) return null
+        const { rowIndex } = current
+        if (rowIndex === fromIndex) {
+          return { ...current, rowIndex: toIndex }
+        }
+        if (fromIndex < toIndex) {
+          if (rowIndex > fromIndex && rowIndex <= toIndex) {
+            return { ...current, rowIndex: rowIndex - 1 }
+          }
+        } else if (rowIndex >= toIndex && rowIndex < fromIndex) {
+          return { ...current, rowIndex: rowIndex + 1 }
+        }
+        return current
+      })
+    },
+    [activeGid],
+  )
+
+  const handleRowDragStart = useCallback((rowIndex: number) => {
+    dragSourceRowIndexRef.current = rowIndex
+    setDraggingRowIndex(rowIndex)
+    setDragOverRowIndex(rowIndex)
+  }, [])
+
+  const handleRowDragOver = useCallback((rowIndex: number) => {
+    setDragOverRowIndex((current) => (current === rowIndex ? current : rowIndex))
+  }, [])
+
+  const handleRowDrop = useCallback(
+    (rowIndex: number) => {
+      const fromIndex = dragSourceRowIndexRef.current
+      if (fromIndex === null) return
+      moveRow(fromIndex, rowIndex)
+      dragSourceRowIndexRef.current = null
+      setDraggingRowIndex(null)
+      setDragOverRowIndex(null)
+    },
+    [moveRow],
+  )
+
+  const handleRowDragEnd = useCallback(() => {
+    dragSourceRowIndexRef.current = null
+    setDraggingRowIndex(null)
+    setDragOverRowIndex(null)
+  }, [])
 
   const isReadOnlyColumn = useCallback(
     (column: string) => isAdminOnlyColumn(column) && !canEditAdminColumns,
@@ -1498,6 +1563,13 @@ export default function ProductStatusWorkbook({
                         isReadOnlyColumn={isReadOnlyColumn}
                         enableRowDelete={enableRowDelete}
                         onDeleteRow={deleteRow}
+                        enableRowReorder={enableRowReorder}
+                        isDraggingRow={draggingRowIndex === rowIndex}
+                        isDragOverRow={dragOverRowIndex === rowIndex && draggingRowIndex !== rowIndex}
+                        onRowDragStart={handleRowDragStart}
+                        onRowDragOver={handleRowDragOver}
+                        onRowDrop={handleRowDrop}
+                        onRowDragEnd={handleRowDragEnd}
                       />
                     )
                   })}

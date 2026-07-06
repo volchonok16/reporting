@@ -80,6 +80,7 @@ export default function ProductStatusB2B({ canManageOrg = false }: ProductStatus
           lazySheets
           fixedColumns
           enableRowDelete
+          enableRowReorder
           enableHistory
           canEditAdminColumns={canManageOrg}
           commitOnRefresh
@@ -95,6 +96,7 @@ export default function ProductStatusB2B({ canManageOrg = false }: ProductStatus
           lazySheets
           fixedColumns
           enableRowDelete
+          enableRowReorder
           enableHistory
           commitOnRefresh
         />

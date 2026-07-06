@@ -980,12 +980,18 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
                         )}
                       </td>
                       <td className="cell-status">
-                        <span className="status-board">
-                          {boardStatus || workflowStatus || '—'}
-                        </span>
-                        {boardStatus && workflowStatus && boardStatus !== workflowStatus && (
-                          <span className="status-workflow">{workflowStatus}</span>
-                        )}
+                        <div className="status-stack">
+                          <span className="status-board">
+                            {boardStatus || workflowStatus || '—'}
+                          </span>
+                          <span
+                            className={`status-workflow${boardStatus && workflowStatus && boardStatus !== workflowStatus ? '' : ' status-workflow-empty'}`}
+                          >
+                            {boardStatus && workflowStatus && boardStatus !== workflowStatus
+                              ? workflowStatus
+                              : '\u00a0'}
+                          </span>
+                        </div>
                       </td>
                       <td className="cell-quarter">{item.planQuarter || '—'}</td>
                       <td

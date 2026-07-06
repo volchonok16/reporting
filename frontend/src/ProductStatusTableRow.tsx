@@ -6,6 +6,7 @@ import {
   normalizeZniCellValue,
   parseZniNumbers,
   PRODUCT_STATUS_ROW_ID_KEY,
+  ZNI_NUMBERS_PLACEHOLDER,
 } from './productStatusZni'
 import { displayCellText } from './productStatusRichText'
 import type { ChangeRequest } from './zniTypes'
@@ -35,6 +36,13 @@ type ProductStatusTableRowProps = {
   isReadOnlyColumn?: (column: string) => boolean
   enableRowDelete?: boolean
   onDeleteRow?: (rowIndex: number) => void
+  enableRowReorder?: boolean
+  isDraggingRow?: boolean
+  isDragOverRow?: boolean
+  onRowDragStart?: (rowIndex: number) => void
+  onRowDragOver?: (rowIndex: number) => void
+  onRowDrop?: (rowIndex: number) => void
+  onRowDragEnd?: () => void
 }
 
 function booleanCellValue(value: string): string {
@@ -75,8 +83,16 @@ function ProductStatusTableRow({
   isReadOnlyColumn,
   enableRowDelete = false,
   onDeleteRow,
+  enableRowReorder = false,
+  isDraggingRow = false,
+  isDragOverRow = false,
+  onRowDragStart,
+  onRowDragOver,
+  onRowDrop,
+  onRowDragEnd,
 }: ProductStatusTableRowProps) {
   const cellHandleRef = useRef<ProductStatusCellHandle | null>(null)
+  const zniDraftRef = useRef<string | null>(null)
   const rowActive = activeCell?.rowIndex === rowIndex
 
   useEffect(() => {
@@ -85,20 +101,71 @@ function ProductStatusTableRow({
     }
   }, [rowActive, activeCell?.column, activeCellRef])
 
+  const rowClassNames = [
+    rowClassName,
+    isDraggingRow ? 'product-status-row--dragging' : '',
+    isDragOverRow ? 'product-status-row--drag-over' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   return (
-    <tr className={rowClassName || undefined}>
+    <tr
+      className={rowClassNames || undefined}
+      onDragOver={
+        enableRowReorder
+          ? (event) => {
+              event.preventDefault()
+              event.dataTransfer.dropEffect = 'move'
+              onRowDragOver?.(rowIndex)
+            }
+          : undefined
+      }
+      onDrop={
+        enableRowReorder
+          ? (event) => {
+              event.preventDefault()
+              onRowDrop?.(rowIndex)
+            }
+          : undefined
+      }
+    >
       {enableRowDelete ? (
         <td className="product-status-row-actions">
-          <button
-            type="button"
-            className="btn-secondary product-status-row-delete"
-            disabled={cellBusy}
-            aria-label="Удалить строку"
-            title="Удалить строку"
-            onClick={() => onDeleteRow?.(rowIndex)}
-          >
-            ×
-          </button>
+          <div className="product-status-row-actions-stack">
+            <button
+              type="button"
+              className="btn-secondary product-status-row-delete"
+              disabled={cellBusy}
+              aria-label="Удалить строку"
+              title="Удалить строку"
+              onClick={() => onDeleteRow?.(rowIndex)}
+            >
+              ×
+            </button>
+            {enableRowReorder ? (
+              <button
+                type="button"
+                className="btn-secondary product-status-row-drag"
+                draggable={!cellBusy}
+                disabled={cellBusy}
+                aria-label="Перетащить строку"
+                title="Перетащить строку"
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = 'move'
+                  event.dataTransfer.setData('text/plain', String(rowIndex))
+                  onRowDragStart?.(rowIndex)
+                }}
+                onDragEnd={() => onRowDragEnd?.()}
+              >
+                <span className="product-status-row-drag-bars" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </span>
+              </button>
+            ) : null}
+          </div>
         </td>
       ) : null}
       {columns.map((column) => {
@@ -139,10 +206,7 @@ function ProductStatusTableRow({
         }
 
         const zniNumbers = isZniColumn(column) ? parseZniNumbers(row[column] ?? '') : []
-        const matchedZni = zniNumbers
-          .map((number) => ({ number, item: zniLookup[number] }))
-          .filter((entry): entry is { number: string; item: ChangeRequest } => Boolean(entry.item))
-        const showZniTrigger = matchedZni.length > 0 && !isActive
+        const showZniView = isZniColumn(column) && zniNumbers.length > 0 && !isActive
         const cellValue = isZniColumn(column)
           ? normalizeZniCellValue(row[column] ?? '')
           : row[column] ?? ''
@@ -161,28 +225,37 @@ function ProductStatusTableRow({
             className={[
               cellClassName,
               isActive ? 'product-status-cell-active' : '',
-              matchedZni.length > 0 ? 'product-status-zni-cell--matched' : '',
+              showZniView ? 'product-status-zni-cell--matched' : '',
             ]
               .filter(Boolean)
               .join(' ')}
             onDoubleClick={() => {
-              if (showZniTrigger) {
+              if (showZniView) {
                 onActiveCellFocus({ rowIndex, column })
               }
             }}
           >
-            {showZniTrigger ? (
+            {showZniView ? (
               <div className="product-status-zni-links">
-                {matchedZni.map(({ number, item }) => (
-                  <button
-                    key={number}
-                    type="button"
-                    className="zni-link product-status-zni-trigger"
-                    onClick={() => onOpenZniModal(item)}
-                  >
-                    {number}
-                  </button>
-                ))}
+                {zniNumbers.map((number, index) => {
+                  const item = zniLookup[number]
+                  return (
+                    <span key={number} className="product-status-zni-token">
+                      {index > 0 ? <span className="product-status-zni-sep">, </span> : null}
+                      {item ? (
+                        <button
+                          type="button"
+                          className="zni-link product-status-zni-trigger"
+                          onClick={() => onOpenZniModal(item)}
+                        >
+                          {number}
+                        </button>
+                      ) : (
+                        <span className="product-status-zni-plain">{number}</span>
+                      )}
+                    </span>
+                  )
+                })}
               </div>
             ) : (
               <ProductStatusCell
@@ -195,9 +268,25 @@ function ProductStatusTableRow({
                 className="product-status-cell-input"
                 value={cellValue}
                 ariaLabel={column}
+                placeholder={isZniColumn(column) ? ZNI_NUMBERS_PLACEHOLDER : undefined}
                 onFocus={() => onActiveCellFocus({ rowIndex, column })}
-                onBlur={() => onActiveCellBlur({ rowIndex, column })}
-                onChange={(nextValue) => onUpdateCell(sheetGid, rowIndex, column, nextValue)}
+                onBlur={() => {
+                  if (isZniColumn(column)) {
+                    const raw = zniDraftRef.current ?? row[column] ?? ''
+                    const normalized = normalizeZniCellValue(raw)
+                    if (normalized !== raw) {
+                      onUpdateCell(sheetGid, rowIndex, column, normalized)
+                    }
+                    zniDraftRef.current = null
+                  }
+                  onActiveCellBlur({ rowIndex, column })
+                }}
+                onChange={(nextValue) => {
+                  if (isZniColumn(column)) {
+                    zniDraftRef.current = nextValue
+                  }
+                  onUpdateCell(sheetGid, rowIndex, column, nextValue)
+                }}
               />
             )}
           </td>
@@ -216,6 +305,9 @@ export default memo(ProductStatusTableRow, (prev, next) => {
   if (prev.booleanColorsByColumn !== next.booleanColorsByColumn) return false
   if (prev.zniLookup !== next.zniLookup) return false
   if (prev.enableRowDelete !== next.enableRowDelete) return false
+  if (prev.enableRowReorder !== next.enableRowReorder) return false
+  if (prev.isDraggingRow !== next.isDraggingRow) return false
+  if (prev.isDragOverRow !== next.isDragOverRow) return false
   if (rowNeedsActiveCellUpdate(prev.activeCell, next.activeCell, prev.rowIndex)) {
     return false
   }
