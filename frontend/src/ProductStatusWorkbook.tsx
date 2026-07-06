@@ -4,6 +4,7 @@ import { dismissToast, notifyLoading, notifyProblem, notifySuccess, notifyWarnin
 import { type ProductStatusCellHandle } from './ProductStatusCell'
 import ProductStatusFormatToolbar from './ProductStatusFormatToolbar'
 import ProductStatusTableRow, { type ActiveCell, PRODUCT_STATUS_ROW_ID_KEY } from './ProductStatusTableRow'
+import { useProductStatusRowReorder } from './useProductStatusRowReorder'
 import {
   collectZniNumbers,
   isZniColumn,
@@ -358,9 +359,6 @@ export default function ProductStatusWorkbook({
   const [restoringSnapshotId, setRestoringSnapshotId] = useState<number | null>(null)
   const [loadedGids, setLoadedGids] = useState<Set<string>>(() => new Set())
   const [sheetLoadingGid, setSheetLoadingGid] = useState<string | null>(null)
-  const [draggingRowIndex, setDraggingRowIndex] = useState<number | null>(null)
-  const [dragOverRowIndex, setDragOverRowIndex] = useState<number | null>(null)
-  const dragSourceRowIndexRef = useRef<number | null>(null)
   const activeCellRef = useRef<ProductStatusCellHandle | null>(null)
   const blurTimerRef = useRef<number | null>(null)
   const baselineByGidRef = useRef<Map<string, ProductStatusSheet>>(new Map())
@@ -813,33 +811,10 @@ export default function ProductStatusWorkbook({
     [activeGid],
   )
 
-  const handleRowDragStart = useCallback((rowIndex: number) => {
-    dragSourceRowIndexRef.current = rowIndex
-    setDraggingRowIndex(rowIndex)
-    setDragOverRowIndex(rowIndex)
-  }, [])
-
-  const handleRowDragOver = useCallback((rowIndex: number) => {
-    setDragOverRowIndex((current) => (current === rowIndex ? current : rowIndex))
-  }, [])
-
-  const handleRowDrop = useCallback(
-    (rowIndex: number) => {
-      const fromIndex = dragSourceRowIndexRef.current
-      if (fromIndex === null) return
-      moveRow(fromIndex, rowIndex)
-      dragSourceRowIndexRef.current = null
-      setDraggingRowIndex(null)
-      setDragOverRowIndex(null)
-    },
-    [moveRow],
-  )
-
-  const handleRowDragEnd = useCallback(() => {
-    dragSourceRowIndexRef.current = null
-    setDraggingRowIndex(null)
-    setDragOverRowIndex(null)
-  }, [])
+  const { draggingRowIndex, dragOverRowIndex, handleRowPointerDragStart } = useProductStatusRowReorder({
+    enabled: enableRowReorder,
+    onMoveRow: moveRow,
+  })
 
   const isReadOnlyColumn = useCallback(
     (column: string) => isAdminOnlyColumn(column) && !canEditAdminColumns,
@@ -1566,10 +1541,7 @@ export default function ProductStatusWorkbook({
                         enableRowReorder={enableRowReorder}
                         isDraggingRow={draggingRowIndex === rowIndex}
                         isDragOverRow={dragOverRowIndex === rowIndex && draggingRowIndex !== rowIndex}
-                        onRowDragStart={handleRowDragStart}
-                        onRowDragOver={handleRowDragOver}
-                        onRowDrop={handleRowDrop}
-                        onRowDragEnd={handleRowDragEnd}
+                        onRowPointerDragStart={handleRowPointerDragStart}
                       />
                     )
                   })}

@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from 'react'
+import { memo, useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import ProductStatusCell, { type ProductStatusCellHandle } from './ProductStatusCell'
 import { resolveBooleanColors, styledBooleanValue } from './productStatusBoolean'
 import {
@@ -39,10 +39,11 @@ type ProductStatusTableRowProps = {
   enableRowReorder?: boolean
   isDraggingRow?: boolean
   isDragOverRow?: boolean
-  onRowDragStart?: (rowIndex: number) => void
-  onRowDragOver?: (rowIndex: number) => void
-  onRowDrop?: (rowIndex: number) => void
-  onRowDragEnd?: () => void
+  onRowPointerDragStart?: (
+    rowIndex: number,
+    event: ReactPointerEvent<HTMLButtonElement>,
+    rowElement: HTMLTableRowElement,
+  ) => void
 }
 
 function booleanCellValue(value: string): string {
@@ -86,11 +87,9 @@ function ProductStatusTableRow({
   enableRowReorder = false,
   isDraggingRow = false,
   isDragOverRow = false,
-  onRowDragStart,
-  onRowDragOver,
-  onRowDrop,
-  onRowDragEnd,
+  onRowPointerDragStart,
 }: ProductStatusTableRowProps) {
+  const rowRef = useRef<HTMLTableRowElement>(null)
   const cellHandleRef = useRef<ProductStatusCellHandle | null>(null)
   const zniDraftRef = useRef<string | null>(null)
   const rowActive = activeCell?.rowIndex === rowIndex
@@ -111,24 +110,9 @@ function ProductStatusTableRow({
 
   return (
     <tr
+      ref={rowRef}
+      data-row-index={rowIndex}
       className={rowClassNames || undefined}
-      onDragOver={
-        enableRowReorder
-          ? (event) => {
-              event.preventDefault()
-              event.dataTransfer.dropEffect = 'move'
-              onRowDragOver?.(rowIndex)
-            }
-          : undefined
-      }
-      onDrop={
-        enableRowReorder
-          ? (event) => {
-              event.preventDefault()
-              onRowDrop?.(rowIndex)
-            }
-          : undefined
-      }
     >
       {enableRowDelete ? (
         <td className="product-status-row-actions">
@@ -147,16 +131,13 @@ function ProductStatusTableRow({
               <button
                 type="button"
                 className="btn-secondary product-status-row-drag"
-                draggable={!cellBusy}
                 disabled={cellBusy}
                 aria-label="Перетащить строку"
                 title="Перетащить строку"
-                onDragStart={(event) => {
-                  event.dataTransfer.effectAllowed = 'move'
-                  event.dataTransfer.setData('text/plain', String(rowIndex))
-                  onRowDragStart?.(rowIndex)
+                onPointerDown={(event) => {
+                  if (!rowRef.current) return
+                  onRowPointerDragStart?.(rowIndex, event, rowRef.current)
                 }}
-                onDragEnd={() => onRowDragEnd?.()}
               >
                 <span className="product-status-row-drag-bars" aria-hidden="true">
                   <span />

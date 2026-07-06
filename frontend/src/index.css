@@ -1726,8 +1726,44 @@ body {
   background: #e85d2c;
 }
 
+body.product-status-row-drag-active {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.product-status-row-drag-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 10000;
+  pointer-events: none;
+  opacity: 0.96;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow:
+    0 10px 28px rgba(15, 23, 42, 0.18),
+    0 0 0 2px rgba(232, 93, 44, 0.45);
+  will-change: transform;
+}
+
+.product-status-row-drag-ghost .product-status-table {
+  margin: 0;
+  background: var(--bg-primary, #fff);
+}
+
+.product-status-row-drag-ghost td {
+  background: var(--bg-primary, #fff);
+}
+
 .product-status-table tbody tr.product-status-row--dragging td {
-  opacity: 0.55;
+  opacity: 0.28;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 7px,
+    rgba(232, 93, 44, 0.07) 7px,
+    rgba(232, 93, 44, 0.07) 14px
+  );
 }
 
 .product-status-table tbody tr.product-status-row--drag-over td {
