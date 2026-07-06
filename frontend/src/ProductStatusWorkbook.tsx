@@ -97,7 +97,7 @@ export type ProductStatusWorkbookConfig = {
   commitOnRefresh?: boolean
 }
 
-const ADMIN_ONLY_COLUMNS = new Set(['Проект координация'])
+const ADMIN_ONLY_COLUMNS = new Set<string>()
 
 type WorkbookViewMode = 'table' | 'history'
 
@@ -920,7 +920,7 @@ export default function ProductStatusWorkbook({
       current.map((sheet) => {
         if (sheet.gid !== activeGid) return sheet
         const emptyRow = Object.fromEntries(sheet.columns.map((column) => [column, '']))
-        return { ...sheet, rows: [...sheet.rows, emptyRow], totalShown: sheet.rows.length + 1 }
+        return { ...sheet, rows: [emptyRow, ...sheet.rows], totalShown: sheet.rows.length + 1 }
       }),
     )
   }, [activeGid, sheets])

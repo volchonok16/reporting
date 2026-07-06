@@ -36,7 +36,7 @@ B2B_PRODUCT_STATUS_COLUMNS: tuple[str, ...] = (
     "Комментарий",
 )
 
-ADMIN_ONLY_COLUMNS: frozenset[str] = frozenset({"Проект координация"})
+ADMIN_ONLY_COLUMNS: frozenset[str] = frozenset()
 
 _TITLE = "Статус продукта B2B"
 
