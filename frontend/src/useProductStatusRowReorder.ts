@@ -107,36 +107,46 @@ export function useProductStatusRowReorder({ enabled, onMoveRow }: UseProductSta
       }
 
       const onPointerMove = (moveEvent: PointerEvent) => {
+        const session = sessionRef.current
+        if (session) {
+          if (moveEvent.pointerId !== session.pointerId) return
+
+          moveGhost(session.ghost, session.left, moveEvent.clientY - session.offsetY)
+
+          const overIndex = findRowIndexAtPoint(moveEvent.clientX, moveEvent.clientY)
+          if (overIndex !== null) {
+            setDragOverRowIndex(overIndex)
+          }
+          return
+        }
+
         const pending = pendingRef.current
         if (!pending || moveEvent.pointerId !== pending.pointerId) return
 
-        let session = sessionRef.current
-        if (!session) {
-          const distance = Math.hypot(
-            moveEvent.clientX - pending.startX,
-            moveEvent.clientY - pending.startY,
-          )
-          if (distance < DRAG_START_THRESHOLD_PX) return
+        const distance = Math.hypot(
+          moveEvent.clientX - pending.startX,
+          moveEvent.clientY - pending.startY,
+        )
+        if (distance < DRAG_START_THRESHOLD_PX) return
 
-          const rect = pending.rowElement.getBoundingClientRect()
-          const ghost = createRowDragGhost(pending.rowElement)
-          session = {
-            fromIndex: pending.fromIndex,
-            offsetY: pending.startY - rect.top,
-            left: rect.left,
-            ghost,
-            pointerId: pending.pointerId,
-            handle: pending.handle,
-          }
-          sessionRef.current = session
-          pendingRef.current = null
-          setDraggingRowIndex(session.fromIndex)
-          setDragOverRowIndex(session.fromIndex)
-          pending.handle.setPointerCapture(pending.pointerId)
-          document.body.classList.add('product-status-row-drag-active')
+        const rect = pending.rowElement.getBoundingClientRect()
+        const ghost = createRowDragGhost(pending.rowElement)
+        const nextSession: DragSession = {
+          fromIndex: pending.fromIndex,
+          offsetY: pending.startY - rect.top,
+          left: rect.left,
+          ghost,
+          pointerId: pending.pointerId,
+          handle: pending.handle,
         }
+        sessionRef.current = nextSession
+        pendingRef.current = null
+        setDraggingRowIndex(nextSession.fromIndex)
+        setDragOverRowIndex(nextSession.fromIndex)
+        pending.handle.setPointerCapture(pending.pointerId)
+        document.body.classList.add('product-status-row-drag-active')
 
-        moveGhost(session.ghost, session.left, moveEvent.clientY - session.offsetY)
+        moveGhost(nextSession.ghost, nextSession.left, moveEvent.clientY - nextSession.offsetY)
 
         const overIndex = findRowIndexAtPoint(moveEvent.clientX, moveEvent.clientY)
         if (overIndex !== null) {
