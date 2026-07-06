@@ -21,3 +21,15 @@ def sync_board_denied_reason(role: str | None, board_code: str | None) -> str | 
     if board_code != ROADMAP_DIGITAL_BOARD_CODE:
         return "Доступна только синхронизация доски Digital Streams B2b"
     return None
+
+
+def can_manage_org(meta: dict) -> bool:
+    """PAT, legacy app_user (full) без org_user, org admin."""
+    auth_mode = meta.get("auth_mode")
+    app_role = meta.get("app_role") or FULL_APP_ROLE
+    org_user_role = meta.get("org_user_role")
+    return (
+        auth_mode == "pat"
+        or (auth_mode == "app_user" and app_role == FULL_APP_ROLE and org_user_role is None)
+        or org_user_role == "admin"
+    )

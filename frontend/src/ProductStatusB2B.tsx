@@ -81,7 +81,7 @@ export default function ProductStatusB2B({ canManageOrg = false }: ProductStatus
           fixedColumns
           enableRowDelete
           enableRowReorder
-          enableHistory
+          enableHistory={canManageOrg}
           canEditAdminColumns={canManageOrg}
           commitOnRefresh
         />

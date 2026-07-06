@@ -835,7 +835,7 @@
 | `changed_by` | varchar(255) | Логин пользователя |
 | `changed_at` | timestamptz | Время изменения |
 
-API: `GET /api/product-status/b2b/history?gid=`, `GET /api/product-status/b2b/snapshots?gid=`, `POST /api/product-status/b2b/snapshots/{id}/restore?gid=`, сохранение — `POST /api/product-status/b2b/save`, удаление строки — через `deletedRows` в save или `DELETE /api/product-status/b2b/rows/{row_id}?gid=`.
+API: `GET /api/product-status/b2b/history?gid=`, `GET /api/product-status/b2b/snapshots?gid=`, `POST /api/product-status/b2b/snapshots/{id}/restore?gid=` — **только админы** (PAT, legacy `app_user` без org, `org_user.role=admin`); сохранение — `POST /api/product-status/b2b/save` (все пользователи с полным доступом), удаление строки — через `deletedRows` в save или `DELETE /api/product-status/b2b/rows/{row_id}?gid=`.
 
 ---
 

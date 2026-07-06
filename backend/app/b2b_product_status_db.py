@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.app_access import can_manage_org
 from app.config import settings
 from app.schemas import (
     ProductStatusB2BOut,
@@ -273,14 +274,7 @@ def _append_history(
 
 
 def _can_edit_admin_columns(meta: dict[str, Any]) -> bool:
-    auth_mode = meta.get("auth_mode")
-    app_role = meta.get("app_role") or "full"
-    org_user_role = meta.get("org_user_role")
-    return (
-        auth_mode == "pat"
-        or (auth_mode == "app_user" and app_role == "full" and org_user_role is None)
-        or org_user_role == "admin"
-    )
+    return can_manage_org(meta)
 
 
 def _resolve_changed_by(meta: dict[str, Any]) -> str | None:

@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy.orm import Session
 
-from app.app_access import is_roadmap_role, sync_board_denied_reason
+from app.app_access import can_manage_org, is_roadmap_role, sync_board_denied_reason
 from app.auth_service import login_with_app_user, login_with_pat
 from app.auth_sessions import delete_session, get_session, get_session_with_meta
 from app.boards import ALL_BOARDS_CODE, BOARDS, boards_for_sync
@@ -108,6 +108,18 @@ def require_full_app_access(
         raise HTTPException(status_code=403, detail="Недостаточно прав.")
 
 
+def require_org_manage_access(
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+) -> None:
+    _, meta = get_session_with_meta(x_session_id)
+    if get_session(x_session_id) is None:
+        raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
+    if is_roadmap_role(meta.get("app_role")):
+        raise HTTPException(status_code=403, detail="Недостаточно прав.")
+    if not can_manage_org(meta):
+        raise HTTPException(status_code=403, detail="Недостаточно прав.")
+
+
 def _can_sync_tfs(auth: TfsAuth | None, meta: dict) -> bool:
     if auth is None or not auth.pat:
         return False
@@ -137,14 +149,9 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
     if auth is None:
         return TfsAuthStatusOut(authenticated=False)
     app_role = meta.get("app_role") or "full"
-    can_sync_tfs = _can_sync_tfs(auth, meta)
-    org_user_role = meta.get("org_user_role")
     auth_mode = meta.get("auth_mode")
-    can_manage_org = (
-        auth_mode == "pat"
-        or (auth_mode == "app_user" and app_role == "full" and org_user_role is None)
-        or org_user_role == "admin"
-    )
+    can_sync_tfs = _can_sync_tfs(auth, meta)
+    can_manage_org_flag = can_manage_org(meta)
     org_user_id = int(meta["org_user_id"]) if meta.get("org_user_id") else None
     org_employee_id: int | None = None
     org_employee_name: str | None = None
@@ -167,7 +174,7 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
         username=meta.get("app_login"),
         appRole=app_role,  # type: ignore[arg-type]
         canSyncTfs=can_sync_tfs,
-        canManageOrg=can_manage_org,
+        canManageOrg=can_manage_org_flag,
         orgUserId=org_user_id,
         orgEmployeeId=org_employee_id,
         orgEmployeeName=org_employee_name,
@@ -479,7 +486,7 @@ def product_status_b2b_history(
     gid: str = Query(...),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
-    _: None = Depends(require_full_app_access),
+    _: None = Depends(require_org_manage_access),
 ) -> ProductStatusHistoryOut:
     return load_b2b_product_status_history(db, gid=gid, limit=limit)
 
@@ -489,7 +496,7 @@ def product_status_b2b_snapshots(
     gid: str = Query(...),
     limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
-    _: None = Depends(require_full_app_access),
+    _: None = Depends(require_org_manage_access),
 ) -> ProductStatusSnapshotsOut:
     return load_b2b_product_status_snapshots(db, gid=gid, limit=limit)
 
@@ -500,7 +507,7 @@ def product_status_b2b_restore_snapshot(
     gid: str = Query(...),
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
-    _: None = Depends(require_full_app_access),
+    _: None = Depends(require_org_manage_access),
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     restore_b2b_product_status_snapshot(db, snapshot_id=snapshot_id, gid=gid, meta=meta)
