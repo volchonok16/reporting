@@ -8,14 +8,15 @@ function resolveApiBase(): string {
   const isPallinkHost = hostname === 'pallink.fun' || hostname === 'www.pallink.fun'
 
   if (isPallinkHost) {
-    // nginx на pallink.fun проксирует /api/ → backend; same-origin без CORS
-    return `${protocol}//${hostname}`
+    // nginx на pallink.fun проксирует /api/ → backend; всегда без www (www отдаёт 301 на /api/)
+    return `${protocol}//pallink.fun`
   }
 
   const envPointsToLocal =
     !fromEnv || fromEnv.includes('localhost') || fromEnv.includes('127.0.0.1')
   if ((hostname === 'localhost' || hostname === '127.0.0.1') && envPointsToLocal) {
-    return `${protocol}//${hostname}:8000`
+    // Vite proxy /api → backend; same-origin — работает и при SSH-туннеле только на :5173
+    return ''
   }
   return fromEnv
 }
