@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react'
 import { apiFetch, getJson } from './api'
 import { notifyError, notifyLoading, notifyProblem, notifySuccess, notifyWarning, updateLoading } from './toast'
 import { loadDashboardUiState, saveDashboardUiState } from './uiState'
@@ -203,6 +203,24 @@ type ColumnHeaderProps = {
   onFilterChange?: (value: string) => void
 }
 
+function useDismissOnOutsideClick(
+  ref: RefObject<HTMLElement | null>,
+  open: boolean,
+  onDismiss: () => void,
+) {
+  useEffect(() => {
+    if (!open) return
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (ref.current?.contains(target)) return
+      onDismiss()
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [open, onDismiss, ref])
+}
+
 function ColumnHeader({
   label,
   sortOptions,
@@ -212,20 +230,31 @@ function ColumnHeader({
   filterValue,
   onFilterChange,
 }: ColumnHeaderProps) {
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
   const hasMenu = Boolean(sortOptions?.length || filterOptions?.length)
   const sortActive = Boolean(sortOptions?.some((option) => option.value === sort))
   const filterActive = Boolean(filterValue)
   const isActive = sortActive || filterActive
+
+  useDismissOnOutsideClick(menuRef, menuOpen, () => setMenuOpen(false))
 
   return (
     <th className={isActive ? 'th-active' : undefined}>
       <div className="th-header">
         <span>{label}</span>
         {hasMenu ? (
-          <div className="th-menu">
-            <span className="th-menu-trigger" title={`${label}: сортировка и фильтр`} aria-label={`${label}: меню`}>
+          <div ref={menuRef} className={`th-menu${menuOpen ? ' is-open' : ''}`}>
+            <button
+              type="button"
+              className="th-menu-trigger"
+              title={`${label}: сортировка и фильтр`}
+              aria-label={`${label}: меню`}
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((current) => !current)}
+            >
               ▾
-            </span>
+            </button>
             <div className="th-menu-panel">
               {sortOptions?.length ? (
                 <div className="th-menu-section">
@@ -235,7 +264,10 @@ function ColumnHeader({
                       key={option.value}
                       type="button"
                       className={`th-menu-item${sort === option.value ? ' is-selected' : ''}`}
-                      onClick={() => onSortChange?.(option.value)}
+                      onClick={() => {
+                        onSortChange?.(option.value)
+                        setMenuOpen(false)
+                      }}
                     >
                       {option.label}
                     </button>
@@ -250,7 +282,10 @@ function ColumnHeader({
                       key={option.value || '__all__'}
                       type="button"
                       className={`th-menu-item${filterValue === option.value ? ' is-selected' : ''}`}
-                      onClick={() => onFilterChange?.(option.value)}
+                      onClick={() => {
+                        onFilterChange?.(option.value)
+                        setMenuOpen(false)
+                      }}
                     >
                       {option.label}
                     </button>
@@ -262,6 +297,54 @@ function ColumnHeader({
         ) : null}
       </div>
     </th>
+  )
+}
+
+type TagGroupFilterProps = {
+  groups: TagFilterGroup[]
+  selected: string[]
+  label: string
+  onToggle: (key: string) => void
+}
+
+function TagGroupFilter({ groups, selected, label, onToggle }: TagGroupFilterProps) {
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  useDismissOnOutsideClick(menuRef, menuOpen, () => setMenuOpen(false))
+
+  return (
+    <div className="tag-group-filter">
+      <span className="tag-group-filter-label">Область</span>
+      <div
+        ref={menuRef}
+        className={`tag-group-filter-dropdown${menuOpen ? ' is-open' : ''}`}
+      >
+        <button
+          type="button"
+          className="tag-group-filter-trigger"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((current) => !current)}
+        >
+          {label}
+        </button>
+        <div className="tag-group-filter-menu" role="group" aria-label="Фильтр по области">
+          {groups.map((group) => {
+            const active = selected.includes(group.key)
+            return (
+              <label key={group.key} className={`tag-group-filter-option${active ? ' is-active' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={active}
+                  onChange={() => onToggle(group.key)}
+                />
+                <span className="tag-group-filter-option-label">{group.label}</span>
+              </label>
+            )
+          })}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -418,6 +501,7 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
   const [exporting, setExporting] = useState(false)
   const [savingBusinessValueId, setSavingBusinessValueId] = useState<string | null>(null)
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set())
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   useEffect(() => {
     void getJson<Board[]>('/api/boards')
@@ -672,6 +756,16 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
 
   const selectedBoard = boards.find((b) => b.code === boardCode)
   const boardLabel = boardButtonLabel(boardCode, selectedBoard?.displayName)
+  const activeFilterCount = [
+    search.trim(),
+    dateFrom !== defaultQuarter.from ? dateFrom : '',
+    dateTo !== defaultQuarter.to ? dateTo : '',
+    statusFilter,
+    quarterFilter,
+    ectReservationFilter,
+    linkedEnvironmentFilter ? 'linked' : '',
+    tagGroupFilter.length ? 'tags' : '',
+  ].filter(Boolean).length
 
   return (
     <div className="app">
@@ -693,7 +787,21 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
         </div>
       </section>
 
-      <header className="toolbar">
+      <header className={`toolbar${filtersOpen ? ' toolbar-filters-open' : ''}`}>
+        <button
+          type="button"
+          className="dashboard-filters-toggle btn-secondary"
+          aria-expanded={filtersOpen}
+          onClick={() => setFiltersOpen((current) => !current)}
+        >
+          {filtersOpen ? 'Скрыть фильтры' : 'Фильтры'}
+          {activeFilterCount > 0 ? (
+            <span className="dashboard-filters-badge" aria-label={`Активных фильтров: ${activeFilterCount}`}>
+              {activeFilterCount}
+            </span>
+          ) : null}
+        </button>
+
         <div className="toolbar-left">
           <label className="search-wrap">
             <input
@@ -727,27 +835,12 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
           </label>
 
           {(data?.availableTagGroups?.length ?? 0) > 0 && (
-            <div className="tag-group-filter">
-              <span className="tag-group-filter-label">Область</span>
-              <div className="tag-group-filter-dropdown">
-                <div className="tag-group-filter-trigger">{tagGroupFilterLabel()}</div>
-                <div className="tag-group-filter-menu" role="group" aria-label="Фильтр по области">
-                  {(data?.availableTagGroups ?? []).map((group) => {
-                    const active = tagGroupFilter.includes(group.key)
-                    return (
-                      <label key={group.key} className={`tag-group-filter-option${active ? ' is-active' : ''}`}>
-                        <input
-                          type="checkbox"
-                          checked={active}
-                          onChange={() => toggleTagGroupFilter(group.key)}
-                        />
-                        <span className="tag-group-filter-option-label">{group.label}</span>
-                      </label>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
+            <TagGroupFilter
+              groups={data?.availableTagGroups ?? []}
+              selected={tagGroupFilter}
+              label={tagGroupFilterLabel()}
+              onToggle={toggleTagGroupFilter}
+            />
           )}
 
           {boardCode === DIGITAL_BOARD ? (

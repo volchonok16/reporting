@@ -277,6 +277,10 @@ body {
   margin-bottom: 24px;
 }
 
+.dashboard-filters-toggle {
+  display: none;
+}
+
 .toolbar-left,
 .toolbar-right {
   display: flex;
@@ -326,13 +330,18 @@ body {
 
 .tag-group-filter-trigger {
   position: relative;
+  display: block;
+  width: 100%;
   min-width: 140px;
   padding: var(--space-sm) 28px var(--space-sm) var(--space-md);
   border: 1px solid var(--input-border);
   border-radius: var(--radius-full);
   background: var(--surface-1);
   color: var(--text-primary);
-  cursor: default;
+  font: inherit;
+  font-size: inherit;
+  text-align: left;
+  cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -350,9 +359,15 @@ body {
   pointer-events: none;
 }
 
-.tag-group-filter-dropdown:hover .tag-group-filter-trigger {
+.tag-group-filter-dropdown:hover .tag-group-filter-trigger,
+.tag-group-filter-dropdown.is-open .tag-group-filter-trigger {
   border-color: var(--t2-lime-border);
   background: var(--t2-lime-soft);
+}
+
+.tag-group-filter-dropdown.is-open .tag-group-filter-menu,
+.tag-group-filter-dropdown:hover .tag-group-filter-menu {
+  display: block;
 }
 
 .tag-group-filter-menu {
@@ -376,10 +391,6 @@ body {
   right: 0;
   top: -4px;
   height: 4px;
-}
-
-.tag-group-filter-dropdown:hover .tag-group-filter-menu {
-  display: block;
 }
 
 .tag-group-filter-option {
@@ -690,18 +701,20 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--surface-1);
   color: var(--text-secondary);
   font-size: 11px;
   line-height: 1;
-  cursor: default;
+  cursor: pointer;
   user-select: none;
+  padding: 0;
 }
 
+.th-menu.is-open .th-menu-trigger,
 .th-menu:hover .th-menu-trigger {
   background: var(--brand-accent-soft);
   border-color: var(--brand-accent-border);
@@ -731,6 +744,7 @@ body {
   height: 4px;
 }
 
+.th-menu.is-open .th-menu-panel,
 .th-menu:hover .th-menu-panel {
   display: block;
 }
