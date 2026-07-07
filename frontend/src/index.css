@@ -1079,13 +1079,13 @@ body {
 
 .diagram-workspace {
   display: grid;
-  grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr);
+  grid-template-columns: minmax(260px, 0.72fr) minmax(420px, 1.28fr);
   gap: 0;
 }
 
 .diagram-editor,
 .diagram-preview {
-  padding: 16px;
+  padding: 10px;
 }
 
 .diagram-editor {
@@ -1100,9 +1100,9 @@ body {
 
 .diagram-source {
   width: 100%;
-  min-height: min(62vh, 620px);
+  min-height: min(56vh, 560px);
   resize: vertical;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border: 1px solid var(--input-border);
   border-radius: 10px;
   background: var(--surface-1);
@@ -1122,6 +1122,55 @@ body {
 .diagram-svg-radial svg {
   transform: scale(0.82);
   transform-origin: top left;
+}
+
+.diagram-canvas {
+  position: relative;
+  min-height: min(72vh, 760px);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-1);
+  cursor: grab;
+}
+
+.diagram-canvas-dragging {
+  cursor: grabbing;
+}
+
+.diagram-canvas-toolbar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-1) 90%, transparent);
+}
+
+.diagram-canvas-btn,
+.diagram-canvas-reset,
+.diagram-canvas-zoom {
+  border-radius: 999px;
+  padding: 4px 10px;
+  min-width: 34px;
+  min-height: 30px;
+}
+
+.diagram-canvas-zoom {
+  border: none;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.diagram-canvas-sheet {
+  width: max-content;
+  height: max-content;
 }
 
 .diagram-page-radial .diagram-workspace {

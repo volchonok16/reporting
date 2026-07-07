@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import mermaid from 'mermaid'
 
 type DiagramKind = 'mindmap' | 'flowchart' | 'sequence' | 'bpmn' | 'wave' | 'board'
@@ -8,6 +8,175 @@ type KindPreset = {
   label: string
   title: string
   starter: string
+}
+
+type Point = { x: number; y: number }
+
+type DiagramPreviewCanvasProps = {
+  content: ReactNode
+  contentKey: string
+}
+
+const CANVAS_MIN_SCALE = 0.12
+const CANVAS_MAX_SCALE = 2.5
+const CANVAS_ZOOM_STEP = 1.4
+const CANVAS_PINCH_SENSITIVITY = 0.0046
+const CANVAS_FIT_MARGIN = 28
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+function pinchZoomFactor(deltaY: number): number {
+  const delta = clamp(-deltaY, -120, 120)
+  return Math.exp(delta * CANVAS_PINCH_SENSITIVITY)
+}
+
+function isPinchZoomWheel(event: WheelEvent): boolean {
+  return event.ctrlKey || event.metaKey
+}
+
+function isInteractiveTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest('button, a, input, select, textarea, label'))
+}
+
+function DiagramPreviewCanvas({ content, contentKey }: DiagramPreviewCanvasProps) {
+  const stageRef = useRef<HTMLDivElement>(null)
+  const sheetRef = useRef<HTMLDivElement>(null)
+  const dragRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null)
+  const scaleRef = useRef(1)
+  const translateRef = useRef<Point>({ x: 0, y: 0 })
+  const userAdjustedRef = useRef(false)
+  const [scale, setScale] = useState(1)
+  const [translate, setTranslate] = useState<Point>({ x: 0, y: 0 })
+  const [dragging, setDragging] = useState(false)
+
+  const setTranslateBoth = useCallback((next: Point) => {
+    translateRef.current = next
+    setTranslate(next)
+  }, [])
+
+  const fitToView = useCallback(() => {
+    const stage = stageRef.current
+    const sheet = sheetRef.current
+    if (!stage || !sheet) return
+    const stageWidth = stage.clientWidth
+    const stageHeight = stage.clientHeight
+    const contentWidth = sheet.offsetWidth
+    const contentHeight = sheet.offsetHeight
+    if (contentWidth <= 0 || contentHeight <= 0) return
+    const scaleX = (stageWidth - CANVAS_FIT_MARGIN * 2) / contentWidth
+    const scaleY = (stageHeight - CANVAS_FIT_MARGIN * 2) / contentHeight
+    const nextScale = clamp(Math.min(scaleX, scaleY, 1), CANVAS_MIN_SCALE, CANVAS_MAX_SCALE)
+    userAdjustedRef.current = false
+    scaleRef.current = nextScale
+    setScale(nextScale)
+    setTranslateBoth({
+      x: (stageWidth - contentWidth * nextScale) / 2,
+      y: (stageHeight - contentHeight * nextScale) / 2,
+    })
+  }, [setTranslateBoth])
+
+  const applyZoom = useCallback((nextScale: number, anchorX: number, anchorY: number) => {
+    const currentScale = scaleRef.current
+    const currentTranslate = translateRef.current
+    const clamped = clamp(nextScale, CANVAS_MIN_SCALE, CANVAS_MAX_SCALE)
+    if (clamped === currentScale) return
+    const worldX = (anchorX - currentTranslate.x) / currentScale
+    const worldY = (anchorY - currentTranslate.y) / currentScale
+    const nextTranslate = {
+      x: anchorX - worldX * clamped,
+      y: anchorY - worldY * clamped,
+    }
+    userAdjustedRef.current = true
+    scaleRef.current = clamped
+    setScale(clamped)
+    setTranslateBoth(nextTranslate)
+  }, [setTranslateBoth])
+
+  useEffect(() => {
+    userAdjustedRef.current = false
+    const frame = requestAnimationFrame(() => requestAnimationFrame(() => fitToView()))
+    return () => cancelAnimationFrame(frame)
+  }, [contentKey, fitToView])
+
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!stage) return
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault()
+      if (isPinchZoomWheel(event)) {
+        const rect = stage.getBoundingClientRect()
+        applyZoom(scaleRef.current * pinchZoomFactor(event.deltaY), event.clientX - rect.left, event.clientY - rect.top)
+        return
+      }
+      userAdjustedRef.current = true
+      setTranslateBoth({
+        x: translateRef.current.x - event.deltaX,
+        y: translateRef.current.y - event.deltaY,
+      })
+    }
+    stage.addEventListener('wheel', onWheel, { passive: false })
+    return () => stage.removeEventListener('wheel', onWheel)
+  }, [applyZoom, setTranslateBoth])
+
+  const zoomBy = (factor: number) => {
+    const stage = stageRef.current
+    if (!stage) return
+    const rect = stage.getBoundingClientRect()
+    applyZoom(scaleRef.current * factor, rect.width / 2, rect.height / 2)
+  }
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || isInteractiveTarget(event.target)) return
+    const stage = stageRef.current
+    if (!stage) return
+    stage.setPointerCapture(event.pointerId)
+    dragRef.current = { x: event.clientX, y: event.clientY, tx: translateRef.current.x, ty: translateRef.current.y }
+    setDragging(true)
+  }
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current
+    if (!drag) return
+    userAdjustedRef.current = true
+    setTranslateBoth({
+      x: drag.tx + (event.clientX - drag.x),
+      y: drag.ty + (event.clientY - drag.y),
+    })
+  }
+
+  const finishDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return
+    dragRef.current = null
+    setDragging(false)
+    event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+
+  return (
+    <div
+      ref={stageRef}
+      className={`diagram-canvas${dragging ? ' diagram-canvas-dragging' : ''}`}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={finishDrag}
+      onPointerCancel={finishDrag}
+    >
+      <div className="diagram-canvas-toolbar" onPointerDown={(event) => event.stopPropagation()}>
+        <button type="button" className="btn-ghost diagram-canvas-btn" onClick={() => zoomBy(1 / CANVAS_ZOOM_STEP)}>−</button>
+        <button type="button" className="diagram-canvas-zoom" onClick={fitToView}>{Math.round(scale * 100)}%</button>
+        <button type="button" className="btn-ghost diagram-canvas-btn" onClick={() => zoomBy(CANVAS_ZOOM_STEP)}>+</button>
+        <button type="button" className="btn-ghost diagram-canvas-reset" onClick={fitToView}>Вписать</button>
+      </div>
+      <div
+        ref={sheetRef}
+        className="diagram-canvas-sheet"
+        style={{ transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`, transformOrigin: '0 0' }}
+      >
+        {content}
+      </div>
+    </div>
+  )
 }
 
 const DIAGRAM_STORAGE_KEY = 'reporting.diagramBuilder.v1'
@@ -307,7 +476,7 @@ function normalizeBpmnSource(input: string): string {
     out.push(`  subgraph ${sanitizeNodeId(lane, usedIds)}["${lane}"]`)
     if (nodes.length === 0) {
       const ghostId = sanitizeNodeId(`${lane}_empty`, usedIds)
-      out.push(`    ${ghostId}[ ]`)
+      out.push(`    ${ghostId}[" "]`)
     } else {
       for (const node of nodes) out.push(`    ${node}`)
     }
@@ -362,16 +531,16 @@ function normalizeBoardSource(input: string): string {
     const details: string[] = []
 
     const date = payload.match(/\b(?:дата|до):\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i)?.[1]
-    if (date) details.push(`📅 ${date}`)
+    if (date) details.push(`Дата: ${date}`)
 
     const owner = payload.match(/@([^\s]+)/)?.[1]
-    if (owner) details.push(`👤 ${owner}`)
+    if (owner) details.push(`Ответственный: ${owner}`)
 
     const urgency = payload.match(/\b(срочно|важно)\b/i)?.[1]
-    if (urgency) details.push(`⚠️ ${urgency}`)
+    if (urgency) details.push(`Приоритет: ${urgency}`)
 
     const tags = [...payload.matchAll(/тег:([^\s(]+)(?:\([^)]+\))?/gi)].map((m) => m[1])
-    if (tags.length > 0) details.push(`🏷️ ${tags.join(', ')}`)
+    if (tags.length > 0) details.push(`Теги: ${tags.join(', ')}`)
 
     const cleanTitle = payload
       .replace(/@[^\s]+/g, '')
@@ -692,13 +861,17 @@ export default function DiagramBuilder() {
         </div>
         <div className="diagram-preview">
           <h2>Предпросмотр</h2>
-          <p className="diagram-preview-hint">Диаграмма строится из Mermaid-синтаксиса выбранного типа.</p>
           {error ? (
-            <p className="banner-error">Ошибка Mermaid: {error}</p>
+            <p className="banner-error">Не удалось построить диаграмму. Проверьте формат текста для выбранного типа.</p>
           ) : (
-            <div
-              className={`diagram-svg${kind === 'mindmap' ? ' diagram-svg-radial' : ''}`}
-              dangerouslySetInnerHTML={{ __html: svg }}
+            <DiagramPreviewCanvas
+              contentKey={`${kind}:${svg.length}`}
+              content={
+                <div
+                  className={`diagram-svg${kind === 'mindmap' ? ' diagram-svg-radial' : ''}`}
+                  dangerouslySetInnerHTML={{ __html: svg }}
+                />
+              }
             />
           )}
         </div>

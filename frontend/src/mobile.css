@@ -147,6 +147,10 @@
     min-height: 260px;
   }
 
+  .diagram-canvas {
+    min-height: 360px;
+  }
+
   /* --- Dashboard: collapsible filters --- */
 
   .dashboard-filters-toggle {
