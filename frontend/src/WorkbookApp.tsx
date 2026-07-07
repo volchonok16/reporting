@@ -20,8 +20,8 @@ const SHEETS: SheetTab[] = [
   { id: 'zni', label: 'ЗНИ' },
   { id: 'product-status-b2b', label: 'Статус продукта B2B' },
   { id: 'roadmap', label: 'Планы Digital' },
-  { id: 'departments', label: 'Staffing' },
   { id: 'diagrams', label: 'Диаграммы' },
+  { id: 'departments', label: 'Staffing' },
 ]
 
 type WorkbookAppProps = {
