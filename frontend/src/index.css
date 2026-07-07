@@ -1179,7 +1179,7 @@ body {
 }
 
 .diagram-page-radial .diagram-workspace {
-  grid-template-columns: minmax(320px, 0.95fr) minmax(300px, 1.05fr);
+  grid-template-columns: 220px minmax(520px, 1fr);
 }
 
 .diagram-page-radial .diagram-source {
