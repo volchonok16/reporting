@@ -18,7 +18,7 @@ type DiagramPreviewCanvasProps = {
 }
 
 const CANVAS_MIN_SCALE = 0.12
-const CANVAS_MAX_SCALE = 2.5
+const CANVAS_MAX_SCALE = 6.2
 const CANVAS_ZOOM_STEP = 1.4
 const CANVAS_PINCH_SENSITIVITY = 0.0046
 const CANVAS_FIT_MARGIN = 28

@@ -1079,7 +1079,7 @@ body {
 
 .diagram-workspace {
   display: grid;
-  grid-template-columns: minmax(260px, 0.72fr) minmax(420px, 1.28fr);
+  grid-template-columns: 280px minmax(520px, 1fr);
   min-height: min(76vh, 820px);
   gap: 0;
 }
@@ -1176,10 +1176,6 @@ body {
 .diagram-canvas-sheet {
   width: max-content;
   height: max-content;
-}
-
-.diagram-page-radial .diagram-workspace {
-  grid-template-columns: 220px minmax(520px, 1fr);
 }
 
 .diagram-page-radial .diagram-source {
