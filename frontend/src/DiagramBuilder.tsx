@@ -22,6 +22,7 @@ const CANVAS_MAX_SCALE = 2.5
 const CANVAS_ZOOM_STEP = 1.4
 const CANVAS_PINCH_SENSITIVITY = 0.0046
 const CANVAS_FIT_MARGIN = 28
+const CANVAS_DEFAULT_SCALE_BOOST = 1.22
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
@@ -67,7 +68,8 @@ function DiagramPreviewCanvas({ content, contentKey }: DiagramPreviewCanvasProps
     if (contentWidth <= 0 || contentHeight <= 0) return
     const scaleX = (stageWidth - CANVAS_FIT_MARGIN * 2) / contentWidth
     const scaleY = (stageHeight - CANVAS_FIT_MARGIN * 2) / contentHeight
-    const nextScale = clamp(Math.min(scaleX, scaleY, 1), CANVAS_MIN_SCALE, CANVAS_MAX_SCALE)
+    const fittedScale = Math.min(scaleX, scaleY, 1)
+    const nextScale = clamp(fittedScale * CANVAS_DEFAULT_SCALE_BOOST, CANVAS_MIN_SCALE, CANVAS_MAX_SCALE)
     userAdjustedRef.current = false
     scaleRef.current = nextScale
     setScale(nextScale)
@@ -161,6 +163,7 @@ function DiagramPreviewCanvas({ content, contentKey }: DiagramPreviewCanvasProps
       onPointerMove={handlePointerMove}
       onPointerUp={finishDrag}
       onPointerCancel={finishDrag}
+      onDoubleClick={fitToView}
     >
       <div className="diagram-canvas-toolbar" onPointerDown={(event) => event.stopPropagation()}>
         <button type="button" className="btn-ghost diagram-canvas-btn" onClick={() => zoomBy(1 / CANVAS_ZOOM_STEP)}>−</button>
