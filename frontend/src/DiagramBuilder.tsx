@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import mermaid from 'mermaid'
 
-type DiagramKind = 'flowchart' | 'sequence' | 'mindmap'
+type DiagramKind = 'mindmap' | 'flowchart' | 'sequence' | 'bpmn' | 'wave' | 'board'
 
 type KindPreset = {
   id: DiagramKind
@@ -11,6 +11,23 @@ type KindPreset = {
 }
 
 const PRESETS: KindPreset[] = [
+  {
+    id: 'mindmap',
+    label: 'Радиальный',
+    title: 'Радиальная структура',
+    starter: `mindmap
+  root((Digital IT))
+    Разработка
+      Backend
+      Frontend
+      QA
+    Интеграции
+      CRM
+      ESB
+    Операции
+      Мониторинг
+      Поддержка`,
+  },
   {
     id: 'flowchart',
     label: 'Иерархический',
@@ -43,22 +60,53 @@ const PRESETS: KindPreset[] = [
   QA->>Biz: Подтверждает готовность`,
   },
   {
-    id: 'mindmap',
-    label: 'Радиальный',
-    title: 'Радиальная структура',
-    starter: `mindmap
-  root((Digital IT))
-    Платформа
-      CRM
-      ESB
-      Bercut
-    Продукты
-      B2B
-      M2M
-      Voice
-    Поддержка
-      Мониторинг
-      Инциденты`,
+    id: 'bpmn',
+    label: 'BPMN',
+    title: 'BPMN-процесс',
+    starter: `flowchart LR
+  Start([Старт])
+  Task1[Сбор требований]
+  Gate{Согласовано?}
+  Task2[Разработка]
+  Task3[Уточнение]
+  End([Финиш])
+  Start --> Task1 --> Gate
+  Gate -- Да --> Task2 --> End
+  Gate -- Нет --> Task3 --> Task1`,
+  },
+  {
+    id: 'wave',
+    label: 'Волнообразная',
+    title: 'Волнообразный план',
+    starter: `timeline
+  title Волнообразный цикл поставки
+  Q1 : Аналитика
+     : Архитектура
+  Q2 : Разработка
+     : Интеграция
+  Q3 : Пилот
+     : Обратная связь
+  Q4 : Тиражирование`,
+  },
+  {
+    id: 'board',
+    label: 'Доска проектов',
+    title: 'Проектная доска',
+    starter: `flowchart LR
+  subgraph Backlog
+    A[CRM API]
+    B[ESB адаптер]
+  end
+  subgraph InProgress[В работе]
+    C[Миграция клиентов]
+    D[Личный кабинет B2B]
+  end
+  subgraph Done[Готово]
+    E[Мониторинг SLA]
+  end
+  A --> C
+  B --> D
+  C --> E`,
   },
 ]
 
@@ -71,7 +119,7 @@ mermaid.initialize({
 })
 
 export default function DiagramBuilder() {
-  const [kind, setKind] = useState<DiagramKind>('flowchart')
+  const [kind, setKind] = useState<DiagramKind>('mindmap')
   const [source, setSource] = useState(PRESETS[0].starter)
   const [svg, setSvg] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -112,7 +160,7 @@ export default function DiagramBuilder() {
     <div className="diagram-page app">
       <header className="diagram-header">
         <h1 className="diagram-title">Диаграммы</h1>
-        <p className="diagram-subtitle">Второй уровень: иерархическая, последовательность, радиальная.</p>
+        <p className="diagram-subtitle">Радиальный, Иерархический, Последовательность, BPMN, Волнообразная, Доска проектов.</p>
       </header>
 
       <nav className="diagram-kind-tabs" aria-label="Тип диаграммы">
@@ -130,7 +178,12 @@ export default function DiagramBuilder() {
 
       <section className="table-section diagram-workspace">
         <div className="diagram-editor">
-          <h2>{activePreset.title}</h2>
+          <div className="diagram-editor-head">
+            <h2>{activePreset.title}</h2>
+            <button type="button" className="btn-secondary" onClick={() => setSource(activePreset.starter)}>
+              Пример
+            </button>
+          </div>
           <textarea
             className="diagram-source"
             value={source}
@@ -140,10 +193,14 @@ export default function DiagramBuilder() {
         </div>
         <div className="diagram-preview">
           <h2>Предпросмотр</h2>
+          <p className="diagram-preview-hint">Диаграмма строится из Mermaid-синтаксиса выбранного типа.</p>
           {error ? (
             <p className="banner-error">Ошибка Mermaid: {error}</p>
           ) : (
-            <div className="diagram-svg" dangerouslySetInnerHTML={{ __html: svg }} />
+            <div
+              className={`diagram-svg${kind === 'mindmap' ? ' diagram-svg-radial' : ''}`}
+              dangerouslySetInnerHTML={{ __html: svg }}
+            />
           )}
         </div>
       </section>
