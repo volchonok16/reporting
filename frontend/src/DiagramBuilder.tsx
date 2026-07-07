@@ -22,6 +22,7 @@ const CANVAS_MAX_SCALE = 2.5
 const CANVAS_ZOOM_STEP = 1.4
 const CANVAS_PINCH_SENSITIVITY = 0.0046
 const CANVAS_FIT_MARGIN = 28
+const CANVAS_BASE_SCALE = 1.22
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
@@ -86,7 +87,7 @@ function DiagramPreviewCanvas({ content, contentKey }: DiagramPreviewCanvasProps
     const contentWidth = sheet.offsetWidth
     const contentHeight = sheet.offsetHeight
     if (contentWidth <= 0 || contentHeight <= 0) return
-    const defaultScale = 1
+    const defaultScale = CANVAS_BASE_SCALE
     userAdjustedRef.current = false
     scaleRef.current = defaultScale
     setScale(defaultScale)
@@ -184,7 +185,9 @@ function DiagramPreviewCanvas({ content, contentKey }: DiagramPreviewCanvasProps
     >
       <div className="diagram-canvas-toolbar" onPointerDown={(event) => event.stopPropagation()}>
         <button type="button" className="btn-ghost diagram-canvas-btn" onClick={() => zoomBy(1 / CANVAS_ZOOM_STEP)}>−</button>
-        <button type="button" className="diagram-canvas-zoom" onClick={fitToView}>{Math.round(scale * 100)}%</button>
+          <button type="button" className="diagram-canvas-zoom" onClick={fitToView}>
+            {Math.round((scale / CANVAS_BASE_SCALE) * 100)}%
+          </button>
         <button type="button" className="btn-ghost diagram-canvas-btn" onClick={() => zoomBy(CANVAS_ZOOM_STEP)}>+</button>
         <button type="button" className="btn-ghost diagram-canvas-reset" onClick={fitToView}>Вписать</button>
       </div>
@@ -813,6 +816,8 @@ mermaid.initialize({
 
 export default function DiagramBuilder() {
   const stored = useMemo(() => readDiagramStorage(), [])
+  const storageRef = useRef<DiagramStorage>(stored)
+  const renderJobRef = useRef(0)
   const [kind, setKind] = useState<DiagramKind>('mindmap')
   const [source, setSource] = useState(stored.mindmap ?? PRESETS[0].starter)
   const [svg, setSvg] = useState('')
@@ -821,50 +826,56 @@ export default function DiagramBuilder() {
   const activePreset = useMemo(() => PRESETS.find((preset) => preset.id === kind) ?? PRESETS[0], [kind])
 
   useEffect(() => {
-    let mounted = true
-    const render = async () => {
-      try {
-        const sourceToRender =
-          kind === 'mindmap'
-            ? normalizeMindmapSource(source)
-            : kind === 'flowchart'
-              ? normalizeFlowchartSource(source)
-              : kind === 'sequence'
-                ? normalizeSequenceSource(source)
-                : kind === 'bpmn'
-                  ? normalizeBpmnSource(source)
-                  : kind === 'board'
-                    ? normalizeBoardSource(source)
-                    : kind === 'wave'
-                      ? normalizeWaveSource(source)
-              : source
-        renderCounter += 1
-        const elementId = `diagram-builder-${renderCounter}`
-        const { svg: nextSvg } = await mermaid.render(elementId, sourceToRender)
-        if (!mounted) return
-        setSvg(nextSvg)
-        setError(null)
-      } catch (err) {
-        if (!mounted) return
-        setSvg('')
-        setError(err instanceof Error ? err.message : 'Ошибка построения диаграммы')
+    const currentJob = renderJobRef.current + 1
+    renderJobRef.current = currentJob
+
+    const timer = window.setTimeout(() => {
+      const render = async () => {
+        try {
+          const sourceToRender =
+            kind === 'mindmap'
+              ? normalizeMindmapSource(source)
+              : kind === 'flowchart'
+                ? normalizeFlowchartSource(source)
+                : kind === 'sequence'
+                  ? normalizeSequenceSource(source)
+                  : kind === 'bpmn'
+                    ? normalizeBpmnSource(source)
+                    : kind === 'board'
+                      ? normalizeBoardSource(source)
+                      : kind === 'wave'
+                        ? normalizeWaveSource(source)
+                : source
+          renderCounter += 1
+          const elementId = `diagram-builder-${renderCounter}`
+          const { svg: nextSvg } = await mermaid.render(elementId, sourceToRender)
+          if (renderJobRef.current !== currentJob) return
+          setSvg(nextSvg)
+          setError(null)
+        } catch (err) {
+          if (renderJobRef.current !== currentJob) return
+          setSvg('')
+          setError(err instanceof Error ? err.message : 'Ошибка построения диаграммы')
+        }
       }
-    }
-    void render()
+      void render()
+    }, 220)
+
     return () => {
-      mounted = false
+      window.clearTimeout(timer)
     }
   }, [kind, source])
 
   useEffect(() => {
-    const current = readDiagramStorage()
-    writeDiagramStorage({ ...current, [kind]: source })
+    const nextStorage = { ...storageRef.current, [kind]: source }
+    storageRef.current = nextStorage
+    writeDiagramStorage(nextStorage)
   }, [kind, source])
 
   const applyPreset = (nextKind: DiagramKind) => {
     const preset = PRESETS.find((item) => item.id === nextKind)
     setKind(nextKind)
-    const saved = readDiagramStorage()[nextKind]
+    const saved = storageRef.current[nextKind]
     if (saved) {
       setSource(saved)
       return

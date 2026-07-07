@@ -1080,6 +1080,7 @@ body {
 .diagram-workspace {
   display: grid;
   grid-template-columns: minmax(260px, 0.72fr) minmax(420px, 1.28fr);
+  min-height: min(76vh, 820px);
   gap: 0;
 }
 
@@ -1089,6 +1090,8 @@ body {
 }
 
 .diagram-editor {
+  display: flex;
+  flex-direction: column;
   border-right: 1px solid var(--border);
 }
 
@@ -1100,7 +1103,9 @@ body {
 
 .diagram-source {
   width: 100%;
-  min-height: min(56vh, 560px);
+  flex: 1;
+  min-height: 0;
+  height: 100%;
   resize: vertical;
   padding: 8px 10px;
   border: 1px solid var(--input-border);
@@ -1120,7 +1125,7 @@ body {
 }
 
 .diagram-svg-radial svg {
-  transform: scale(0.82);
+  transform: scale(0.82) scaleX(0.72);
   transform-origin: top left;
 }
 
@@ -1174,11 +1179,11 @@ body {
 }
 
 .diagram-page-radial .diagram-workspace {
-  grid-template-columns: minmax(280px, 0.86fr) minmax(280px, 1fr);
+  grid-template-columns: minmax(320px, 0.95fr) minmax(300px, 1.05fr);
 }
 
 .diagram-page-radial .diagram-source {
-  min-height: min(48vh, 430px);
+  min-height: 0;
 }
 
 .diagram-preview-hint {
