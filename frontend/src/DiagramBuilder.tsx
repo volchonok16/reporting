@@ -10,6 +10,487 @@ type KindPreset = {
   starter: string
 }
 
+const DIAGRAM_STORAGE_KEY = 'reporting.diagramBuilder.v1'
+
+type DiagramStorage = Partial<Record<DiagramKind, string>>
+
+function readDiagramStorage(): DiagramStorage {
+  try {
+    const raw = localStorage.getItem(DIAGRAM_STORAGE_KEY)
+    if (!raw) return {}
+    return JSON.parse(raw) as DiagramStorage
+  } catch {
+    return {}
+  }
+}
+
+function writeDiagramStorage(storage: DiagramStorage): void {
+  localStorage.setItem(DIAGRAM_STORAGE_KEY, JSON.stringify(storage))
+}
+
+function normalizeMindmapSource(input: string): string {
+  const trimmed = input.trim()
+  if (!trimmed) return 'mindmap\n  root((Новая структура))'
+  if (/^mindmap\b/i.test(trimmed)) return input
+
+  const rawLines = input
+    .replace(/\t/g, '    ')
+    .split('\n')
+    .map((line) => line.replace(/\s+$/g, ''))
+    .filter((line) => line.trim().length > 0)
+
+  if (rawLines.length === 0) return 'mindmap\n  root((Новая структура))'
+
+  const firstWords = rawLines[0].trim().split(/\s+/).length
+  const rootLineIndex = firstWords > 8 && rawLines.length > 1 ? 1 : 0
+  const rootLabel = rawLines[rootLineIndex].trim()
+  const contentLines = rawLines.slice(rootLineIndex + 1)
+
+  const lines = ['mindmap', `  root((${rootLabel}))`]
+  for (const line of contentLines) {
+    const text = line.trim()
+    if (!text) continue
+    const leadingSpaces = line.match(/^\s*/)?.[0].length ?? 0
+    const baseLevel = Math.floor(leadingSpaces / 4)
+    const depth = Math.max(1, baseLevel)
+    lines.push(`${'  '.repeat(depth + 1)}${text}`)
+  }
+  return lines.join('\n')
+}
+
+function normalizeFlowchartSource(input: string): string {
+  const trimmed = input.trim()
+  if (!trimmed) return 'flowchart TD\n  Root["Новая структура"]'
+  if (/^flowchart\b/i.test(trimmed) || /^graph\b/i.test(trimmed)) return input
+
+  const lines = input
+    .replace(/\t/g, '    ')
+    .split('\n')
+    .map((line) => line.replace(/\s+$/g, ''))
+    .filter((line) => line.trim().length > 0)
+
+  if (lines.length === 0) return 'flowchart TD\n  Root["Новая структура"]'
+
+  const nodes: Array<{ id: string; label: string; level: number }> = []
+  const levelStack: number[] = []
+  let idCounter = 0
+
+  for (const line of lines) {
+    const label = line.trim().replace(/"/g, '\\"')
+    const spaces = line.match(/^\s*/)?.[0].length ?? 0
+    const level = Math.floor(spaces / 4)
+    const nodeId = `N${idCounter}`
+    idCounter += 1
+    nodes.push({ id: nodeId, label, level })
+    levelStack.push(level)
+  }
+
+  const result: string[] = ['flowchart TD']
+  for (const node of nodes) {
+    result.push(`  ${node.id}["${node.label}"]`)
+  }
+
+  const parentByIndex: Array<number | null> = new Array(nodes.length).fill(null)
+  for (let i = 1; i < nodes.length; i += 1) {
+    for (let j = i - 1; j >= 0; j -= 1) {
+      if (nodes[j].level < nodes[i].level) {
+        parentByIndex[i] = j
+        break
+      }
+    }
+    if (parentByIndex[i] === null) {
+      parentByIndex[i] = i - 1
+    }
+  }
+
+  for (let i = 1; i < nodes.length; i += 1) {
+    const parentIndex = parentByIndex[i]
+    if (parentIndex == null) continue
+    result.push(`  ${nodes[parentIndex].id} --> ${nodes[i].id}`)
+  }
+
+  return result.join('\n')
+}
+
+function normalizeSequenceSource(input: string): string {
+  const trimmed = input.trim()
+  if (!trimmed) return 'sequenceDiagram\n  participant A as Алиса\n  A->>A: Новый сценарий'
+  if (/^sequenceDiagram\b/i.test(trimmed)) return input
+
+  const lines = input
+    .replace(/\t/g, '    ')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+
+  const out: string[] = ['sequenceDiagram']
+
+  for (const line of lines) {
+    const raw = line
+
+    let match = raw.match(/^участник\s+(.+?)\s+как\s+(.+)$/i)
+    if (match) {
+      out.push(`  participant ${match[2].trim()} as ${match[1].trim()}`)
+      continue
+    }
+    match = raw.match(/^участник\s+(.+)$/i)
+    if (match) {
+      out.push(`  participant ${match[1].trim()}`)
+      continue
+    }
+    if (/^автонумерация$/i.test(raw)) {
+      out.push('  autonumber')
+      continue
+    }
+
+    match = raw.match(/^начало комментария\s*:?\s*(.+)$/i)
+    if (match) {
+      out.push(`  rect rgba(245, 245, 245, 0.7)`)
+      out.push(`  Note over ${match[1].trim()}: ${match[1].trim()}`)
+      continue
+    }
+    if (/^конец комментария$/i.test(raw)) {
+      out.push('  end')
+      continue
+    }
+
+    match = raw.match(/^начало ветки\s+(.+)$/i)
+    if (match) {
+      out.push(`  alt ${match[1].trim()}`)
+      continue
+    }
+    if (/^иначе$/i.test(raw)) {
+      out.push('  else Иначе')
+      continue
+    }
+    if (/^конец ветки$/i.test(raw)) {
+      out.push('  end')
+      continue
+    }
+
+    match = raw.match(/^начало цикла\s+(.+)$/i)
+    if (match) {
+      out.push(`  loop ${match[1].trim()}`)
+      continue
+    }
+    if (/^конец цикла$/i.test(raw)) {
+      out.push('  end')
+      continue
+    }
+
+    match = raw.match(/^начало параллельных действий\s+(.+)$/i)
+    if (match) {
+      out.push(`  par ${match[1].trim()}`)
+      continue
+    }
+    if (/^и$/i.test(raw)) {
+      out.push('  and')
+      continue
+    }
+    if (/^конец параллельных действий$/i.test(raw)) {
+      out.push('  end')
+      continue
+    }
+
+    match = raw.match(/^завершить\s+(.+)$/i)
+    if (match) {
+      out.push(`  destroy ${match[1].trim()}`)
+      continue
+    }
+
+    if (raw.includes('->') || raw.includes('-->')) {
+      const normalized = raw
+        .replace(/\s*-->\s*/g, '-->>')
+        .replace(/\s*->\s*/g, '->>')
+      out.push(`  ${normalized}`)
+      continue
+    }
+
+    out.push(`  Note over System: ${raw}`)
+  }
+
+  return out.join('\n')
+}
+
+function sanitizeNodeId(label: string, used: Set<string>): string {
+  const base = (label.toLowerCase().match(/[a-zа-я0-9]+/gi)?.join('_') ?? 'node').replace(/_{2,}/g, '_')
+  let id = base || 'node'
+  let idx = 1
+  while (used.has(id)) {
+    id = `${base}_${idx}`
+    idx += 1
+  }
+  used.add(id)
+  return id
+}
+
+function normalizeBpmnSource(input: string): string {
+  const trimmed = input.trim()
+  if (!trimmed) return 'flowchart LR\n  start([Старт])\n  start --> end([Финиш])'
+  if (/^flowchart\b/i.test(trimmed) || /^graph\b/i.test(trimmed)) return input
+
+  const lines = input
+    .replace(/\t/g, '    ')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+
+  const usedIds = new Set<string>()
+  const idByLabel = new Map<string, string>()
+  const laneNodes = new Map<string, string[]>()
+  const edges: string[] = []
+  const notes: string[] = []
+  let currentLane = 'Процесс'
+
+  const ensureNode = (label: string, kind: 'event' | 'task' | 'gateway' | 'plain' = 'plain') => {
+    const key = label.trim()
+    const existing = idByLabel.get(key)
+    if (existing) return existing
+    const id = sanitizeNodeId(key, usedIds)
+    let node = `${id}[${key}]`
+    if (kind === 'event') node = `${id}((${key}))`
+    if (kind === 'gateway') node = `${id}{${key}}`
+    idByLabel.set(key, id)
+    const bucket = laneNodes.get(currentLane) ?? []
+    bucket.push(node)
+    laneNodes.set(currentLane, bucket)
+    return id
+  }
+
+  for (const line of lines) {
+    const laneMatch = line.match(/^дорожка:\s*(.+)$/i)
+    if (laneMatch) {
+      currentLane = laneMatch[1].trim() || 'Процесс'
+      if (!laneNodes.has(currentLane)) laneNodes.set(currentLane, [])
+      continue
+    }
+
+    if (/^процесс:\s*/i.test(line)) continue
+
+    let m = line.match(/^событие:\s*([^()]+)(?:\(.+\))?$/i)
+    if (m) {
+      ensureNode(m[1].trim(), 'event')
+      continue
+    }
+    m = line.match(/^задача:\s*([^()]+)(?:\(.+\))?$/i)
+    if (m) {
+      ensureNode(m[1].trim(), 'task')
+      continue
+    }
+    m = line.match(/^шлюз:\s*([^()]+)(?:\(.+\))?$/i)
+    if (m) {
+      ensureNode(m[1].trim(), 'gateway')
+      continue
+    }
+
+    const noteMatch = line.match(/^\/\/\s*аннотация:\s*(.+)$/i)
+    if (noteMatch) {
+      notes.push(noteMatch[1].trim())
+      continue
+    }
+
+    const edgeMatch = line.match(/^(.+?)\s*(-{1,2}|~~)\>\s*(.+?)(?:\s*:\s*(.+))?$/)
+    if (edgeMatch) {
+      const fromLabel = edgeMatch[1].trim()
+      const toLabel = edgeMatch[3].trim()
+      const label = edgeMatch[4]?.trim()
+      const fromId = ensureNode(fromLabel)
+      const toId = ensureNode(toLabel)
+      const arrow = edgeMatch[2] === '~~' ? '-.->' : '-->'
+      edges.push(`  ${fromId} ${arrow}${label ? `|${label}|` : ''} ${toId}`)
+      continue
+    }
+  }
+
+  const out: string[] = ['flowchart LR']
+  for (const [lane, nodes] of laneNodes.entries()) {
+    out.push(`  subgraph ${sanitizeNodeId(lane, usedIds)}["${lane}"]`)
+    if (nodes.length === 0) {
+      const ghostId = sanitizeNodeId(`${lane}_empty`, usedIds)
+      out.push(`    ${ghostId}[ ]`)
+    } else {
+      for (const node of nodes) out.push(`    ${node}`)
+    }
+    out.push('  end')
+  }
+  if (notes.length > 0 && edges.length > 0) {
+    out.push(`  %% ${notes.join(' | ')}`)
+  }
+  out.push(...edges)
+  if (edges.length === 0 && idByLabel.size > 1) {
+    const ids = [...idByLabel.values()]
+    for (let i = 0; i < ids.length - 1; i += 1) {
+      out.push(`  ${ids[i]} --> ${ids[i + 1]}`)
+    }
+  }
+  return out.join('\n')
+}
+
+function normalizeBoardSource(input: string): string {
+  const trimmed = input.trim()
+  if (!trimmed) return 'flowchart LR\n  todo["Сделать задачу"]'
+  if (/^flowchart\b/i.test(trimmed) || /^graph\b/i.test(trimmed)) return input
+
+  const lines = input
+    .replace(/\t/g, '    ')
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim().length > 0)
+
+  const used = new Set<string>()
+  const out: string[] = ['flowchart LR']
+  const laneNodes = new Map<string, string[]>()
+  const laneOrder: string[] = []
+  const laneIdByTitle = new Map<string, string>()
+  const laneFirstNode = new Map<string, string>()
+  const laneLastNode = new Map<string, string>()
+  let currentLane = 'Сделать'
+  let currentTaskId: string | null = null
+
+  const ensureLane = (title: string) => {
+    if (!laneNodes.has(title)) {
+      laneNodes.set(title, [])
+      laneOrder.push(title)
+      laneIdByTitle.set(title, sanitizeNodeId(`lane_${title}`, used))
+    }
+  }
+
+  ensureLane(currentLane)
+
+  const pushTask = (rawTaskLine: string) => {
+    const payload = rawTaskLine.replace(/^задача:\s*/i, '').trim()
+    const details: string[] = []
+
+    const date = payload.match(/\b(?:дата|до):\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i)?.[1]
+    if (date) details.push(`📅 ${date}`)
+
+    const owner = payload.match(/@([^\s]+)/)?.[1]
+    if (owner) details.push(`👤 ${owner}`)
+
+    const urgency = payload.match(/\b(срочно|важно)\b/i)?.[1]
+    if (urgency) details.push(`⚠️ ${urgency}`)
+
+    const tags = [...payload.matchAll(/тег:([^\s(]+)(?:\([^)]+\))?/gi)].map((m) => m[1])
+    if (tags.length > 0) details.push(`🏷️ ${tags.join(', ')}`)
+
+    const cleanTitle = payload
+      .replace(/@[^\s]+/g, '')
+      .replace(/\b(?:дата|до):\s*[0-9]{4}-[0-9]{2}-[0-9]{2}/gi, '')
+      .replace(/\b(?:срочно|важно)\b/gi, '')
+      .replace(/тег:[^\s(]+(?:\([^)]+\))?/gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+
+    const labelParts = [cleanTitle || 'Задача', ...details]
+    const label = labelParts.join('<br/>').replace(/"/g, '\\"')
+    const id = sanitizeNodeId(`task_${cleanTitle || 'task'}`, used)
+    const node = `${id}["${label}"]`
+    laneNodes.get(currentLane)!.push(node)
+
+    if (!laneFirstNode.has(currentLane)) laneFirstNode.set(currentLane, id)
+    const prev = laneLastNode.get(currentLane)
+    if (prev) out.push(`  ${prev} --> ${id}`)
+    laneLastNode.set(currentLane, id)
+
+    currentTaskId = id
+  }
+
+  for (const raw of lines) {
+    const line = raw.trim()
+    const columnMatch = line.match(/^колонка\s+(.+)$/i)
+    if (columnMatch) {
+      currentLane = columnMatch[1].trim()
+      ensureLane(currentLane)
+      currentTaskId = null
+      continue
+    }
+    if (/^задача:/i.test(line)) {
+      pushTask(line)
+      continue
+    }
+    if ((raw.startsWith(' ') || raw.startsWith('    ')) && currentTaskId) {
+      const note = line.replace(/"/g, '\\"')
+      const noteId = sanitizeNodeId(`note_${note}`, used)
+      out.push(`  ${noteId}["• ${note}"]`)
+      out.push(`  ${currentTaskId} -.-> ${noteId}`)
+      continue
+    }
+  }
+
+  for (const lane of laneOrder) {
+    out.push(`  subgraph ${laneIdByTitle.get(lane)}["${lane}"]`)
+    const nodes = laneNodes.get(lane) ?? []
+    if (nodes.length === 0) {
+      const ghost = sanitizeNodeId(`empty_${lane}`, used)
+      out.push(`    ${ghost}[ ]`)
+    } else {
+      for (const node of nodes) out.push(`    ${node}`)
+    }
+    out.push('  end')
+  }
+
+  for (let i = 0; i < laneOrder.length - 1; i += 1) {
+    const from = laneOrder[i]
+    const to = laneOrder[i + 1]
+    const fromId = laneLastNode.get(from)
+    const toId = laneFirstNode.get(to)
+    if (fromId && toId) out.push(`  ${fromId} ==> ${toId}`)
+  }
+
+  return out.join('\n')
+}
+
+function normalizeWaveSource(input: string): string {
+  const trimmed = input.trim()
+  if (!trimmed) return 'flowchart LR\n  A["Источник"] -->|100| B["Цель"]'
+  if (/^flowchart\b/i.test(trimmed) || /^graph\b/i.test(trimmed) || /^sankey-beta\b/i.test(trimmed)) {
+    return input
+  }
+
+  const lines = input
+    .replace(/\t/g, '    ')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+
+  const used = new Set<string>()
+  const idByLabel = new Map<string, string>()
+  const edges: Array<{ from: string; to: string; value: string }> = []
+
+  const ensureId = (label: string): string => {
+    const key = label.trim()
+    const existing = idByLabel.get(key)
+    if (existing) return existing
+    const id = sanitizeNodeId(key, used)
+    idByLabel.set(key, id)
+    return id
+  }
+
+  for (const line of lines) {
+    const m = line.match(/^(.+?)\s*->\s*(.+?)\s*:\s*([0-9]+(?:[.,][0-9]+)?)$/)
+    if (!m) continue
+    const from = m[1].trim()
+    const to = m[2].trim()
+    const value = m[3].replace(',', '.')
+    ensureId(from)
+    ensureId(to)
+    edges.push({ from, to, value })
+  }
+
+  if (edges.length === 0) {
+    return 'flowchart LR\n  A["Источник"] -->|100| B["Цель"]'
+  }
+
+  const out: string[] = ['flowchart LR']
+  for (const [label, id] of idByLabel.entries()) {
+    out.push(`  ${id}["${label.replace(/"/g, '\\"')}"]`)
+  }
+  for (const edge of edges) {
+    out.push(`  ${idByLabel.get(edge.from)} -->|${edge.value}| ${idByLabel.get(edge.to)}`)
+  }
+  return out.join('\n')
+}
+
 const PRESETS: KindPreset[] = [
   {
     id: 'mindmap',
@@ -119,8 +600,9 @@ mermaid.initialize({
 })
 
 export default function DiagramBuilder() {
+  const stored = useMemo(() => readDiagramStorage(), [])
   const [kind, setKind] = useState<DiagramKind>('mindmap')
-  const [source, setSource] = useState(PRESETS[0].starter)
+  const [source, setSource] = useState(stored.mindmap ?? PRESETS[0].starter)
   const [svg, setSvg] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -130,9 +612,23 @@ export default function DiagramBuilder() {
     let mounted = true
     const render = async () => {
       try {
+        const sourceToRender =
+          kind === 'mindmap'
+            ? normalizeMindmapSource(source)
+            : kind === 'flowchart'
+              ? normalizeFlowchartSource(source)
+              : kind === 'sequence'
+                ? normalizeSequenceSource(source)
+                : kind === 'bpmn'
+                  ? normalizeBpmnSource(source)
+                  : kind === 'board'
+                    ? normalizeBoardSource(source)
+                    : kind === 'wave'
+                      ? normalizeWaveSource(source)
+              : source
         renderCounter += 1
         const elementId = `diagram-builder-${renderCounter}`
-        const { svg: nextSvg } = await mermaid.render(elementId, source)
+        const { svg: nextSvg } = await mermaid.render(elementId, sourceToRender)
         if (!mounted) return
         setSvg(nextSvg)
         setError(null)
@@ -146,18 +642,26 @@ export default function DiagramBuilder() {
     return () => {
       mounted = false
     }
-  }, [source])
+  }, [kind, source])
+
+  useEffect(() => {
+    const current = readDiagramStorage()
+    writeDiagramStorage({ ...current, [kind]: source })
+  }, [kind, source])
 
   const applyPreset = (nextKind: DiagramKind) => {
     const preset = PRESETS.find((item) => item.id === nextKind)
     setKind(nextKind)
-    if (preset) {
-      setSource(preset.starter)
+    const saved = readDiagramStorage()[nextKind]
+    if (saved) {
+      setSource(saved)
+      return
     }
+    if (preset) setSource(preset.starter)
   }
 
   return (
-    <div className="diagram-page app">
+    <div className={`diagram-page app${kind === 'mindmap' ? ' diagram-page-radial' : ''}`}>
       <header className="diagram-header">
         <h1 className="diagram-title">Диаграммы</h1>
         <p className="diagram-subtitle">Радиальный, Иерархический, Последовательность, BPMN, Волнообразная, Доска проектов.</p>
@@ -178,12 +682,7 @@ export default function DiagramBuilder() {
 
       <section className="table-section diagram-workspace">
         <div className="diagram-editor">
-          <div className="diagram-editor-head">
-            <h2>{activePreset.title}</h2>
-            <button type="button" className="btn-secondary" onClick={() => setSource(activePreset.starter)}>
-              Пример
-            </button>
-          </div>
+          <h2>{activePreset.title}</h2>
           <textarea
             className="diagram-source"
             value={source}

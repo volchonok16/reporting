@@ -1098,17 +1098,6 @@ body {
   font-size: 16px;
 }
 
-.diagram-editor-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.diagram-editor-head .btn-secondary {
-  padding: 6px 12px;
-}
-
 .diagram-source {
   width: 100%;
   min-height: min(62vh, 620px);
@@ -1133,6 +1122,14 @@ body {
 .diagram-svg-radial svg {
   transform: scale(0.82);
   transform-origin: top left;
+}
+
+.diagram-page-radial .diagram-workspace {
+  grid-template-columns: minmax(280px, 0.86fr) minmax(280px, 1fr);
+}
+
+.diagram-page-radial .diagram-source {
+  min-height: min(48vh, 430px);
 }
 
 .diagram-preview-hint {
