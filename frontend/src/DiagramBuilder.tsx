@@ -22,7 +22,6 @@ const CANVAS_MAX_SCALE = 2.5
 const CANVAS_ZOOM_STEP = 1.4
 const CANVAS_PINCH_SENSITIVITY = 0.0046
 const CANVAS_FIT_MARGIN = 28
-const CANVAS_DEFAULT_SCALE_BOOST = 1.22
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
@@ -68,14 +67,32 @@ function DiagramPreviewCanvas({ content, contentKey }: DiagramPreviewCanvasProps
     if (contentWidth <= 0 || contentHeight <= 0) return
     const scaleX = (stageWidth - CANVAS_FIT_MARGIN * 2) / contentWidth
     const scaleY = (stageHeight - CANVAS_FIT_MARGIN * 2) / contentHeight
-    const fittedScale = Math.min(scaleX, scaleY, 1)
-    const nextScale = clamp(fittedScale * CANVAS_DEFAULT_SCALE_BOOST, CANVAS_MIN_SCALE, CANVAS_MAX_SCALE)
+    const nextScale = clamp(Math.min(scaleX, scaleY, 1), CANVAS_MIN_SCALE, CANVAS_MAX_SCALE)
     userAdjustedRef.current = false
     scaleRef.current = nextScale
     setScale(nextScale)
     setTranslateBoth({
       x: (stageWidth - contentWidth * nextScale) / 2,
       y: (stageHeight - contentHeight * nextScale) / 2,
+    })
+  }, [setTranslateBoth])
+
+  const centerAtDefaultScale = useCallback(() => {
+    const stage = stageRef.current
+    const sheet = sheetRef.current
+    if (!stage || !sheet) return
+    const stageWidth = stage.clientWidth
+    const stageHeight = stage.clientHeight
+    const contentWidth = sheet.offsetWidth
+    const contentHeight = sheet.offsetHeight
+    if (contentWidth <= 0 || contentHeight <= 0) return
+    const defaultScale = 1
+    userAdjustedRef.current = false
+    scaleRef.current = defaultScale
+    setScale(defaultScale)
+    setTranslateBoth({
+      x: (stageWidth - contentWidth * defaultScale) / 2,
+      y: (stageHeight - contentHeight * defaultScale) / 2,
     })
   }, [setTranslateBoth])
 
@@ -98,9 +115,9 @@ function DiagramPreviewCanvas({ content, contentKey }: DiagramPreviewCanvasProps
 
   useEffect(() => {
     userAdjustedRef.current = false
-    const frame = requestAnimationFrame(() => requestAnimationFrame(() => fitToView()))
+    const frame = requestAnimationFrame(() => requestAnimationFrame(() => centerAtDefaultScale()))
     return () => cancelAnimationFrame(frame)
-  }, [contentKey, fitToView])
+  }, [centerAtDefaultScale, contentKey])
 
   useEffect(() => {
     const stage = stageRef.current
@@ -232,7 +249,7 @@ function normalizeMindmapSource(input: string): string {
 
 function normalizeFlowchartSource(input: string): string {
   const trimmed = input.trim()
-  if (!trimmed) return 'flowchart TD\n  Root["Новая структура"]'
+  if (!trimmed) return 'flowchart LR\n  Root["Новая структура"]'
   if (/^flowchart\b/i.test(trimmed) || /^graph\b/i.test(trimmed)) return input
 
   const lines = input
@@ -241,7 +258,7 @@ function normalizeFlowchartSource(input: string): string {
     .map((line) => line.replace(/\s+$/g, ''))
     .filter((line) => line.trim().length > 0)
 
-  if (lines.length === 0) return 'flowchart TD\n  Root["Новая структура"]'
+  if (lines.length === 0) return 'flowchart LR\n  Root["Новая структура"]'
 
   const nodes: Array<{ id: string; label: string; level: number }> = []
   const levelStack: number[] = []
@@ -257,7 +274,7 @@ function normalizeFlowchartSource(input: string): string {
     levelStack.push(level)
   }
 
-  const result: string[] = ['flowchart TD']
+  const result: string[] = ['flowchart LR']
   for (const node of nodes) {
     result.push(`  ${node.id}["${node.label}"]`)
   }
@@ -296,18 +313,28 @@ function normalizeSequenceSource(input: string): string {
     .filter((line) => line.length > 0)
 
   const out: string[] = ['sequenceDiagram']
+  const actorAlias = new Map<string, string>()
+  const normalizeActor = (name: string): string => {
+    const trimmedName = name.trim()
+    return actorAlias.get(trimmedName) ?? trimmedName
+  }
 
   for (const line of lines) {
     const raw = line
 
     let match = raw.match(/^участник\s+(.+?)\s+как\s+(.+)$/i)
     if (match) {
-      out.push(`  participant ${match[2].trim()} as ${match[1].trim()}`)
+      const actorName = match[1].trim()
+      const alias = match[2].trim()
+      actorAlias.set(actorName, alias)
+      out.push(`  participant ${alias} as ${actorName}`)
       continue
     }
     match = raw.match(/^участник\s+(.+)$/i)
     if (match) {
-      out.push(`  participant ${match[1].trim()}`)
+      const actorName = match[1].trim()
+      actorAlias.set(actorName, actorName)
+      out.push(`  participant ${actorName}`)
       continue
     }
     if (/^автонумерация$/i.test(raw)) {
@@ -366,14 +393,27 @@ function normalizeSequenceSource(input: string): string {
 
     match = raw.match(/^завершить\s+(.+)$/i)
     if (match) {
-      out.push(`  destroy ${match[1].trim()}`)
+      out.push(`  destroy ${normalizeActor(match[1])}`)
       continue
     }
 
     if (raw.includes('->') || raw.includes('-->')) {
-      const normalized = raw
-        .replace(/\s*-->\s*/g, '-->>')
-        .replace(/\s*->\s*/g, '->>')
+      const messageMatch = raw.match(/^(.+?)\s*(-->|->)\s*(.+?)\s*:\s*(.+)$/)
+      if (messageMatch) {
+        const from = normalizeActor(messageMatch[1])
+        const to = normalizeActor(messageMatch[3])
+        const arrow = messageMatch[2] === '-->' ? '-->>' : '->>'
+        out.push(`  ${from}${arrow}${to}: ${messageMatch[4].trim()}`)
+        continue
+      }
+      const selfMessageMatch = raw.match(/^(.+?)\s*(-->|->)\s*(.+)$/)
+      if (selfMessageMatch) {
+        const actor = normalizeActor(selfMessageMatch[1])
+        const arrow = selfMessageMatch[2] === '-->' ? '-->>' : '->>'
+        out.push(`  ${actor}${arrow}${actor}: ${selfMessageMatch[3].trim()}`)
+        continue
+      }
+      const normalized = raw.replace(/\s*-->\s*/g, '-->>').replace(/\s*->\s*/g, '->>')
       out.push(`  ${normalized}`)
       continue
     }
@@ -685,7 +725,7 @@ const PRESETS: KindPreset[] = [
     id: 'flowchart',
     label: 'Иерархический',
     title: 'Иерархическая диаграмма',
-    starter: `flowchart TD
+    starter: `flowchart LR
   CEO[Руководитель IT]
   Head1[Head разработки]
   Head2[Head аналитики]
