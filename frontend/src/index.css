@@ -1125,7 +1125,7 @@ body {
 }
 
 .diagram-svg-radial svg {
-  transform: scale(0.82) scaleX(0.72);
+  transform: scale(0.82);
   transform-origin: top left;
 }
 
