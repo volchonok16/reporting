@@ -1029,6 +1029,96 @@ body {
   text-align: center;
 }
 
+.diagram-page {
+  padding-top: 10px;
+}
+
+.diagram-header {
+  margin-bottom: 14px;
+}
+
+.diagram-title {
+  margin: 0;
+  font-size: 24px;
+}
+
+.diagram-subtitle {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.diagram-kind-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-lg);
+  padding: var(--space-xs);
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+}
+
+.diagram-kind-tab {
+  padding: var(--space-sm) var(--space-md);
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.diagram-kind-tab-active {
+  background: var(--surface-1);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm), inset 0 -2px 0 var(--brand-accent);
+}
+
+.diagram-workspace {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr);
+  gap: 0;
+}
+
+.diagram-editor,
+.diagram-preview {
+  padding: 16px;
+}
+
+.diagram-editor {
+  border-right: 1px solid var(--border);
+}
+
+.diagram-editor h2,
+.diagram-preview h2 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.diagram-source {
+  width: 100%;
+  min-height: min(62vh, 620px);
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.diagram-svg {
+  overflow: auto;
+}
+
+.diagram-svg svg {
+  max-width: 100%;
+  height: auto;
+}
+
 .cell-board {
   font-size: 13px;
   color: var(--text-secondary);

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { apiFetch, clearSessionId } from './api'
 import Dashboard from './Dashboard'
+import DiagramBuilder from './DiagramBuilder'
 import ProductStatusB2B from './ProductStatusB2B'
 import Roadmap from './Roadmap'
 import Departments from './org/Departments'
@@ -20,6 +21,7 @@ const SHEETS: SheetTab[] = [
   { id: 'product-status-b2b', label: 'Статус продукта B2B' },
   { id: 'roadmap', label: 'Планы Digital' },
   { id: 'departments', label: 'Staffing' },
+  { id: 'diagrams', label: 'Диаграммы' },
 ]
 
 type WorkbookAppProps = {
@@ -141,6 +143,8 @@ export default function WorkbookApp({
           <div className="app">
             <Departments canManage={canManageOrg} orgEmployeeId={orgEmployeeId} />
           </div>
+        ) : activeSheet === 'diagrams' ? (
+          <DiagramBuilder />
         ) : (
           <div className="app">
             <ProductStatusB2B canManageOrg={canManageOrg} />

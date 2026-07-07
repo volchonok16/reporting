@@ -115,6 +115,38 @@
     padding: 0;
   }
 
+  .diagram-kind-tabs {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    border-radius: var(--radius-md);
+  }
+
+  .diagram-kind-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .diagram-kind-tab {
+    flex: 0 0 auto;
+    min-height: var(--mobile-tap-min);
+    white-space: nowrap;
+  }
+
+  .diagram-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .diagram-editor {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .diagram-source {
+    min-height: 260px;
+  }
+
   /* --- Dashboard: collapsible filters --- */
 
   .dashboard-filters-toggle {
