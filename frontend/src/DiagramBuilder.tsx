@@ -225,6 +225,7 @@ type BoardTask = {
   description: string
 }
 type BoardData = { columns: Array<{ name: string }>; tasks: BoardTask[] }
+type TreeNode = { text: string; level: number; children: TreeNode[]; x: number; y: number; width: number; height: number }
 
 function readDiagramStorage(): DiagramStorage {
   try {
@@ -323,6 +324,340 @@ function parseBoardData(text: string): BoardData | null {
   }
   savePendingTask()
   return { columns, tasks }
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}
+
+function parseIndentedTree(input: string): TreeNode | null {
+  const lines = input
+    .replace(/\t/g, '    ')
+    .split('\n')
+    .map((line) => line.replace(/\s+$/g, ''))
+    .filter((line) => line.trim().length > 0)
+  if (lines.length === 0) return null
+  if (/^(flowchart|graph)\b/i.test(lines[0].trim())) return null
+
+  const nodes = lines.map((line) => {
+    const spaces = line.match(/^\s*/)?.[0].length ?? 0
+    const level = Math.floor(spaces / 2)
+    const text = line.trim()
+    return { text, level, children: [], x: 0, y: 0, width: Math.max(110, text.length * 8 + 28), height: 34 } as TreeNode
+  })
+
+  const root = nodes[0]
+  const stack: TreeNode[] = [root]
+  for (let i = 1; i < nodes.length; i += 1) {
+    const node = nodes[i]
+    while (stack.length > 0 && stack[stack.length - 1].level >= node.level) stack.pop()
+    const parent = stack[stack.length - 1] ?? root
+    parent.children.push(node)
+    stack.push(node)
+  }
+  return root
+}
+
+function layoutTreeHorizontal(root: TreeNode, x: number, y: number, gapX: number, gapY: number): number {
+  if (root.children.length === 0) {
+    root.x = x
+    root.y = y
+    return root.height + gapY
+  }
+  let childY = y
+  for (const child of root.children) {
+    childY += layoutTreeHorizontal(child, x + gapX, childY, gapX, gapY)
+  }
+  const first = root.children[0]
+  const last = root.children[root.children.length - 1]
+  root.x = x
+  root.y = (first.y + last.y + last.height / 2 - root.height / 2)
+  return Math.max(root.height + gapY, childY - y)
+}
+
+function collectTreeBounds(node: TreeNode, bounds: { minX: number; minY: number; maxX: number; maxY: number }): void {
+  bounds.minX = Math.min(bounds.minX, node.x)
+  bounds.minY = Math.min(bounds.minY, node.y)
+  bounds.maxX = Math.max(bounds.maxX, node.x + node.width)
+  bounds.maxY = Math.max(bounds.maxY, node.y + node.height)
+  for (const child of node.children) collectTreeBounds(child, bounds)
+}
+
+function renderFlowchartSvg(input: string): string | null {
+  const root = parseIndentedTree(input)
+  if (!root) return null
+  layoutTreeHorizontal(root, 60, 60, 210, 20)
+  const bounds = { minX: Number.POSITIVE_INFINITY, minY: Number.POSITIVE_INFINITY, maxX: Number.NEGATIVE_INFINITY, maxY: Number.NEGATIVE_INFINITY }
+  collectTreeBounds(root, bounds)
+  const width = Math.max(700, bounds.maxX - bounds.minX + 120)
+  const height = Math.max(420, bounds.maxY - bounds.minY + 120)
+  const shiftX = 40 - bounds.minX
+  const shiftY = 40 - bounds.minY
+  const lines: string[] = []
+  const nodes: string[] = []
+
+  const walk = (node: TreeNode) => {
+    const x = node.x + shiftX
+    const y = node.y + shiftY
+    for (const child of node.children) {
+      const cx = child.x + shiftX
+      const cy = child.y + shiftY
+      const x1 = x + node.width
+      const y1 = y + node.height / 2
+      const x2 = cx
+      const y2 = cy + child.height / 2
+      const mx = (x1 + x2) / 2
+      lines.push(`<polyline points="${x1},${y1} ${mx},${y1} ${mx},${y2} ${x2},${y2}" fill="none" stroke="#5f7ea0" stroke-width="2.5"/>`)
+      walk(child)
+    }
+    const fill = node.level === 0 ? '#27465f' : '#3f6488'
+    nodes.push(`<rect x="${x}" y="${y}" width="${node.width}" height="${node.height}" rx="8" fill="${fill}" stroke="${fill}"/>`)
+    nodes.push(`<text x="${x + node.width / 2}" y="${y + node.height / 2 + 5}" text-anchor="middle" font-size="${node.level === 0 ? 14 : 13}" font-weight="600" fill="#ffffff">${escapeXml(node.text)}</text>`)
+  }
+  walk(root)
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="font-family:Inter,sans-serif">${lines.join('')}${nodes.join('')}</svg>`
+}
+
+function parseSequenceData(text: string): { participants: string[]; messages: Array<{ from: string; to: string; text: string; dashed: boolean }>; blocks: Array<{ kind: 'alt' | 'loop' | 'par'; label: string; start: number; end: number }> } | null {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean)
+  if (lines.length === 0) return null
+  const participants: string[] = []
+  const messages: Array<{ from: string; to: string; text: string; dashed: boolean }> = []
+  const blocks: Array<{ kind: 'alt' | 'loop' | 'par'; label: string; start: number; end: number }> = []
+  const stack: Array<{ kind: 'alt' | 'loop' | 'par'; label: string; start: number }> = []
+  for (const line of lines) {
+    const p = line.match(/^[Уу]частник\s+(.+?)(?:\s+как\s+(.+))?$/)
+    if (p) {
+      const name = (p[2] ?? p[1]).trim()
+      if (!participants.includes(name)) participants.push(name)
+      continue
+    }
+    const msg = line.match(/^(.+?)\s*(->|-->)\s*(.+?):\s*(.+)$/)
+    if (msg) {
+      const from = msg[1].trim()
+      const to = msg[3].trim()
+      if (!participants.includes(from)) participants.push(from)
+      if (!participants.includes(to)) participants.push(to)
+      messages.push({ from, to, text: msg[4].trim(), dashed: msg[2] === '-->' })
+      continue
+    }
+    const startAlt = line.match(/^Начало ветки\s*(.*)$/i)
+    const startLoop = line.match(/^Начало цикла\s*(.*)$/i)
+    const startPar = line.match(/^Начало параллельных действий\s*(.*)$/i)
+    if (startAlt) stack.push({ kind: 'alt', label: startAlt[1].trim(), start: messages.length })
+    if (startLoop) stack.push({ kind: 'loop', label: startLoop[1].trim(), start: messages.length })
+    if (startPar) stack.push({ kind: 'par', label: startPar[1].trim(), start: messages.length })
+    if (/^конец ветки$/i.test(line) || /^конец цикла$/i.test(line) || /^конец параллельных действий$/i.test(line)) {
+      const last = stack.pop()
+      if (last) blocks.push({ ...last, end: Math.max(last.start, messages.length - 1) })
+    }
+  }
+  return { participants, messages, blocks }
+}
+
+function renderSequenceSvg(input: string): string | null {
+  const data = parseSequenceData(input)
+  if (!data || data.participants.length === 0) return null
+  const startX = 120
+  const gapX = 200
+  const topY = 60
+  const msgStartY = 130
+  const msgGap = 52
+  const width = Math.max(760, startX * 2 + (data.participants.length - 1) * gapX + 120)
+  const height = Math.max(420, msgStartY + data.messages.length * msgGap + 90)
+  const xByName = new Map<string, number>()
+  data.participants.forEach((p, idx) => xByName.set(p, startX + idx * gapX))
+  const bg: string[] = []
+  const lines: string[] = []
+  const labels: string[] = []
+
+  for (const block of data.blocks) {
+    const y = msgStartY + block.start * msgGap - 24
+    const h = (block.end - block.start + 1) * msgGap + 38
+    const pad = block.kind === 'loop' ? '#dbeafe' : block.kind === 'par' ? '#fef3c7' : '#f3f4f6'
+    const stroke = block.kind === 'loop' ? '#2563eb' : block.kind === 'par' ? '#d97706' : '#6b7280'
+    bg.push(`<rect x="64" y="${y}" width="${width - 128}" height="${h}" rx="10" fill="none" stroke="${stroke}" stroke-width="2" ${block.kind === 'alt' ? 'stroke-dasharray="6,4"' : ''}/>`)
+    bg.push(`<rect x="80" y="${y + 8}" width="${Math.max(70, block.label.length * 8 + 20)}" height="20" rx="4" fill="${pad}" stroke="${stroke}" stroke-width="1.2"/>`)
+    bg.push(`<text x="90" y="${y + 22}" fill="${stroke}" font-size="11" font-weight="700">${escapeXml(block.label || block.kind)}</text>`)
+  }
+
+  for (const p of data.participants) {
+    const x = xByName.get(p) ?? 0
+    lines.push(`<line x1="${x}" y1="${topY}" x2="${x}" y2="${height - 40}" stroke="#51779b" stroke-width="2"/>`)
+    labels.push(`<text x="${x}" y="${topY - 12}" text-anchor="middle" font-size="13" font-weight="700" fill="#1f2937">${escapeXml(p)}</text>`)
+  }
+
+  data.messages.forEach((msg, idx) => {
+    const y = msgStartY + idx * msgGap
+    const x1 = xByName.get(msg.from) ?? startX
+    const x2 = xByName.get(msg.to) ?? startX
+    const right = x2 >= x1
+    const toX = x2 + (right ? -10 : 10)
+    lines.push(`<line x1="${x1}" y1="${y}" x2="${toX}" y2="${y}" stroke="#2f5a82" stroke-width="2" ${msg.dashed ? 'stroke-dasharray="6,4"' : ''}/>`)
+    lines.push(`<polygon points="${x2},${y} ${x2 + (right ? -10 : 10)},${y - 5} ${x2 + (right ? -10 : 10)},${y + 5}" fill="#2f5a82"/>`)
+    lines.push(`<text x="${(x1 + x2) / 2}" y="${y - 8}" text-anchor="middle" font-size="12" fill="#1f2937">${escapeXml(msg.text)}</text>`)
+  })
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="font-family:Inter,sans-serif">${bg.join('')}${lines.join('')}${labels.join('')}</svg>`
+}
+
+function parseBpmnData(text: string): { lanes: string[]; elements: Array<{ id: string; name: string; type: 'task' | 'event' | 'gateway'; lane: string }>; flows: Array<{ from: string; to: string; dashed: boolean; label: string }> } | null {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean)
+  if (lines.length === 0) return null
+  const lanes: string[] = []
+  const elements: Array<{ id: string; name: string; type: 'task' | 'event' | 'gateway'; lane: string }> = []
+  const flows: Array<{ from: string; to: string; dashed: boolean; label: string }> = []
+  let lane = 'Основная дорожка'
+  const ensureLane = (name: string) => { if (!lanes.includes(name)) lanes.push(name) }
+  ensureLane(lane)
+  for (const line of lines) {
+    const laneMatch = line.match(/^Дорожка:\s*(.+)$/i)
+    if (laneMatch) { lane = laneMatch[1].trim(); ensureLane(lane); continue }
+    const taskMatch = line.match(/^Задача:\s*(.+?)(?:\s*\(.*\))?$/i)
+    if (taskMatch) { const name = taskMatch[1].trim(); elements.push({ id: `task_${elements.length}`, name, type: 'task', lane }); continue }
+    const eventMatch = line.match(/^Событие:\s*(.+?)(?:\s*\(.*\))?$/i)
+    if (eventMatch) { const name = eventMatch[1].trim(); elements.push({ id: `event_${elements.length}`, name, type: 'event', lane }); continue }
+    const gateMatch = line.match(/^Шлюз:\s*(.+?)(?:\s*\(.*\))?$/i)
+    if (gateMatch) { const name = gateMatch[1].trim(); elements.push({ id: `gate_${elements.length}`, name, type: 'gateway', lane }); continue }
+    const flowMatch = line.match(/^(.+?)\s*(->|-->|~~>)\s*(.+?)(?:\s*:\s*(.*))?$/)
+    if (flowMatch) flows.push({ from: flowMatch[1].trim(), to: flowMatch[3].trim(), dashed: flowMatch[2] !== '->', label: (flowMatch[4] ?? '').trim() })
+  }
+  return { lanes, elements, flows }
+}
+
+function renderBpmnSvg(input: string): string | null {
+  const data = parseBpmnData(input)
+  if (!data || data.elements.length === 0) return null
+  const laneHeight = 150
+  const laneGap = 44
+  const startX = 130
+  const startY = 70
+  const width = 1200
+  const laneIndex = new Map<string, number>()
+  data.lanes.forEach((name, idx) => laneIndex.set(name, idx))
+  const positioned = data.elements.map((el, idx) => {
+    const li = laneIndex.get(el.lane) ?? 0
+    const yBase = startY + li * (laneHeight + laneGap)
+    const rowIndex = data.elements.filter((item, i2) => i2 < idx && item.lane === el.lane).length
+    const x = startX + rowIndex * 220
+    const y = yBase + 45
+    return { ...el, x, y, w: el.type === 'task' ? 130 : 50, h: el.type === 'task' ? 62 : 50 }
+  })
+  const byName = new Map(positioned.map((el) => [el.name, el] as const))
+  const height = startY + data.lanes.length * (laneHeight + laneGap) + 40
+  const laneSvg = data.lanes.map((lane, idx) => {
+    const y = startY + idx * (laneHeight + laneGap)
+    return `<rect x="30" y="${y}" width="${width - 60}" height="${laneHeight}" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="2"/><text x="46" y="${y + 24}" fill="#1f2937" font-size="14" font-weight="700">${escapeXml(lane)}</text>`
+  }).join('')
+
+  const flows = data.flows.map((f) => {
+    const from = byName.get(f.from); const to = byName.get(f.to)
+    if (!from || !to) return ''
+    const x1 = from.x + from.w
+    const y1 = from.y + from.h / 2
+    const x2 = to.x
+    const y2 = to.y + to.h / 2
+    const mx = (x1 + x2) / 2
+    const label = f.label ? `<text x="${mx}" y="${Math.min(y1, y2) - 8}" text-anchor="middle" font-size="11" fill="#1f2937">${escapeXml(f.label)}</text>` : ''
+    return `<polyline points="${x1},${y1} ${mx},${y1} ${mx},${y2} ${x2 - 8},${y2}" fill="none" stroke="#2f5a82" stroke-width="2" ${f.dashed ? 'stroke-dasharray="6,4"' : ''}/><polygon points="${x2},${y2} ${x2 - 10},${y2 - 5} ${x2 - 10},${y2 + 5}" fill="#2f5a82"/>${label}`
+  }).join('')
+
+  const elements = positioned.map((el) => {
+    if (el.type === 'task') {
+      return `<rect x="${el.x}" y="${el.y}" width="${el.w}" height="${el.h}" rx="8" fill="#ffffff" stroke="#2f5a82" stroke-width="2"/><text x="${el.x + el.w / 2}" y="${el.y + el.h / 2 + 5}" text-anchor="middle" font-size="12" fill="#1f2937">${escapeXml(el.name)}</text>`
+    }
+    if (el.type === 'event') {
+      return `<circle cx="${el.x + 25}" cy="${el.y + 25}" r="24" fill="#ffffff" stroke="#2f5a82" stroke-width="2"/><text x="${el.x + 25}" y="${el.y + 66}" text-anchor="middle" font-size="11" fill="#1f2937">${escapeXml(el.name)}</text>`
+    }
+    return `<polygon points="${el.x + 25},${el.y} ${el.x + 50},${el.y + 25} ${el.x + 25},${el.y + 50} ${el.x},${el.y + 25}" fill="#ffffff" stroke="#2f5a82" stroke-width="2"/><text x="${el.x + 25}" y="${el.y + 66}" text-anchor="middle" font-size="11" fill="#1f2937">${escapeXml(el.name)}</text>`
+  }).join('')
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="font-family:Inter,sans-serif">${laneSvg}${flows}${elements}</svg>`
+}
+
+function parseWaveData(text: string): { nodes: string[]; links: Array<{ source: string; target: string; value: number }> } | null {
+  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean)
+  if (lines.length === 0) return null
+  const nodeSet = new Set<string>()
+  const links: Array<{ source: string; target: string; value: number }> = []
+  for (const line of lines) {
+    const m = line.match(/^(.+?)\s*->\s*(.+?)\s*:\s*([0-9]+(?:[.,][0-9]+)?)$/)
+    if (!m) continue
+    const source = m[1].trim()
+    const target = m[2].trim()
+    const value = Number(m[3].replace(',', '.'))
+    if (!(value > 0)) continue
+    nodeSet.add(source)
+    nodeSet.add(target)
+    links.push({ source, target, value })
+  }
+  const nodes = [...nodeSet]
+  if (nodes.length === 0 || links.length === 0) return null
+  return { nodes, links }
+}
+
+function renderWaveSvg(input: string): string | null {
+  const data = parseWaveData(input)
+  if (!data) return null
+  const layers = new Map<string, number>()
+  const incoming = new Set(data.links.map((l) => l.target))
+  const queue = data.nodes.filter((n) => !incoming.has(n))
+  if (queue.length === 0) queue.push(data.nodes[0])
+  for (const node of queue) layers.set(node, 0)
+  while (queue.length > 0) {
+    const node = queue.shift()!
+    const layer = layers.get(node) ?? 0
+    for (const edge of data.links.filter((l) => l.source === node)) {
+      const next = (layers.get(edge.target) ?? -1)
+      if (layer + 1 > next) layers.set(edge.target, layer + 1)
+      if (!queue.includes(edge.target)) queue.push(edge.target)
+    }
+  }
+  for (const node of data.nodes) if (!layers.has(node)) layers.set(node, 0)
+  const maxLayer = Math.max(...layers.values())
+  const byLayer: string[][] = Array.from({ length: maxLayer + 1 }, () => [])
+  for (const n of data.nodes) byLayer[layers.get(n) ?? 0].push(n)
+  const nodePos = new Map<string, { x: number; y: number; h: number }>()
+  const width = Math.max(900, 160 + maxLayer * 240 + 220)
+  let maxY = 0
+  const nodeWidth = 120
+  byLayer.forEach((list, layer) => {
+    let y = 70
+    list.forEach((name) => {
+      const total = data.links.filter((l) => l.source === name || l.target === name).reduce((sum, item) => sum + item.value, 0)
+      const h = Math.max(26, Math.min(230, total * 2.2))
+      const x = 70 + layer * 240
+      nodePos.set(name, { x, y, h })
+      y += h + 28
+      maxY = Math.max(maxY, y)
+    })
+  })
+  const height = Math.max(420, maxY + 40)
+  const palette = ['#3b82f6', '#16a34a', '#f97316', '#8b5cf6', '#06b6d4', '#ef4444', '#d97706']
+  const colorByNode = new Map<string, string>()
+  data.nodes.forEach((n, i) => colorByNode.set(n, palette[i % palette.length]))
+  const links = data.links.map((edge) => {
+    const s = nodePos.get(edge.source); const t = nodePos.get(edge.target)
+    if (!s || !t) return ''
+    const x1 = s.x + nodeWidth
+    const y1 = s.y + s.h / 2
+    const x2 = t.x
+    const y2 = t.y + t.h / 2
+    const cp1x = x1 + (x2 - x1) * 0.4
+    const cp2x = x2 - (x2 - x1) * 0.4
+    return `<path d="M ${x1} ${y1} C ${cp1x} ${y1}, ${cp2x} ${y2}, ${x2} ${y2}" fill="none" stroke="${colorByNode.get(edge.target) ?? '#3b82f6'}" stroke-width="${Math.max(2, edge.value * 0.8)}" opacity="0.55"/><text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="#334155">${edge.value}</text>`
+  }).join('')
+  const nodes = data.nodes.map((name) => {
+    const pos = nodePos.get(name)!
+    const color = colorByNode.get(name) ?? '#3b82f6'
+    return `<rect x="${pos.x}" y="${pos.y}" width="${nodeWidth}" height="${pos.h}" rx="4" fill="${color}"/><text x="${pos.x + nodeWidth / 2}" y="${pos.y + pos.h / 2 + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="#ffffff">${escapeXml(name)}</text>`
+  }).join('')
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="font-family:Inter,sans-serif">${links}${nodes}</svg>`
 }
 
 function escapeHtml(text: string): string {
@@ -873,6 +1208,22 @@ export default function DiagramBuilder() {
     const timer = window.setTimeout(() => {
       const render = async () => {
         try {
+          const customSvg =
+            kind === 'flowchart'
+              ? renderFlowchartSvg(source)
+              : kind === 'sequence'
+                ? renderSequenceSvg(source)
+                : kind === 'bpmn'
+                  ? renderBpmnSvg(source)
+                  : kind === 'wave'
+                    ? renderWaveSvg(source)
+                    : null
+          if (customSvg) {
+            setSvg(customSvg)
+            setBoardData(null)
+            setError(null)
+            return
+          }
           if (kind === 'board') {
             setBoardData(parseBoardData(source))
             setError(null)
