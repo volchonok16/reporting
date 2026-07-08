@@ -1102,6 +1102,8 @@ body {
 }
 
 .diagram-source {
+  position: relative;
+  z-index: 2;
   width: 100%;
   flex: 1;
   min-height: 0;
@@ -1110,9 +1112,49 @@ body {
   padding: 8px 10px;
   border: 1px solid var(--input-border);
   border-radius: 10px;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--text-primary);
+  font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.diagram-source:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-blue) 18%, transparent);
+}
+
+.diagram-textarea-wrapper {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.diagram-highlight-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
   background: var(--surface-1);
   color: var(--text-primary);
   font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  pointer-events: none;
+}
+
+.diagram-hl-keyword {
+  color: #db2777;
+  font-weight: 600;
+}
+
+.diagram-hl-arrow {
+  color: #e11d48;
+  font-weight: 600;
 }
 
 .diagram-svg {
@@ -1137,6 +1179,49 @@ body {
   overflow: hidden;
   background: var(--surface-1);
   cursor: grab;
+}
+
+.diagram-preview-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.diagram-theme-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.diagram-theme-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.diagram-theme-buttons {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.diagram-theme-btn {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-muted);
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.diagram-theme-btn.is-active {
+  background: var(--accent-blue);
+  color: var(--text-inverse);
+  border-color: var(--accent-blue);
 }
 
 .diagram-canvas-dragging {

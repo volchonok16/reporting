@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import mermaid from 'mermaid'
 
 type DiagramKind = 'mindmap' | 'flowchart' | 'sequence' | 'bpmn' | 'wave' | 'board'
+type DiagramTheme = 'default' | 'forest' | 'dark' | 'neutral' | 'neon' | 'ocean' | 'pastel'
 
 type KindPreset = {
   id: DiagramKind
@@ -23,6 +24,15 @@ const CANVAS_ZOOM_STEP = 1.4
 const CANVAS_PINCH_SENSITIVITY = 0.0046
 const CANVAS_FIT_MARGIN = 28
 const CANVAS_BASE_SCALE = 1.55
+const THEME_OPTIONS: Array<{ id: DiagramTheme; label: string }> = [
+  { id: 'default', label: 'Default' },
+  { id: 'forest', label: 'Forest' },
+  { id: 'dark', label: 'Dark' },
+  { id: 'neutral', label: 'Neutral' },
+  { id: 'neon', label: 'Neon' },
+  { id: 'ocean', label: 'Ocean' },
+  { id: 'pastel', label: 'Pastel' },
+]
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
@@ -218,6 +228,47 @@ function readDiagramStorage(): DiagramStorage {
 
 function writeDiagramStorage(storage: DiagramStorage): void {
   localStorage.setItem(DIAGRAM_STORAGE_KEY, JSON.stringify(storage))
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function highlightSyntax(text: string, kind: DiagramKind): string {
+  let escaped = escapeHtml(text)
+  const wrapKeyword = (pattern: RegExp) => {
+    escaped = escaped.replace(pattern, '<span class="diagram-hl-keyword">$1</span>')
+  }
+  const wrapArrow = (pattern: RegExp) => {
+    escaped = escaped.replace(pattern, '<span class="diagram-hl-arrow">$1</span>')
+  }
+
+  if (kind === 'sequence') {
+    wrapKeyword(/\b(Участник|участник|как|автонумерация|Начало комментария|Конец комментария|Начало ветки|иначе|конец ветки|Начало цикла|конец цикла|Начало параллельных действий|и|конец параллельных действий|завершить)\b/g)
+    wrapArrow(/(-&gt;|--&gt;|:)/g)
+  } else if (kind === 'bpmn') {
+    wrapKeyword(/\b(Процесс:|Дорожка:|Событие:|Задача:|Шлюз:|тип:|доп\.тип:|начало|промежуточное|завершение|исключающий|параллельный|сервисная|ручная|пользовательская|бизнес-правило|таймер|сообщение)\b/g)
+    wrapArrow(/(-&gt;|--&gt;|~~&gt;)/g)
+  } else if (kind === 'board') {
+    wrapKeyword(/\b(колонка|задача:|тег:|дата:|до:|срочно|важно)\b/g)
+    wrapArrow(/(@[^\s]+)/g)
+  } else if (kind === 'wave') {
+    wrapArrow(/(-&gt;|:)/g)
+  }
+  return escaped
+}
+
+function mermaidThemeDirective(theme: DiagramTheme): string {
+  if (theme === 'default' || theme === 'forest' || theme === 'dark' || theme === 'neutral') {
+    return `%%{init: {"theme":"${theme}"}}%%`
+  }
+  if (theme === 'neon') {
+    return '%%{init: {"theme":"base","themeVariables":{"primaryColor":"#00F6FF","primaryTextColor":"#0b1020","primaryBorderColor":"#ff00ff","lineColor":"#8b5cf6","fontFamily":"Inter"}}}%%'
+  }
+  if (theme === 'ocean') {
+    return '%%{init: {"theme":"base","themeVariables":{"primaryColor":"#bfdbfe","primaryTextColor":"#0f172a","primaryBorderColor":"#0369a1","lineColor":"#0ea5e9","fontFamily":"Inter"}}}%%'
+  }
+  return '%%{init: {"theme":"base","themeVariables":{"primaryColor":"#fce7f3","primaryTextColor":"#1f2937","primaryBorderColor":"#fb7185","lineColor":"#f59e0b","fontFamily":"Inter"}}}%%'
 }
 
 function normalizeMindmapSource(input: string): string {
@@ -818,12 +869,23 @@ export default function DiagramBuilder() {
   const stored = useMemo(() => readDiagramStorage(), [])
   const storageRef = useRef<DiagramStorage>(stored)
   const renderJobRef = useRef(0)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const highlightRef = useRef<HTMLDivElement>(null)
   const [kind, setKind] = useState<DiagramKind>('mindmap')
+  const [theme, setTheme] = useState<DiagramTheme>('dark')
   const [source, setSource] = useState(stored.mindmap ?? PRESETS[0].starter)
   const [svg, setSvg] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const activePreset = useMemo(() => PRESETS.find((preset) => preset.id === kind) ?? PRESETS[0], [kind])
+
+  const highlightedHtml = useMemo(() => highlightSyntax(source, kind), [source, kind])
+
+  const syncHighlightScroll = () => {
+    if (!textareaRef.current || !highlightRef.current) return
+    highlightRef.current.scrollTop = textareaRef.current.scrollTop
+    highlightRef.current.scrollLeft = textareaRef.current.scrollLeft
+  }
 
   useEffect(() => {
     const currentJob = renderJobRef.current + 1
@@ -846,9 +908,10 @@ export default function DiagramBuilder() {
                       : kind === 'wave'
                         ? normalizeWaveSource(source)
                 : source
+          const themedSource = `${mermaidThemeDirective(theme)}\n${sourceToRender}`
           renderCounter += 1
           const elementId = `diagram-builder-${renderCounter}`
-          const { svg: nextSvg } = await mermaid.render(elementId, sourceToRender)
+          const { svg: nextSvg } = await mermaid.render(elementId, themedSource)
           if (renderJobRef.current !== currentJob) return
           setSvg(nextSvg)
           setError(null)
@@ -864,7 +927,7 @@ export default function DiagramBuilder() {
     return () => {
       window.clearTimeout(timer)
     }
-  }, [kind, source])
+  }, [kind, source, theme])
 
   useEffect(() => {
     const nextStorage = { ...storageRef.current, [kind]: source }
@@ -906,15 +969,37 @@ export default function DiagramBuilder() {
       <section className="table-section diagram-workspace">
         <div className="diagram-editor">
           <h2>{activePreset.title}</h2>
+          <div className="diagram-textarea-wrapper">
+            <div ref={highlightRef} className="diagram-highlight-layer" dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
           <textarea
+            ref={textareaRef}
             className="diagram-source"
             value={source}
             onChange={(event) => setSource(event.target.value)}
+            onScroll={syncHighlightScroll}
             spellCheck={false}
           />
+          </div>
         </div>
         <div className="diagram-preview">
-          <h2>Предпросмотр</h2>
+          <div className="diagram-preview-header">
+            <h2>Предпросмотр</h2>
+            <div className="diagram-theme-row">
+              <span className="diagram-theme-label">Тема</span>
+              <div className="diagram-theme-buttons">
+                {THEME_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={`diagram-theme-btn${theme === option.id ? ' is-active' : ''}`}
+                    onClick={() => setTheme(option.id)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
           {error ? (
             <p className="banner-error">Не удалось построить диаграмму. Проверьте формат текста для выбранного типа.</p>
           ) : (
