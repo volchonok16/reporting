@@ -215,6 +215,16 @@ function DiagramPreviewCanvas({ content, contentKey }: DiagramPreviewCanvasProps
 const DIAGRAM_STORAGE_KEY = 'reporting.diagramBuilder.v1'
 
 type DiagramStorage = Partial<Record<DiagramKind, string>>
+type BoardTask = {
+  name: string
+  column: string
+  assignee: string
+  priority: 'обычная' | 'срочно' | 'важно'
+  tags: Array<{ text: string; color: string | null }>
+  dueDate: string
+  description: string
+}
+type BoardData = { columns: Array<{ name: string }>; tasks: BoardTask[] }
 
 function readDiagramStorage(): DiagramStorage {
   try {
@@ -228,6 +238,91 @@ function readDiagramStorage(): DiagramStorage {
 
 function writeDiagramStorage(storage: DiagramStorage): void {
   localStorage.setItem(DIAGRAM_STORAGE_KEY, JSON.stringify(storage))
+}
+
+function parseBoardData(text: string): BoardData | null {
+  const lines = text.split('\n').filter((line) => line.trim() !== '')
+  if (lines.length === 0) return null
+
+  const colorNames: Record<string, string> = {
+    красный: '#ef4444', оранжевый: '#f97316', жёлтый: '#eab308', зеленый: '#22c55e', зелёный: '#22c55e',
+    голубой: '#06b6d4', синий: '#3b82f6', фиолетовый: '#8b5cf6', розовый: '#ec4899', серый: '#6b7280',
+    чёрный: '#1f2937', белый: '#ffffff', коричневый: '#92400e', бирюзовый: '#14b8a6', лайм: '#84cc16', индиго: '#6366f1',
+  }
+
+  const columns: Array<{ name: string }> = []
+  const tasks: BoardTask[] = []
+  let currentColumn: string | null = null
+  let pendingTask: BoardTask | null = null
+  let descriptionLines: string[] = []
+
+  const savePendingTask = () => {
+    if (!pendingTask) return
+    pendingTask.description = descriptionLines.join('\n')
+    tasks.push(pendingTask)
+    pendingTask = null
+    descriptionLines = []
+  }
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    const leadingSpaces = line.match(/^[ ]*/)?.[0].length ?? 0
+    const isDescriptionLine = leadingSpaces >= 4 || /^Описание:/i.test(trimmed)
+    if (isDescriptionLine && pendingTask) {
+      const textLine = trimmed.replace(/^Описание:\s*/i, '')
+      descriptionLines.push(textLine)
+      continue
+    }
+
+    const colMatch = trimmed.match(/^колонка\s+(.+)$/i)
+    if (colMatch) {
+      savePendingTask()
+      currentColumn = colMatch[1].trim()
+      columns.push({ name: currentColumn })
+      continue
+    }
+
+    const taskMatch = trimmed.match(/^задача:\s*(.+)$/i)
+    if (taskMatch && currentColumn) {
+      savePendingTask()
+      const details = taskMatch[1].trim()
+      let name = details
+      let assignee = ''
+      let priority: BoardTask['priority'] = 'обычная'
+      const tags: BoardTask['tags'] = []
+      let dueDate = ''
+
+      const assigneeMatch = details.match(/@(\S+)/)
+      if (assigneeMatch) {
+        assignee = assigneeMatch[1]
+        name = name.replace(assigneeMatch[0], '').trim()
+      }
+      if (details.includes('срочно') || details.includes('важно')) {
+        priority = details.includes('срочно') ? 'срочно' : 'важно'
+        name = name.replace(/срочно|важно/gi, '').trim()
+      }
+      const tagRegex = /тег:\s*([^(\s]+)(?:\(([^)]+)\))?/gi
+      let tagMatch: RegExpExecArray | null
+      while ((tagMatch = tagRegex.exec(details)) !== null) {
+        const label = tagMatch[1]
+        let color: string | null = null
+        if (tagMatch[2]) {
+          const input = tagMatch[2].trim().toLowerCase()
+          color = /^#[0-9A-Fa-f]{6}$/.test(input) ? input : (colorNames[input] ?? null)
+        }
+        tags.push({ text: label, color })
+      }
+      name = name.replace(/тег:\s*[^(\s]+(?:\([^)]+\))?/gi, '').trim()
+      const dateMatch = details.match(/(?:дата|до):\s*(\d{4}-\d{2}-\d{2})/i)
+      if (dateMatch) {
+        dueDate = dateMatch[1]
+        name = name.replace(dateMatch[0], '').trim()
+      }
+      pendingTask = { name: name.replace(/\s{2,}/g, ' ').trim(), column: currentColumn, assignee, priority, tags, dueDate, description: '' }
+    }
+  }
+  savePendingTask()
+  return { columns, tasks }
 }
 
 function escapeHtml(text: string): string {
@@ -592,123 +687,9 @@ function normalizeBpmnSource(input: string): string {
   return out.join('\n')
 }
 
-function normalizeBoardSource(input: string): string {
-  const trimmed = input.trim()
-  if (!trimmed) return 'flowchart LR\n  todo["Сделать задачу"]'
-  if (/^flowchart\b/i.test(trimmed) || /^graph\b/i.test(trimmed)) return input
-
-  const lines = input
-    .replace(/\t/g, '    ')
-    .split('\n')
-    .map((line) => line.trimEnd())
-    .filter((line) => line.trim().length > 0)
-
-  const used = new Set<string>()
-  const out: string[] = ['flowchart LR']
-  const laneNodes = new Map<string, string[]>()
-  const laneOrder: string[] = []
-  const laneIdByTitle = new Map<string, string>()
-  const laneFirstNode = new Map<string, string>()
-  const laneLastNode = new Map<string, string>()
-  let currentLane = 'Сделать'
-  let currentTaskId: string | null = null
-
-  const ensureLane = (title: string) => {
-    if (!laneNodes.has(title)) {
-      laneNodes.set(title, [])
-      laneOrder.push(title)
-      laneIdByTitle.set(title, sanitizeNodeId(`lane_${title}`, used))
-    }
-  }
-
-  ensureLane(currentLane)
-
-  const pushTask = (rawTaskLine: string) => {
-    const payload = rawTaskLine.replace(/^задача:\s*/i, '').trim()
-    const details: string[] = []
-
-    const date = payload.match(/\b(?:дата|до):\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i)?.[1]
-    if (date) details.push(`Дата: ${date}`)
-
-    const owner = payload.match(/@([^\s]+)/)?.[1]
-    if (owner) details.push(`Ответственный: ${owner}`)
-
-    const urgency = payload.match(/\b(срочно|важно)\b/i)?.[1]
-    if (urgency) details.push(`Приоритет: ${urgency}`)
-
-    const tags = [...payload.matchAll(/тег:([^\s(]+)(?:\([^)]+\))?/gi)].map((m) => m[1])
-    if (tags.length > 0) details.push(`Теги: ${tags.join(', ')}`)
-
-    const cleanTitle = payload
-      .replace(/@[^\s]+/g, '')
-      .replace(/\b(?:дата|до):\s*[0-9]{4}-[0-9]{2}-[0-9]{2}/gi, '')
-      .replace(/\b(?:срочно|важно)\b/gi, '')
-      .replace(/тег:[^\s(]+(?:\([^)]+\))?/gi, '')
-      .replace(/\s{2,}/g, ' ')
-      .trim()
-
-    const labelParts = [cleanTitle || 'Задача', ...details]
-    const label = labelParts.join('<br/>').replace(/"/g, '\\"')
-    const id = sanitizeNodeId(`task_${cleanTitle || 'task'}`, used)
-    const node = `${id}["${label}"]`
-    laneNodes.get(currentLane)!.push(node)
-
-    if (!laneFirstNode.has(currentLane)) laneFirstNode.set(currentLane, id)
-    const prev = laneLastNode.get(currentLane)
-    if (prev) out.push(`  ${prev} --> ${id}`)
-    laneLastNode.set(currentLane, id)
-
-    currentTaskId = id
-  }
-
-  for (const raw of lines) {
-    const line = raw.trim()
-    const columnMatch = line.match(/^колонка\s+(.+)$/i)
-    if (columnMatch) {
-      currentLane = columnMatch[1].trim()
-      ensureLane(currentLane)
-      currentTaskId = null
-      continue
-    }
-    if (/^задача:/i.test(line)) {
-      pushTask(line)
-      continue
-    }
-    if ((raw.startsWith(' ') || raw.startsWith('    ')) && currentTaskId) {
-      const note = line.replace(/"/g, '\\"')
-      const noteId = sanitizeNodeId(`note_${note}`, used)
-      out.push(`  ${noteId}["• ${note}"]`)
-      out.push(`  ${currentTaskId} -.-> ${noteId}`)
-      continue
-    }
-  }
-
-  for (const lane of laneOrder) {
-    out.push(`  subgraph ${laneIdByTitle.get(lane)}["${lane}"]`)
-    const nodes = laneNodes.get(lane) ?? []
-    if (nodes.length === 0) {
-      const ghost = sanitizeNodeId(`empty_${lane}`, used)
-      out.push(`    ${ghost}[ ]`)
-    } else {
-      for (const node of nodes) out.push(`    ${node}`)
-    }
-    out.push('  end')
-  }
-
-  for (let i = 0; i < laneOrder.length - 1; i += 1) {
-    const from = laneOrder[i]
-    const to = laneOrder[i + 1]
-    const fromId = laneLastNode.get(from)
-    const toId = laneFirstNode.get(to)
-    if (fromId && toId) out.push(`  ${fromId} ==> ${toId}`)
-  }
-
-  return out.join('\n')
-}
-
 function normalizeWaveSource(input: string): string {
   const trimmed = input.trim()
-  if (!trimmed) return 'flowchart LR\n  A["Источник"] -->|100| B["Цель"]'
+  if (!trimmed) return 'sankey-beta\nИсточник,Цель,100'
   if (/^flowchart\b/i.test(trimmed) || /^graph\b/i.test(trimmed) || /^sankey-beta\b/i.test(trimmed)) {
     return input
   }
@@ -744,15 +725,12 @@ function normalizeWaveSource(input: string): string {
   }
 
   if (edges.length === 0) {
-    return 'flowchart LR\n  A["Источник"] -->|100| B["Цель"]'
+    return 'sankey-beta\nИсточник,Цель,100'
   }
 
-  const out: string[] = ['flowchart LR']
-  for (const [label, id] of idByLabel.entries()) {
-    out.push(`  ${id}["${label.replace(/"/g, '\\"')}"]`)
-  }
+  const out: string[] = ['sankey-beta']
   for (const edge of edges) {
-    out.push(`  ${idByLabel.get(edge.from)} -->|${edge.value}| ${idByLabel.get(edge.to)}`)
+    out.push(`${edge.from.replace(/,/g, ' ')} , ${edge.to.replace(/,/g, ' ')} , ${edge.value}`)
   }
   return out.join('\n')
 }
@@ -876,6 +854,7 @@ export default function DiagramBuilder() {
   const [source, setSource] = useState(stored.mindmap ?? PRESETS[0].starter)
   const [svg, setSvg] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [boardData, setBoardData] = useState<BoardData | null>(null)
 
   const activePreset = useMemo(() => PRESETS.find((preset) => preset.id === kind) ?? PRESETS[0], [kind])
 
@@ -894,6 +873,11 @@ export default function DiagramBuilder() {
     const timer = window.setTimeout(() => {
       const render = async () => {
         try {
+          if (kind === 'board') {
+            setBoardData(parseBoardData(source))
+            setError(null)
+            return
+          }
           const sourceToRender =
             kind === 'mindmap'
               ? normalizeMindmapSource(source)
@@ -903,9 +887,7 @@ export default function DiagramBuilder() {
                   ? normalizeSequenceSource(source)
                   : kind === 'bpmn'
                     ? normalizeBpmnSource(source)
-                    : kind === 'board'
-                      ? normalizeBoardSource(source)
-                      : kind === 'wave'
+                    : kind === 'wave'
                         ? normalizeWaveSource(source)
                 : source
           const themedSource = `${mermaidThemeDirective(theme)}\n${sourceToRender}`
@@ -914,10 +896,12 @@ export default function DiagramBuilder() {
           const { svg: nextSvg } = await mermaid.render(elementId, themedSource)
           if (renderJobRef.current !== currentJob) return
           setSvg(nextSvg)
+          setBoardData(null)
           setError(null)
         } catch (err) {
           if (renderJobRef.current !== currentJob) return
           setSvg('')
+          setBoardData(null)
           setError(err instanceof Error ? err.message : 'Ошибка построения диаграммы')
         }
       }
@@ -1002,6 +986,46 @@ export default function DiagramBuilder() {
           </div>
           {error ? (
             <p className="banner-error">Не удалось построить диаграмму. Проверьте формат текста для выбранного типа.</p>
+          ) : kind === 'board' && boardData ? (
+            <DiagramPreviewCanvas
+              contentKey={`${kind}:${source.length}`}
+              content={
+                <div className="board-preview">
+                  {boardData.columns.map((column, idx) => {
+                    const columnTasks = boardData.tasks.filter((task) => task.column === column.name)
+                    return (
+                      <section key={`${column.name}-${idx}`} className="board-column">
+                        <header className="board-column-header">{column.name}</header>
+                        <div className="board-column-body">
+                          {columnTasks.map((task, taskIdx) => (
+                            <article key={`${task.name}-${taskIdx}`} className="board-card">
+                              <div className="board-card-title-row">
+                                <h4 className="board-card-title">{task.name}</h4>
+                                {task.priority !== 'обычная' ? <span className={`board-priority board-priority-${task.priority}`}>{task.priority}</span> : null}
+                              </div>
+                              {task.tags.length > 0 ? (
+                                <div className="board-tags">
+                                  {task.tags.map((tag, tagIdx) => (
+                                    <span key={`${tag.text}-${tagIdx}`} className="board-tag" style={{ background: tag.color ?? '#3b82f6' }}>
+                                      {tag.text}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
+                              {task.description ? <p className="board-description">{task.description}</p> : null}
+                              <div className="board-footer">
+                                <span>{task.dueDate ? `📅 ${task.dueDate}` : ''}</span>
+                                <span>{task.assignee ? `👤 ${task.assignee}` : ''}</span>
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      </section>
+                    )
+                  })}
+                </div>
+              }
+            />
           ) : (
             <DiagramPreviewCanvas
               contentKey={`${kind}:${svg.length}`}
