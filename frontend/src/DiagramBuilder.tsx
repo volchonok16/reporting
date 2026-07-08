@@ -34,6 +34,74 @@ const THEME_OPTIONS: Array<{ id: DiagramTheme; label: string }> = [
   { id: 'pastel', label: 'Pastel' },
 ]
 
+// ТЕМА/ПАЛИТРА 1-в-1 по mindmap-generator/js/themes.js
+const THEMES: Record<DiagramTheme, string[]> = {
+  default: [
+    '#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#34495e',
+    '#e91e63', '#00bcd4', '#8bc34a', '#ff9800', '#673ab7', '#009688', '#ff5722', '#607d8b',
+    '#cddc39', '#03a9f4', '#ffc107', '#795548', '#ad1457', '#1565c0', '#2e7d32', '#f57f17',
+    '#6a1b9a', '#00695c', '#bf360c', '#263238', '#880e4f', '#00838f', '#558b2f', '#ef6c00',
+    '#4a148c', '#004d40', '#d84315', '#37474f', '#827717', '#0277bd', '#f9a825', '#4e342e',
+  ],
+  forest: [
+    '#27ae60', '#2ecc71', '#1e8449', '#145a32', '#0b5345', '#1d8348', '#239b56', '#52be80',
+    '#6ab04c', '#badc58', '#7bed9f', '#2ed573', '#ffa502', '#eccc68', '#a4b0be', '#747d8c',
+    '#2f3542', '#57606f', '#c8d6e5', '#8395a7', '#0b4f30', '#196f3d', '#28b463', '#58d68d',
+    '#82e0aa', '#a9dfbf', '#117a65', '#17a589', '#148f77', '#1abc9c', '#0e6655', '#0b5345',
+    '#f4d03f', '#f1c40f', '#d4ac0d', '#b7950b', '#9a7d0a', '#7d6608', '#f39c12', '#e67e22',
+  ],
+  dark: [
+    '#c0392b', '#8e44ad', '#2980b9', '#16a085', '#f39c12', '#d35400', '#7f8c8d', '#2c3e50',
+    '#e74c3c', '#9b59b6', '#3498db', '#1abc9c', '#e67e22', '#95a5a6', '#34495e', '#f1c40f',
+    '#e91e63', '#00bcd4', '#ff5722', '#607d8b', '#b71c1c', '#6a1b9a', '#1976d2', '#00695c',
+    '#ffa000', '#e65100', '#546e7a', '#1a237e', '#c62828', '#4a148c', '#0d47a1', '#004d40',
+    '#ff8f00', '#bf360c', '#455a64', '#0d47a1', '#880e4f', '#006064', '#d84315', '#37474f',
+  ],
+  neutral: [
+    '#e67e22', '#2c3e50', '#e74c3c', '#8e44ad', '#27ae60', '#f1c40f', '#95a5a6', '#1abc9c',
+    '#e91e63', '#00bcd4', '#8bc34a', '#ff9800', '#673ab7', '#009688', '#ff5722', '#607d8b',
+    '#cddc39', '#03a9f4', '#ffc107', '#795548', '#ad1457', '#1565c0', '#2e7d32', '#f57f17',
+    '#6a1b9a', '#00695c', '#bf360c', '#263238', '#880e4f', '#00838f', '#558b2f', '#ef6c00',
+    '#4a148c', '#004d40', '#d84315', '#37474f', '#827717', '#0277bd', '#f9a825', '#4e342e',
+  ],
+  neon: [
+    '#ff0040', '#00ffff', '#39ff14', '#ff6600', '#ff00ff', '#ffff00', '#00ff00', '#ff0090',
+    '#ff073a', '#0ff0fc', '#adff2f', '#ffa500', '#ff1493', '#ffd700', '#7fff00', '#ff4500',
+    '#00ff7f', '#ff69b4', '#1e90ff', '#ff6347', '#ff0055', '#00ffff', '#5cff00', '#ff8800',
+    '#ff00aa', '#eeff00', '#00cc00', '#ff0088', '#ff0022', '#00dddd', '#88ff00', '#ff5500',
+    '#ff0066', '#ffcc00', '#66ff00', '#ff3300', '#ff00cc', '#00ffcc', '#ccff00', '#ff1100',
+  ],
+  ocean: [
+    '#006994', '#0892a5', '#0e7c7b', '#17bebb', '#3cb371', '#2e8b57', '#4682b4', '#5f9ea0',
+    '#1b4f72', '#1a5276', '#154360', '#145a32', '#0b5345', '#1d8348', '#239b56', '#52be80',
+    '#6ab04c', '#badc58', '#7bed9f', '#2ed573', '#0a3d5c', '#0c4a6e', '#0a5c7a', '#0e6e6e',
+    '#148f77', '#1abc9c', '#0f5b3e', '#1d6b3f', '#2e8b57', '#3cb371', '#2c6e49', '#3d8b5f',
+    '#4a90d9', '#5a9fd4', '#4a8ac0', '#3570b0', '#2563eb', '#1d4ed8', '#1e40af', '#1e3a8a',
+  ],
+  pastel: [
+    '#ffb3ba', '#ffdfba', '#ffffba', '#baffc9', '#bae1ff', '#d0baff', '#ffb3de', '#b3e5fc',
+    '#ffccbc', '#fff9c4', '#c8e6c9', '#bbdefb', '#e1bee7', '#f8bbd0', '#ffe0b2', '#d7ccc8',
+    '#cfd8dc', '#b0bec5', '#a5d6a7', '#ef9a9a', '#ffab91', '#ffe082', '#e6ee9c', '#c5e1a5',
+    '#80cbc4', '#80deea', '#90caf9', '#b39ddb', '#f48fb1', '#ce93d8', '#ffcc80', '#ffab76',
+    '#ff8a65', '#ff7043', '#bcaaa4', '#a1887f', '#8d6e63', '#795548', '#6d4c41', '#5d4037',
+  ],
+}
+
+function getThemePalette(theme: DiagramTheme): string[] {
+  return THEMES[theme] ?? THEMES.neutral
+}
+
+function getContrastColor(hex: string): string {
+  const clean = hex.replace('#', '').trim()
+  if (clean.length !== 6) return '#ffffff'
+  const r = parseInt(clean.slice(0, 2), 16) / 255
+  const g = parseInt(clean.slice(2, 4), 16) / 255
+  const b = parseInt(clean.slice(4, 6), 16) / 255
+  // Relative luminance per WCAG
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+  return lum > 0.6 ? '#0b1020' : '#ffffff'
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
@@ -225,7 +293,7 @@ type BoardTask = {
   description: string
 }
 type BoardData = { columns: Array<{ name: string }>; tasks: BoardTask[] }
-type TreeNode = { text: string; level: number; children: TreeNode[]; x: number; y: number; width: number; height: number }
+type TreeNode = { text: string; level: number; children: TreeNode[]; x: number; y: number; width: number; height: number; color?: string }
 
 function readDiagramStorage(): DiagramStorage {
   try {
@@ -388,10 +456,16 @@ function collectTreeBounds(node: TreeNode, bounds: { minX: number; minY: number;
   for (const child of node.children) collectTreeBounds(child, bounds)
 }
 
-function renderFlowchartSvg(input: string): string | null {
+function renderFlowchartSvg(input: string, theme: DiagramTheme): string | null {
   const root = parseIndentedTree(input)
   if (!root) return null
   layoutTreeHorizontal(root, 60, 60, 210, 20)
+  const palette = getThemePalette(theme)
+  const assignColors = (node: TreeNode) => {
+    node.color = palette[node.level % palette.length]
+    node.children.forEach(assignColors)
+  }
+  assignColors(root)
   const bounds = { minX: Number.POSITIVE_INFINITY, minY: Number.POSITIVE_INFINITY, maxX: Number.NEGATIVE_INFINITY, maxY: Number.NEGATIVE_INFINITY }
   collectTreeBounds(root, bounds)
   const width = Math.max(700, bounds.maxX - bounds.minX + 120)
@@ -412,12 +486,14 @@ function renderFlowchartSvg(input: string): string | null {
       const x2 = cx
       const y2 = cy + child.height / 2
       const mx = (x1 + x2) / 2
-      lines.push(`<polyline points="${x1},${y1} ${mx},${y1} ${mx},${y2} ${x2},${y2}" fill="none" stroke="#5f7ea0" stroke-width="2.5"/>`)
+      const stroke = node.color ?? '#5f7ea0'
+      const strokeWidth = Math.max(3.5, 18 - child.level * 4.5).toFixed(1)
+      lines.push(`<polyline points="${x1},${y1} ${mx},${y1} ${mx},${y2} ${x2},${y2}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}"/>`)
       walk(child)
     }
-    const fill = node.level === 0 ? '#27465f' : '#3f6488'
+    const fill = node.color ?? '#3f6488'
     nodes.push(`<rect x="${x}" y="${y}" width="${node.width}" height="${node.height}" rx="8" fill="${fill}" stroke="${fill}"/>`)
-    nodes.push(`<text x="${x + node.width / 2}" y="${y + node.height / 2 + 5}" text-anchor="middle" font-size="${node.level === 0 ? 14 : 13}" font-weight="600" fill="#ffffff">${escapeXml(node.text)}</text>`)
+    nodes.push(`<text x="${x + node.width / 2}" y="${y + node.height / 2 + 5}" text-anchor="middle" font-size="${node.level === 0 ? 14 : 13}" font-weight="600" fill="${getContrastColor(fill)}">${escapeXml(node.text)}</text>`)
   }
   walk(root)
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="font-family:Inter,sans-serif">${lines.join('')}${nodes.join('')}</svg>`
@@ -460,9 +536,36 @@ function parseSequenceData(text: string): { participants: string[]; messages: Ar
   return { participants, messages, blocks }
 }
 
-function renderSequenceSvg(input: string): string | null {
+function renderSequenceSvg(input: string, theme: DiagramTheme): string | null {
   const data = parseSequenceData(input)
   if (!data || data.participants.length === 0) return null
+  const palette = getThemePalette(theme)
+  const isDark = theme === 'dark'
+  const primaryTextColor = isDark ? '#e0e0e0' : '#1f2937'
+  const participantTextColor = isDark ? '#ffffff' : '#000000'
+  const colorByParticipant = new Map<string, string>()
+  data.participants.forEach((p, i) => colorByParticipant.set(p, palette[i % palette.length]))
+
+  const groupColors: Record<string, { stroke: string; dasharray: string; badgeFill: string; badgeText: string }> = {
+    'ветка': {
+      stroke: isDark ? '#9ca3af' : '#6b7280',
+      dasharray: '6,3',
+      badgeFill: isDark ? '#374151' : '#f3f4f6',
+      badgeText: isDark ? '#e5e7eb' : '#1f2937',
+    },
+    'цикл': {
+      stroke: isDark ? '#60a5fa' : '#2563eb',
+      dasharray: 'none',
+      badgeFill: isDark ? '#1e3a5f' : '#dbeafe',
+      badgeText: isDark ? '#bfdbfe' : '#1e3a8a',
+    },
+    'параллельные действия': {
+      stroke: isDark ? '#f59e0b' : '#d97706',
+      dasharray: '8,4,2,4',
+      badgeFill: isDark ? '#78350f' : '#fef3c7',
+      badgeText: isDark ? '#fde68a' : '#92400e',
+    },
+  }
   const startX = 120
   const gapX = 200
   const topY = 60
@@ -479,17 +582,19 @@ function renderSequenceSvg(input: string): string | null {
   for (const block of data.blocks) {
     const y = msgStartY + block.start * msgGap - 24
     const h = (block.end - block.start + 1) * msgGap + 38
-    const pad = block.kind === 'loop' ? '#dbeafe' : block.kind === 'par' ? '#fef3c7' : '#f3f4f6'
-    const stroke = block.kind === 'loop' ? '#2563eb' : block.kind === 'par' ? '#d97706' : '#6b7280'
-    bg.push(`<rect x="64" y="${y}" width="${width - 128}" height="${h}" rx="10" fill="none" stroke="${stroke}" stroke-width="2" ${block.kind === 'alt' ? 'stroke-dasharray="6,4"' : ''}/>`)
-    bg.push(`<rect x="80" y="${y + 8}" width="${Math.max(70, block.label.length * 8 + 20)}" height="20" rx="4" fill="${pad}" stroke="${stroke}" stroke-width="1.2"/>`)
-    bg.push(`<text x="90" y="${y + 22}" fill="${stroke}" font-size="11" font-weight="700">${escapeXml(block.label || block.kind)}</text>`)
+    const groupKey = block.kind === 'loop' ? 'цикл' : block.kind === 'par' ? 'параллельные действия' : 'ветка'
+    const style = groupColors[groupKey]
+    const dashAttr = style.dasharray !== 'none' ? `stroke-dasharray="${style.dasharray}"` : ''
+    bg.push(`<rect x="64" y="${y}" width="${width - 128}" height="${h}" rx="10" fill="none" stroke="${style.stroke}" stroke-width="2" ${dashAttr}/>`)
+    bg.push(`<rect x="80" y="${y + 8}" width="${Math.max(70, block.label.length * 8 + 20)}" height="20" rx="4" fill="${style.badgeFill}" stroke="${style.stroke}" stroke-width="1.2"/>`)
+    bg.push(`<text x="90" y="${y + 22}" fill="${style.badgeText}" font-size="11" font-weight="700">${escapeXml(block.label || block.kind)}</text>`)
   }
 
   for (const p of data.participants) {
     const x = xByName.get(p) ?? 0
-    lines.push(`<line x1="${x}" y1="${topY}" x2="${x}" y2="${height - 40}" stroke="#51779b" stroke-width="2"/>`)
-    labels.push(`<text x="${x}" y="${topY - 12}" text-anchor="middle" font-size="13" font-weight="700" fill="#1f2937">${escapeXml(p)}</text>`)
+    const pc = colorByParticipant.get(p) ?? palette[0]
+    lines.push(`<line x1="${x}" y1="${topY}" x2="${x}" y2="${height - 40}" stroke="${pc}" stroke-width="2"/>`)
+    labels.push(`<text x="${x}" y="${topY - 12}" text-anchor="middle" font-size="13" font-weight="700" fill="${participantTextColor}">${escapeXml(p)}</text>`)
   }
 
   data.messages.forEach((msg, idx) => {
@@ -498,9 +603,11 @@ function renderSequenceSvg(input: string): string | null {
     const x2 = xByName.get(msg.to) ?? startX
     const right = x2 >= x1
     const toX = x2 + (right ? -10 : 10)
-    lines.push(`<line x1="${x1}" y1="${y}" x2="${toX}" y2="${y}" stroke="#2f5a82" stroke-width="2" ${msg.dashed ? 'stroke-dasharray="6,4"' : ''}/>`)
-    lines.push(`<polygon points="${x2},${y} ${x2 + (right ? -10 : 10)},${y - 5} ${x2 + (right ? -10 : 10)},${y + 5}" fill="#2f5a82"/>`)
-    lines.push(`<text x="${(x1 + x2) / 2}" y="${y - 8}" text-anchor="middle" font-size="12" fill="#1f2937">${escapeXml(msg.text)}</text>`)
+    const fromColor = colorByParticipant.get(msg.from) ?? palette[0]
+    const dashAttr = msg.dashed ? `stroke-dasharray="6,4"` : ''
+    lines.push(`<line x1="${x1}" y1="${y}" x2="${toX}" y2="${y}" stroke="${fromColor}" stroke-width="2" ${dashAttr}/>`)
+    lines.push(`<polygon points="${x2},${y} ${x2 + (right ? -10 : 10)},${y - 5} ${x2 + (right ? -10 : 10)},${y + 5}" fill="${fromColor}"/>`)
+    lines.push(`<text x="${(x1 + x2) / 2}" y="${y - 8}" text-anchor="middle" font-size="12" fill="${primaryTextColor}">${escapeXml(msg.text)}</text>`)
   })
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="font-family:Inter,sans-serif">${bg.join('')}${lines.join('')}${labels.join('')}</svg>`
@@ -530,9 +637,18 @@ function parseBpmnData(text: string): { lanes: string[]; elements: Array<{ id: s
   return { lanes, elements, flows }
 }
 
-function renderBpmnSvg(input: string): string | null {
+function renderBpmnSvg(input: string, theme: DiagramTheme): string | null {
   const data = parseBpmnData(input)
   if (!data || data.elements.length === 0) return null
+  const palette = getThemePalette(theme)
+  const isDark = theme === 'dark'
+  const primaryColor = palette[0] ?? '#3b82f6'
+  const textColor = isDark ? '#e0e0e0' : '#1f2937'
+  const laneFill = isDark ? '#1e293b' : '#f8fafc'
+  const laneStroke = isDark ? '#475569' : '#cbd5e1'
+  const elementFill = isDark ? '#334155' : '#ffffff'
+  const elementStroke = primaryColor
+  const flowColor = primaryColor
   const laneHeight = 150
   const laneGap = 44
   const startX = 130
@@ -552,7 +668,7 @@ function renderBpmnSvg(input: string): string | null {
   const height = startY + data.lanes.length * (laneHeight + laneGap) + 40
   const laneSvg = data.lanes.map((lane, idx) => {
     const y = startY + idx * (laneHeight + laneGap)
-    return `<rect x="30" y="${y}" width="${width - 60}" height="${laneHeight}" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="2"/><text x="46" y="${y + 24}" fill="#1f2937" font-size="14" font-weight="700">${escapeXml(lane)}</text>`
+    return `<rect x="30" y="${y}" width="${width - 60}" height="${laneHeight}" rx="10" fill="${laneFill}" stroke="${laneStroke}" stroke-width="2"/><text x="46" y="${y + 24}" fill="${textColor}" font-size="14" font-weight="700">${escapeXml(lane)}</text>`
   }).join('')
 
   const flows = data.flows.map((f) => {
@@ -563,18 +679,18 @@ function renderBpmnSvg(input: string): string | null {
     const x2 = to.x
     const y2 = to.y + to.h / 2
     const mx = (x1 + x2) / 2
-    const label = f.label ? `<text x="${mx}" y="${Math.min(y1, y2) - 8}" text-anchor="middle" font-size="11" fill="#1f2937">${escapeXml(f.label)}</text>` : ''
-    return `<polyline points="${x1},${y1} ${mx},${y1} ${mx},${y2} ${x2 - 8},${y2}" fill="none" stroke="#2f5a82" stroke-width="2" ${f.dashed ? 'stroke-dasharray="6,4"' : ''}/><polygon points="${x2},${y2} ${x2 - 10},${y2 - 5} ${x2 - 10},${y2 + 5}" fill="#2f5a82"/>${label}`
+    const label = f.label ? `<text x="${mx}" y="${Math.min(y1, y2) - 8}" text-anchor="middle" font-size="11" fill="${textColor}">${escapeXml(f.label)}</text>` : ''
+    return `<polyline points="${x1},${y1} ${mx},${y1} ${mx},${y2} ${x2 - 8},${y2}" fill="none" stroke="${flowColor}" stroke-width="2" ${f.dashed ? 'stroke-dasharray="6,4"' : ''}/><polygon points="${x2},${y2} ${x2 - 10},${y2 - 5} ${x2 - 10},${y2 + 5}" fill="${flowColor}"/>${label}`
   }).join('')
 
   const elements = positioned.map((el) => {
     if (el.type === 'task') {
-      return `<rect x="${el.x}" y="${el.y}" width="${el.w}" height="${el.h}" rx="8" fill="#ffffff" stroke="#2f5a82" stroke-width="2"/><text x="${el.x + el.w / 2}" y="${el.y + el.h / 2 + 5}" text-anchor="middle" font-size="12" fill="#1f2937">${escapeXml(el.name)}</text>`
+      return `<rect x="${el.x}" y="${el.y}" width="${el.w}" height="${el.h}" rx="8" fill="${elementFill}" stroke="${elementStroke}" stroke-width="2"/><text x="${el.x + el.w / 2}" y="${el.y + el.h / 2 + 5}" text-anchor="middle" font-size="12" fill="${textColor}">${escapeXml(el.name)}</text>`
     }
     if (el.type === 'event') {
-      return `<circle cx="${el.x + 25}" cy="${el.y + 25}" r="24" fill="#ffffff" stroke="#2f5a82" stroke-width="2"/><text x="${el.x + 25}" y="${el.y + 66}" text-anchor="middle" font-size="11" fill="#1f2937">${escapeXml(el.name)}</text>`
+      return `<circle cx="${el.x + 25}" cy="${el.y + 25}" r="24" fill="${elementFill}" stroke="${elementStroke}" stroke-width="2"/><text x="${el.x + 25}" y="${el.y + 66}" text-anchor="middle" font-size="11" fill="${textColor}">${escapeXml(el.name)}</text>`
     }
-    return `<polygon points="${el.x + 25},${el.y} ${el.x + 50},${el.y + 25} ${el.x + 25},${el.y + 50} ${el.x},${el.y + 25}" fill="#ffffff" stroke="#2f5a82" stroke-width="2"/><text x="${el.x + 25}" y="${el.y + 66}" text-anchor="middle" font-size="11" fill="#1f2937">${escapeXml(el.name)}</text>`
+    return `<polygon points="${el.x + 25},${el.y} ${el.x + 50},${el.y + 25} ${el.x + 25},${el.y + 50} ${el.x},${el.y + 25}" fill="${elementFill}" stroke="${elementStroke}" stroke-width="2"/><text x="${el.x + 25}" y="${el.y + 66}" text-anchor="middle" font-size="11" fill="${textColor}">${escapeXml(el.name)}</text>`
   }).join('')
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="font-family:Inter,sans-serif">${laneSvg}${flows}${elements}</svg>`
@@ -601,9 +717,11 @@ function parseWaveData(text: string): { nodes: string[]; links: Array<{ source: 
   return { nodes, links }
 }
 
-function renderWaveSvg(input: string): string | null {
+function renderWaveSvg(input: string, theme: DiagramTheme): string | null {
   const data = parseWaveData(input)
   if (!data) return null
+  const palette = getThemePalette(theme)
+  const defaultColor = palette[0] ?? '#3b82f6'
   const layers = new Map<string, number>()
   const incoming = new Set(data.links.map((l) => l.target))
   const queue = data.nodes.filter((n) => !incoming.has(n))
@@ -638,7 +756,6 @@ function renderWaveSvg(input: string): string | null {
     })
   })
   const height = Math.max(420, maxY + 40)
-  const palette = ['#3b82f6', '#16a34a', '#f97316', '#8b5cf6', '#06b6d4', '#ef4444', '#d97706']
   const colorByNode = new Map<string, string>()
   data.nodes.forEach((n, i) => colorByNode.set(n, palette[i % palette.length]))
   const links = data.links.map((edge) => {
@@ -650,12 +767,14 @@ function renderWaveSvg(input: string): string | null {
     const y2 = t.y + t.h / 2
     const cp1x = x1 + (x2 - x1) * 0.4
     const cp2x = x2 - (x2 - x1) * 0.4
-    return `<path d="M ${x1} ${y1} C ${cp1x} ${y1}, ${cp2x} ${y2}, ${x2} ${y2}" fill="none" stroke="${colorByNode.get(edge.target) ?? '#3b82f6'}" stroke-width="${Math.max(2, edge.value * 0.8)}" opacity="0.55"/><text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="#334155">${edge.value}</text>`
+    const targetColor = colorByNode.get(edge.target) ?? defaultColor
+    const labelColor = getContrastColor(targetColor)
+    return `<path d="M ${x1} ${y1} C ${cp1x} ${y1}, ${cp2x} ${y2}, ${x2} ${y2}" fill="none" stroke="${targetColor}" stroke-width="${Math.max(2, edge.value * 0.8)}" opacity="0.55"/><text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="${labelColor}">${edge.value}</text>`
   }).join('')
   const nodes = data.nodes.map((name) => {
     const pos = nodePos.get(name)!
-    const color = colorByNode.get(name) ?? '#3b82f6'
-    return `<rect x="${pos.x}" y="${pos.y}" width="${nodeWidth}" height="${pos.h}" rx="4" fill="${color}"/><text x="${pos.x + nodeWidth / 2}" y="${pos.y + pos.h / 2 + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="#ffffff">${escapeXml(name)}</text>`
+    const color = colorByNode.get(name) ?? defaultColor
+    return `<rect x="${pos.x}" y="${pos.y}" width="${nodeWidth}" height="${pos.h}" rx="4" fill="${color}"/><text x="${pos.x + nodeWidth / 2}" y="${pos.y + pos.h / 2 + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="${getContrastColor(color)}">${escapeXml(name)}</text>`
   }).join('')
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="font-family:Inter,sans-serif">${links}${nodes}</svg>`
 }
@@ -1195,6 +1314,15 @@ export default function DiagramBuilder() {
 
   const highlightedHtml = useMemo(() => highlightSyntax(source, kind), [source, kind])
 
+  const themePalette = useMemo(() => getThemePalette(theme), [theme])
+  const themePrimary = themePalette[0] ?? '#3b82f6'
+  const isBoardDark = theme === 'dark'
+  const boardColumnFill = isBoardDark ? '#1e293b' : '#f8fafc'
+  const boardColumnStroke = isBoardDark ? '#475569' : '#cbd5e1'
+  const boardTextColor = isBoardDark ? '#e0e0e0' : '#1f2937'
+  const boardMutedTextColor = isBoardDark ? '#94a3b8' : '#4b5563'
+  const boardFooterColor = isBoardDark ? '#cbd5e1' : '#64748b'
+
   const syncHighlightScroll = () => {
     if (!textareaRef.current || !highlightRef.current) return
     highlightRef.current.scrollTop = textareaRef.current.scrollTop
@@ -1210,13 +1338,13 @@ export default function DiagramBuilder() {
         try {
           const customSvg =
             kind === 'flowchart'
-              ? renderFlowchartSvg(source)
+              ? renderFlowchartSvg(source, theme)
               : kind === 'sequence'
-                ? renderSequenceSvg(source)
+                ? renderSequenceSvg(source, theme)
                 : kind === 'bpmn'
-                  ? renderBpmnSvg(source)
+                  ? renderBpmnSvg(source, theme)
                   : kind === 'wave'
-                    ? renderWaveSvg(source)
+                    ? renderWaveSvg(source, theme)
                     : null
           if (customSvg) {
             setSvg(customSvg)
@@ -1344,27 +1472,40 @@ export default function DiagramBuilder() {
                 <div className="board-preview">
                   {boardData.columns.map((column, idx) => {
                     const columnTasks = boardData.tasks.filter((task) => task.column === column.name)
+                    const columnColor = themePalette[idx % themePalette.length] ?? themePrimary
                     return (
-                      <section key={`${column.name}-${idx}`} className="board-column">
-                        <header className="board-column-header">{column.name}</header>
+                      <section
+                        key={`${column.name}-${idx}`}
+                        className="board-column"
+                        style={{ background: boardColumnFill, borderColor: boardColumnStroke }}
+                      >
+                        <header className="board-column-header" style={{ background: columnColor, color: getContrastColor(columnColor) }}>
+                          {column.name}
+                        </header>
                         <div className="board-column-body">
                           {columnTasks.map((task, taskIdx) => (
-                            <article key={`${task.name}-${taskIdx}`} className="board-card">
+                            <article
+                              key={`${task.name}-${taskIdx}`}
+                              className="board-card"
+                              style={{ background: isBoardDark ? '#334155' : '#ffffff', borderColor: boardColumnStroke }}
+                            >
                               <div className="board-card-title-row">
-                                <h4 className="board-card-title">{task.name}</h4>
+                                <h4 className="board-card-title" style={{ color: boardTextColor }}>
+                                  {task.name}
+                                </h4>
                                 {task.priority !== 'обычная' ? <span className={`board-priority board-priority-${task.priority}`}>{task.priority}</span> : null}
                               </div>
                               {task.tags.length > 0 ? (
                                 <div className="board-tags">
                                   {task.tags.map((tag, tagIdx) => (
-                                    <span key={`${tag.text}-${tagIdx}`} className="board-tag" style={{ background: tag.color ?? '#3b82f6' }}>
+                                    <span key={`${tag.text}-${tagIdx}`} className="board-tag" style={{ background: tag.color ?? themePrimary }}>
                                       {tag.text}
                                     </span>
                                   ))}
                                 </div>
                               ) : null}
-                              {task.description ? <p className="board-description">{task.description}</p> : null}
-                              <div className="board-footer">
+                              {task.description ? <p className="board-description" style={{ color: boardMutedTextColor }}>{task.description}</p> : null}
+                              <div className="board-footer" style={{ color: boardFooterColor }}>
                                 <span>{task.dueDate ? `📅 ${task.dueDate}` : ''}</span>
                                 <span>{task.assignee ? `👤 ${task.assignee}` : ''}</span>
                               </div>

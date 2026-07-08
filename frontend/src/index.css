@@ -1292,10 +1292,6 @@ body {
   color: #fff;
 }
 
-.board-column:nth-child(1) .board-column-header { background: #ea8020; }
-.board-column:nth-child(2) .board-column-header { background: #27465f; }
-.board-column:nth-child(3) .board-column-header { background: #e74c3c; }
-
 .board-column-body {
   padding: 12px;
   display: grid;
