@@ -285,7 +285,10 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
 
     useLayoutEffect(() => {
       const element = elementRef.current
-      if (!element || value === lastSerialized.current || tableDoc) {
+      if (!element || tableDoc) {
+        return
+      }
+      if (value === lastSerialized.current && serializeEditableCell(element, cellStyleRef.current) === value) {
         return
       }
       const normalized = normalizeCellValue(value)
@@ -373,6 +376,12 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
     }), [tableDoc, value])
 
     if (tableDoc) {
+      const readCurrentPreamble = (): string => {
+        const host = tableHostRef.current
+        if (!host) return tableDoc.text
+        return readTableDocFromHost(host, tableDoc.table).text
+      }
+
       const updateFreeText = (nextText: string) => {
         commitValue(serializeDocWithTable({ text: nextText, table: tableDoc.table }))
       }
@@ -384,11 +393,11 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
           cells: tableDoc.table.cells.map((items) => [...items]),
         }
         nextTable.cells[rowIndex][colIndex] = cellValue
-        commitValue(serializeDocWithTable({ text: tableDoc.text, table: nextTable }))
+        commitValue(serializeDocWithTable({ text: readCurrentPreamble(), table: nextTable }))
       }
 
       const updateTable = (nextTable: EmbeddedTable) => {
-        commitValue(serializeDocWithTable({ text: tableDoc.text, table: nextTable }))
+        commitValue(serializeDocWithTable({ text: readCurrentPreamble(), table: nextTable }))
       }
 
       return (
@@ -437,10 +446,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
               className="btn-secondary product-status-inline-table-btn"
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => {
-                const host = tableHostRef.current
-                const text = host
-                  ? readTableDocFromHost(host, tableDoc.table).text
-                  : tableDoc.text
+                const text = readCurrentPreamble()
                 commitValue(text)
               }}
             >
