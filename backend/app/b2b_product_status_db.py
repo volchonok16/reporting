@@ -34,13 +34,16 @@ B2B_PRODUCT_STATUS_COLUMNS: tuple[str, ...] = (
     "Проект координация",
     "Полное Описание проекта и статус",
     "Для презентации Описание проекта и статус",
-    "Зачем и для чего делаем полное описание",
-    "Зачем и для чего делаем для презентации",
+    "Зачем и для чего делаем",
     "ЗНИ",
     "Идет в презентацию",
     "Обратить внимание",
     "Комментарий",
 )
+
+WHY_COLUMN = "Зачем и для чего делаем"
+_LEGACY_WHY_FULL_COLUMN = "Зачем и для чего делаем полное описание"
+_LEGACY_WHY_PRESENTATION_COLUMN = "Зачем и для чего делаем для презентации"
 
 ADMIN_ONLY_COLUMNS: frozenset[str] = frozenset()
 
@@ -55,10 +58,26 @@ def _row_has_content(cells: dict[str, str]) -> bool:
     return any(str(value).strip() for value in cells.values())
 
 
+def _merge_why_cell_value(source: dict[str, Any]) -> str:
+    existing = source.get(WHY_COLUMN)
+    if existing is not None and str(existing).strip():
+        return "" if existing is None else str(existing)
+    presentation = source.get(_LEGACY_WHY_PRESENTATION_COLUMN)
+    if presentation is not None and str(presentation).strip():
+        return str(presentation)
+    full = source.get(_LEGACY_WHY_FULL_COLUMN)
+    if full is not None and str(full).strip():
+        return str(full)
+    return "" if existing is None else str(existing or "")
+
+
 def _normalize_cells(raw: dict[str, Any] | None) -> dict[str, str]:
     source = raw or {}
     cells = _empty_cells()
     for column in B2B_PRODUCT_STATUS_COLUMNS:
+        if column == WHY_COLUMN:
+            cells[column] = _merge_why_cell_value(source)
+            continue
         value = source.get(column, "")
         cells[column] = "" if value is None else str(value)
     return cells

@@ -406,9 +406,14 @@ def _why_notes_source_columns(columns: list[str]) -> list[str]:
         if legacy and legacy not in sources:
             sources.append(legacy)
     elif not sources:
-        table_column = _why_value_column(columns)
-        if table_column and not _is_presentation_internal_column(table_column):
-            sources.append(table_column)
+        has_description_split = any(
+            _is_description_presentation_column(column) or _is_full_description_notes_column(column)
+            for column in columns
+        )
+        if not has_description_split:
+            table_column = _why_value_column(columns)
+            if table_column and not _is_presentation_internal_column(table_column):
+                sources.append(table_column)
     return sources
 
 

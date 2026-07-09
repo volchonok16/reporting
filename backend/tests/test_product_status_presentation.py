@@ -330,6 +330,26 @@ def test_slide_notes_blocks_use_legacy_why_without_full_description_column() -> 
     assert _slide_notes_text(rows, columns) == "CORE\n\nПолный зачем в заметках"
 
 
+def test_slide_notes_blocks_skip_unified_why_when_description_split_exists() -> None:
+    columns = [
+        "Проект",
+        "Полное Описание проекта и статус",
+        "Для презентации Описание проекта и статус",
+        "Зачем и для чего делаем",
+    ]
+    row = {
+        "Проект": "SMS Hub",
+        "Полное Описание проекта и статус": "Полный статус",
+        "Для презентации Описание проекта и статус": "Короткий статус",
+        "Зачем и для чего делаем": "Зачем на слайде",
+    }
+    assert _why_value_column(columns) == "Зачем и для чего делаем"
+    assert _row_values(row, columns, 4)[3] == "Зачем на слайде"
+    assert _slide_notes_blocks([row], columns) == [
+        ["SMS Hub", "Полный статус"],
+    ]
+
+
 def test_estimate_text_lines_wraps_each_paragraph_separately() -> None:
     short_lines = "Первая строка\nВторая строка\nТретья строка"
     assert _estimate_text_lines(short_lines, 40) == 3

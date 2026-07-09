@@ -2215,41 +2215,34 @@ body {
 .product-status-inline-table td {
   border: 1px solid var(--border);
   padding: 0;
+  vertical-align: top;
 }
 
-.product-status-inline-table-input {
+.product-status-inline-table-cell {
   width: 100%;
   min-height: 30px;
-  border: none;
   padding: 4px 6px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
   box-sizing: border-box;
+  outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-.product-status-inline-table-input:focus {
-  outline: none;
+.product-status-inline-table-cell:focus {
   background: color-mix(in srgb, var(--surface-1) 85%, var(--brand-accent) 15%);
 }
 
-.product-status-inline-table-free-text {
-  width: 100%;
-  min-height: 54px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 8px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  resize: vertical;
-  box-sizing: border-box;
+.product-status-inline-table-cell:empty::before {
+  content: attr(data-placeholder);
+  color: color-mix(in srgb, var(--text-secondary) 55%, transparent);
+  font-style: italic;
+  pointer-events: none;
 }
 
 .product-status-inline-table-toolbar {
   display: flex;
   gap: 6px;
-  margin-top: 6px;
+  margin-bottom: 6px;
 }
 
 .product-status-inline-table-btn {

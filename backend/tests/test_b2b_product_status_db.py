@@ -21,6 +21,9 @@ from app.schemas import (
 
 def test_columns_include_coordination_and_flags() -> None:
     assert "Проект координация" in B2B_PRODUCT_STATUS_COLUMNS
+    assert "Зачем и для чего делаем" in B2B_PRODUCT_STATUS_COLUMNS
+    assert "Зачем и для чего делаем полное описание" not in B2B_PRODUCT_STATUS_COLUMNS
+    assert "Зачем и для чего делаем для презентации" not in B2B_PRODUCT_STATUS_COLUMNS
     assert "Идет в презентацию" in B2B_PRODUCT_STATUS_COLUMNS
     assert "Обратить внимание" in B2B_PRODUCT_STATUS_COLUMNS
     assert "Комментарий" in B2B_PRODUCT_STATUS_COLUMNS
@@ -36,6 +39,31 @@ def test_normalize_cells_fills_missing_columns() -> None:
     assert cells["ЗНИ"] == "123456, 789012"
     assert cells["Проект координация"] == ""
     assert len(cells) == len(B2B_PRODUCT_STATUS_COLUMNS)
+
+
+def test_normalize_cells_merges_legacy_why_columns() -> None:
+    cells = _normalize_cells(
+        {
+            "Зачем и для чего делаем полное описание": "Полный зачем",
+            "Зачем и для чего делаем для презентации": "Короткий зачем",
+        }
+    )
+    assert cells["Зачем и для чего делаем"] == "Короткий зачем"
+
+    cells = _normalize_cells(
+        {
+            "Зачем и для чего делаем": "Текущий зачем",
+            "Зачем и для чего делаем для презентации": "Короткий зачем",
+        }
+    )
+    assert cells["Зачем и для чего делаем"] == "Текущий зачем"
+
+    cells = _normalize_cells(
+        {
+            "Зачем и для чего делаем полное описание": "Полный зачем",
+        }
+    )
+    assert cells["Зачем и для чего делаем"] == "Полный зачем"
 
 
 def test_row_has_content() -> None:
