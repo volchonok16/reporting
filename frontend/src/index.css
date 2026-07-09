@@ -1528,6 +1528,15 @@ body {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+  position: sticky;
+  top: 8px;
+  z-index: 6;
+  margin-left: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-1) 92%, transparent);
+  backdrop-filter: blur(2px);
 }
 
 .product-status-toolbar-btn-hidden {

@@ -125,6 +125,31 @@ function collectSaveOperations(
   return [...releases, ...books]
 }
 
+function countPlannedChanges(
+  draft: Map<string, DraftBooking>,
+  serverMap: Map<string, WorkspaceBookingCell>,
+): number {
+  const booksByEmployeeDay = new Set<string>()
+  const releasesByEmployeeDay = new Set<string>()
+  for (const [key, draftValue] of draft) {
+    const serverBooking = serverMap.get(key)
+    if (draftValue === null && serverBooking) {
+      releasesByEmployeeDay.add(`${serverBooking.employeeId}:${serverBooking.day}`)
+      continue
+    }
+    if (draftValue && !serverBooking) {
+      booksByEmployeeDay.add(`${draftValue.employeeId}:${draftValue.day}`)
+    }
+  }
+  let total = booksByEmployeeDay.size
+  for (const employeeDay of releasesByEmployeeDay) {
+    if (!booksByEmployeeDay.has(employeeDay)) {
+      total += 1
+    }
+  }
+  return total
+}
+
 function isPlaceNotFoundError(err: unknown): boolean {
   if (!(err instanceof HttpError) || err.status !== 404) return false
   return err.message.toLowerCase().includes('место не найдено')
@@ -201,7 +226,10 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     [draftChanges, serverBookingMap],
   )
 
-  const draftCount = draftChanges.size
+  const draftCount = useMemo(
+    () => countPlannedChanges(draftChanges, serverBookingMap),
+    [draftChanges, serverBookingMap],
+  )
   const canEditAny = Boolean(data?.isAdmin || data?.actorEmployeeId != null)
 
   useEffect(() => {

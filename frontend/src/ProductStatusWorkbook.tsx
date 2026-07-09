@@ -185,6 +185,22 @@ function buildCellUpdate(
 
 function diffSheetToUpdates(baseline: ProductStatusSheet, current: ProductStatusSheet): ProductStatusCellUpdate[] {
   const updates: ProductStatusCellUpdate[] = []
+  const baselineRowsById = new Map<string, Record<string, string>>()
+  for (const row of baseline.rows) {
+    const rowId = row[PRODUCT_STATUS_ROW_ID_KEY]
+    if (rowId) {
+      baselineRowsById.set(rowId, row)
+    }
+  }
+
+  const resolveBaselineRow = (rowIndex: number): Record<string, string> | undefined => {
+    const currentRow = current.rows[rowIndex]
+    const rowId = currentRow?.[PRODUCT_STATUS_ROW_ID_KEY]
+    if (rowId) {
+      return baselineRowsById.get(rowId)
+    }
+    return baseline.rows[rowIndex]
+  }
 
   for (let columnIndex = baseline.columns.length; columnIndex < current.columns.length; columnIndex += 1) {
     const column = current.columns[columnIndex]
@@ -196,6 +212,7 @@ function diffSheetToUpdates(baseline: ProductStatusSheet, current: ProductStatus
       column,
     })
     for (let rowIndex = 0; rowIndex < current.rows.length; rowIndex += 1) {
+      const baselineRow = resolveBaselineRow(rowIndex)
       updates.push(
         buildCellUpdate(
           current,
@@ -203,33 +220,24 @@ function diffSheetToUpdates(baseline: ProductStatusSheet, current: ProductStatus
           columnIndex,
           column,
           current.rows[rowIndex][column] ?? '',
-          baseline.rows[rowIndex]?.[column] ?? '',
+          baselineRow?.[column] ?? '',
         ),
       )
     }
   }
 
   const sharedColumnCount = Math.min(baseline.columns.length, current.columns.length)
-  const sharedRowCount = Math.min(baseline.rows.length, current.rows.length)
-  for (let rowIndex = 0; rowIndex < sharedRowCount; rowIndex += 1) {
+  for (let rowIndex = 0; rowIndex < current.rows.length; rowIndex += 1) {
+    const baselineRow = resolveBaselineRow(rowIndex)
     for (let columnIndex = 0; columnIndex < sharedColumnCount; columnIndex += 1) {
       const column = current.columns[columnIndex]
-      const previousValue = baseline.rows[rowIndex]?.[column] ?? ''
+      const previousValue = baselineRow?.[column] ?? ''
       const nextValue = current.rows[rowIndex]?.[column] ?? ''
       if (previousValue !== nextValue) {
         updates.push(
           buildCellUpdate(current, rowIndex, columnIndex, column, nextValue, previousValue),
         )
       }
-    }
-  }
-
-  for (let rowIndex = baseline.rows.length; rowIndex < current.rows.length; rowIndex += 1) {
-    for (let columnIndex = 0; columnIndex < current.columns.length; columnIndex += 1) {
-      const column = current.columns[columnIndex]
-      updates.push(
-        buildCellUpdate(current, rowIndex, columnIndex, column, current.rows[rowIndex][column] ?? '', ''),
-      )
     }
   }
 
