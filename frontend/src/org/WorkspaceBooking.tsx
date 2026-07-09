@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { getJson, putJson } from '../api'
+import { getJson, HttpError, putJson } from '../api'
 import { notifyError, notifyWarning, notifyProblem } from '../toast'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import {
@@ -125,6 +125,11 @@ function collectSaveOperations(
   return [...releases, ...books]
 }
 
+function isPlaceNotFoundError(err: unknown): boolean {
+  if (!(err instanceof HttpError) || err.status !== 404) return false
+  return err.message.toLowerCase().includes('место не найдено')
+}
+
 export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProps) {
   const today = new Date()
   const currentYear = today.getFullYear()
@@ -225,22 +230,24 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     setSelectedDayKey(toDayKey(fallbackDate))
   }, [year, selectedDayKey, currentYear, currentMonth, currentDay])
 
+  const fetchSchedule = useCallback(async (): Promise<WorkspaceBookingScheduleData> => {
+    const query = new URLSearchParams({
+      year: String(year),
+    })
+    return getJson<WorkspaceBookingScheduleData>(`/api/org/workspace/bookings?${query.toString()}`)
+  }, [year])
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const query = new URLSearchParams({
-        year: String(year),
-      })
-      const response = await getJson<WorkspaceBookingScheduleData>(
-        `/api/org/workspace/bookings?${query.toString()}`,
-      )
+      const response = await fetchSchedule()
       setData(response)
     } catch (err) {
       notifyError(err, 'Ошибка загрузки')
     } finally {
       setLoading(false)
     }
-  }, [year])
+  }, [fetchSchedule])
 
   useEffect(() => {
     void load()
@@ -451,25 +458,45 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   const saveDraft = async () => {
     if (!data || saving || draftCount === 0) return
 
-    const operations = collectSaveOperations(draftChanges, serverBookingMap)
-    if (operations.length === 0) {
-      cancelEdit()
-      return
-    }
-
     setSaving(true)
     try {
-      for (const operation of operations) {
-        await putJson<{
-          action: 'book' | 'release'
-          booked: boolean
-          employeeId?: number
-        }>('/api/org/workspace/bookings/toggle', operation)
+      let operations = collectSaveOperations(draftChanges, serverBookingMap)
+      if (operations.length === 0) {
+        cancelEdit()
+        return
+      }
+
+      let retriedAfterReload = false
+      while (operations.length > 0) {
+        try {
+          for (const operation of operations) {
+            await putJson<{
+              action: 'book' | 'release'
+              booked: boolean
+              employeeId?: number
+            }>('/api/org/workspace/bookings/toggle', operation)
+          }
+          break
+        } catch (err) {
+          if (!retriedAfterReload && isPlaceNotFoundError(err)) {
+            retriedAfterReload = true
+            const refreshed = await fetchSchedule()
+            setData(refreshed)
+            const refreshedMap = new Map<string, WorkspaceBookingCell>()
+            for (const booking of refreshed.bookings) {
+              refreshedMap.set(cellKey(booking.placeId, booking.day), booking)
+            }
+            operations = collectSaveOperations(draftChanges, refreshedMap)
+            continue
+          }
+          throw err
+        }
       }
       setDraftChanges(new Map())
       setEditMode(false)
       resetBookForSelf()
-      await load()
+      const refreshed = await fetchSchedule()
+      setData(refreshed)
     } catch (err) {
       notifyProblem(err, 'Ошибка сохранения')
     } finally {

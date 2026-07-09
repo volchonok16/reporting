@@ -475,8 +475,10 @@ def upsert_employee_office_days(
 
 def toggle_workspace_booking(db: Session, data: WorkspaceBookingToggleIn, meta: dict) -> WorkspaceBookingToggleOut:
     place = db.get(WorkspacePlace, data.placeId)
-    if place is None or not place.is_active:
+    if place is None:
         raise HTTPException(status_code=404, detail="Место не найдено.")
+    if not place.is_active:
+        raise HTTPException(status_code=409, detail="Это место отключено для бронирования.")
 
     day = _parse_day(data.day)
     actor_employee_id = _actor_employee_id(db, meta)
