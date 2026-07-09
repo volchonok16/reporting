@@ -1521,6 +1521,14 @@ body {
   justify-content: space-between;
   align-items: end;
   margin-bottom: 12px;
+  position: sticky;
+  top: 8px;
+  z-index: 22;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-1) 94%, transparent);
+  backdrop-filter: blur(2px);
 }
 
 .product-status-toolbar-actions {
@@ -1528,15 +1536,7 @@ body {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  position: sticky;
-  top: 8px;
-  z-index: 6;
   margin-left: auto;
-  padding: 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--surface-1) 92%, transparent);
-  backdrop-filter: blur(2px);
 }
 
 .product-status-toolbar-btn-hidden {
