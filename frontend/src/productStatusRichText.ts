@@ -169,8 +169,56 @@ export function splitStyleSegments(value: string): TextStyleSegment[] {
   return segments
 }
 
+const TABLE_TOKEN_PREFIX = '<<tablejson:'
+const TABLE_TOKEN_SUFFIX = '>>'
+
+type EmbeddedTablePayload = {
+  text?: string
+  table?: {
+    cells?: string[][]
+  }
+  cells?: string[][]
+}
+
+function formatEmbeddedTableDoc(parsed: EmbeddedTablePayload): string {
+  const text = (parsed.text ?? '').trim()
+  const table = parsed.table ?? parsed
+  const cells = table.cells
+  if (!Array.isArray(cells)) {
+    return text
+  }
+  const lines: string[] = []
+  if (text) lines.push(text)
+  for (const row of cells) {
+    if (!Array.isArray(row)) continue
+    const rowText = row.map((cell) => String(cell).trim()).join(' | ')
+    if (rowText.replace(/\|/g, '').trim()) {
+      lines.push(rowText)
+    }
+  }
+  return lines.join('\n')
+}
+
+export function embeddedTableInnerToPlain(inner: string): string | null {
+  if (!inner.startsWith(TABLE_TOKEN_PREFIX) || !inner.endsWith(TABLE_TOKEN_SUFFIX)) {
+    return null
+  }
+  const encoded = inner.slice(TABLE_TOKEN_PREFIX.length, -TABLE_TOKEN_SUFFIX.length)
+  try {
+    const raw = decodeURIComponent(escape(atob(encoded)))
+    const parsed = JSON.parse(raw) as EmbeddedTablePayload
+    return formatEmbeddedTableDoc(parsed)
+  } catch {
+    return null
+  }
+}
+
 export function displayCellText(value: string): string {
   const { inner } = splitCellWrapper(value)
+  const tablePlain = embeddedTableInnerToPlain(inner)
+  if (tablePlain !== null) {
+    return tablePlain
+  }
   return inner
     .replace(/\[\[(?:[^;\]]|;)+::((?:[^\[]|\[(?!\[))*?)\]\]/g, '$1')
     .replace(/\$([^$]+)\$/g, '$1')

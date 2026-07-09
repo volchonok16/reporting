@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 import re
 from dataclasses import dataclass
 
@@ -10,6 +12,8 @@ STYLE_SEGMENT_PATTERN = re.compile(
     r"|\{\{([0-9A-Fa-f]{6}):([^}]*)\}\}",
 )
 CELL_WRAPPER_PATTERN = re.compile(r"^<<cell:([^>]+)>>(.*)<<>>$", re.DOTALL)
+TABLE_TOKEN_PREFIX = "<<tablejson:"
+TABLE_TOKEN_SUFFIX = ">>"
 
 
 @dataclass(frozen=True)
@@ -207,8 +211,45 @@ def split_cell_wrapper(text: str) -> tuple[CellStyle, str]:
     )
 
 
+def format_embedded_table_doc(parsed: object) -> str:
+    if not isinstance(parsed, dict):
+        return ""
+    text = str(parsed.get("text") or "").strip()
+    table = parsed.get("table") if isinstance(parsed.get("table"), dict) else parsed
+    if not isinstance(table, dict):
+        return text
+    cells = table.get("cells")
+    if not isinstance(cells, list):
+        return text
+    lines: list[str] = []
+    if text:
+        lines.append(text)
+    for row in cells:
+        if not isinstance(row, list):
+            continue
+        row_text = " | ".join(str(cell).strip() for cell in row)
+        if row_text.replace("|", "").strip():
+            lines.append(row_text)
+    return "\n".join(lines)
+
+
+def embedded_table_inner_to_plain(inner: str) -> str | None:
+    if not inner.startswith(TABLE_TOKEN_PREFIX) or not inner.endswith(TABLE_TOKEN_SUFFIX):
+        return None
+    encoded = inner[len(TABLE_TOKEN_PREFIX): -len(TABLE_TOKEN_SUFFIX)]
+    try:
+        raw = base64.b64decode(encoded).decode("utf-8")
+        parsed = json.loads(raw)
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return format_embedded_table_doc(parsed)
+
+
 def display_cell_text(text: str) -> str:
     _, inner = split_cell_wrapper(text)
+    table_plain = embedded_table_inner_to_plain(inner)
+    if table_plain is not None:
+        return table_plain
     cleaned = inner.replace("\x0b", "\n").replace("\r\n", "\n").replace("\r", "\n")
 
     def _strip(match: re.Match[str]) -> str:

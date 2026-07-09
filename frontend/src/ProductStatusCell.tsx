@@ -138,15 +138,20 @@ function insertTextAtSelection(root: HTMLElement, text: string): boolean {
 }
 
 function tableDocToPlainText(doc: EmbeddedTableDoc): string {
-  const parts: string[] = []
-  if (doc.text.trim()) parts.push(doc.text.trim())
-  for (const row of doc.table.cells) {
-    for (const cell of row) {
-      const trimmed = cell.trim()
-      if (trimmed) parts.push(trimmed)
+  return formatEmbeddedTableDoc({ text: doc.text, table: doc.table })
+}
+
+function formatEmbeddedTableDoc(parsed: { text?: string; table: EmbeddedTable }): string {
+  const lines: string[] = []
+  const text = (parsed.text ?? '').trim()
+  if (text) lines.push(text)
+  for (const row of parsed.table.cells) {
+    const rowText = row.map((cell) => cell.trim()).join(' | ')
+    if (rowText.replace(/\|/g, '').trim()) {
+      lines.push(rowText)
     }
   }
-  return parts.join('\n')
+  return lines.join('\n')
 }
 
 type InlineTableCellProps = {

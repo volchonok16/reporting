@@ -26,6 +26,7 @@ from app.product_status_slides_template import fetch_google_slides_pptx
 from app.product_status_rich_text import (
     CellStyle,
     display_cell_text,
+    embedded_table_inner_to_plain,
     split_cell_wrapper,
     split_style_segments,
 )
@@ -1186,7 +1187,8 @@ def _fill_white_cell(
     default_text_color: RGBColor = TEXT_COLOR,
 ) -> None:
     cell_style, inner = split_cell_wrapper(value)
-    sanitized = _sanitize_cell_text(inner)
+    table_plain = embedded_table_inner_to_plain(inner)
+    sanitized = _sanitize_cell_text(table_plain if table_plain is not None else inner)
     font_size, _ = _cell_font_size(col_index, sanitized)
     frame = cell.text_frame
     frame.clear()
@@ -1209,6 +1211,15 @@ def _fill_white_cell(
         paragraph.space_after = (
             CELL_PARAGRAPH_SPACE_AFTER if output_index < len(non_empty_lines) - 1 else Pt(0)
         )
+        if table_plain is not None:
+            run = paragraph.add_run()
+            run.text = line
+            run.font.name = TABLE_FONT_NAME
+            run.font.size = font_size
+            run.font.bold = bold
+            run.font.italic = False
+            run.font.color.rgb = default_text_color
+            continue
         for segment in split_style_segments(line):
             if not segment.text:
                 continue
