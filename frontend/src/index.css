@@ -2226,29 +2226,24 @@ body {
   font-style: italic;
 }
 
-.product-status-inline-table-free-text {
+.product-status-inline-table-preamble {
   width: 100%;
-  min-height: 36px;
-  margin-bottom: 6px;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  min-height: 1.35em;
+  padding: 0;
+  margin-bottom: 4px;
   box-sizing: border-box;
   outline: none;
   white-space: pre-wrap;
   word-break: break-word;
+  cursor: text;
 }
 
-.product-status-inline-table-free-text:focus {
-  border-color: color-mix(in srgb, var(--border) 55%, var(--brand-accent) 45%);
-  background: color-mix(in srgb, var(--surface-1) 92%, var(--brand-accent) 8%);
+.product-status-inline-table-preamble:focus {
+  outline: none;
 }
 
-.product-status-inline-table-free-text:empty::before {
-  content: attr(data-placeholder);
-  color: color-mix(in srgb, var(--text-secondary) 55%, transparent);
-  font-style: italic;
-  pointer-events: none;
+.product-status-inline-table-preamble:empty {
+  min-height: 1.35em;
 }
 
 .product-status-inline-table {

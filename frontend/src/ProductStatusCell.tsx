@@ -315,8 +315,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         >
           <InlineTableCell
             value={tableDoc.text}
-            placeholder={placeholder ?? 'Текст над таблицей'}
-            className="product-status-inline-table-free-text"
+            className="product-status-inline-table-preamble"
             onFocus={onFocus}
             onBlur={onBlur}
             onCommit={updateFreeText}
