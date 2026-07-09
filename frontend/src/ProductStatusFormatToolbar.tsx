@@ -148,6 +148,16 @@ export default function ProductStatusFormatToolbar({
           >
             К
           </button>
+      <button
+        type="button"
+        className="btn-secondary product-status-format-btn product-status-format-btn-underline"
+        disabled={inactive}
+        title="Подчёркнутый"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => onTextStyle({ underline: true })}
+      >
+        Ч
+      </button>
           <button
             type="button"
             className="btn-secondary product-status-format-btn product-status-format-btn-strike"

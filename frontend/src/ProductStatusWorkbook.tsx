@@ -1373,59 +1373,6 @@ export default function ProductStatusWorkbook({
         />
       ) : null}
 
-      {viewMode === 'table' ? (
-        <div className="product-status-floating-actions" aria-label="Быстрые действия">
-          {!commitOnRefresh ? (
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={() => void handleSave()}
-              disabled={toolbarBusy || sheets.length === 0 || !dirty}
-            >
-              Сохранить
-            </button>
-          ) : null}
-          {commitOnRefresh && dirty ? (
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={handleRevert}
-              disabled={toolbarBusy}
-            >
-              Отменить изменения
-            </button>
-          ) : null}
-          {enableExcelExport ? (
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => void handleExportExcel()}
-              disabled={toolbarBusy || sheets.length === 0}
-            >
-              Скачать Excel
-            </button>
-          ) : null}
-          {enablePresentationExport ? (
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => void handleExportPresentation()}
-              disabled={toolbarBusy || sheets.length === 0}
-            >
-              Скачать презентацию
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className={commitOnRefresh && dirty ? 'btn-primary' : 'btn-secondary'}
-            onClick={() => void handleRefresh()}
-            disabled={toolbarBusy || sheets.length === 0 || (commitOnRefresh && !dirty)}
-          >
-            {commitOnRefresh ? 'Сохранить' : 'Обновить'}
-          </button>
-        </div>
-      ) : null}
-
       {viewMode === 'history' && enableHistory ? (
         <>
         <section className="table-section product-status-history-section">
@@ -1659,6 +1606,8 @@ export default function ProductStatusWorkbook({
                         enableRowDelete={enableRowDelete}
                         onDeleteRow={deleteRow}
                         enableRowReorder={enableRowReorder}
+                        rowCount={activeSheet!.rows.length}
+                        onMoveRow={moveRow}
                         isDraggingRow={draggingRowIndex === rowIndex}
                         isDragOverRow={dragOverRowIndex === rowIndex && draggingRowIndex !== rowIndex}
                         onRowPointerDragStart={handleRowPointerDragStart}

@@ -1,4 +1,4 @@
-import { forwardRef, memo, useImperativeHandle, useLayoutEffect, useRef } from 'react'
+import { forwardRef, memo, useImperativeHandle, useLayoutEffect, useRef, type KeyboardEvent } from 'react'
 import {
   applyCellStylePatch,
   applyStyleToCellOrSelection,
@@ -79,6 +79,24 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       onChange(nextSerialized)
     }
 
+    const handleFormattingShortcut = (event: KeyboardEvent<HTMLDivElement>) => {
+      const isPrimary = event.ctrlKey || event.metaKey
+      if (!isPrimary || event.altKey) return
+      const key = event.key.toLowerCase()
+      let patch: Partial<TextStyleSegment> | null = null
+      if (key === 'b') patch = { bold: true }
+      else if (key === 'i') patch = { italic: true }
+      else if (key === 'u') patch = { underline: true }
+      else if (key === 'x' && event.shiftKey) patch = { strike: true }
+      if (!patch) return
+      event.preventDefault()
+      const element = elementRef.current
+      if (!element) return
+      const applied = applyStyleToCellOrSelection(element, patch)
+      if (!applied) return
+      commitValue(serializeEditableCell(element, cellStyleRef.current))
+    }
+
     useImperativeHandle(ref, () => ({
       applyTextStyle(patch) {
         const element = elementRef.current
@@ -119,6 +137,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         suppressContentEditableWarning
         className={className}
         data-placeholder={placeholder}
+        onKeyDown={handleFormattingShortcut}
         onFocus={onFocus}
         onBlur={(event) => {
           const serialized = serializeEditableCell(event.currentTarget, cellStyleRef.current)

@@ -37,6 +37,8 @@ type ProductStatusTableRowProps = {
   enableRowDelete?: boolean
   onDeleteRow?: (rowIndex: number) => void
   enableRowReorder?: boolean
+  rowCount?: number
+  onMoveRow?: (fromIndex: number, toIndex: number) => void
   isDraggingRow?: boolean
   isDragOverRow?: boolean
   onRowPointerDragStart?: (
@@ -85,6 +87,8 @@ function ProductStatusTableRow({
   enableRowDelete = false,
   onDeleteRow,
   enableRowReorder = false,
+  rowCount = 0,
+  onMoveRow,
   isDraggingRow = false,
   isDragOverRow = false,
   onRowPointerDragStart,
@@ -128,23 +132,45 @@ function ProductStatusTableRow({
               ×
             </button>
             {enableRowReorder ? (
-              <button
-                type="button"
-                className="btn-secondary product-status-row-drag"
-                disabled={cellBusy}
-                aria-label="Перетащить строку"
-                title="Перетащить строку"
-                onPointerDown={(event) => {
-                  if (!rowRef.current) return
-                  onRowPointerDragStart?.(rowIndex, event, rowRef.current)
-                }}
-              >
-                <span className="product-status-row-drag-bars" aria-hidden="true">
-                  <span />
-                  <span />
-                  <span />
-                </span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="btn-secondary product-status-row-move"
+                  disabled={cellBusy || rowIndex === 0}
+                  aria-label="Переместить строку вверх"
+                  title="Переместить строку вверх"
+                  onClick={() => onMoveRow?.(rowIndex, rowIndex - 1)}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary product-status-row-move"
+                  disabled={cellBusy || rowIndex >= rowCount - 1}
+                  aria-label="Переместить строку вниз"
+                  title="Переместить строку вниз"
+                  onClick={() => onMoveRow?.(rowIndex, rowIndex + 1)}
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary product-status-row-drag"
+                  disabled={cellBusy}
+                  aria-label="Перетащить строку"
+                  title="Перетащить строку"
+                  onPointerDown={(event) => {
+                    if (!rowRef.current) return
+                    onRowPointerDragStart?.(rowIndex, event, rowRef.current)
+                  }}
+                >
+                  <span className="product-status-row-drag-bars" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                </button>
+              </>
             ) : null}
           </div>
         </td>
@@ -292,6 +318,7 @@ export default memo(ProductStatusTableRow, (prev, next) => {
   if (prev.zniLookup !== next.zniLookup) return false
   if (prev.enableRowDelete !== next.enableRowDelete) return false
   if (prev.enableRowReorder !== next.enableRowReorder) return false
+  if (prev.rowCount !== next.rowCount) return false
   if (prev.isDraggingRow !== next.isDraggingRow) return false
   if (prev.isDragOverRow !== next.isDragOverRow) return false
   if (rowNeedsActiveCellUpdate(prev.activeCell, next.activeCell, prev.rowIndex)) {

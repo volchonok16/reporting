@@ -10,6 +10,7 @@ export type TextStyleSegment = {
   strike: boolean
   bold: boolean
   italic: boolean
+  underline: boolean
 }
 
 export type HighlightSegment = TextStyleSegment
@@ -62,6 +63,7 @@ function parseStyleAttrs(raw: string): Record<string, string | boolean> {
     if (token === 'strike' || token === 's') parsed.strike = true
     else if (token === 'bold' || token === 'b') parsed.bold = true
     else if (token === 'italic' || token === 'i') parsed.italic = true
+    else if (token === 'underline' || token === 'u') parsed.underline = true
     else if (token.includes(':')) {
       const [key, value] = token.split(':', 2)
       parsed[key.trim()] = value.trim().toUpperCase()
@@ -103,6 +105,7 @@ export function splitStyleSegments(value: string): TextStyleSegment[] {
         strike: false,
         bold: false,
         italic: false,
+        underline: false,
       })
     }
     if (match[1] !== undefined) {
@@ -115,6 +118,7 @@ export function splitStyleSegments(value: string): TextStyleSegment[] {
           strike: Boolean(attrs.strike),
           bold: Boolean(attrs.bold),
           italic: Boolean(attrs.italic),
+          underline: Boolean(attrs.underline),
         }),
       )
     } else if (match[3] !== undefined) {
@@ -125,6 +129,7 @@ export function splitStyleSegments(value: string): TextStyleSegment[] {
         strike: false,
         bold: false,
         italic: false,
+        underline: false,
       })
     } else {
       segments.push({
@@ -134,6 +139,7 @@ export function splitStyleSegments(value: string): TextStyleSegment[] {
         strike: false,
         bold: false,
         italic: false,
+        underline: false,
       })
     }
     last = start + match[0].length
@@ -146,6 +152,7 @@ export function splitStyleSegments(value: string): TextStyleSegment[] {
       strike: false,
       bold: false,
       italic: false,
+      underline: false,
     })
   }
   if (segments.length === 0) {
@@ -156,6 +163,7 @@ export function splitStyleSegments(value: string): TextStyleSegment[] {
       strike: false,
       bold: false,
       italic: false,
+      underline: false,
     })
   }
   return segments
@@ -177,7 +185,8 @@ function encodeStyleSegment(segment: TextStyleSegment): string {
     !normalized.fg &&
     !normalized.strike &&
     !normalized.bold &&
-    !normalized.italic
+    !normalized.italic &&
+    !normalized.underline
   ) {
     if (normalized.bg === 'FFFF00') return `$${normalized.text}$`
     return `{{${normalized.bg}:${normalized.text}}}`
@@ -188,6 +197,7 @@ function encodeStyleSegment(segment: TextStyleSegment): string {
   if (normalized.strike) parts.push('strike')
   if (normalized.bold) parts.push('bold')
   if (normalized.italic) parts.push('italic')
+  if (normalized.underline) parts.push('underline')
   if (parts.length === 0) return normalized.text
   return `[[${parts.join(';')}::${normalized.text}]]`
 }
@@ -205,6 +215,7 @@ export function serializeEditableCell(root: HTMLElement, cellStyle: CellStyle): 
           strike: false,
           bold: false,
           italic: false,
+          underline: false,
         })
       }
       return
@@ -221,6 +232,7 @@ export function serializeEditableCell(root: HTMLElement, cellStyle: CellStyle): 
           strike: node.dataset.strike === '1',
           bold: node.dataset.bold === '1',
           italic: node.dataset.italic === '1',
+          underline: node.dataset.underline === '1',
         }),
       )
     } else {
@@ -233,6 +245,7 @@ export function serializeEditableCell(root: HTMLElement, cellStyle: CellStyle): 
           strike: false,
           bold: false,
           italic: false,
+          underline: false,
         })
       }
     }
@@ -253,6 +266,7 @@ function readMarkStyle(node: HTMLElement): TextStyleSegment {
     strike: node.dataset.strike === '1',
     bold: node.dataset.bold === '1',
     italic: node.dataset.italic === '1',
+    underline: node.dataset.underline === '1',
   })
 }
 
@@ -267,6 +281,7 @@ function applyPatchToSegment(
     strike: patch.strike !== undefined ? patch.strike : segment.strike,
     bold: patch.bold !== undefined ? patch.bold : segment.bold,
     italic: patch.italic !== undefined ? patch.italic : segment.italic,
+    underline: patch.underline !== undefined ? patch.underline : segment.underline,
   }
 }
 
@@ -298,13 +313,20 @@ function decorateStyledText(element: HTMLElement, segment: TextStyleSegment) {
     element.classList.remove('product-status-fg-attention')
     element.style.color = ''
   }
+  const textDecorations: string[] = []
   if (normalized.strike) {
     element.dataset.strike = '1'
-    element.style.textDecoration = 'line-through'
+    textDecorations.push('line-through')
   } else {
     delete element.dataset.strike
-    element.style.textDecoration = ''
   }
+  if (normalized.underline) {
+    element.dataset.underline = '1'
+    textDecorations.push('underline')
+  } else {
+    delete element.dataset.underline
+  }
+  element.style.textDecoration = textDecorations.join(' ')
   if (normalized.bold) {
     element.dataset.bold = '1'
     element.style.fontWeight = '600'
@@ -371,6 +393,7 @@ function readSegmentsFromRoot(root: HTMLElement): TextStyleSegment[] {
           strike: false,
           bold: false,
           italic: false,
+          underline: false,
         })
       }
       return
@@ -392,6 +415,7 @@ function readSegmentsFromRoot(root: HTMLElement): TextStyleSegment[] {
         strike: false,
         bold: false,
         italic: false,
+        underline: false,
       })
     }
   })
@@ -404,7 +428,7 @@ function renderSegmentsToRoot(root: HTMLElement, segments: TextStyleSegment[]) {
     if (!segment.text) continue
     const normalized = normalizeTextSegment(segment)
     const hasStyle =
-      normalized.bg || normalized.fg || normalized.strike || normalized.bold || normalized.italic
+      normalized.bg || normalized.fg || normalized.strike || normalized.bold || normalized.italic || normalized.underline
     if (!hasStyle) {
       root.append(document.createTextNode(normalized.text))
     } else {
@@ -428,11 +452,11 @@ export function applyStyleToCellOrSelection(
   const segments = readSegmentsFromRoot(root)
   if (segments.length === 0) {
     const styled = applyPatchToSegment(
-      { text: '\u00A0', bg: null, fg: null, strike: false, bold: false, italic: false },
+      { text: '\u00A0', bg: null, fg: null, strike: false, bold: false, italic: false, underline: false },
       patch,
     )
     const hasStyle =
-      styled.bg || styled.fg || styled.strike || styled.bold || styled.italic
+      styled.bg || styled.fg || styled.strike || styled.bold || styled.italic || styled.underline
     if (!hasStyle) {
       return false
     }
@@ -505,7 +529,7 @@ export function wrapCellValue(inner: string, cellStyle: CellStyle): string {
       for (const segment of splitStyleSegments(inner)) {
         if (!segment.text) continue
         const hasStyle =
-          segment.bg || segment.fg || segment.strike || segment.bold || segment.italic
+          segment.bg || segment.fg || segment.strike || segment.bold || segment.italic || segment.underline
         if (!hasStyle) {
           root.append(document.createTextNode(segment.text))
         } else {
