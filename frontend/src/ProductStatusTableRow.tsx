@@ -309,6 +309,7 @@ function ProductStatusTableRow({
 }
 
 export default memo(ProductStatusTableRow, (prev, next) => {
+  if (prev.rowIndex !== next.rowIndex) return false
   if (prev.row !== next.row) return false
   if (prev.columns !== next.columns) return false
   if (prev.sheetGid !== next.sheetGid) return false
