@@ -8,6 +8,12 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.product_status_save_helpers import (
+    fetch_row_cell,
+    raise_save_conflicts,
+    resolve_row,
+    update_row_cell_if_expected,
+)
 from app.config import settings
 from app.schemas import (
     ProductStatusB2BOut,
@@ -364,6 +370,7 @@ def save_b2b_news_to_db(
         updates = updates_by_gid.get(section_gid, [])
         data_updates = [item for item in updates if item.rowIndex >= 1]
         max_row_index = max((item.rowIndex for item in data_updates), default=0)
+        conflicts: list[str] = []
 
         while len(db_rows) < max_row_index:
             insert = db.execute(
@@ -396,18 +403,67 @@ def save_b2b_news_to_db(
             )
 
         for update in data_updates:
-            row = db_rows[update.rowIndex - 1]
+            row = resolve_row(update, db_rows=db_rows, row_by_id=row_by_id)
+            if row is None:
+                conflicts.append(f"строка {update.rowIndex}")
+                continue
             row_id = int(row["id"])
             column = _resolve_column(update, columns=columns)
             if column is None:
                 continue
 
             cells = _normalize_cells(row.get("cells"), columns=columns)
-            old_value = cells.get(column, "")
+            current_value = cells.get(column, "")
             new_value = update.value
-            if old_value == new_value:
+            if current_value == new_value:
                 continue
 
+            expected_value = (
+                update.expectedValue
+                if update.expectedValue is not None
+                else current_value
+            )
+            if update.rowId is not None:
+                updated = update_row_cell_if_expected(
+                    db,
+                    table="b2b_news_row",
+                    parent_column="section_id",
+                    parent_id=section_id,
+                    row_id=row_id,
+                    column=column,
+                    expected_value=expected_value,
+                    new_value=new_value,
+                )
+                if not updated:
+                    fresh_value = fetch_row_cell(
+                        db,
+                        table="b2b_news_row",
+                        row_id=row_id,
+                        column=column,
+                        normalize_cells=lambda raw: _normalize_cells(raw, columns=columns),
+                    )
+                    if fresh_value == new_value:
+                        cells[column] = new_value
+                        row["cells"] = cells
+                        continue
+                    conflicts.append(f"{column} (строка {update.rowIndex})")
+                    continue
+                cells[column] = new_value
+                row["cells"] = cells
+                _append_history(
+                    db,
+                    row_id=row_id,
+                    section_id=section_id,
+                    section_name=section_name,
+                    action="update",
+                    field_name=column,
+                    old_value=expected_value,
+                    new_value=new_value,
+                    changed_by=changed_by,
+                )
+                continue
+
+            old_value = current_value
             cells[column] = new_value
             db.execute(
                 text(
@@ -436,6 +492,9 @@ def save_b2b_news_to_db(
                 new_value=new_value,
                 changed_by=changed_by,
             )
+
+        if conflicts:
+            raise_save_conflicts(conflicts)
 
         for index, row in enumerate(db_rows):
             db.execute(

@@ -88,10 +88,12 @@ def test_save_allows_coordination_column_for_non_admin() -> None:
     )
 
     db = MagicMock()
+    update_result = MagicMock()
+    update_result.rowcount = 1
     db.execute.side_effect = [
         office_result,
         row_result,
-        MagicMock(),
+        update_result,
         MagicMock(),
         MagicMock(),
         snapshot_rows_result,
@@ -108,6 +110,8 @@ def test_save_allows_coordination_column_for_non_admin() -> None:
                     columnIndex=1,
                     column="Проект координация",
                     value="secret",
+                    expectedValue="",
+                    rowId=10,
                 ),
             ]
         ),

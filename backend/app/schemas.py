@@ -146,6 +146,15 @@ class ProductStatusCellUpdate(BaseModel):
     columnIndex: int = Field(ge=0)
     value: str = ""
     column: str | None = None
+    expectedValue: str | None = Field(
+        default=None,
+        description="Значение ячейки на момент начала правки (для защиты от перезаписи чужих изменений)",
+    )
+    rowId: int | None = Field(
+        default=None,
+        ge=1,
+        description="Стабильный id строки в БД; предпочтительнее rowIndex",
+    )
 
 
 class ProductStatusRowDelete(BaseModel):

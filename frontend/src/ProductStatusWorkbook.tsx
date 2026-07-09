@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { getJson, apiFetch, postJson, readApiError } from './api'
+import { getJson, apiFetch, postJson, readApiError, HttpError } from './api'
 import { dismissToast, notifyLoading, notifyProblem, notifySuccess, notifyWarning } from './toast'
 import { type ProductStatusCellHandle } from './ProductStatusCell'
 import ProductStatusFormatToolbar from './ProductStatusFormatToolbar'
@@ -41,6 +41,8 @@ type ProductStatusCellUpdate = {
   columnIndex: number
   value: string
   column?: string
+  expectedValue?: string
+  rowId?: number
 }
 
 type ProductStatusSavePayload = {
@@ -155,6 +157,32 @@ function buildPayload(data: ProductStatusData | null, sheets: ProductStatusSheet
   }
 }
 
+function parseRowId(value: string | undefined): number | undefined {
+  if (!value) return undefined
+  const parsed = Number(value)
+  if (Number.isNaN(parsed) || parsed <= 0) return undefined
+  return parsed
+}
+
+function buildCellUpdate(
+  sheet: ProductStatusSheet,
+  rowIndex: number,
+  columnIndex: number,
+  column: string,
+  value: string,
+  expectedValue: string,
+): ProductStatusCellUpdate {
+  return {
+    gid: sheet.gid,
+    rowIndex: rowIndex + 1,
+    columnIndex,
+    value,
+    column,
+    expectedValue,
+    rowId: parseRowId(sheet.rows[rowIndex]?.[PRODUCT_STATUS_ROW_ID_KEY]),
+  }
+}
+
 function diffSheetToUpdates(baseline: ProductStatusSheet, current: ProductStatusSheet): ProductStatusCellUpdate[] {
   const updates: ProductStatusCellUpdate[] = []
 
@@ -168,13 +196,16 @@ function diffSheetToUpdates(baseline: ProductStatusSheet, current: ProductStatus
       column,
     })
     for (let rowIndex = 0; rowIndex < current.rows.length; rowIndex += 1) {
-      updates.push({
-        gid: current.gid,
-        rowIndex: rowIndex + 1,
-        columnIndex,
-        value: current.rows[rowIndex][column] ?? '',
-        column,
-      })
+      updates.push(
+        buildCellUpdate(
+          current,
+          rowIndex,
+          columnIndex,
+          column,
+          current.rows[rowIndex][column] ?? '',
+          baseline.rows[rowIndex]?.[column] ?? '',
+        ),
+      )
     }
   }
 
@@ -186,13 +217,9 @@ function diffSheetToUpdates(baseline: ProductStatusSheet, current: ProductStatus
       const previousValue = baseline.rows[rowIndex]?.[column] ?? ''
       const nextValue = current.rows[rowIndex]?.[column] ?? ''
       if (previousValue !== nextValue) {
-        updates.push({
-          gid: current.gid,
-          rowIndex: rowIndex + 1,
-          columnIndex,
-          value: nextValue,
-          column,
-        })
+        updates.push(
+          buildCellUpdate(current, rowIndex, columnIndex, column, nextValue, previousValue),
+        )
       }
     }
   }
@@ -200,13 +227,9 @@ function diffSheetToUpdates(baseline: ProductStatusSheet, current: ProductStatus
   for (let rowIndex = baseline.rows.length; rowIndex < current.rows.length; rowIndex += 1) {
     for (let columnIndex = 0; columnIndex < current.columns.length; columnIndex += 1) {
       const column = current.columns[columnIndex]
-      updates.push({
-        gid: current.gid,
-        rowIndex: rowIndex + 1,
-        columnIndex,
-        value: current.rows[rowIndex][column] ?? '',
-        column,
-      })
+      updates.push(
+        buildCellUpdate(current, rowIndex, columnIndex, column, current.rows[rowIndex][column] ?? '', ''),
+      )
     }
   }
 
@@ -361,6 +384,7 @@ export default function ProductStatusWorkbook({
   const [sheetLoadingGid, setSheetLoadingGid] = useState<string | null>(null)
   const activeCellRef = useRef<ProductStatusCellHandle | null>(null)
   const blurTimerRef = useRef<number | null>(null)
+  const tableScrollRef = useRef<HTMLDivElement | null>(null)
   const baselineByGidRef = useRef<Map<string, ProductStatusSheet>>(new Map())
 
   const rememberBaseline = useCallback((sheet: ProductStatusSheet) => {
@@ -370,14 +394,6 @@ export default function ProductStatusWorkbook({
   const resetBaselines = useCallback(() => {
     baselineByGidRef.current = new Map()
   }, [])
-
-  const syncBaselinesFromSheets = useCallback((nextSheets: ProductStatusSheet[], gids: Set<string>) => {
-    for (const sheet of nextSheets) {
-      if (gids.has(sheet.gid) && sheet.columns.length > 0) {
-        rememberBaseline(sheet)
-      }
-    }
-  }, [rememberBaseline])
 
   const loadSheetData = useCallback(
     async (gid: string, options?: { refresh?: boolean }) => {
@@ -449,6 +465,36 @@ export default function ProductStatusWorkbook({
       await loadSheetQuiet(gid, options)
     },
     [loadedGids, loadSheetQuiet, sheets],
+  )
+
+  const reloadSheetsAfterSave = useCallback(
+    async (gids: string[]) => {
+      const uniqueGids = [...new Set(gids)].filter((gid) => loadedGids.has(gid))
+      if (!uniqueGids.length) return
+
+      const scrollEl = tableScrollRef.current
+      const scrollTop = scrollEl?.scrollTop ?? 0
+      const scrollLeft = scrollEl?.scrollLeft ?? 0
+      const windowScrollY = window.scrollY
+
+      for (const gid of uniqueGids) {
+        try {
+          await loadSheetData(gid, { refresh: true })
+        } catch (err) {
+          notifyProblem(err, 'Не удалось обновить данные после сохранения')
+          return
+        }
+      }
+
+      requestAnimationFrame(() => {
+        if (scrollEl) {
+          scrollEl.scrollTop = scrollTop
+          scrollEl.scrollLeft = scrollLeft
+        }
+        window.scrollTo({ top: windowScrollY })
+      })
+    },
+    [loadSheetData, loadedGids],
   )
 
   const loadData = useCallback(
@@ -637,6 +683,12 @@ export default function ProductStatusWorkbook({
       setDirty(false)
       return true
     }
+    const gidsToReload = [
+      ...new Set([
+        ...payload.updates.map((update) => update.gid),
+        ...payload.deletedRows.map((row) => row.gid),
+      ]),
+    ]
     setSaving(true)
     const toastId = notifyLoading('Сохранение…', 'product-status-save')
     try {
@@ -646,11 +698,17 @@ export default function ProductStatusWorkbook({
         body: JSON.stringify(payload),
       })
       if (!response.ok) {
-        throw new Error(await readApiError(response))
+        const message = await readApiError(response)
+        if (response.status === 409) {
+          clearProductStatusCache(apiBase)
+          await reloadSheetsAfterSave(gidsToReload)
+          throw new HttpError(message, response.status)
+        }
+        throw new Error(message)
       }
-      syncBaselinesFromSheets(sheets, loadedGids)
       setDirty(false)
       clearProductStatusCache(apiBase)
+      await reloadSheetsAfterSave(gidsToReload)
       if (enableHistory && activeGid && viewMode === 'history') {
         void loadHistory(activeGid)
         void loadSnapshots(activeGid)
@@ -671,8 +729,8 @@ export default function ProductStatusWorkbook({
     loadHistory,
     loadSnapshots,
     loadedGids,
+    reloadSheetsAfterSave,
     sheets,
-    syncBaselinesFromSheets,
     viewMode,
   ])
 
@@ -980,10 +1038,8 @@ export default function ProductStatusWorkbook({
   const handleRefresh = useCallback(async () => {
     if (commitOnRefresh) {
       if (dirty) {
-        const saved = await handleSave()
-        if (!saved) return
+        await handleSave()
       }
-      void loadData({ refresh: true })
       return
     }
     if (dirty && !window.confirm('Есть несохранённые изменения. Обновить данные?')) {
@@ -1169,13 +1225,13 @@ export default function ProductStatusWorkbook({
               ) : null}
             </p>
           )}
-          {dirty ? (
-            <p className="product-status-dirty">
-              {commitOnRefresh
+          <p className={`product-status-dirty${dirty ? '' : ' product-status-dirty-hidden'}`}>
+            {dirty
+              ? commitOnRefresh
                 ? 'Есть неприменённые изменения · «Сохранить» — применить, «Отменить изменения» — отменить'
-                : 'Есть несохранённые изменения'}
-            </p>
-          ) : null}
+                : 'Есть несохранённые изменения'
+              : '\u00A0'}
+          </p>
         </div>
         <div className="product-status-toolbar-actions">
           {!commitOnRefresh ? (
@@ -1188,12 +1244,14 @@ export default function ProductStatusWorkbook({
               Сохранить
             </button>
           ) : null}
-          {commitOnRefresh && dirty ? (
+          {commitOnRefresh ? (
             <button
               type="button"
-              className="btn-secondary"
+              className={`btn-secondary${dirty ? '' : ' product-status-toolbar-btn-hidden'}`}
               onClick={handleRevert}
-              disabled={toolbarBusy}
+              disabled={toolbarBusy || !dirty}
+              aria-hidden={!dirty}
+              tabIndex={dirty ? 0 : -1}
             >
               Отменить изменения
             </button>
@@ -1467,6 +1525,7 @@ export default function ProductStatusWorkbook({
         </div>
         <div className="table">
           <div
+            ref={tableScrollRef}
             className={[
               'table-scroll',
               'product-status-table-scroll',

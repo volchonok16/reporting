@@ -1530,6 +1530,11 @@ body {
   align-items: center;
 }
 
+.product-status-toolbar-btn-hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .product-status-sheet-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -1868,8 +1873,13 @@ body {
 
 .product-status-dirty {
   margin: 4px 0 0;
+  min-height: 1.35em;
   font-size: 0.85rem;
   color: var(--dirty-text);
+}
+
+.product-status-dirty-hidden {
+  visibility: hidden;
 }
 
 .product-status-format-panel {
