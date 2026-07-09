@@ -1993,6 +1993,50 @@ body {
   text-decoration: line-through;
 }
 
+.product-status-table-picker {
+  position: relative;
+}
+
+.product-status-table-picker-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-md);
+}
+
+.product-status-table-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 18px);
+  gap: 2px;
+}
+
+.product-status-table-picker-cell {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--surface-1);
+  padding: 0;
+  cursor: pointer;
+}
+
+.product-status-table-picker-cell-selected {
+  background: color-mix(in srgb, var(--brand-accent) 22%, var(--surface-1));
+  border-color: var(--brand-accent);
+}
+
+.product-status-table-picker-hint {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
 .product-status-swatch-yellow {
   background: #ffff00 !important;
   color: #000 !important;

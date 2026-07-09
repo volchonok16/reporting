@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { TextStyleSegment } from './productStatusRichText'
 import { PRODUCT_STATUS_ATTENTION_FG } from './productStatusRichText'
 
@@ -9,7 +9,7 @@ type ProductStatusFormatToolbarProps = {
   hasActiveCell: boolean
   onTextStyle: (patch: Partial<TextStyleSegment>) => void
   onClearFormatting: () => void
-  onInsertTable: () => void
+  onInsertTable: (rows: number, cols: number) => void
 }
 
 type PresetButton = {
@@ -78,7 +78,14 @@ export default function ProductStatusFormatToolbar({
   onInsertTable,
 }: ProductStatusFormatToolbarProps) {
   const [open, setOpen] = useState(readFormatToolbarOpen)
+  const [tablePickerOpen, setTablePickerOpen] = useState(false)
+  const [tableHover, setTableHover] = useState<{ rows: number; cols: number }>({ rows: 2, cols: 2 })
+  const tablePickerRef = useRef<HTMLDivElement | null>(null)
   const inactive = disabled || !hasActiveCell
+  const tableRows = 8
+  const tableCols = 8
+
+  const tableHint = useMemo(() => `${tableHover.rows} x ${tableHover.cols}`, [tableHover])
 
   useEffect(() => {
     try {
@@ -87,6 +94,18 @@ export default function ProductStatusFormatToolbar({
       /* ignore storage errors */
     }
   }, [open])
+
+  useEffect(() => {
+    if (!tablePickerOpen) return
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null
+      if (tablePickerRef.current && target && !tablePickerRef.current.contains(target)) {
+        setTablePickerOpen(false)
+      }
+    }
+    window.addEventListener('pointerdown', onPointerDown)
+    return () => window.removeEventListener('pointerdown', onPointerDown)
+  }, [tablePickerOpen])
 
   return (
     <div
@@ -150,16 +169,16 @@ export default function ProductStatusFormatToolbar({
           >
             К
           </button>
-      <button
-        type="button"
-        className="btn-secondary product-status-format-btn product-status-format-btn-underline"
-        disabled={inactive}
-        title="Подчёркнутый"
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => onTextStyle({ underline: true })}
-      >
-        Ч
-      </button>
+          <button
+            type="button"
+            className="btn-secondary product-status-format-btn product-status-format-btn-underline"
+            disabled={inactive}
+            title="Подчёркнутый"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onTextStyle({ underline: true })}
+          >
+            Ч
+          </button>
           <button
             type="button"
             className="btn-secondary product-status-format-btn product-status-format-btn-strike"
@@ -179,16 +198,47 @@ export default function ProductStatusFormatToolbar({
           >
             Сбросить
           </button>
-          <button
-            type="button"
-            className="btn-secondary product-status-format-btn"
-            disabled={inactive}
-            title="Вставить таблицу в стиле Confluence"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={onInsertTable}
-          >
-            Таблица
-          </button>
+          <div className="product-status-table-picker" ref={tablePickerRef}>
+            <button
+              type="button"
+              className="btn-secondary product-status-format-btn"
+              disabled={inactive}
+              title="Вставить таблицу в стиле Confluence"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => setTablePickerOpen((current) => !current)}
+            >
+              Таблица
+            </button>
+            {tablePickerOpen ? (
+              <div className="product-status-table-picker-popover" role="dialog" aria-label="Выбор размера таблицы">
+                <div className="product-status-table-picker-grid">
+                  {Array.from({ length: tableRows }).map((_, row) =>
+                    Array.from({ length: tableCols }).map((__, col) => {
+                      const rows = row + 1
+                      const cols = col + 1
+                      const selected = rows <= tableHover.rows && cols <= tableHover.cols
+                      return (
+                        <button
+                          key={`${rows}-${cols}`}
+                          type="button"
+                          className={`product-status-table-picker-cell${
+                            selected ? ' product-status-table-picker-cell-selected' : ''
+                          }`}
+                          onMouseEnter={() => setTableHover({ rows, cols })}
+                          onFocus={() => setTableHover({ rows, cols })}
+                          onClick={() => {
+                            onInsertTable(rows, cols)
+                            setTablePickerOpen(false)
+                          }}
+                        />
+                      )
+                    }),
+                  )}
+                </div>
+                <div className="product-status-table-picker-hint">{tableHint}</div>
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>

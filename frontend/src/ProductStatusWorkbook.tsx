@@ -1168,18 +1168,9 @@ export default function ProductStatusWorkbook({
     activeCellRef.current?.clearFormatting()
   }, [])
 
-  const insertConfluenceTable = useCallback(() => {
-    const sizeRaw = window.prompt('Размер таблицы (строки x столбцы), например 2x3', '2x2')
-    if (!sizeRaw) return
-    const match = sizeRaw.trim().match(/^(\d+)\s*[xх*]\s*(\d+)$/i)
-    if (!match) {
-      notifyWarning('Введите размер в формате 2x3')
-      return
-    }
-    const rows = Number(match[1])
-    const cols = Number(match[2])
-    if (rows < 1 || cols < 1 || rows > 20 || cols > 12) {
-      notifyWarning('Допустимо: от 1x1 до 20x12')
+  const insertConfluenceTable = useCallback((rows: number, cols: number) => {
+    if (rows < 1 || cols < 1) {
+      notifyWarning('Некорректный размер таблицы')
       return
     }
     const header = `|| ${Array.from({ length: cols }, (_, i) => `Заголовок ${i + 1}`).join(' || ')} ||`
