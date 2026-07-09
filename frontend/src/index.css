@@ -1544,6 +1544,24 @@ body {
   pointer-events: none;
 }
 
+.product-status-floating-actions {
+  position: fixed;
+  right: max(12px, var(--page-gutter));
+  bottom: 16px;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  max-width: min(90vw, 860px);
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-1) 94%, transparent);
+  backdrop-filter: blur(2px);
+  box-shadow: var(--shadow-md);
+}
+
 .product-status-sheet-tabs {
   display: flex;
   flex-wrap: wrap;
