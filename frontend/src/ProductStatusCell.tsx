@@ -437,7 +437,11 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
               className="btn-secondary product-status-inline-table-btn"
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => {
-                commitValue(tableDocToPlainText(tableDoc))
+                const host = tableHostRef.current
+                const text = host
+                  ? readTableDocFromHost(host, tableDoc.table).text
+                  : tableDoc.text
+                commitValue(text)
               }}
             >
               Удалить таблицу
