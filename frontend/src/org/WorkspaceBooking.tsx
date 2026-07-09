@@ -231,6 +231,11 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     [draftChanges, serverBookingMap],
   )
   const canEditAny = Boolean(data?.isAdmin || data?.actorEmployeeId != null)
+  const visiblePlaces = useMemo(
+    () => (data?.places ?? []).filter((place) => place.isActive),
+    [data?.places],
+  )
+
 
   useEffect(() => {
     saveOrgUiState({ workspaceYear: year, workspaceMonth: currentMonth })
@@ -714,7 +719,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
                 </tr>
               </thead>
               <tbody>
-                {data.places.map((place) => (
+                {visiblePlaces.map((place) => (
                   <tr key={place.id}>
                     <td
                       className="org-vacation-sticky-col org-vacation-name org-workspace-place-name"

@@ -180,16 +180,18 @@ def get_workspace_booking_schedule(
     actor_employee_id = _actor_employee_id(db, meta)
     is_admin = _is_org_admin(meta)
     places = _load_active_places(db)
+    active_place_ids = {place.id for place in places}
     _delete_vacation_conflicting_bookings(db, day_from, day_to)
 
     bookings_out: list[WorkspaceBookingCellOut] = []
-    if places:
+    if active_place_ids:
         rows = db.scalars(
             select(WorkspaceBooking)
             .options(joinedload(WorkspaceBooking.employee))
             .where(
                 WorkspaceBooking.day >= day_from,
                 WorkspaceBooking.day <= day_to,
+                WorkspaceBooking.place_id.in_(active_place_ids),
             )
             .order_by(WorkspaceBooking.day, WorkspaceBooking.place_id)
         ).unique().all()
@@ -541,11 +543,22 @@ def toggle_workspace_booking(db: Session, data: WorkspaceBookingToggleIn, meta: 
         db.delete(existing)
 
     employee_day_booking = db.scalar(
-        select(WorkspaceBooking).where(
+        select(WorkspaceBooking)
+        .options(joinedload(WorkspaceBooking.place))
+        .where(
             WorkspaceBooking.employee_id == target_employee_id,
             WorkspaceBooking.day == day,
         )
     )
+    if (
+        employee_day_booking is not None
+        and employee_day_booking.place is not None
+        and not employee_day_booking.place.is_active
+    ):
+        # Старая бронь на неактивном месте не должна блокировать новое бронирование.
+        db.delete(employee_day_booking)
+        employee_day_booking = None
+
     if employee_day_booking is not None and employee_day_booking.place_id != data.placeId:
         raise HTTPException(
             status_code=409,
