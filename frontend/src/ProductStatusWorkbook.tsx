@@ -1173,12 +1173,7 @@ export default function ProductStatusWorkbook({
       notifyWarning('Некорректный размер таблицы')
       return
     }
-    const header = `|| ${Array.from({ length: cols }, (_, i) => `Заголовок ${i + 1}`).join(' || ')} ||`
-    const body = Array.from({ length: rows }, (_, rowIndex) =>
-      `| ${Array.from({ length: cols }, (_, colIndex) => `Ячейка ${rowIndex + 1}.${colIndex + 1}`).join(' | ')} |`,
-    )
-    const tableText = [header, ...body].join('\n')
-    const inserted = activeCellRef.current?.insertText(tableText)
+    const inserted = activeCellRef.current?.insertTable(rows, cols)
     if (!inserted) {
       notifyWarning('Сначала выберите ячейку для вставки таблицы')
     }

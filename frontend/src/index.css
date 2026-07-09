@@ -2206,6 +2206,32 @@ body {
   font-style: italic;
 }
 
+.product-status-inline-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.product-status-inline-table td {
+  border: 1px solid var(--border);
+  padding: 0;
+}
+
+.product-status-inline-table-input {
+  width: 100%;
+  min-height: 30px;
+  border: none;
+  padding: 4px 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.product-status-inline-table-input:focus {
+  outline: none;
+  background: color-mix(in srgb, var(--surface-1) 85%, var(--brand-accent) 15%);
+}
+
 .product-status-row-actions,
 .product-status-row-actions-header {
   width: 42px;

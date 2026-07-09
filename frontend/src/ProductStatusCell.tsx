@@ -18,6 +18,7 @@ export type ProductStatusCellHandle = {
   applyCellStyle: (patch: Partial<CellStyle>) => boolean
   clearFormatting: () => boolean
   insertText: (text: string) => boolean
+  insertTable: (rows: number, cols: number) => boolean
 }
 
 type ProductStatusCellProps = {
@@ -28,6 +29,47 @@ type ProductStatusCellProps = {
   onChange: (value: string) => void
   onFocus?: () => void
   onBlur?: () => void
+}
+
+type EmbeddedTable = {
+  rows: number
+  cols: number
+  cells: string[][]
+}
+
+const TABLE_TOKEN_PREFIX = '<<tablejson:'
+const TABLE_TOKEN_SUFFIX = '>>'
+
+function serializeEmbeddedTable(table: EmbeddedTable): string {
+  const payload = JSON.stringify(table)
+  return `${TABLE_TOKEN_PREFIX}${btoa(unescape(encodeURIComponent(payload)))}${TABLE_TOKEN_SUFFIX}`
+}
+
+function parseEmbeddedTable(value: string): EmbeddedTable | null {
+  const { inner } = splitCellWrapper(normalizeCellValue(value))
+  if (!inner.startsWith(TABLE_TOKEN_PREFIX) || !inner.endsWith(TABLE_TOKEN_SUFFIX)) {
+    return null
+  }
+  const encoded = inner.slice(TABLE_TOKEN_PREFIX.length, -TABLE_TOKEN_SUFFIX.length)
+  try {
+    const raw = decodeURIComponent(escape(atob(encoded)))
+    const parsed = JSON.parse(raw) as EmbeddedTable
+    if (!parsed || parsed.rows < 1 || parsed.cols < 1 || !Array.isArray(parsed.cells)) return null
+    const cells = Array.from({ length: parsed.rows }, (_, row) =>
+      Array.from({ length: parsed.cols }, (_, col) => parsed.cells[row]?.[col] ?? ''),
+    )
+    return { rows: parsed.rows, cols: parsed.cols, cells }
+  } catch {
+    return null
+  }
+}
+
+function createEmbeddedTable(rows: number, cols: number): EmbeddedTable {
+  return {
+    rows,
+    cols,
+    cells: Array.from({ length: rows }, () => Array.from({ length: cols }, () => '')),
+  }
 }
 
 function applyCellStyle(element: HTMLElement, cellStyle: CellStyle) {
@@ -84,9 +126,11 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
     const lastSerialized = useRef<string | null>(null)
     const cellStyleRef = useRef<CellStyle>({ bg: null, border: null })
 
+    const tableData = parseEmbeddedTable(value)
+
     useLayoutEffect(() => {
       const element = elementRef.current
-      if (!element || value === lastSerialized.current) {
+      if (!element || value === lastSerialized.current || tableData) {
         return
       }
       const normalized = normalizeCellValue(value)
@@ -95,7 +139,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       applyCellStyle(element, cellStyle)
       renderSegments(inner, element)
       lastSerialized.current = value
-    }, [value])
+    }, [tableData, value])
 
     const commitValue = (nextSerialized: string) => {
       lastSerialized.current = nextSerialized
@@ -123,7 +167,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
     useImperativeHandle(ref, () => ({
       applyTextStyle(patch) {
         const element = elementRef.current
-        if (!element) return false
+        if (!element || tableData) return false
         const applied = applyStyleToCellOrSelection(element, patch)
         if (!applied) return false
         commitValue(serializeEditableCell(element, cellStyleRef.current))
@@ -131,7 +175,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       },
       applyCellStyle(patch) {
         const element = elementRef.current
-        if (!element) return false
+        if (!element || tableData) return false
         const next = applyCellStylePatch(lastSerialized.current ?? value, patch)
         const { cellStyle, inner } = splitCellWrapper(next)
         cellStyleRef.current = cellStyle
@@ -142,7 +186,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       },
       clearFormatting() {
         const element = elementRef.current
-        if (!element) return false
+        if (!element || tableData) return false
         const applied = clearFormattingInCell(element)
         if (!applied) return false
         commitValue(serializeEditableCell(element, cellStyleRef.current))
@@ -150,13 +194,57 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       },
       insertText(text) {
         const element = elementRef.current
-        if (!element) return false
+        if (!element || tableData) return false
         const inserted = insertTextAtSelection(element, text)
         if (!inserted) return false
         commitValue(serializeEditableCell(element, cellStyleRef.current))
         return true
       },
-    }))
+      insertTable(rows, cols) {
+        if (rows < 1 || cols < 1) return false
+        const table = createEmbeddedTable(rows, cols)
+        commitValue(serializeEmbeddedTable(table))
+        return true
+      },
+    }), [tableData, value])
+
+    if (tableData) {
+      return (
+        <div
+          className={className}
+          onFocus={onFocus}
+          onBlur={onBlur}
+        >
+          <table className="product-status-inline-table">
+            <tbody>
+              {tableData.cells.map((row, rowIndex) => (
+                <tr key={rowIndex}>
+                  {row.map((cell, colIndex) => (
+                    <td key={colIndex}>
+                      <input
+                        className="product-status-inline-table-input"
+                        value={cell}
+                        onFocus={onFocus}
+                        onBlur={onBlur}
+                        onChange={(event) => {
+                          const nextTable: EmbeddedTable = {
+                            rows: tableData.rows,
+                            cols: tableData.cols,
+                            cells: tableData.cells.map((items) => [...items]),
+                          }
+                          nextTable.cells[rowIndex][colIndex] = event.target.value
+                          commitValue(serializeEmbeddedTable(nextTable))
+                        }}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )
+    }
 
     return (
       <div
