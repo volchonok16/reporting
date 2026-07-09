@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { flushSync } from 'react-dom'
 import { getJson, apiFetch, postJson, readApiError, HttpError } from './api'
 import { dismissToast, notifyLoading, notifyProblem, notifySuccess, notifyWarning } from './toast'
 import { type ProductStatusCellHandle } from './ProductStatusCell'
@@ -403,6 +404,8 @@ export default function ProductStatusWorkbook({
   const TitleTag = isSection ? 'h2' : 'h1'
   const [data, setData] = useState<ProductStatusData | null>(null)
   const [sheets, setSheets] = useState<ProductStatusSheet[]>([])
+  const sheetsRef = useRef(sheets)
+  sheetsRef.current = sheets
   const [activeGid, setActiveGid] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<WorkbookViewMode>('table')
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null)
@@ -716,7 +719,10 @@ export default function ProductStatusWorkbook({
 
   const handleSave = useCallback(async (): Promise<boolean> => {
     if (sheets.length === 0) return true
-    const payload = collectSheetUpdates(baselineByGidRef.current, sheets, loadedGids)
+    flushSync(() => {
+      activeCellRef.current?.commitPending()
+    })
+    const payload = collectSheetUpdates(baselineByGidRef.current, sheetsRef.current, loadedGids)
     if (payload.updates.length === 0 && payload.deletedRows.length === 0 && payload.rowOrder.length === 0) {
       setDirty(false)
       return true
@@ -746,6 +752,7 @@ export default function ProductStatusWorkbook({
         throw new Error(message)
       }
       setDirty(false)
+      setActiveCell(null)
       clearProductStatusCache(apiBase)
       await reloadSheetsAfterSave(gidsToReload)
       if (enableHistory && activeGid && viewMode === 'history') {
@@ -1066,6 +1073,9 @@ export default function ProductStatusWorkbook({
         return
       }
       if (focused?.closest('.product-status-cell-input')) {
+        return
+      }
+      if (focused?.closest('.product-status-inline-table-toolbar')) {
         return
       }
       setActiveCell((current) =>

@@ -280,6 +280,7 @@ function ProductStatusTableRow({
                   .join(' ')}
                 value={cellValue}
                 ariaLabel={column}
+                isEditing={isActive}
                 placeholder={isZniColumn(column) ? ZNI_NUMBERS_PLACEHOLDER : undefined}
                 onFocus={() => onActiveCellFocus({ rowIndex, column })}
                 onBlur={() => {

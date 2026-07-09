@@ -20,6 +20,7 @@ export type ProductStatusCellHandle = {
   clearFormatting: () => boolean
   insertText: (text: string) => boolean
   insertTable: (rows: number, cols: number) => boolean
+  commitPending: () => boolean
 }
 
 type ProductStatusCellProps = {
@@ -27,6 +28,7 @@ type ProductStatusCellProps = {
   className?: string
   ariaLabel: string
   placeholder?: string
+  isEditing?: boolean
   onChange: (value: string) => void
   onFocus?: () => void
   onBlur?: () => void
@@ -136,6 +138,35 @@ function tableDocToPlainText(doc: EmbeddedTableDoc): string {
   return formatEmbeddedTableDoc({ text: doc.text, table: doc.table })
 }
 
+function readTableDocFromHost(
+  host: HTMLElement,
+  table: EmbeddedTable,
+): EmbeddedTableDoc {
+  const preamble = host.querySelector('.product-status-inline-table-preamble')
+  const text = preamble?.textContent ?? ''
+  const nextCells: string[][] = []
+  host.querySelectorAll('.product-status-inline-table tbody tr').forEach((rowElement) => {
+    const row: string[] = []
+    rowElement.querySelectorAll('.product-status-inline-table-cell').forEach((cellElement) => {
+      row.push(cellElement.textContent ?? '')
+    })
+    if (row.length > 0) {
+      nextCells.push(row)
+    }
+  })
+  if (nextCells.length === 0) {
+    return { text, table }
+  }
+  return {
+    text,
+    table: {
+      rows: nextCells.length,
+      cols: Math.max(...nextCells.map((row) => row.length), table.cols),
+      cells: nextCells,
+    },
+  }
+}
+
 function formatEmbeddedTableDoc(parsed: { text?: string; table: EmbeddedTable }): string {
   const lines: string[] = []
   const text = (parsed.text ?? '').trim()
@@ -198,14 +229,42 @@ function InlineTableCell({
 
 const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatusCellProps>(
   function ProductStatusCell(
-    { value, className, ariaLabel, placeholder, onChange, onFocus, onBlur },
+    { value, className, ariaLabel, placeholder, isEditing = false, onChange, onFocus, onBlur },
     ref,
   ) {
     const elementRef = useRef<HTMLDivElement>(null)
+    const tableHostRef = useRef<HTMLDivElement>(null)
     const lastSerialized = useRef<string | null>(null)
     const cellStyleRef = useRef<CellStyle>({ bg: null, border: null })
 
     const tableDoc = parseEmbeddedTableDoc(value)
+
+    const commitValue = (nextSerialized: string) => {
+      lastSerialized.current = nextSerialized
+      onChange(nextSerialized)
+    }
+
+    const commitTableFromHost = (): boolean => {
+      const host = tableHostRef.current
+      if (!host || !tableDoc) return false
+      const nextDoc = readTableDocFromHost(host, tableDoc.table)
+      const nextSerialized = serializeDocWithTable(nextDoc)
+      if (nextSerialized === (lastSerialized.current ?? value)) {
+        return false
+      }
+      commitValue(nextSerialized)
+      return true
+    }
+
+    useLayoutEffect(() => {
+      if (!tableDoc || !isEditing) return
+      const host = tableHostRef.current
+      if (!host) return
+      const target =
+        host.querySelector<HTMLElement>('.product-status-inline-table-preamble')
+        ?? host.querySelector<HTMLElement>('.product-status-inline-table-cell')
+      target?.focus()
+    }, [isEditing, tableDoc])
 
     useLayoutEffect(() => {
       const element = elementRef.current
@@ -219,11 +278,6 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       renderSegments(inner, element)
       lastSerialized.current = value
     }, [tableDoc, value])
-
-    const commitValue = (nextSerialized: string) => {
-      lastSerialized.current = nextSerialized
-      onChange(nextSerialized)
-    }
 
     const handleFormattingShortcut = (event: KeyboardEvent<HTMLDivElement>) => {
       const isPrimary = event.ctrlKey || event.metaKey
@@ -286,6 +340,19 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         commitValue(serializeDocWithTable({ text: baseText, table }))
         return true
       },
+      commitPending() {
+        if (tableDoc) {
+          return commitTableFromHost()
+        }
+        const element = elementRef.current
+        if (!element) return false
+        const serialized = serializeEditableCell(element, cellStyleRef.current)
+        if (serialized === (lastSerialized.current ?? value)) {
+          return false
+        }
+        commitValue(serialized)
+        return true
+      },
     }), [tableDoc, value])
 
     if (tableDoc) {
@@ -307,9 +374,59 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         commitValue(serializeDocWithTable({ text: tableDoc.text, table: nextTable }))
       }
 
+      const beginEditing = () => {
+        onFocus?.()
+      }
+
+      if (!isEditing) {
+        return (
+          <div
+            className={[className, 'product-status-inline-table-host', 'product-status-inline-table-host--readonly']
+              .filter(Boolean)
+              .join(' ')}
+            role="button"
+            tabIndex={0}
+            aria-label={ariaLabel}
+            onFocus={beginEditing}
+            onMouseDown={(event) => {
+              if (event.button !== 0) return
+              beginEditing()
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                beginEditing()
+              }
+            }}
+          >
+            {tableDoc.text ? (
+              <div className="product-status-inline-table-preamble product-status-inline-table-preamble--readonly">
+                {tableDoc.text}
+              </div>
+            ) : null}
+            <table className="product-status-inline-table product-status-inline-table--readonly">
+              <tbody>
+                {tableDoc.table.cells.map((row, rowIndex) => (
+                  <tr key={rowIndex}>
+                    {row.map((cell, colIndex) => (
+                      <td key={colIndex}>
+                        <div className="product-status-inline-table-cell product-status-inline-table-cell--readonly">
+                          {cell || '\u00A0'}
+                        </div>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+
       return (
         <div
-          className={className}
+          ref={tableHostRef}
+          className={[className, 'product-status-inline-table-host'].filter(Boolean).join(' ')}
           onFocus={onFocus}
           onBlur={onBlur}
         >
@@ -409,7 +526,8 @@ const ProductStatusCell = memo(ProductStatusCellInner, (prev, next) => {
   return (
     prev.value === next.value &&
     prev.className === next.className &&
-    prev.ariaLabel === next.ariaLabel
+    prev.ariaLabel === next.ariaLabel &&
+    prev.isEditing === next.isEditing
   )
 })
 

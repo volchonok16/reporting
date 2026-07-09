@@ -2280,9 +2280,29 @@ body {
 }
 
 .product-status-inline-table-toolbar {
-  display: flex;
+  display: none;
   gap: 6px;
   margin-bottom: 6px;
+}
+
+.product-status-cell-active .product-status-inline-table-toolbar,
+.product-status-inline-table-host:focus-within .product-status-inline-table-toolbar {
+  display: flex;
+}
+
+.product-status-inline-table-host--readonly {
+  cursor: text;
+}
+
+.product-status-inline-table-preamble--readonly,
+.product-status-inline-table-cell--readonly {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.product-status-inline-table--readonly .product-status-inline-table-cell--readonly {
+  min-height: 24px;
+  padding: 4px 6px;
 }
 
 .product-status-inline-table-btn {
