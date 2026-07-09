@@ -1,5 +1,8 @@
+import { useEffect, useState } from 'react'
 import type { TextStyleSegment } from './productStatusRichText'
 import { PRODUCT_STATUS_ATTENTION_FG } from './productStatusRichText'
+
+const FORMAT_TOOLBAR_OPEN_KEY = 'product-status-format-toolbar-open'
 
 type ProductStatusFormatToolbarProps = {
   disabled?: boolean
@@ -58,65 +61,114 @@ function FormatButton({
   )
 }
 
+function readFormatToolbarOpen(): boolean {
+  try {
+    return sessionStorage.getItem(FORMAT_TOOLBAR_OPEN_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
 export default function ProductStatusFormatToolbar({
   disabled = false,
   hasActiveCell,
   onTextStyle,
   onClearFormatting,
 }: ProductStatusFormatToolbarProps) {
+  const [open, setOpen] = useState(readFormatToolbarOpen)
   const inactive = disabled || !hasActiveCell
 
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(FORMAT_TOOLBAR_OPEN_KEY, String(open))
+    } catch {
+      /* ignore storage errors */
+    }
+  }, [open])
+
   return (
-    <div className="product-status-format-toolbar" role="toolbar" aria-label="Форматирование текста">
-      <span className="product-status-format-label">Маркер:</span>
-      {HIGHLIGHT_PRESETS.map((preset) => (
-        <FormatButton key={preset.label} preset={preset} inactive={inactive} onApply={onTextStyle} />
-      ))}
-      <span className="product-status-format-sep" aria-hidden="true" />
-      <span className="product-status-format-label">Цвет:</span>
-      {TEXT_COLOR_PRESETS.map((preset) => (
-        <FormatButton key={preset.label} preset={preset} inactive={inactive} onApply={onTextStyle} />
-      ))}
-      <span className="product-status-format-sep" aria-hidden="true" />
+    <div
+      className={[
+        'product-status-format-panel',
+        open ? 'product-status-format-panel--open' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
       <button
         type="button"
-        className="btn-secondary product-status-format-btn product-status-format-btn-strong"
-        disabled={inactive}
-        title="Жирный"
+        className="product-status-format-panel-toggle"
+        aria-expanded={open}
+        aria-controls="product-status-format-toolbar"
         onMouseDown={(event) => event.preventDefault()}
-        onClick={() => onTextStyle({ bold: true })}
+        onClick={() => setOpen((current) => !current)}
       >
-        Ж
+        <span className="product-status-format-panel-title">Форматирование текста</span>
+        <span className="product-status-format-panel-hint">
+          {open ? 'Свернуть' : 'Маркер, цвет, жирный…'}
+        </span>
+        <span className="product-status-format-panel-chevron" aria-hidden="true">
+          {open ? '▾' : '▸'}
+        </span>
       </button>
-      <button
-        type="button"
-        className="btn-secondary product-status-format-btn product-status-format-btn-em"
-        disabled={inactive}
-        title="Курсив"
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => onTextStyle({ italic: true })}
-      >
-        К
-      </button>
-      <button
-        type="button"
-        className="btn-secondary product-status-format-btn product-status-format-btn-strike"
-        disabled={inactive}
-        title="Зачёркнутый"
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => onTextStyle({ strike: true })}
-      >
-        S̶
-      </button>
-      <button
-        type="button"
-        className="btn-secondary product-status-format-btn"
-        disabled={inactive}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={onClearFormatting}
-      >
-        Сбросить
-      </button>
+      {open ? (
+        <div
+          id="product-status-format-toolbar"
+          className="product-status-format-toolbar"
+          role="toolbar"
+          aria-label="Форматирование текста"
+        >
+          <span className="product-status-format-label">Маркер:</span>
+          {HIGHLIGHT_PRESETS.map((preset) => (
+            <FormatButton key={preset.label} preset={preset} inactive={inactive} onApply={onTextStyle} />
+          ))}
+          <span className="product-status-format-sep" aria-hidden="true" />
+          <span className="product-status-format-label">Цвет:</span>
+          {TEXT_COLOR_PRESETS.map((preset) => (
+            <FormatButton key={preset.label} preset={preset} inactive={inactive} onApply={onTextStyle} />
+          ))}
+          <span className="product-status-format-sep" aria-hidden="true" />
+          <button
+            type="button"
+            className="btn-secondary product-status-format-btn product-status-format-btn-strong"
+            disabled={inactive}
+            title="Жирный"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onTextStyle({ bold: true })}
+          >
+            Ж
+          </button>
+          <button
+            type="button"
+            className="btn-secondary product-status-format-btn product-status-format-btn-em"
+            disabled={inactive}
+            title="Курсив"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onTextStyle({ italic: true })}
+          >
+            К
+          </button>
+          <button
+            type="button"
+            className="btn-secondary product-status-format-btn product-status-format-btn-strike"
+            disabled={inactive}
+            title="Зачёркнутый"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onTextStyle({ strike: true })}
+          >
+            S̶
+          </button>
+          <button
+            type="button"
+            className="btn-secondary product-status-format-btn"
+            disabled={inactive}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={onClearFormatting}
+          >
+            Сбросить
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }

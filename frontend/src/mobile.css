@@ -444,6 +444,14 @@
     min-height: var(--mobile-tap-min);
   }
 
+  .product-status-format-panel-toggle {
+    min-height: var(--mobile-tap-min);
+  }
+
+  .product-status-format-panel-hint {
+    display: none;
+  }
+
   .product-status-format-toolbar {
     flex-wrap: wrap;
     gap: 6px;

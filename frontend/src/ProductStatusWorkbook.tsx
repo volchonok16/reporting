@@ -965,7 +965,7 @@ export default function ProductStatusWorkbook({
     }
     blurTimerRef.current = window.setTimeout(() => {
       const focused = document.activeElement
-      if (focused?.closest('.product-status-format-toolbar')) {
+      if (focused?.closest('.product-status-format-panel')) {
         return
       }
       if (focused?.closest('.product-status-cell-input')) {
