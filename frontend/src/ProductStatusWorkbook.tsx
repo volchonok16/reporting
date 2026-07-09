@@ -1168,6 +1168,31 @@ export default function ProductStatusWorkbook({
     activeCellRef.current?.clearFormatting()
   }, [])
 
+  const insertConfluenceTable = useCallback(() => {
+    const sizeRaw = window.prompt('Размер таблицы (строки x столбцы), например 2x3', '2x2')
+    if (!sizeRaw) return
+    const match = sizeRaw.trim().match(/^(\d+)\s*[xх*]\s*(\d+)$/i)
+    if (!match) {
+      notifyWarning('Введите размер в формате 2x3')
+      return
+    }
+    const rows = Number(match[1])
+    const cols = Number(match[2])
+    if (rows < 1 || cols < 1 || rows > 20 || cols > 12) {
+      notifyWarning('Допустимо: от 1x1 до 20x12')
+      return
+    }
+    const header = `|| ${Array.from({ length: cols }, (_, i) => `Заголовок ${i + 1}`).join(' || ')} ||`
+    const body = Array.from({ length: rows }, (_, rowIndex) =>
+      `| ${Array.from({ length: cols }, (_, colIndex) => `Ячейка ${rowIndex + 1}.${colIndex + 1}`).join(' | ')} |`,
+    )
+    const tableText = [header, ...body].join('\n')
+    const inserted = activeCellRef.current?.insertText(tableText)
+    if (!inserted) {
+      notifyWarning('Сначала выберите ячейку для вставки таблицы')
+    }
+  }, [])
+
   const backToTable = useCallback(() => {
     setViewMode('table')
     setActiveCell(null)
@@ -1370,6 +1395,7 @@ export default function ProductStatusWorkbook({
           hasActiveCell={activeCell !== null}
           onTextStyle={applyTextStyle}
           onClearFormatting={clearFormatting}
+          onInsertTable={insertConfluenceTable}
         />
       ) : null}
 

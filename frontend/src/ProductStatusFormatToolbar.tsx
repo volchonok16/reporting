@@ -9,6 +9,7 @@ type ProductStatusFormatToolbarProps = {
   hasActiveCell: boolean
   onTextStyle: (patch: Partial<TextStyleSegment>) => void
   onClearFormatting: () => void
+  onInsertTable: () => void
 }
 
 type PresetButton = {
@@ -74,6 +75,7 @@ export default function ProductStatusFormatToolbar({
   hasActiveCell,
   onTextStyle,
   onClearFormatting,
+  onInsertTable,
 }: ProductStatusFormatToolbarProps) {
   const [open, setOpen] = useState(readFormatToolbarOpen)
   const inactive = disabled || !hasActiveCell
@@ -176,6 +178,16 @@ export default function ProductStatusFormatToolbar({
             onClick={onClearFormatting}
           >
             Сбросить
+          </button>
+          <button
+            type="button"
+            className="btn-secondary product-status-format-btn"
+            disabled={inactive}
+            title="Вставить таблицу в стиле Confluence"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={onInsertTable}
+          >
+            Таблица
           </button>
         </div>
       ) : null}

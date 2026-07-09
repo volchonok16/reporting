@@ -17,6 +17,7 @@ export type ProductStatusCellHandle = {
   applyTextStyle: (patch: Partial<TextStyleSegment>) => boolean
   applyCellStyle: (patch: Partial<CellStyle>) => boolean
   clearFormatting: () => boolean
+  insertText: (text: string) => boolean
 }
 
 type ProductStatusCellProps = {
@@ -50,6 +51,28 @@ function renderSegments(inner: string, container: HTMLElement) {
   if (!container.childNodes.length) {
     container.append(document.createTextNode(''))
   }
+}
+
+function insertTextAtSelection(root: HTMLElement, text: string): boolean {
+  if (!text) return false
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) {
+    root.append(document.createTextNode(text))
+    return true
+  }
+  const range = selection.getRangeAt(0)
+  if (!root.contains(range.commonAncestorContainer)) {
+    root.append(document.createTextNode(text))
+    return true
+  }
+  range.deleteContents()
+  const node = document.createTextNode(text)
+  range.insertNode(node)
+  range.setStartAfter(node)
+  range.collapse(true)
+  selection.removeAllRanges()
+  selection.addRange(range)
+  return true
 }
 
 const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatusCellProps>(
@@ -122,6 +145,14 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         if (!element) return false
         const applied = clearFormattingInCell(element)
         if (!applied) return false
+        commitValue(serializeEditableCell(element, cellStyleRef.current))
+        return true
+      },
+      insertText(text) {
+        const element = elementRef.current
+        if (!element) return false
+        const inserted = insertTextAtSelection(element, text)
+        if (!inserted) return false
         commitValue(serializeEditableCell(element, cellStyleRef.current))
         return true
       },
