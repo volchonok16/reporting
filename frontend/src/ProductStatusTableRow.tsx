@@ -246,7 +246,12 @@ function ProductStatusTableRow({
                     activeCellRef.current = handle
                   }
                 }}
-                className="product-status-cell-input"
+                className={[
+                  'product-status-cell-input',
+                  isZniColumn(column) ? 'product-status-cell-input-zni' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
                 value={cellValue}
                 ariaLabel={column}
                 placeholder={isZniColumn(column) ? ZNI_NUMBERS_PLACEHOLDER : undefined}

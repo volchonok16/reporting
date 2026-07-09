@@ -2129,6 +2129,11 @@ body {
   pointer-events: none;
 }
 
+.product-status-cell-input-zni:empty::before {
+  color: color-mix(in srgb, var(--text-secondary) 55%, transparent);
+  font-style: italic;
+}
+
 .product-status-row-actions,
 .product-status-row-actions-header {
   width: 42px;
