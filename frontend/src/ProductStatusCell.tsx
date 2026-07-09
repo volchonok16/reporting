@@ -4,6 +4,7 @@ import {
   applyStyleToCellOrSelection,
   clearFormattingInCell,
   createStyledMark,
+  displayCellText,
   normalizeCellValue,
   normalizeTextSegment,
   serializeEditableCell,
@@ -37,15 +38,20 @@ type EmbeddedTable = {
   cells: string[][]
 }
 
+type EmbeddedTableDoc = {
+  text: string
+  table: EmbeddedTable
+}
+
 const TABLE_TOKEN_PREFIX = '<<tablejson:'
 const TABLE_TOKEN_SUFFIX = '>>'
 
-function serializeEmbeddedTable(table: EmbeddedTable): string {
-  const payload = JSON.stringify(table)
+function serializeEmbeddedTableDoc(doc: EmbeddedTableDoc): string {
+  const payload = JSON.stringify(doc)
   return `${TABLE_TOKEN_PREFIX}${btoa(unescape(encodeURIComponent(payload)))}${TABLE_TOKEN_SUFFIX}`
 }
 
-function parseEmbeddedTable(value: string): EmbeddedTable | null {
+function parseEmbeddedTableDoc(value: string): EmbeddedTableDoc | null {
   const { inner } = splitCellWrapper(normalizeCellValue(value))
   if (!inner.startsWith(TABLE_TOKEN_PREFIX) || !inner.endsWith(TABLE_TOKEN_SUFFIX)) {
     return null
@@ -53,12 +59,14 @@ function parseEmbeddedTable(value: string): EmbeddedTable | null {
   const encoded = inner.slice(TABLE_TOKEN_PREFIX.length, -TABLE_TOKEN_SUFFIX.length)
   try {
     const raw = decodeURIComponent(escape(atob(encoded)))
-    const parsed = JSON.parse(raw) as EmbeddedTable
-    if (!parsed || parsed.rows < 1 || parsed.cols < 1 || !Array.isArray(parsed.cells)) return null
-    const cells = Array.from({ length: parsed.rows }, (_, row) =>
-      Array.from({ length: parsed.cols }, (_, col) => parsed.cells[row]?.[col] ?? ''),
+    const parsed = JSON.parse(raw) as EmbeddedTable | EmbeddedTableDoc
+    const table = (parsed as EmbeddedTableDoc).table ?? (parsed as EmbeddedTable)
+    const text = typeof (parsed as EmbeddedTableDoc).text === 'string' ? (parsed as EmbeddedTableDoc).text : ''
+    if (!table || table.rows < 1 || table.cols < 1 || !Array.isArray(table.cells)) return null
+    const cells = Array.from({ length: table.rows }, (_, row) =>
+      Array.from({ length: table.cols }, (_, col) => table.cells[row]?.[col] ?? ''),
     )
-    return { rows: parsed.rows, cols: parsed.cols, cells }
+    return { text, table: { rows: table.rows, cols: table.cols, cells } }
   } catch {
     return null
   }
@@ -70,6 +78,13 @@ function createEmbeddedTable(rows: number, cols: number): EmbeddedTable {
     cols,
     cells: Array.from({ length: rows }, () => Array.from({ length: cols }, () => '')),
   }
+}
+
+function serializeDocWithTable(doc: EmbeddedTableDoc): string {
+  return serializeEmbeddedTableDoc({
+    text: doc.text,
+    table: doc.table,
+  })
 }
 
 function applyCellStyle(element: HTMLElement, cellStyle: CellStyle) {
@@ -126,11 +141,11 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
     const lastSerialized = useRef<string | null>(null)
     const cellStyleRef = useRef<CellStyle>({ bg: null, border: null })
 
-    const tableData = parseEmbeddedTable(value)
+    const tableDoc = parseEmbeddedTableDoc(value)
 
     useLayoutEffect(() => {
       const element = elementRef.current
-      if (!element || value === lastSerialized.current || tableData) {
+      if (!element || value === lastSerialized.current || tableDoc) {
         return
       }
       const normalized = normalizeCellValue(value)
@@ -139,7 +154,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       applyCellStyle(element, cellStyle)
       renderSegments(inner, element)
       lastSerialized.current = value
-    }, [tableData, value])
+    }, [tableDoc, value])
 
     const commitValue = (nextSerialized: string) => {
       lastSerialized.current = nextSerialized
@@ -167,7 +182,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
     useImperativeHandle(ref, () => ({
       applyTextStyle(patch) {
         const element = elementRef.current
-        if (!element || tableData) return false
+        if (!element || tableDoc) return false
         const applied = applyStyleToCellOrSelection(element, patch)
         if (!applied) return false
         commitValue(serializeEditableCell(element, cellStyleRef.current))
@@ -175,7 +190,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       },
       applyCellStyle(patch) {
         const element = elementRef.current
-        if (!element || tableData) return false
+        if (!element || tableDoc) return false
         const next = applyCellStylePatch(lastSerialized.current ?? value, patch)
         const { cellStyle, inner } = splitCellWrapper(next)
         cellStyleRef.current = cellStyle
@@ -186,7 +201,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       },
       clearFormatting() {
         const element = elementRef.current
-        if (!element || tableData) return false
+        if (!element || tableDoc) return false
         const applied = clearFormattingInCell(element)
         if (!applied) return false
         commitValue(serializeEditableCell(element, cellStyleRef.current))
@@ -194,7 +209,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       },
       insertText(text) {
         const element = elementRef.current
-        if (!element || tableData) return false
+        if (!element || tableDoc) return false
         const inserted = insertTextAtSelection(element, text)
         if (!inserted) return false
         commitValue(serializeEditableCell(element, cellStyleRef.current))
@@ -202,22 +217,80 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       },
       insertTable(rows, cols) {
         if (rows < 1 || cols < 1) return false
+        const baseText = tableDoc ? tableDoc.text : displayCellText(value)
         const table = createEmbeddedTable(rows, cols)
-        commitValue(serializeEmbeddedTable(table))
+        commitValue(serializeDocWithTable({ text: baseText, table }))
         return true
       },
-    }), [tableData, value])
+    }), [tableDoc, value])
 
-    if (tableData) {
+    if (tableDoc) {
       return (
         <div
           className={className}
           onFocus={onFocus}
           onBlur={onBlur}
         >
+          <textarea
+            className="product-status-inline-table-free-text"
+            placeholder={placeholder}
+            value={tableDoc.text}
+            onFocus={onFocus}
+            onBlur={onBlur}
+            onChange={(event) => {
+              commitValue(
+                serializeDocWithTable({
+                  text: event.target.value,
+                  table: tableDoc.table,
+                }),
+              )
+            }}
+          />
+          <div className="product-status-inline-table-toolbar">
+            <button
+              type="button"
+              className="btn-secondary product-status-inline-table-btn"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                const nextTable: EmbeddedTable = {
+                  rows: tableDoc.table.rows + 1,
+                  cols: tableDoc.table.cols,
+                  cells: [...tableDoc.table.cells.map((items) => [...items]), Array.from({ length: tableDoc.table.cols }, () => '')],
+                }
+                commitValue(serializeDocWithTable({ text: tableDoc.text, table: nextTable }))
+              }}
+            >
+              + Строка
+            </button>
+            <button
+              type="button"
+              className="btn-secondary product-status-inline-table-btn"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                const nextTable: EmbeddedTable = {
+                  rows: tableDoc.table.rows,
+                  cols: tableDoc.table.cols + 1,
+                  cells: tableDoc.table.cells.map((items) => [...items, '']),
+                }
+                commitValue(serializeDocWithTable({ text: tableDoc.text, table: nextTable }))
+              }}
+            >
+              + Столбец
+            </button>
+            <button
+              type="button"
+              className="btn-secondary product-status-inline-table-btn"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                commitValue(tableDoc.text)
+              }}
+            >
+              Удалить таблицу
+            </button>
+          </div>
           <table className="product-status-inline-table">
             <tbody>
-              {tableData.cells.map((row, rowIndex) => (
+              {tableDoc.table.cells.map((row, rowIndex) => (
                 <tr key={rowIndex}>
                   {row.map((cell, colIndex) => (
                     <td key={colIndex}>
@@ -228,12 +301,12 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
                         onBlur={onBlur}
                         onChange={(event) => {
                           const nextTable: EmbeddedTable = {
-                            rows: tableData.rows,
-                            cols: tableData.cols,
-                            cells: tableData.cells.map((items) => [...items]),
+                            rows: tableDoc.table.rows,
+                            cols: tableDoc.table.cols,
+                            cells: tableDoc.table.cells.map((items) => [...items]),
                           }
                           nextTable.cells[rowIndex][colIndex] = event.target.value
-                          commitValue(serializeEmbeddedTable(nextTable))
+                          commitValue(serializeDocWithTable({ text: tableDoc.text, table: nextTable }))
                         }}
                       />
                     </td>

@@ -2207,6 +2207,7 @@ body {
 }
 
 .product-status-inline-table {
+  margin-top: 6px;
   width: 100%;
   border-collapse: collapse;
 }
@@ -2230,6 +2231,30 @@ body {
 .product-status-inline-table-input:focus {
   outline: none;
   background: color-mix(in srgb, var(--surface-1) 85%, var(--brand-accent) 15%);
+}
+
+.product-status-inline-table-free-text {
+  width: 100%;
+  min-height: 54px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.product-status-inline-table-toolbar {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.product-status-inline-table-btn {
+  padding: 2px 8px;
+  font-size: 0.78rem;
 }
 
 .product-status-row-actions,
