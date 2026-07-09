@@ -162,12 +162,18 @@ class ProductStatusRowDelete(BaseModel):
     rowId: int = Field(ge=1)
 
 
+class ProductStatusSheetRowOrder(BaseModel):
+    gid: str
+    rowIds: list[int] = Field(default_factory=list, min_length=1)
+
+
 class ProductStatusSaveIn(BaseModel):
     updates: list[ProductStatusCellUpdate] = Field(
         default_factory=list,
         max_length=50_000,
     )
     deletedRows: list[ProductStatusRowDelete] = Field(default_factory=list)
+    rowOrder: list[ProductStatusSheetRowOrder] = Field(default_factory=list)
 
 
 class ProductStatusHistoryEntryOut(BaseModel):

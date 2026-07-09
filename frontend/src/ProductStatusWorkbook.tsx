@@ -48,6 +48,7 @@ type ProductStatusCellUpdate = {
 type ProductStatusSavePayload = {
   updates: ProductStatusCellUpdate[]
   deletedRows: Array<{ gid: string; rowId: number }>
+  rowOrder: Array<{ gid: string; rowIds: number[] }>
 }
 
 type ProductStatusHistoryEntry = {
@@ -265,6 +266,30 @@ function collectDeletedRows(
   return deleted
 }
 
+function collectRowOrderChange(
+  baseline: ProductStatusSheet,
+  current: ProductStatusSheet,
+): number[] | null {
+  const toRowIds = (rows: Record<string, string>[]) =>
+    rows
+      .map((row) => row[PRODUCT_STATUS_ROW_ID_KEY])
+      .filter((value): value is string => Boolean(value))
+      .map((value) => Number(value))
+      .filter((id) => !Number.isNaN(id) && id > 0)
+
+  const baselineIds = toRowIds(baseline.rows)
+  const currentIds = toRowIds(current.rows)
+  if (currentIds.length === 0 || baselineIds.length !== currentIds.length) {
+    return null
+  }
+  const baselineSet = new Set(baselineIds)
+  if (!currentIds.every((id) => baselineSet.has(id))) {
+    return null
+  }
+  const changed = currentIds.some((id, index) => id !== baselineIds[index])
+  return changed ? currentIds : null
+}
+
 function collectSheetUpdates(
   baselineByGid: Map<string, ProductStatusSheet>,
   sheets: ProductStatusSheet[],
@@ -272,6 +297,7 @@ function collectSheetUpdates(
 ): ProductStatusSavePayload {
   const updates: ProductStatusCellUpdate[] = []
   const deletedRows: Array<{ gid: string; rowId: number }> = []
+  const rowOrder: Array<{ gid: string; rowIds: number[] }> = []
   for (const sheet of sheets) {
     if (!loadedGids.has(sheet.gid) || sheet.columns.length === 0) {
       continue
@@ -282,8 +308,12 @@ function collectSheetUpdates(
     }
     updates.push(...diffSheetToUpdates(baseline, sheet))
     deletedRows.push(...collectDeletedRows(baseline, sheet))
+    const orderedRowIds = collectRowOrderChange(baseline, sheet)
+    if (orderedRowIds) {
+      rowOrder.push({ gid: sheet.gid, rowIds: orderedRowIds })
+    }
   }
-  return { updates, deletedRows }
+  return { updates, deletedRows, rowOrder }
 }
 
 function isPresentationFlagColumn(column: string): boolean {
@@ -687,7 +717,7 @@ export default function ProductStatusWorkbook({
   const handleSave = useCallback(async (): Promise<boolean> => {
     if (sheets.length === 0) return true
     const payload = collectSheetUpdates(baselineByGidRef.current, sheets, loadedGids)
-    if (payload.updates.length === 0 && payload.deletedRows.length === 0) {
+    if (payload.updates.length === 0 && payload.deletedRows.length === 0 && payload.rowOrder.length === 0) {
       setDirty(false)
       return true
     }
@@ -695,6 +725,7 @@ export default function ProductStatusWorkbook({
       ...new Set([
         ...payload.updates.map((update) => update.gid),
         ...payload.deletedRows.map((row) => row.gid),
+        ...payload.rowOrder.map((item) => item.gid),
       ]),
     ]
     setSaving(true)
@@ -1252,57 +1283,72 @@ export default function ProductStatusWorkbook({
               : '\u00A0'}
           </p>
         </div>
-        <div className="product-status-toolbar-actions">
-          {!commitOnRefresh ? (
+        <div className="product-status-toolbar-actions" role="toolbar" aria-label="Действия">
+          {(enableExcelExport || enablePresentationExport) ? (
+            <div className="product-status-toolbar-actions-group">
+              {enableExcelExport ? (
+                <button
+                  type="button"
+                  className="btn-secondary product-status-toolbar-btn"
+                  onClick={() => void handleExportExcel()}
+                  disabled={toolbarBusy || sheets.length === 0}
+                  title="Скачать Excel"
+                >
+                  Excel
+                </button>
+              ) : null}
+              {enablePresentationExport ? (
+                <button
+                  type="button"
+                  className="btn-secondary product-status-toolbar-btn"
+                  onClick={() => void handleExportPresentation()}
+                  disabled={toolbarBusy || sheets.length === 0}
+                  title="Скачать презентацию"
+                >
+                  Презентация
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          <div className="product-status-toolbar-actions-group product-status-toolbar-actions-group--main">
+            {!commitOnRefresh ? (
+              <button
+                type="button"
+                className="btn-primary product-status-toolbar-btn"
+                onClick={() => void handleSave()}
+                disabled={toolbarBusy || sheets.length === 0 || !dirty}
+              >
+                Сохранить
+              </button>
+            ) : null}
+            {commitOnRefresh && dirty ? (
+              <button
+                type="button"
+                className="btn-secondary product-status-toolbar-btn"
+                onClick={handleRevert}
+                disabled={toolbarBusy}
+              >
+                Отменить
+              </button>
+            ) : null}
             <button
               type="button"
-              className="btn-primary"
-              onClick={() => void handleSave()}
-              disabled={toolbarBusy || sheets.length === 0 || !dirty}
+              className={[
+                'product-status-toolbar-btn',
+                commitOnRefresh && dirty ? 'btn-primary' : 'btn-secondary',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              onClick={() => void handleRefresh()}
+              disabled={
+                toolbarBusy
+                || sheets.length === 0
+                || (commitOnRefresh && !dirty)
+              }
             >
-              Сохранить
+              {commitOnRefresh ? 'Сохранить' : 'Обновить'}
             </button>
-          ) : null}
-          {commitOnRefresh ? (
-            <button
-              type="button"
-              className={`btn-secondary${dirty ? '' : ' product-status-toolbar-btn-hidden'}`}
-              onClick={handleRevert}
-              disabled={toolbarBusy || !dirty}
-              aria-hidden={!dirty}
-              tabIndex={dirty ? 0 : -1}
-            >
-              Отменить изменения
-            </button>
-          ) : null}
-          {enableExcelExport ? (
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => void handleExportExcel()}
-              disabled={toolbarBusy || sheets.length === 0}
-            >
-              Скачать Excel
-            </button>
-          ) : null}
-          {enablePresentationExport ? (
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => void handleExportPresentation()}
-              disabled={toolbarBusy || sheets.length === 0}
-            >
-              Скачать презентацию
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className={commitOnRefresh && dirty ? 'btn-primary' : 'btn-secondary'}
-            onClick={() => void handleRefresh()}
-            disabled={toolbarBusy || sheets.length === 0 || (commitOnRefresh && !dirty)}
-          >
-            {commitOnRefresh ? 'Сохранить' : 'Обновить'}
-          </button>
+          </div>
         </div>
       </header>
 

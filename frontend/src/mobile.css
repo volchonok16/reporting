@@ -413,14 +413,31 @@
   }
 
   .product-status-toolbar-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    position: static;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    margin-top: 8px;
+    padding: 4px;
   }
 
-  .product-status-toolbar-actions .btn-primary,
-  .product-status-toolbar-actions .btn-secondary {
+  .product-status-toolbar-actions-group {
     width: 100%;
+    justify-content: stretch;
+  }
+
+  .product-status-toolbar-actions-group + .product-status-toolbar-actions-group {
+    border-left: none;
+    border-top: 1px solid var(--border);
+    margin-left: 0;
+    margin-top: 4px;
+    padding-left: 2px;
+    padding-top: 6px;
+  }
+
+  .product-status-toolbar-actions .product-status-toolbar-btn {
+    flex: 1 1 0;
+    min-width: 0;
   }
 
   .product-status-sheet-tabs {
@@ -642,7 +659,6 @@
     grid-template-columns: 1fr;
   }
 
-  .product-status-toolbar-actions,
   .product-status-table-toolbar-actions {
     grid-template-columns: 1fr;
   }

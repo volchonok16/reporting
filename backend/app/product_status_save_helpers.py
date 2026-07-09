@@ -23,6 +23,28 @@ def resolve_row(
     return None
 
 
+def apply_row_order(
+    db_rows: list[dict[str, Any]],
+    ordered_row_ids: list[int] | None,
+) -> list[dict[str, Any]]:
+    if not ordered_row_ids:
+        return db_rows
+    by_id = {int(row["id"]): row for row in db_rows}
+    ordered: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for row_id in ordered_row_ids:
+        row = by_id.get(int(row_id))
+        if row is None:
+            continue
+        ordered.append(row)
+        seen.add(int(row_id))
+    for row in db_rows:
+        row_id = int(row["id"])
+        if row_id not in seen:
+            ordered.append(row)
+    return ordered
+
+
 def read_row_cell(row: dict[str, Any], column: str, *, normalize_cells) -> str:
     cells = normalize_cells(row.get("cells"))
     return cells.get(column, "")

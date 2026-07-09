@@ -1524,26 +1524,43 @@ body {
 }
 
 .product-status-toolbar-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
   position: fixed;
   right: max(12px, var(--page-gutter));
   top: 64px;
   z-index: 30;
-  padding: 8px;
+  padding: 3px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--surface-1) 94%, transparent);
-  backdrop-filter: blur(2px);
-  box-shadow: var(--shadow-md);
-  margin-left: auto;
+  border-radius: 10px;
+  background: var(--surface-1);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
-.product-status-toolbar-btn-hidden {
-  visibility: hidden;
-  pointer-events: none;
+.product-status-toolbar-actions-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px;
+}
+
+.product-status-toolbar-actions-group + .product-status-toolbar-actions-group {
+  border-left: 1px solid var(--border);
+  margin-left: 2px;
+  padding-left: 5px;
+}
+
+.product-status-toolbar-btn {
+  padding: 6px 12px;
+  font-size: 0.8125rem;
+  line-height: 1.25;
+  border-radius: 7px;
+  white-space: nowrap;
+}
+
+.product-status-toolbar-actions .btn-primary.product-status-toolbar-btn {
+  min-width: 88px;
 }
 
 .product-status-sheet-tabs {

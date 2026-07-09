@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.app_access import can_manage_org
 from app.config import settings
 from app.product_status_save_helpers import (
+    apply_row_order,
     fetch_row_cell,
     raise_save_conflicts,
     resolve_row,
@@ -325,7 +326,11 @@ def save_b2b_product_status_to_db(
     for item in payload.deletedRows:
         deleted_by_gid.setdefault(item.gid, set()).add(item.rowId)
 
-    processed_gids = set(updates_by_gid) | set(deleted_by_gid)
+    row_order_by_gid: dict[str, list[int]] = {}
+    for item in payload.rowOrder:
+        row_order_by_gid[item.gid] = list(item.rowIds)
+
+    processed_gids = set(updates_by_gid) | set(deleted_by_gid) | set(row_order_by_gid)
     for gid in processed_gids:
         office = _load_office(db, gid=gid)
         if office is None:
@@ -517,6 +522,8 @@ def save_b2b_product_status_to_db(
 
         if conflicts:
             raise_save_conflicts(conflicts)
+
+        db_rows = apply_row_order(db_rows, row_order_by_gid.get(gid))
 
         for index, row in enumerate(db_rows):
             db.execute(
