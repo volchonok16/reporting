@@ -2290,21 +2290,6 @@ body {
   display: flex;
 }
 
-.product-status-inline-table-host--readonly {
-  cursor: text;
-}
-
-.product-status-inline-table-preamble--readonly,
-.product-status-inline-table-cell--readonly {
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.product-status-inline-table--readonly .product-status-inline-table-cell--readonly {
-  min-height: 24px;
-  padding: 4px 6px;
-}
-
 .product-status-inline-table-btn {
   padding: 2px 8px;
   font-size: 0.78rem;

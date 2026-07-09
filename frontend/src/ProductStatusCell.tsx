@@ -1,4 +1,4 @@
-import { forwardRef, memo, useImperativeHandle, useLayoutEffect, useRef, type KeyboardEvent } from 'react'
+import { forwardRef, memo, useEffect, useImperativeHandle, useLayoutEffect, useRef, type KeyboardEvent } from 'react'
 import {
   applyCellStylePatch,
   applyStyleToCellOrSelection,
@@ -28,7 +28,6 @@ type ProductStatusCellProps = {
   className?: string
   ariaLabel: string
   placeholder?: string
-  isEditing?: boolean
   onChange: (value: string) => void
   onFocus?: () => void
   onBlur?: () => void
@@ -186,7 +185,6 @@ type InlineTableCellProps = {
   className?: string
   onCommit: (value: string) => void
   onFocus?: () => void
-  onBlur?: () => void
 }
 
 function InlineTableCell({
@@ -195,7 +193,6 @@ function InlineTableCell({
   className = 'product-status-inline-table-cell',
   onCommit,
   onFocus,
-  onBlur,
 }: InlineTableCellProps) {
   const elementRef = useRef<HTMLDivElement>(null)
   const lastCommitted = useRef(value)
@@ -207,9 +204,18 @@ function InlineTableCell({
     lastCommitted.current = value
   }, [value])
 
+  const syncRef = (element: HTMLDivElement | null) => {
+    elementRef.current = element
+    if (!element) return
+    if (element.textContent !== value) {
+      element.textContent = value
+      lastCommitted.current = value
+    }
+  }
+
   return (
     <div
-      ref={elementRef}
+      ref={syncRef}
       role="textbox"
       aria-multiline="true"
       contentEditable
@@ -219,9 +225,9 @@ function InlineTableCell({
       onFocus={onFocus}
       onBlur={(event) => {
         const next = event.currentTarget.textContent ?? ''
+        if (next === lastCommitted.current) return
         lastCommitted.current = next
         onCommit(next)
-        onBlur?.()
       }}
     />
   )
@@ -229,7 +235,7 @@ function InlineTableCell({
 
 const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatusCellProps>(
   function ProductStatusCell(
-    { value, className, ariaLabel, placeholder, isEditing = false, onChange, onFocus, onBlur },
+    { value, className, ariaLabel, placeholder, onChange, onFocus, onBlur },
     ref,
   ) {
     const elementRef = useRef<HTMLDivElement>(null)
@@ -238,6 +244,12 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
     const cellStyleRef = useRef<CellStyle>({ bg: null, border: null })
 
     const tableDoc = parseEmbeddedTableDoc(value)
+
+    useLayoutEffect(() => {
+      if (tableDoc) {
+        lastSerialized.current = value
+      }
+    }, [tableDoc, value])
 
     const commitValue = (nextSerialized: string) => {
       lastSerialized.current = nextSerialized
@@ -255,16 +267,21 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       commitValue(nextSerialized)
       return true
     }
+    const commitTableFromHostRef = useRef(commitTableFromHost)
+    commitTableFromHostRef.current = commitTableFromHost
 
-    useLayoutEffect(() => {
-      if (!tableDoc || !isEditing) return
+    useEffect(() => {
       const host = tableHostRef.current
-      if (!host) return
-      const target =
-        host.querySelector<HTMLElement>('.product-status-inline-table-preamble')
-        ?? host.querySelector<HTMLElement>('.product-status-inline-table-cell')
-      target?.focus()
-    }, [isEditing, tableDoc])
+      if (!host || !tableDoc || !onBlur) return
+      const handleFocusOut = (event: globalThis.FocusEvent) => {
+        const next = event.relatedTarget
+        if (next instanceof Node && host.contains(next)) return
+        commitTableFromHostRef.current()
+        onBlur()
+      }
+      host.addEventListener('focusout', handleFocusOut)
+      return () => host.removeEventListener('focusout', handleFocusOut)
+    }, [onBlur, tableDoc])
 
     useLayoutEffect(() => {
       const element = elementRef.current
@@ -374,67 +391,16 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         commitValue(serializeDocWithTable({ text: tableDoc.text, table: nextTable }))
       }
 
-      const beginEditing = () => {
-        onFocus?.()
-      }
-
-      if (!isEditing) {
-        return (
-          <div
-            className={[className, 'product-status-inline-table-host', 'product-status-inline-table-host--readonly']
-              .filter(Boolean)
-              .join(' ')}
-            role="button"
-            tabIndex={0}
-            aria-label={ariaLabel}
-            onFocus={beginEditing}
-            onMouseDown={(event) => {
-              if (event.button !== 0) return
-              beginEditing()
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
-                beginEditing()
-              }
-            }}
-          >
-            {tableDoc.text ? (
-              <div className="product-status-inline-table-preamble product-status-inline-table-preamble--readonly">
-                {tableDoc.text}
-              </div>
-            ) : null}
-            <table className="product-status-inline-table product-status-inline-table--readonly">
-              <tbody>
-                {tableDoc.table.cells.map((row, rowIndex) => (
-                  <tr key={rowIndex}>
-                    {row.map((cell, colIndex) => (
-                      <td key={colIndex}>
-                        <div className="product-status-inline-table-cell product-status-inline-table-cell--readonly">
-                          {cell || '\u00A0'}
-                        </div>
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      }
-
       return (
         <div
           ref={tableHostRef}
           className={[className, 'product-status-inline-table-host'].filter(Boolean).join(' ')}
-          onFocus={onFocus}
-          onBlur={onBlur}
+          onFocusCapture={() => onFocus?.()}
         >
           <InlineTableCell
             value={tableDoc.text}
             className="product-status-inline-table-preamble"
             onFocus={onFocus}
-            onBlur={onBlur}
             onCommit={updateFreeText}
           />
           <div className="product-status-inline-table-toolbar">
@@ -486,7 +452,6 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
                       <InlineTableCell
                         value={cell}
                         onFocus={onFocus}
-                        onBlur={onBlur}
                         onCommit={(nextValue) => updateTableCell(rowIndex, colIndex, nextValue)}
                       />
                     </td>
@@ -526,8 +491,7 @@ const ProductStatusCell = memo(ProductStatusCellInner, (prev, next) => {
   return (
     prev.value === next.value &&
     prev.className === next.className &&
-    prev.ariaLabel === next.ariaLabel &&
-    prev.isEditing === next.isEditing
+    prev.ariaLabel === next.ariaLabel
   )
 })
 

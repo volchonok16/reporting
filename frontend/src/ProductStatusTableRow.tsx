@@ -66,6 +66,30 @@ function rowNeedsActiveCellUpdate(prev: ActiveCell | null, next: ActiveCell | nu
   return prevActive || nextActive
 }
 
+function isInteractiveCellTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return Boolean(target.closest('button, a, input, label'))
+}
+
+function activateProductStatusCell(
+  activeCellRef: React.MutableRefObject<ProductStatusCellHandle | null>,
+  onActiveCellFocus: (cell: ActiveCell) => void,
+  cell: ActiveCell,
+  isAlreadyActive: boolean,
+) {
+  if (isAlreadyActive) return
+  activeCellRef.current?.commitPending()
+  onActiveCellFocus(cell)
+}
+
+function commitActiveCellOnLeave(
+  activeCellRef: React.MutableRefObject<ProductStatusCellHandle | null>,
+  rowActive: boolean,
+) {
+  if (!rowActive) return
+  activeCellRef.current?.commitPending()
+}
+
 function ProductStatusTableRow({
   sheetGid,
   rowIndex,
@@ -190,7 +214,15 @@ function ProductStatusTableRow({
         if (isBooleanColumn(column)) {
           const cellValue = row[column] ?? ''
           return (
-            <td key={column} className={cellClassName}>
+            <td
+              key={column}
+              data-product-status-column={column}
+              className={cellClassName}
+              onMouseDownCapture={(event) => {
+                if (isInteractiveCellTarget(event.target)) return
+                commitActiveCellOnLeave(activeCellRef, rowActive)
+              }}
+            >
               <input
                 type="checkbox"
                 className="product-status-bool-checkbox"
@@ -229,6 +261,7 @@ function ProductStatusTableRow({
         return (
           <td
             key={column}
+            data-product-status-column={column}
             className={[
               cellClassName,
               isActive ? 'product-status-cell-active' : '',
@@ -236,6 +269,15 @@ function ProductStatusTableRow({
             ]
               .filter(Boolean)
               .join(' ')}
+            onMouseDownCapture={(event) => {
+              if (showZniView || isInteractiveCellTarget(event.target)) return
+              activateProductStatusCell(
+                activeCellRef,
+                onActiveCellFocus,
+                { rowIndex, column },
+                isActive,
+              )
+            }}
             onDoubleClick={() => {
               if (showZniView) {
                 onActiveCellFocus({ rowIndex, column })
@@ -280,7 +322,6 @@ function ProductStatusTableRow({
                   .join(' ')}
                 value={cellValue}
                 ariaLabel={column}
-                isEditing={isActive}
                 placeholder={isZniColumn(column) ? ZNI_NUMBERS_PLACEHOLDER : undefined}
                 onFocus={() => onActiveCellFocus({ rowIndex, column })}
                 onBlur={() => {

@@ -1068,16 +1068,33 @@ export default function ProductStatusWorkbook({
       window.clearTimeout(blurTimerRef.current)
     }
     blurTimerRef.current = window.setTimeout(() => {
-      const focused = document.activeElement
+      const focused = document.activeElement as HTMLElement | null
       if (focused?.closest('.product-status-format-panel')) {
-        return
-      }
-      if (focused?.closest('.product-status-cell-input')) {
         return
       }
       if (focused?.closest('.product-status-inline-table-toolbar')) {
         return
       }
+
+      const focusedTd = focused?.closest<HTMLElement>('td[data-product-status-column]')
+      if (focusedTd) {
+        const rowElement = focusedTd.closest<HTMLElement>('tr[data-row-index]')
+        const rowIndex = rowElement ? Number(rowElement.dataset.rowIndex) : Number.NaN
+        const column = focusedTd.dataset.productStatusColumn
+        if (!Number.isNaN(rowIndex) && column) {
+          setActiveCell((current) =>
+            current?.rowIndex === rowIndex && current.column === column
+              ? current
+              : { rowIndex, column },
+          )
+          return
+        }
+      }
+
+      if (focused?.closest('.product-status-cell-input')) {
+        return
+      }
+
       setActiveCell((current) =>
         current?.rowIndex === cell.rowIndex && current.column === cell.column ? null : current,
       )
