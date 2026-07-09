@@ -66,12 +66,7 @@ function parseEmbeddedTableDoc(value: string): EmbeddedTableDoc | null {
     const cells = Array.from({ length: table.rows }, (_, row) =>
       Array.from({ length: table.cols }, (_, col) => table.cells[row]?.[col] ?? ''),
     )
-    let freeText = text
-    if (freeText.trim() && !cells[0]?.[0]?.trim()) {
-      cells[0][0] = freeText
-      freeText = ''
-    }
-    return { text: freeText, table: { rows: table.rows, cols: table.cols, cells } }
+    return { text, table: { rows: table.rows, cols: table.cols, cells } }
   } catch {
     return null
   }
@@ -157,12 +152,20 @@ function formatEmbeddedTableDoc(parsed: { text?: string; table: EmbeddedTable })
 type InlineTableCellProps = {
   value: string
   placeholder?: string
+  className?: string
   onCommit: (value: string) => void
   onFocus?: () => void
   onBlur?: () => void
 }
 
-function InlineTableCell({ value, placeholder, onCommit, onFocus, onBlur }: InlineTableCellProps) {
+function InlineTableCell({
+  value,
+  placeholder,
+  className = 'product-status-inline-table-cell',
+  onCommit,
+  onFocus,
+  onBlur,
+}: InlineTableCellProps) {
   const elementRef = useRef<HTMLDivElement>(null)
   const lastCommitted = useRef(value)
 
@@ -180,7 +183,7 @@ function InlineTableCell({ value, placeholder, onCommit, onFocus, onBlur }: Inli
       aria-multiline="true"
       contentEditable
       suppressContentEditableWarning
-      className="product-status-inline-table-cell"
+      className={className}
       data-placeholder={placeholder}
       onFocus={onFocus}
       onBlur={(event) => {
@@ -280,15 +283,16 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         if (rows < 1 || cols < 1) return false
         const baseText = tableDoc ? tableDocToPlainText(tableDoc) : displayCellText(value)
         const table = createEmbeddedTable(rows, cols)
-        if (baseText) {
-          table.cells[0][0] = baseText
-        }
-        commitValue(serializeDocWithTable({ text: '', table }))
+        commitValue(serializeDocWithTable({ text: baseText, table }))
         return true
       },
     }), [tableDoc, value])
 
     if (tableDoc) {
+      const updateFreeText = (nextText: string) => {
+        commitValue(serializeDocWithTable({ text: nextText, table: tableDoc.table }))
+      }
+
       const updateTableCell = (rowIndex: number, colIndex: number, cellValue: string) => {
         const nextTable: EmbeddedTable = {
           rows: tableDoc.table.rows,
@@ -296,7 +300,11 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
           cells: tableDoc.table.cells.map((items) => [...items]),
         }
         nextTable.cells[rowIndex][colIndex] = cellValue
-        commitValue(serializeDocWithTable({ text: '', table: nextTable }))
+        commitValue(serializeDocWithTable({ text: tableDoc.text, table: nextTable }))
+      }
+
+      const updateTable = (nextTable: EmbeddedTable) => {
+        commitValue(serializeDocWithTable({ text: tableDoc.text, table: nextTable }))
       }
 
       return (
@@ -305,18 +313,25 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
           onFocus={onFocus}
           onBlur={onBlur}
         >
+          <InlineTableCell
+            value={tableDoc.text}
+            placeholder={placeholder ?? 'Текст над таблицей'}
+            className="product-status-inline-table-free-text"
+            onFocus={onFocus}
+            onBlur={onBlur}
+            onCommit={updateFreeText}
+          />
           <div className="product-status-inline-table-toolbar">
             <button
               type="button"
               className="btn-secondary product-status-inline-table-btn"
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => {
-                const nextTable: EmbeddedTable = {
+                updateTable({
                   rows: tableDoc.table.rows + 1,
                   cols: tableDoc.table.cols,
                   cells: [...tableDoc.table.cells.map((items) => [...items]), Array.from({ length: tableDoc.table.cols }, () => '')],
-                }
-                commitValue(serializeDocWithTable({ text: '', table: nextTable }))
+                })
               }}
             >
               + Строка
@@ -326,12 +341,11 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
               className="btn-secondary product-status-inline-table-btn"
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => {
-                const nextTable: EmbeddedTable = {
+                updateTable({
                   rows: tableDoc.table.rows,
                   cols: tableDoc.table.cols + 1,
                   cells: tableDoc.table.cells.map((items) => [...items, '']),
-                }
-                commitValue(serializeDocWithTable({ text: '', table: nextTable }))
+                })
               }}
             >
               + Столбец
@@ -355,7 +369,6 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
                     <td key={colIndex}>
                       <InlineTableCell
                         value={cell}
-                        placeholder={rowIndex === 0 && colIndex === 0 ? placeholder : undefined}
                         onFocus={onFocus}
                         onBlur={onBlur}
                         onCommit={(nextValue) => updateTableCell(rowIndex, colIndex, nextValue)}

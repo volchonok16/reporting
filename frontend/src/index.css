@@ -2226,6 +2226,31 @@ body {
   font-style: italic;
 }
 
+.product-status-inline-table-free-text {
+  width: 100%;
+  min-height: 36px;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-sizing: border-box;
+  outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.product-status-inline-table-free-text:focus {
+  border-color: color-mix(in srgb, var(--border) 55%, var(--brand-accent) 45%);
+  background: color-mix(in srgb, var(--surface-1) 92%, var(--brand-accent) 8%);
+}
+
+.product-status-inline-table-free-text:empty::before {
+  content: attr(data-placeholder);
+  color: color-mix(in srgb, var(--text-secondary) 55%, transparent);
+  font-style: italic;
+  pointer-events: none;
+}
+
 .product-status-inline-table {
   margin-top: 6px;
   width: 100%;
