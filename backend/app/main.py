@@ -6,24 +6,33 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy.orm import Session
 
-from app.app_access import is_roadmap_role, sync_board_denied_reason
+from app.app_access import can_manage_org, is_roadmap_role, sync_board_denied_reason
 from app.auth_service import login_with_app_user, login_with_pat
 from app.auth_sessions import delete_session, get_session, get_session_with_meta
 from app.boards import ALL_BOARDS_CODE, BOARDS, boards_for_sync
 from app.config import settings
-from app.db import close_db_session, ensure_startup_schema, get_db
+from app.db import close_db_session, ensure_startup_schema, get_db, purge_stale_b2b_audit_records
 from app.org_photo_service import photo_public_url
 from app.org_service import get_employee_for_org_user
 from app.models import SyncRun
-from app.b2b_news_service import load_b2b_news
+from app.b2b_news_service import (
+    delete_b2b_news_row,
+    load_b2b_news,
+    load_b2b_news_history,
+    load_b2b_news_snapshots,
+    restore_b2b_news_snapshot,
+    save_b2b_news_to_db,
+)
+from app.b2b_product_status_db import (
+    delete_b2b_product_status_row,
+    load_b2b_product_status_history,
+    load_b2b_product_status_snapshots,
+    restore_b2b_product_status_snapshot,
+    save_b2b_product_status_to_db,
+)
 from app.product_status_service import load_b2b_product_status
 from app.product_status_excel import generate_b2b_product_status_excel
 from app.product_status_presentation import generate_b2b_product_status_presentation
-from app.google_sheets_workbook import invalidate_workbook_cache
-from app.product_status_sheets_write import (
-    save_b2b_news_to_google,
-    save_b2b_product_status_to_google,
-)
 from app.report_service import export_csv, load_change_requests, load_change_requests_by_numbers
 from app.business_value_service import update_business_value
 from app.roadmap_priority_service import update_roadmap_comment, update_roadmap_priority
@@ -40,7 +49,9 @@ from app.schemas import (
     ChangeRequestOut,
     DashboardOut,
     ProductStatusB2BOut,
+    ProductStatusHistoryOut,
     ProductStatusSaveIn,
+    ProductStatusSnapshotsOut,
     SyncRunOut,
     TaskLookupIn,
     TaskLookupOut,
@@ -68,6 +79,7 @@ app.add_middleware(
 @app.on_event("startup")
 def startup() -> None:
     ensure_startup_schema()
+    purge_stale_b2b_audit_records()
 
 
 app.include_router(org_router)
@@ -98,6 +110,26 @@ def require_full_app_access(
         raise HTTPException(status_code=403, detail="Недостаточно прав.")
 
 
+def require_org_manage_access(
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+) -> None:
+    _, meta = get_session_with_meta(x_session_id)
+    if get_session(x_session_id) is None:
+        raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
+    if is_roadmap_role(meta.get("app_role")):
+        raise HTTPException(status_code=403, detail="Недостаточно прав.")
+    if not can_manage_org(meta):
+        raise HTTPException(status_code=403, detail="Недостаточно прав.")
+
+
+def _can_sync_tfs(auth: TfsAuth | None, meta: dict) -> bool:
+    if auth is None or not auth.pat:
+        return False
+    if meta.get("auth_mode") == "pat":
+        return True
+    return meta.get("org_user_role") == "admin"
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -119,14 +151,9 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
     if auth is None:
         return TfsAuthStatusOut(authenticated=False)
     app_role = meta.get("app_role") or "full"
-    can_sync_tfs = bool(auth.pat)
-    org_user_role = meta.get("org_user_role")
     auth_mode = meta.get("auth_mode")
-    can_manage_org = (
-        auth_mode == "pat"
-        or (auth_mode == "app_user" and app_role == "full" and org_user_role is None)
-        or org_user_role == "admin"
-    )
+    can_sync_tfs = _can_sync_tfs(auth, meta)
+    can_manage_org_flag = can_manage_org(meta)
     org_user_id = int(meta["org_user_id"]) if meta.get("org_user_id") else None
     org_employee_id: int | None = None
     org_employee_name: str | None = None
@@ -149,7 +176,7 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
         username=meta.get("app_login"),
         appRole=app_role,  # type: ignore[arg-type]
         canSyncTfs=can_sync_tfs,
-        canManageOrg=can_manage_org,
+        canManageOrg=can_manage_org_flag,
         orgUserId=org_user_id,
         orgEmployeeId=org_employee_id,
         orgEmployeeName=org_employee_name,
@@ -362,21 +389,29 @@ def patch_roadmap_comment(
 
 @app.get("/api/product-status/b2b", response_model=ProductStatusB2BOut)
 def product_status_b2b(
+    db: Session = Depends(get_db),
     gid: str | None = Query(default=None),
     meta_only: bool = Query(default=False),
     refresh: bool = Query(default=False),
     _: None = Depends(require_full_app_access),
 ) -> ProductStatusB2BOut:
+    del refresh
     return load_b2b_product_status(
+        db=db,
         gid=gid,
         meta_only=meta_only,
-        use_cache=not refresh,
     )
 
 
 @app.get("/api/product-status/b2b/presentation")
-def product_status_b2b_presentation(_: None = Depends(require_full_app_access)) -> Response:
-    content, filename = generate_b2b_product_status_presentation()
+def product_status_b2b_presentation(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_full_app_access),
+) -> Response:
+    content, filename = generate_b2b_product_status_presentation(
+        load_b2b_product_status(db=db),
+        db=db,
+    )
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -385,8 +420,11 @@ def product_status_b2b_presentation(_: None = Depends(require_full_app_access)) 
 
 
 @app.get("/api/product-status/b2b/excel")
-def product_status_b2b_excel(_: None = Depends(require_full_app_access)) -> Response:
-    content, filename = generate_b2b_product_status_excel(load_b2b_product_status())
+def product_status_b2b_excel(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_full_app_access),
+) -> Response:
+    content, filename = generate_b2b_product_status_excel(load_b2b_product_status(db=db))
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -423,10 +461,58 @@ def product_status_b2b_presentation_from_payload(
 @app.post("/api/product-status/b2b/save")
 def product_status_b2b_save(
     payload: ProductStatusSaveIn,
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
     _: None = Depends(require_full_app_access),
 ) -> dict[str, str]:
-    save_b2b_product_status_to_google(payload)
-    invalidate_workbook_cache(settings.b2b_product_status_spreadsheet_id)
+    _, meta = get_session_with_meta(x_session_id)
+    save_b2b_product_status_to_db(db, payload, meta=meta)
+    return {"status": "ok"}
+
+
+@app.delete("/api/product-status/b2b/rows/{row_id}")
+def product_status_b2b_delete_row(
+    row_id: int,
+    gid: str = Query(...),
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_full_app_access),
+) -> dict[str, str]:
+    _, meta = get_session_with_meta(x_session_id)
+    delete_b2b_product_status_row(db, gid=gid, row_id=row_id, meta=meta)
+    return {"status": "ok"}
+
+
+@app.get("/api/product-status/b2b/history", response_model=ProductStatusHistoryOut)
+def product_status_b2b_history(
+    gid: str = Query(...),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_org_manage_access),
+) -> ProductStatusHistoryOut:
+    return load_b2b_product_status_history(db, gid=gid, limit=limit)
+
+
+@app.get("/api/product-status/b2b/snapshots", response_model=ProductStatusSnapshotsOut)
+def product_status_b2b_snapshots(
+    gid: str = Query(...),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_org_manage_access),
+) -> ProductStatusSnapshotsOut:
+    return load_b2b_product_status_snapshots(db, gid=gid, limit=limit)
+
+
+@app.post("/api/product-status/b2b/snapshots/{snapshot_id}/restore")
+def product_status_b2b_restore_snapshot(
+    snapshot_id: int,
+    gid: str = Query(...),
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_org_manage_access),
+) -> dict[str, str]:
+    _, meta = get_session_with_meta(x_session_id)
+    restore_b2b_product_status_snapshot(db, snapshot_id=snapshot_id, gid=gid, meta=meta)
     return {"status": "ok"}
 
 
@@ -435,22 +521,72 @@ def b2b_news(
     gid: str | None = Query(default=None),
     meta_only: bool = Query(default=False),
     refresh: bool = Query(default=False),
+    db: Session = Depends(get_db),
     _: None = Depends(require_full_app_access),
 ) -> ProductStatusB2BOut:
+    del refresh
     return load_b2b_news(
+        db=db,
         gid=gid,
         meta_only=meta_only,
-        use_cache=not refresh,
     )
 
 
 @app.post("/api/b2b-news/save")
 def b2b_news_save(
     payload: ProductStatusSaveIn,
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
     _: None = Depends(require_full_app_access),
 ) -> dict[str, str]:
-    save_b2b_news_to_google(payload)
-    invalidate_workbook_cache(settings.b2b_news_spreadsheet_id)
+    _, meta = get_session_with_meta(x_session_id)
+    save_b2b_news_to_db(db, payload, meta=meta)
+    return {"status": "ok"}
+
+
+@app.delete("/api/b2b-news/rows/{row_id}")
+def b2b_news_delete_row(
+    row_id: int,
+    gid: str = Query(...),
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_full_app_access),
+) -> dict[str, str]:
+    _, meta = get_session_with_meta(x_session_id)
+    delete_b2b_news_row(db, gid=gid, row_id=row_id, meta=meta)
+    return {"status": "ok"}
+
+
+@app.get("/api/b2b-news/history", response_model=ProductStatusHistoryOut)
+def b2b_news_history(
+    gid: str = Query(...),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_full_app_access),
+) -> ProductStatusHistoryOut:
+    return load_b2b_news_history(db, gid=gid, limit=limit)
+
+
+@app.get("/api/b2b-news/snapshots", response_model=ProductStatusSnapshotsOut)
+def b2b_news_snapshots(
+    gid: str = Query(...),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_full_app_access),
+) -> ProductStatusSnapshotsOut:
+    return load_b2b_news_snapshots(db, gid=gid, limit=limit)
+
+
+@app.post("/api/b2b-news/snapshots/{snapshot_id}/restore")
+def b2b_news_restore_snapshot(
+    snapshot_id: int,
+    gid: str = Query(...),
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_full_app_access),
+) -> dict[str, str]:
+    _, meta = get_session_with_meta(x_session_id)
+    restore_b2b_news_snapshot(db, snapshot_id=snapshot_id, gid=gid, meta=meta)
     return {"status": "ok"}
 
 
@@ -485,6 +621,8 @@ async def start_sync(
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
 ) -> SyncRunOut:
     _, meta = get_session_with_meta(x_session_id)
+    if not _can_sync_tfs(get_session(x_session_id), meta):
+        raise HTTPException(status_code=403, detail="Недостаточно прав для обновления из TFS.")
     denied = sync_board_denied_reason(meta.get("app_role"), board)
     if denied:
         raise HTTPException(status_code=403, detail=denied)

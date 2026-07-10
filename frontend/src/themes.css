@@ -98,9 +98,10 @@
   --input-focus-border: var(--accent);
   --btn-ghost-hover: var(--bg-hover);
 
-  --vac-vacation-bg: #86efac;
+  --vac-vacation-bg: #7dd3fc;
   --vac-dayoff-bg: #c4b5fd;
   --vac-sick-bg: #fcd34d;
+  --vac-business-trip-bg: #a855f7;
   --vac-erase-bg: var(--surface-2);
   --workspace-self-bg: #86efac;
   --workspace-busy-bg: color-mix(in srgb, var(--surface-2) 78%, var(--text-muted) 22%);
@@ -206,9 +207,10 @@
   --input-focus-border: var(--accent);
   --btn-ghost-hover: var(--bg-hover);
 
-  --vac-vacation-bg: #166534;
+  --vac-vacation-bg: #0e7490;
   --vac-dayoff-bg: #5b21b6;
   --vac-sick-bg: #92400e;
+  --vac-business-trip-bg: #c026d3;
   --vac-erase-bg: var(--surface-3);
   --workspace-self-bg: #166534;
   --workspace-busy-bg: color-mix(in srgb, var(--surface-3) 82%, var(--text-muted) 18%);
@@ -231,7 +233,13 @@ body {
   margin: 0;
   background: var(--bg-app);
   color: var(--text-primary);
-  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+html.theme-switch-instant,
+html.theme-switch-instant *,
+html.theme-switch-instant *::before,
+html.theme-switch-instant *::after {
+  transition: none !important;
 }
 
 * {

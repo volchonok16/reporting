@@ -1,7 +1,8 @@
 .org-page {
-  padding: var(--page-gutter);
-  max-width: 1400px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
 }
 
 .org-dept-filter {
@@ -114,6 +115,88 @@
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.org-th-filter {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.org-th-filter-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.org-th-filter-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.org-th-filter-icon-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  background: var(--surface-2, var(--bg-hover));
+}
+
+.org-th-filter-icon-btn-active {
+  color: var(--brand);
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--border));
+  background: color-mix(in srgb, var(--brand) 12%, var(--surface-1));
+}
+
+.org-th-filter-icon-btn svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+  fill: currentColor;
+}
+
+.org-th-filter-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 12;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  padding: 8px;
+}
+
+.org-th-filter-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.org-th-filter-controls select {
+  min-width: 96px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.org-th-sort-btn {
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1.2;
 }
 
 .org-table-actions {
@@ -535,11 +618,21 @@
 }
 
 .org-chart-canvas-zoom {
-  min-width: 44px;
+  min-width: 52px;
+  padding: 4px 8px;
   text-align: center;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.org-chart-canvas-zoom:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 .org-chart-canvas-reset {
@@ -561,12 +654,19 @@
   min-height: 420px;
   overflow: hidden;
   border-radius: 16px;
-  background: color-mix(in srgb, var(--text-muted) 8%, var(--surface-2, var(--bg-hover)));
+  --org-canvas-grid-color: color-mix(in srgb, var(--text-muted) 22%, transparent);
+  background-color: color-mix(in srgb, var(--text-muted) 8%, var(--surface-2, var(--bg-hover)));
+  background-image: radial-gradient(circle, var(--org-canvas-grid-color) 1px, transparent 1px);
+  background-size: 16px 16px;
   border: 1px solid var(--border);
   cursor: grab;
   touch-action: none;
   overscroll-behavior: none;
   user-select: none;
+}
+
+[data-theme='dark'] .org-chart-canvas-stage {
+  --org-canvas-grid-color: color-mix(in srgb, var(--text-muted) 34%, transparent);
 }
 
 .org-chart-canvas-stage-dragging {
@@ -701,9 +801,10 @@
   padding: 0 18px;
 }
 
-/* линия вниз от карточки руководителя (не в горизонтальном ряду с соседями) */
-.org-tree-node:has(> .org-tree-children) > .org-person-card::after,
-.org-tree-node:has(> .org-tree-children-stacked) > .org-person-card::after {
+/* линия вниз от карточки руководителя — только при одном подчинённом;
+   при нескольких соседях вертикаль рисует .org-tree-children::before */
+.org-tree-node:has(> .org-tree-children:has(> .org-tree-node:only-child)) > .org-person-card::after,
+.org-tree-node:has(> .org-tree-children-stacked:has(> .org-tree-children:has(> .org-tree-node:only-child):only-child)) > .org-person-card::after {
   content: '';
   position: absolute;
   left: 50%;
@@ -719,6 +820,11 @@
 /* в ряду с соседями — линия от горизонтали ряда, а не от карточки */
 .org-tree-children-row > .org-tree-node:has(> .org-tree-children) > .org-person-card::after,
 .org-tree-children-row > .org-tree-node:has(> .org-tree-children-stacked) > .org-person-card::after {
+  display: none;
+}
+
+/* первая строка stacked с несколькими подчинёнными — вертикаль от .org-tree-children::before */
+.org-tree-node:has(> .org-tree-children-stacked > .org-tree-children:not(:has(> .org-tree-node:only-child))) > .org-person-card::after {
   display: none;
 }
 
@@ -805,6 +911,14 @@
   position: relative;
   min-width: 100%;
   min-height: 560px;
+  --org-manual-grid-color: color-mix(in srgb, var(--text-muted) 16%, transparent);
+  background-color: var(--surface-1);
+  background-image: radial-gradient(circle, var(--org-manual-grid-color) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+[data-theme='dark'] .org-manual-chart {
+  --org-manual-grid-color: color-mix(in srgb, var(--text-muted) 28%, transparent);
 }
 
 .org-manual-lines {
@@ -837,6 +951,17 @@
   stroke: var(--accent-blue);
   stroke-dasharray: 8 6;
   pointer-events: none;
+}
+
+.org-manual-line-junction {
+  fill: var(--org-chart-line, var(--border-strong));
+  stroke: var(--surface-1);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.org-manual-line-junction-selected {
+  fill: var(--accent-blue);
 }
 
 .org-manual-line-point {
@@ -1045,11 +1170,34 @@
 }
 
 .org-dept-frame-body {
-  --org-tree-gap: var(--space-3xl, 48px);
-  --org-tree-card-line-gap: var(--space-md, 12px);
+  --org-tree-gap: var(--space-xl, 24px);
+  --org-tree-card-line-gap: 0;
   display: flex;
   justify-content: center;
   padding: var(--space-sm) var(--space-md) var(--space-xs);
+}
+
+/* Пирамида отдельного отдела — без соединительных линий */
+.org-dept-frame .org-tree-children::before,
+.org-dept-frame .org-tree-children > .org-tree-node::before,
+.org-dept-frame .org-tree-children > .org-tree-node::after,
+.org-dept-frame .org-tree-children > .org-tree-node > .org-person-card::before,
+.org-dept-frame .org-tree-node > .org-person-card::after,
+.org-dept-frame .org-tree-children-stacked > .org-tree-children-row + .org-tree-children-row::before {
+  display: none !important;
+}
+
+.org-dept-frame .org-tree-children,
+.org-dept-frame .org-tree-children:has(> .org-tree-node:only-child) {
+  padding-top: var(--org-tree-gap, 24px);
+}
+
+.org-dept-frame .org-tree-children-stacked {
+  --org-tree-row-gap: var(--org-tree-gap, 24px);
+}
+
+.org-dept-frame .org-tree-chart {
+  gap: var(--org-tree-gap, 24px);
 }
 
 .org-dept-block {
@@ -1453,8 +1601,59 @@
   }
 }
 
-.org-vacation-panel {
+.org-vacation-panel,
+.org-workspace-panel {
   overflow: visible;
+  --org-status-green-bg: var(--vac-vacation-bg);
+  --org-status-green-border: color-mix(in srgb, var(--vac-vacation-bg) 52%, var(--border-strong) 48%);
+  --org-status-violet-bg: var(--vac-dayoff-bg);
+  --org-status-violet-border: color-mix(in srgb, var(--vac-dayoff-bg) 52%, var(--border-strong) 48%);
+  --org-status-purple-bg: var(--vac-business-trip-bg);
+  --org-status-purple-border: color-mix(in srgb, var(--vac-business-trip-bg) 52%, var(--border-strong) 48%);
+  --org-status-amber-bg: var(--vac-sick-bg);
+  --org-status-amber-border: color-mix(in srgb, var(--vac-sick-bg) 52%, var(--border-strong) 48%);
+  --org-status-free-bg: color-mix(in srgb, var(--surface-1) 88%, var(--surface-2) 12%);
+  --org-status-free-border: color-mix(in srgb, var(--border-strong) 36%, transparent 64%);
+  --org-status-busy-bg: var(--workspace-busy-bg);
+  --org-status-busy-border: color-mix(in srgb, var(--workspace-busy-bg) 62%, var(--border-strong) 38%);
+  --org-status-weekend-bg: color-mix(in srgb, var(--surface-2) 86%, var(--day-off-tint) 14%);
+  --org-status-weekend-head-bg: color-mix(in srgb, var(--table-head-bg) 84%, var(--day-off-tint) 16%);
+  --org-status-weekend-text: color-mix(in srgb, var(--day-off-tint) 55%, var(--text-muted) 45%);
+  --org-office-vacation-bg: #7dd3fc;
+  --org-office-vacation-border: color-mix(in srgb, #7dd3fc 52%, var(--border-strong) 48%);
+  --org-office-dayoff-bg: var(--vac-dayoff-bg);
+  --org-office-dayoff-border: color-mix(in srgb, var(--vac-dayoff-bg) 52%, var(--border-strong) 48%);
+  --org-office-sick-bg: var(--vac-sick-bg);
+  --org-office-sick-border: color-mix(in srgb, var(--vac-sick-bg) 52%, var(--border-strong) 48%);
+  --org-office-business-trip-bg: var(--vac-business-trip-bg);
+  --org-office-business-trip-border: color-mix(in srgb, var(--vac-business-trip-bg) 52%, var(--border-strong) 48%);
+}
+
+[data-theme='dark'] .org-vacation-panel,
+[data-theme='dark'] .org-workspace-panel {
+  --org-status-green-bg: color-mix(in srgb, #38bdf8 46%, var(--surface-2) 54%);
+  --org-status-green-border: color-mix(in srgb, #7dd3fc 58%, transparent 42%);
+  --org-status-violet-bg: color-mix(in srgb, #8b5cf6 48%, var(--surface-2) 52%);
+  --org-status-violet-border: color-mix(in srgb, #c4b5fd 58%, transparent 42%);
+  --org-status-purple-bg: color-mix(in srgb, #e879f9 50%, var(--surface-2) 50%);
+  --org-status-purple-border: color-mix(in srgb, #f0abfc 62%, transparent 38%);
+  --org-status-amber-bg: color-mix(in srgb, #f59e0b 44%, var(--surface-2) 56%);
+  --org-status-amber-border: color-mix(in srgb, #fcd34d 60%, transparent 40%);
+  --org-status-free-bg: color-mix(in srgb, var(--surface-1) 76%, var(--surface-3) 24%);
+  --org-status-free-border: color-mix(in srgb, #64748b 48%, transparent 52%);
+  --org-status-busy-bg: color-mix(in srgb, #94a3b8 30%, var(--surface-2) 70%);
+  --org-status-busy-border: color-mix(in srgb, #cbd5e1 46%, transparent 54%);
+  --org-status-weekend-bg: color-mix(in srgb, var(--day-off-tint) 28%, var(--surface-2) 72%);
+  --org-status-weekend-head-bg: color-mix(in srgb, var(--day-off-tint) 34%, var(--table-head-bg) 66%);
+  --org-status-weekend-text: color-mix(in srgb, #fecdd3 64%, var(--text-primary) 36%);
+  --org-office-vacation-bg: color-mix(in srgb, #38bdf8 46%, var(--surface-2) 54%);
+  --org-office-vacation-border: color-mix(in srgb, #7dd3fc 58%, transparent 42%);
+  --org-office-dayoff-bg: color-mix(in srgb, #8b5cf6 48%, var(--surface-2) 52%);
+  --org-office-dayoff-border: color-mix(in srgb, #c4b5fd 58%, transparent 42%);
+  --org-office-sick-bg: color-mix(in srgb, #f59e0b 44%, var(--surface-2) 56%);
+  --org-office-sick-border: color-mix(in srgb, #fcd34d 60%, transparent 40%);
+  --org-office-business-trip-bg: color-mix(in srgb, #e879f9 50%, var(--surface-2) 50%);
+  --org-office-business-trip-border: color-mix(in srgb, #f0abfc 62%, transparent 38%);
 }
 
 .org-vacation-toolbar {
@@ -1536,12 +1735,17 @@
   display: inline-flex;
   align-items: center;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: 8px;
+  border: 1px solid transparent;
   font-size: 12px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .org-vacation-chart-wrap {
   max-width: 100%;
+  position: relative;
 }
 
 .org-schedule-chart {
@@ -1554,7 +1758,9 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface-1);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: calc(100vh - 220px);
 }
 
 .org-schedule-names {
@@ -1569,7 +1775,7 @@
   flex: 1 1 auto;
   min-width: 0;
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: visible;
   background: var(--surface-1);
 }
 
@@ -1586,6 +1792,7 @@
 .org-vacation-scroll {
   overflow: auto;
   max-width: 100%;
+  max-height: calc(100vh - 220px);
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface-1);
@@ -1594,6 +1801,9 @@
 .org-schedule-dates.org-vacation-scroll {
   border: none;
   border-radius: 0;
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 
 .org-schedule-names-grid .org-vacation-names-head {
@@ -1629,6 +1839,13 @@
   --vac-cell-size: 26px;
   --vac-row-height: 38px;
   --vac-name-col-width: 220px;
+  --schedule-head-row-1: 31px;
+  --schedule-head-row-2: 29px;
+  --org-cell-radius: 6px;
+  --org-cell-ring: color-mix(in srgb, var(--border-strong) 34%, transparent 66%);
+  --org-cell-hover-ring: color-mix(in srgb, var(--brand) 42%, transparent 58%);
+  --org-selected-date-color: #2563eb;
+  --org-today-date-color: #111827;
   border-collapse: separate;
   border-spacing: 0;
   min-width: max-content;
@@ -1641,6 +1858,24 @@
   padding: 0;
 }
 
+.org-vacation-grid thead th {
+  position: sticky;
+  background: var(--table-head-bg);
+  z-index: 4;
+}
+
+.org-vacation-grid thead tr:first-child th {
+  top: 0;
+}
+
+.org-vacation-grid thead tr:nth-child(2) th {
+  top: var(--schedule-head-row-1);
+}
+
+.org-vacation-grid thead tr:nth-child(3) th {
+  top: calc(var(--schedule-head-row-1) + var(--schedule-head-row-2));
+}
+
 .org-vacation-sticky-col {
   position: sticky;
   left: 0;
@@ -1650,7 +1885,7 @@
 }
 
 .org-vacation-grid thead .org-vacation-sticky-col {
-  z-index: 3;
+  z-index: 7;
   background: var(--table-head-bg);
 }
 
@@ -1764,22 +1999,26 @@
 }
 
 .org-vacation-day-selected {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 80%, transparent 20%);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--org-selected-date-color) 72%, transparent 28%);
 }
 
 .org-vacation-cell {
   width: var(--vac-cell-size);
   min-width: var(--vac-cell-size);
   height: var(--vac-row-height);
-  background: var(--surface-1);
+  background: color-mix(in srgb, var(--surface-1) 88%, var(--surface-2) 12%);
   box-sizing: border-box;
   vertical-align: middle;
   padding: 0 !important;
+  position: relative;
+  transition: background 0.14s ease, box-shadow 0.14s ease;
+  box-shadow: inset 0 0 0 1px var(--org-cell-ring);
+  border-radius: var(--org-cell-radius);
 }
 
 .org-vacation-cell-selected-day {
-  border-left: 1px dashed color-mix(in srgb, var(--brand) 75%, transparent 25%) !important;
-  border-right: 1px dashed color-mix(in srgb, var(--brand) 75%, transparent 25%) !important;
+  outline: 2px dashed color-mix(in srgb, var(--org-selected-date-color) 64%, transparent 36%);
+  outline-offset: -2px;
 }
 
 .org-vacation-panel .org-vacation-day-head,
@@ -1794,23 +2033,24 @@
 
 .org-vacation-weekend,
 .org-vacation-holiday {
-  background: color-mix(in srgb, var(--surface-2) 94%, var(--day-off-tint) 6%) !important;
+  background: var(--org-status-weekend-bg) !important;
 }
 
 .org-vacation-day-head.org-vacation-weekend,
 .org-vacation-day-head.org-vacation-holiday {
-  background: color-mix(in srgb, var(--table-head-bg) 92%, var(--day-off-tint) 8%) !important;
+  background: var(--org-status-weekend-head-bg) !important;
 }
 
 .org-vacation-legend-item.org-vacation-weekend {
-  background: color-mix(in srgb, var(--surface-2) 94%, var(--day-off-tint) 6%);
+  background: var(--org-status-weekend-bg);
   border: 1px solid var(--border);
+  color: var(--org-status-weekend-text);
 }
 
 .org-vacation-today {
-  box-shadow: inset 0 0 0 2px var(--brand);
-  position: relative;
-  z-index: 1;
+  box-shadow: none;
+  outline: 2px dashed color-mix(in srgb, var(--org-today-date-color) 62%, transparent 38%);
+  outline-offset: -2px;
 }
 
 .org-vacation-editable {
@@ -1818,8 +2058,9 @@
 }
 
 .org-vacation-editable:hover {
-  outline: 1px solid var(--brand);
-  outline-offset: -1px;
+  box-shadow:
+    inset 0 0 0 1px var(--org-cell-ring),
+    inset 0 0 0 2px var(--org-cell-hover-ring);
 }
 
 .org-vacation-preview {
@@ -1832,31 +2073,127 @@
   outline-offset: -2px;
 }
 
+.org-vacation-panel .org-vacation-cell[data-tip]:hover {
+  z-index: 6;
+  box-shadow:
+    inset 0 0 0 1px var(--org-cell-ring),
+    inset 0 0 0 2px var(--org-cell-hover-ring);
+}
+
+.org-vacation-panel .org-vacation-cell[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--tooltip-bg, #0f172a);
+  color: var(--tooltip-text, #f8fafc);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: normal;
+  width: max-content;
+  max-width: 280px;
+  text-align: center;
+  border: 1px solid var(--tooltip-bg, #0f172a);
+  box-shadow: var(--shadow-md);
+  z-index: 30;
+  pointer-events: none;
+}
+
+.org-vacation-panel .org-vacation-cell[data-tip]:hover::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--tooltip-bg, #0f172a);
+  z-index: 30;
+  pointer-events: none;
+}
+
 .vac-kind-vacation {
-  background: var(--vac-vacation-bg) !important;
+  background: var(--org-status-green-bg) !important;
 }
 
 .vac-kind-dayoff {
-  background: var(--vac-dayoff-bg) !important;
+  background: var(--org-status-violet-bg) !important;
 }
 
 .vac-kind-sick {
-  background: var(--vac-sick-bg) !important;
+  background: var(--org-status-amber-bg) !important;
+}
+
+.vac-kind-business-trip {
+  background: var(--org-status-purple-bg) !important;
+}
+
+.org-vacation-legend-item.vac-kind-vacation {
+  border: 1px solid var(--org-status-green-border);
+  color: var(--text-primary);
+}
+
+.org-vacation-legend-item.vac-kind-dayoff {
+  border: 1px solid var(--org-status-violet-border);
+  color: var(--text-primary);
+}
+
+.org-vacation-legend-item.vac-kind-sick {
+  border: 1px solid var(--org-status-amber-border);
+  color: var(--text-primary);
+}
+
+.org-vacation-legend-item.vac-kind-business-trip {
+  border: 1px solid var(--org-status-purple-border);
+  color: var(--text-primary);
 }
 
 .vac-kind-erase {
   background: var(--vac-erase-bg);
 }
 
+.org-vacation-cell.org-vacation-weekend.vac-kind-vacation {
+  background: color-mix(in srgb, var(--org-status-green-bg) 74%, var(--day-off-tint) 26%) !important;
+}
+
+.org-vacation-cell.org-vacation-weekend.vac-kind-dayoff {
+  background: color-mix(in srgb, var(--org-status-violet-bg) 74%, var(--day-off-tint) 26%) !important;
+}
+
+.org-vacation-cell.org-vacation-weekend.vac-kind-sick {
+  background: color-mix(in srgb, var(--org-status-amber-bg) 74%, var(--day-off-tint) 26%) !important;
+}
+
+.org-vacation-cell.org-vacation-weekend.vac-kind-business-trip {
+  background: color-mix(in srgb, var(--org-status-purple-bg) 74%, var(--day-off-tint) 26%) !important;
+}
+
+[data-theme='dark'] .org-vacation-panel .org-vacation-cell[data-tip]:hover::after {
+  background: #1a2438;
+  color: #f5f8ff;
+  border: 1px solid color-mix(in srgb, #93c5fd 32%, transparent 68%);
+  box-shadow: 0 12px 30px rgb(3 8 20 / 0.55);
+}
+
+[data-theme='dark'] .org-vacation-panel .org-vacation-cell[data-tip]:hover::before {
+  border-top-color: #1a2438;
+}
+
 .org-workspace-panel {
   overflow: visible;
-  --workspace-self-fill: #e9f5ee;
-  --workspace-self-border: #c8e6d4;
-  --workspace-busy-fill: #eef0f3;
-  --workspace-busy-border: #d8dce2;
-  --workspace-weekend-fill: color-mix(in srgb, var(--day-off-tint) 6%, var(--surface-1) 94%);
-  --workspace-weekend-head-fill: color-mix(in srgb, var(--day-off-tint) 8%, var(--table-head-bg) 92%);
-  --workspace-weekend-text: color-mix(in srgb, var(--day-off-tint) 55%, var(--text-muted) 45%);
+  --workspace-free-fill: #ffffff;
+  --workspace-free-border: #d1d5db;
+  --workspace-self-fill: var(--workspace-self-bg);
+  --workspace-self-border: color-mix(in srgb, var(--workspace-self-bg) 52%, var(--border-strong) 48%);
+  --workspace-busy-fill: var(--org-status-busy-bg);
+  --workspace-busy-border: var(--org-status-busy-border);
+  --workspace-weekend-fill: var(--org-status-weekend-bg);
+  --workspace-weekend-head-fill: var(--org-status-weekend-head-bg);
+  --workspace-weekend-border: var(--border);
+  --workspace-weekend-text: var(--org-status-weekend-text);
 }
 
 .org-workspace-month-picker {
@@ -1943,7 +2280,7 @@
 .org-workspace-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   margin-bottom: 12px;
   padding: 0;
   border: none;
@@ -1951,10 +2288,11 @@
 }
 
 .org-workspace-legend .org-vacation-legend-item {
-  font-size: 11px;
-  padding: 3px 9px;
-  border-radius: 6px;
-  font-weight: 500;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .org-workspace-chart {
@@ -1962,14 +2300,14 @@
   --schedule-head-row-2: 20px;
   --schedule-head-row-3: 28px;
   --vac-cell-size: 26px;
-  --vac-name-col-width: 128px;
+  --vac-name-col-width: 88px;
   box-shadow: var(--shadow-sm);
   border-radius: 12px;
 }
 
 .org-workspace-chart .org-schedule-names {
-  flex-basis: 128px;
-  width: 128px;
+  flex-basis: 108px;
+  width: 108px;
   background: var(--surface-1);
 }
 
@@ -1988,23 +2326,17 @@
   color: var(--text-muted);
 }
 
-.org-workspace-chart .org-schedule-names-grid .org-vacation-name {
-  width: 128px;
-  max-width: 128px;
-  min-width: 128px;
-  padding: 6px 10px !important;
-}
-
 .org-workspace-panel .org-workspace-place-name {
   font-size: 12px;
   color: var(--text-secondary);
   font-weight: 600;
-  background: transparent;
+  background: var(--surface-1);
+  padding: 6px 8px !important;
 }
 
 .org-workspace-panel tbody tr:hover .org-workspace-place-name {
   color: var(--text-primary);
-  background: transparent;
+  background: var(--surface-1);
 }
 
 .org-workspace-chart .org-vacation-month {
@@ -2024,15 +2356,16 @@
 }
 
 .org-workspace-day-head {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
 }
 
 .org-workspace-weekend-head {
   background: var(--workspace-weekend-head-fill) !important;
-  color: var(--workspace-weekend-text) !important;
-  font-weight: 600;
+  color: color-mix(in srgb, var(--text-primary) 72%, #7f1d1d 28%) !important;
+  font-weight: 700;
+  text-shadow: 0 1px 0 color-mix(in srgb, var(--surface-1) 70%, transparent 30%);
 }
 
 .org-workspace-holiday-head {
@@ -2042,27 +2375,17 @@
 .org-workspace-today-head {
   position: relative;
   color: var(--text-primary) !important;
-  font-weight: 700;
-  box-shadow: none;
-}
-
-.org-workspace-today-head::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: 3px;
-  transform: translateX(-50%);
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--text-secondary);
+  font-weight: 600;
+  outline: 2px dashed color-mix(in srgb, var(--org-today-date-color) 62%, transparent 38%);
+  outline-offset: -2px;
 }
 
 .org-workspace-saving {
   position: relative;
 }
 
-.org-workspace-saving .org-schedule-chart {
+.org-workspace-saving .org-schedule-chart,
+.org-workspace-saving .org-vacation-scroll {
   opacity: 0.55;
   pointer-events: none;
 }
@@ -2084,7 +2407,9 @@
 .org-workspace-grid .org-workspace-cell {
   position: relative;
   cursor: default;
-  transition: background 0.12s ease, box-shadow 0.12s ease;
+  transition: background 0.14s ease, box-shadow 0.14s ease;
+  box-shadow: inset 0 0 0 1px var(--org-cell-ring);
+  border-radius: var(--org-cell-radius);
 }
 
 .org-workspace-grid .org-workspace-cell.org-vacation-editable {
@@ -2092,7 +2417,9 @@
 }
 
 .org-workspace-grid .org-workspace-cell.org-vacation-editable:hover {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-secondary) 35%, transparent 65%);
+  box-shadow:
+    inset 0 0 0 1px var(--org-cell-ring),
+    inset 0 0 0 2px var(--org-cell-hover-ring);
   outline: none;
   transform: none;
 }
@@ -2137,65 +2464,142 @@
 }
 
 .org-workspace-free {
-  background: color-mix(in srgb, var(--surface-1) 90%, var(--surface-2) 10%) !important;
+  background: var(--workspace-free-fill, var(--org-status-free-bg)) !important;
+  box-shadow: inset 0 0 0 1px var(--workspace-free-border, var(--org-status-free-border));
 }
 
 .org-workspace-self {
   background: var(--workspace-self-fill) !important;
-  box-shadow: inset 0 0 0 1px var(--workspace-self-border);
+  box-shadow:
+    inset 0 0 0 1px var(--workspace-self-border),
+    inset 0 0 0 2px color-mix(in srgb, var(--workspace-self-border) 24%, transparent 76%);
 }
 
 .org-workspace-busy {
   background: var(--workspace-busy-fill) !important;
-  box-shadow: inset 0 0 0 1px var(--workspace-busy-border);
+  box-shadow:
+    inset 0 0 0 1px var(--workspace-busy-border),
+    inset 0 0 0 2px color-mix(in srgb, var(--workspace-busy-border) 16%, transparent 84%);
 }
 
 .org-workspace-grid .org-workspace-cell.org-workspace-weekend.org-workspace-free {
-  background: var(--workspace-weekend-fill) !important;
-  box-shadow: none;
+  background: var(--workspace-weekend-fill, var(--org-status-weekend-bg)) !important;
+  box-shadow: inset 0 0 0 1px var(--workspace-weekend-border);
 }
 
 .org-workspace-grid .org-workspace-cell.org-workspace-weekend.org-workspace-self {
-  background: color-mix(in srgb, var(--workspace-self-fill) 82%, var(--day-off-tint) 18%) !important;
-  box-shadow: inset 0 0 0 1px var(--workspace-self-border);
+  background: var(--workspace-weekend-fill, var(--org-status-weekend-bg)) !important;
+  box-shadow: inset 0 0 0 1px var(--workspace-weekend-border);
 }
 
 .org-workspace-grid .org-workspace-cell.org-workspace-weekend.org-workspace-busy {
-  background: color-mix(in srgb, var(--workspace-busy-fill) 84%, var(--day-off-tint) 16%) !important;
-  box-shadow: inset 0 0 0 1px var(--workspace-busy-border);
+  background: var(--workspace-weekend-fill, var(--org-status-weekend-bg)) !important;
+  box-shadow: inset 0 0 0 1px var(--workspace-weekend-border);
 }
 
 .org-workspace-grid .org-workspace-cell.org-workspace-holiday:not(.org-workspace-weekend).org-workspace-free {
-  background: var(--workspace-weekend-fill) !important;
+  background: var(--workspace-weekend-fill, var(--org-status-weekend-bg)) !important;
+  box-shadow: inset 0 0 0 1px var(--workspace-weekend-border);
+}
+
+.org-workspace-grid th,
+.org-workspace-grid td {
+  border-color: color-mix(in srgb, var(--border-strong) 65%, var(--border) 35%);
 }
 
 .org-workspace-pending {
   box-shadow: inset 0 0 0 1px var(--text-secondary) !important;
 }
 
+.org-office-presence-panel .org-vacation-cell.org-office-presence-in,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-office-presence-in {
+  background: var(--org-office-in-bg) !important;
+  box-shadow:
+    inset 0 0 0 1px var(--org-office-in-border),
+    inset 0 0 0 2px color-mix(in srgb, var(--org-office-in-border) 28%, transparent 72%);
+}
+
+.org-office-presence-panel .org-vacation-cell.org-office-presence-vacation,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-office-presence-vacation {
+  background: var(--org-office-vacation-bg) !important;
+  box-shadow:
+    inset 0 0 0 1px var(--org-office-vacation-border),
+    inset 0 0 0 2px color-mix(in srgb, var(--org-office-vacation-border) 28%, transparent 72%);
+}
+
+.org-office-presence-panel .org-vacation-cell.org-office-presence-dayoff,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-office-presence-dayoff {
+  background: var(--org-office-dayoff-bg) !important;
+  box-shadow:
+    inset 0 0 0 1px var(--org-office-dayoff-border),
+    inset 0 0 0 2px color-mix(in srgb, var(--org-office-dayoff-border) 28%, transparent 72%);
+}
+
+.org-office-presence-panel .org-vacation-cell.org-office-presence-sick,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-office-presence-sick {
+  background: var(--org-office-sick-bg) !important;
+  box-shadow:
+    inset 0 0 0 1px var(--org-office-sick-border),
+    inset 0 0 0 2px color-mix(in srgb, var(--org-office-sick-border) 28%, transparent 72%);
+}
+
+.org-office-presence-panel .org-vacation-cell.org-office-presence-business-trip,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-office-presence-business-trip {
+  background: var(--org-office-business-trip-bg) !important;
+  box-shadow:
+    inset 0 0 0 1px var(--org-office-business-trip-border),
+    inset 0 0 0 2px color-mix(in srgb, var(--org-office-business-trip-border) 28%, transparent 72%);
+}
+
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-office-presence-vacation,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-office-presence-dayoff,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-office-presence-sick,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-office-presence-business-trip {
+  cursor: not-allowed;
+}
+
+.org-office-presence-panel .org-vacation-cell.org-vacation-weekend.org-office-presence-vacation,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-workspace-weekend.org-office-presence-vacation {
+  background: color-mix(in srgb, var(--org-office-vacation-bg) 74%, var(--day-off-tint) 26%) !important;
+}
+
+.org-office-presence-panel .org-vacation-cell.org-vacation-weekend.org-office-presence-dayoff,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-workspace-weekend.org-office-presence-dayoff {
+  background: color-mix(in srgb, var(--org-office-dayoff-bg) 74%, var(--day-off-tint) 26%) !important;
+}
+
+.org-office-presence-panel .org-vacation-cell.org-vacation-weekend.org-office-presence-sick,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-workspace-weekend.org-office-presence-sick {
+  background: color-mix(in srgb, var(--org-office-sick-bg) 74%, var(--day-off-tint) 26%) !important;
+}
+
+.org-office-presence-panel .org-vacation-cell.org-vacation-weekend.org-office-presence-business-trip,
+.org-workspace-panel .org-workspace-grid .org-workspace-cell.org-workspace-weekend.org-office-presence-business-trip {
+  background: color-mix(in srgb, var(--org-office-business-trip-bg) 74%, var(--day-off-tint) 26%) !important;
+}
+
 .org-vacation-legend-item.org-workspace-free {
-  background: color-mix(in srgb, var(--surface-1) 90%, var(--surface-2) 10%);
-  border: 1px solid var(--border);
+  background: var(--workspace-free-fill, var(--org-status-free-bg));
+  border: 1px solid var(--workspace-free-border, var(--org-status-free-border));
   color: var(--text-muted);
 }
 
 .org-vacation-legend-item.org-workspace-self {
-  background: var(--workspace-self-fill);
-  border: 1px solid var(--workspace-self-border);
-  color: var(--text-secondary);
+  background: var(--workspace-self-fill, var(--workspace-self-bg));
+  border: 1px solid var(--workspace-self-border, color-mix(in srgb, var(--workspace-self-bg) 52%, var(--border-strong) 48%));
+  color: var(--text-primary);
 }
 
 .org-vacation-legend-item.org-workspace-busy {
-  background: var(--workspace-busy-fill);
-  border: 1px solid var(--workspace-busy-border);
+  background: var(--workspace-busy-fill, var(--org-status-busy-bg));
+  border: 1px solid var(--workspace-busy-border, var(--org-status-busy-border));
   color: var(--text-muted);
 }
 
 .org-vacation-legend-item.org-workspace-weekend-legend {
-  background: var(--workspace-weekend-fill);
-  border: 1px solid var(--border);
-  color: var(--workspace-weekend-text);
-  font-weight: 500;
+  background: var(--workspace-weekend-fill, var(--org-status-weekend-bg));
+  border: 1px solid var(--workspace-weekend-border);
+  color: var(--workspace-weekend-text, var(--org-status-weekend-text));
 }
 
 .org-vacation-legend-item.org-workspace-pending-legend {
@@ -2204,23 +2608,29 @@
   color: var(--text-muted);
 }
 
-[data-theme='dark'] .org-workspace-panel {
-  --workspace-self-fill: #1f5f44;
-  --workspace-self-border: #53a579;
-  --workspace-busy-fill: #3a4b60;
-  --workspace-busy-border: #6f89a8;
-  --workspace-weekend-fill: color-mix(in srgb, var(--day-off-tint) 24%, var(--surface-1) 76%);
-  --workspace-weekend-head-fill: color-mix(in srgb, var(--day-off-tint) 30%, var(--table-head-bg) 70%);
-  --workspace-weekend-text: color-mix(in srgb, var(--day-off-tint) 68%, white 32%);
-}
-
 [data-theme='dark'] .org-workspace-grid th,
 [data-theme='dark'] .org-workspace-grid td {
   border-color: color-mix(in srgb, var(--border-strong) 55%, var(--text-tertiary) 45%);
 }
 
+[data-theme='dark'] .org-vacation-grid {
+  --org-selected-date-color: #38bdf8;
+  --org-today-date-color: #f8fafc;
+}
+
+[data-theme='dark'] .org-workspace-panel {
+  --workspace-free-fill: var(--org-status-free-bg);
+  --workspace-free-border: var(--org-status-free-border);
+  --workspace-busy-fill: var(--org-status-busy-bg);
+  --workspace-busy-border: var(--org-status-busy-border);
+  --workspace-weekend-fill: var(--org-status-weekend-bg);
+  --workspace-weekend-head-fill: var(--org-status-weekend-head-bg);
+  --workspace-weekend-border: var(--border);
+  --workspace-weekend-text: var(--org-status-weekend-text);
+}
+
 [data-theme='dark'] .org-workspace-grid .org-workspace-cell.org-workspace-free {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-strong) 88%, transparent 12%);
+  box-shadow: inset 0 0 0 1px var(--workspace-free-border);
 }
 
 [data-theme='dark'] .org-workspace-grid .org-workspace-cell.org-vacation-editable:hover {
@@ -2244,8 +2654,8 @@
 [data-theme='dark'] .org-vacation-legend-item.org-workspace-free,
 [data-theme='dark'] .org-vacation-legend-item.org-workspace-weekend-legend,
 [data-theme='dark'] .org-vacation-legend-item.org-workspace-pending-legend {
-  color: var(--text-secondary);
-  border-color: color-mix(in srgb, var(--border-strong) 85%, transparent 15%);
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--border-strong) 70%, transparent 30%);
 }
 
 [data-theme='dark'] .org-workspace-weekday-head,
@@ -2254,12 +2664,13 @@
   color: color-mix(in srgb, white 84%, var(--text-muted) 16%);
 }
 
-[data-theme='dark'] .org-workspace-chart .org-workspace-names-head {
-  color: color-mix(in srgb, white 82%, var(--text-muted) 18%);
+[data-theme='dark'] .org-workspace-weekend-head {
+  color: color-mix(in srgb, #fef2f2 82%, #fca5a5 18%) !important;
+  text-shadow: none;
 }
 
-[data-theme='dark'] .org-workspace-today-head::after {
-  background: color-mix(in srgb, var(--brand-accent) 72%, white 28%);
+[data-theme='dark'] .org-workspace-chart .org-workspace-names-head {
+  color: color-mix(in srgb, white 82%, var(--text-muted) 18%);
 }
 
 [data-theme='dark'] .org-workspace-grid .org-workspace-cell[data-tip]:hover::after {
@@ -2275,28 +2686,90 @@
 
 .org-office-presence-panel {
   overflow: visible;
-  --workspace-self-fill: #e9f5ee;
-  --workspace-self-border: #c8e6d4;
+  --org-office-in-bg: #86efac;
+  --org-office-in-border: color-mix(in srgb, #86efac 52%, var(--border-strong) 48%);
+  --org-office-vacation-bg: #7dd3fc;
+  --org-office-vacation-border: color-mix(in srgb, #7dd3fc 52%, var(--border-strong) 48%);
+  --org-office-dayoff-bg: var(--vac-dayoff-bg);
+  --org-office-dayoff-border: color-mix(in srgb, var(--vac-dayoff-bg) 52%, var(--border-strong) 48%);
+  --org-office-sick-bg: var(--vac-sick-bg);
+  --org-office-sick-border: color-mix(in srgb, var(--vac-sick-bg) 52%, var(--border-strong) 48%);
+  --org-office-business-trip-bg: var(--vac-business-trip-bg);
+  --org-office-business-trip-border: color-mix(in srgb, var(--vac-business-trip-bg) 52%, var(--border-strong) 48%);
 }
 
-.org-office-presence-panel .org-vacation-cell.org-office-presence-in {
-  background: color-mix(in srgb, var(--workspace-self-fill, #e9f5ee) 90%, #2e7d32 10%) !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--workspace-self-border, #c8e6d4) 85%, #1b5e20 15%);
+.org-workspace-panel {
+  --org-office-vacation-bg: #7dd3fc;
+  --org-office-vacation-border: color-mix(in srgb, #7dd3fc 52%, var(--border-strong) 48%);
+  --org-office-dayoff-bg: var(--vac-dayoff-bg);
+  --org-office-dayoff-border: color-mix(in srgb, var(--vac-dayoff-bg) 52%, var(--border-strong) 48%);
+  --org-office-sick-bg: var(--vac-sick-bg);
+  --org-office-sick-border: color-mix(in srgb, var(--vac-sick-bg) 52%, var(--border-strong) 48%);
+  --org-office-business-trip-bg: var(--vac-business-trip-bg);
+  --org-office-business-trip-border: color-mix(in srgb, var(--vac-business-trip-bg) 52%, var(--border-strong) 48%);
+}
+
+[data-theme='dark'] .org-office-presence-panel,
+[data-theme='dark'] .org-workspace-panel {
+  --org-office-in-bg: color-mix(in srgb, #22c55e 44%, var(--surface-2) 56%);
+  --org-office-in-border: color-mix(in srgb, #86efac 58%, transparent 42%);
+  --org-office-vacation-bg: color-mix(in srgb, #38bdf8 46%, var(--surface-2) 54%);
+  --org-office-vacation-border: color-mix(in srgb, #7dd3fc 58%, transparent 42%);
+  --org-office-dayoff-bg: color-mix(in srgb, #8b5cf6 48%, var(--surface-2) 52%);
+  --org-office-dayoff-border: color-mix(in srgb, #c4b5fd 58%, transparent 42%);
+  --org-office-sick-bg: color-mix(in srgb, #f59e0b 44%, var(--surface-2) 56%);
+  --org-office-sick-border: color-mix(in srgb, #fcd34d 60%, transparent 40%);
+  --org-office-business-trip-bg: color-mix(in srgb, #e879f9 50%, var(--surface-2) 50%);
+  --org-office-business-trip-border: color-mix(in srgb, #f0abfc 62%, transparent 38%);
 }
 
 .org-office-presence-panel .org-vacation-cell.org-vacation-weekend {
-  background: color-mix(in srgb, var(--surface-2) 94%, var(--day-off-tint) 6%) !important;
-  box-shadow: none;
+  background: var(--org-status-weekend-bg) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-strong) 30%, transparent 70%);
 }
 
 .org-office-presence-panel .org-vacation-cell.org-office-presence-conflict {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, #b45309 70%, transparent 30%) !important;
 }
 
+/* Keep selected day visible even on "in office" cells. */
+.org-office-presence-panel .org-vacation-cell.org-vacation-cell-selected-day {
+  outline: 2px dashed color-mix(in srgb, var(--org-selected-date-color) 66%, transparent 34%);
+  outline-offset: -2px;
+}
+
 .org-vacation-legend-item.org-office-presence-in {
-  background: var(--workspace-self-fill, #e9f5ee);
-  border: 1px solid var(--workspace-self-border, #c8e6d4);
-  color: #0f172a;
+  background: var(--org-office-in-bg);
+  border: 1px solid var(--org-office-in-border);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.org-vacation-legend-item.org-office-presence-vacation {
+  background: var(--org-office-vacation-bg);
+  border: 1px solid var(--org-office-vacation-border);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.org-vacation-legend-item.org-office-presence-dayoff {
+  background: var(--org-office-dayoff-bg);
+  border: 1px solid var(--org-office-dayoff-border);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.org-vacation-legend-item.org-office-presence-sick {
+  background: var(--org-office-sick-bg);
+  border: 1px solid var(--org-office-sick-border);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.org-vacation-legend-item.org-office-presence-business-trip {
+  background: var(--org-office-business-trip-bg);
+  border: 1px solid var(--org-office-business-trip-border);
+  color: var(--text-primary);
   font-weight: 600;
 }
 
@@ -2342,29 +2815,21 @@
   pointer-events: none;
 }
 
-[data-theme='dark'] .org-office-presence-panel .org-vacation-cell.org-office-presence-in {
-  background: color-mix(in srgb, #1f5f44 68%, #22c55e 32%) !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, #86efac 64%, transparent 36%);
-}
-
 [data-theme='dark'] .org-office-presence-panel .org-vacation-cell.org-vacation-weekend {
-  background: color-mix(in srgb, var(--surface-2) 94%, var(--day-off-tint) 6%) !important;
-  box-shadow: none;
-}
-
-[data-theme='dark'] .org-office-presence-panel {
-  --workspace-self-fill: color-mix(in srgb, #1f5f44 68%, #22c55e 32%);
-  --workspace-self-border: color-mix(in srgb, #86efac 64%, transparent 36%);
-}
-
-[data-theme='dark'] .org-vacation-legend-item.org-office-presence-in {
-  color: #ecfff5;
-  border-color: color-mix(in srgb, #86efac 64%, transparent 36%);
+  background: var(--org-status-weekend-bg) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-strong) 54%, transparent 46%);
 }
 
 [data-theme='dark'] .org-office-presence-panel .org-vacation-cell.org-workspace-free {
-  background: #1b2233 !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, #64748b 48%, transparent 52%);
+  background: var(--org-status-free-bg) !important;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, #64748b 48%, transparent 52%),
+    inset 0 0 0 2px color-mix(in srgb, #64748b 16%, transparent 84%);
+}
+
+[data-theme='dark'] .org-office-presence-panel .org-vacation-cell.org-vacation-weekend.org-workspace-free {
+  background: var(--org-status-weekend-bg) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-strong) 52%, transparent 48%);
 }
 
 [data-theme='dark'] .org-office-presence-panel .org-office-presence-cell[data-tip]:hover::after {
@@ -2376,4 +2841,135 @@
 
 [data-theme='dark'] .org-office-presence-panel .org-office-presence-cell[data-tip]:hover::before {
   border-top-color: #1a2438;
+}
+
+@media (max-width: 768px) {
+  .org-subtabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+
+  .org-subtabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .org-subtab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .org-panel {
+    padding: 12px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .org-panel-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .org-panel-toolbar-actions {
+    flex-wrap: wrap;
+  }
+
+  .org-dept-filter {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .org-dept-filter select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .org-schedule-names {
+    flex: 0 0 148px;
+    width: 148px;
+  }
+
+  .org-vacation-scroll,
+  .org-schedule-chart {
+    max-height: calc(100vh - 180px);
+  }
+
+  .org-chart-canvas-stage {
+    height: min(58vh, 520px);
+    min-height: 280px;
+    border-radius: 12px;
+  }
+
+  .org-chart-canvas-toolbar {
+    right: 8px;
+    bottom: 8px;
+    padding: 4px 6px;
+  }
+
+  .org-chart-canvas-sheet {
+    padding: 24px 28px;
+  }
+
+  .org-modal-backdrop {
+    padding: 12px;
+    align-items: flex-end;
+  }
+
+  .org-modal {
+    width: 100%;
+    max-height: 92vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+
+  .org-profile-modal {
+    width: 100%;
+  }
+
+  .org-employee-modal {
+    width: 100%;
+    max-height: 92vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+
+  .org-vacation-brushes {
+    flex-wrap: wrap;
+  }
+
+  .org-vacation-year-picker,
+  .org-workspace-book-for {
+    flex-wrap: wrap;
+  }
+
+  .org-table th,
+  .org-table td {
+    padding: 8px 6px;
+    font-size: 13px;
+  }
+
+  .org-table-actions {
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .org-schedule-names {
+    flex: 0 0 112px;
+    width: 112px;
+  }
+
+  .org-vacation-name,
+  .org-schedule-names-grid .org-vacation-name {
+    font-size: 11px;
+  }
+
+  .org-person-name {
+    font-size: 12px;
+  }
+
+  .org-modal-backdrop {
+    padding: 0;
+  }
 }

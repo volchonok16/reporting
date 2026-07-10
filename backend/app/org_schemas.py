@@ -319,8 +319,8 @@ class SelectOptionOut(BaseModel):
     name: str
 
 
-TimeOffKind = Literal["vacation", "dayoff", "sick_leave"]
-EditableTimeOffKind = Literal["vacation", "dayoff", "sick_leave", "erase"]
+TimeOffKind = Literal["vacation", "dayoff", "sick_leave", "business_trip"]
+EditableTimeOffKind = Literal["vacation", "dayoff", "sick_leave", "business_trip", "erase"]
 
 
 class VacationEmployeeOut(BaseModel):
@@ -400,6 +400,7 @@ class WorkspaceBookingScheduleOut(BaseModel):
     places: list[WorkspacePlaceOut] = Field(default_factory=list)
     bookings: list[WorkspaceBookingCellOut] = Field(default_factory=list)
     employees: list[VacationEmployeeOut] = Field(default_factory=list)
+    timeOffDays: list[VacationTimeOffDayOut] = Field(default_factory=list)
 
 
 class WorkspacePresenceCellOut(BaseModel):
@@ -432,6 +433,7 @@ class WorkspaceBookingToggleOut(BaseModel):
     action: WorkspaceBookingAction
     booked: bool
     employeeId: int | None = None
+    notice: str | None = None
 
 
 class OfficeDayRangeIn(BaseModel):

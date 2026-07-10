@@ -183,3 +183,23 @@ def test_cell_text_with_highlights_drops_yellow_cell_fill_for_colored_text() -> 
     }
     assert cell_text_with_highlights(cell) == "[[fg:FF0000::Контроль]]"
     assert cell_highlight_colors(cell_text_with_highlights(cell)) == []
+
+
+def test_display_cell_text_flattens_embedded_table() -> None:
+    import base64
+    import json
+
+    payload = {
+        "text": "",
+        "table": {
+            "rows": 2,
+            "cols": 2,
+            "cells": [["A1", "A2"], ["B1", "B2"]],
+        },
+    }
+    token = (
+        "<<tablejson:"
+        + base64.b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
+        + ">>"
+    )
+    assert display_cell_text(token) == "A1 | A2\nB1 | B2"

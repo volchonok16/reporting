@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { apiFetch, clearSessionId } from './api'
 import Dashboard from './Dashboard'
+import DiagramBuilder from './DiagramBuilder'
 import ProductStatusB2B from './ProductStatusB2B'
 import Roadmap from './Roadmap'
 import YouJailBoard from './YouJailBoard'
@@ -19,9 +20,10 @@ type SheetTab = {
 const SHEETS: SheetTab[] = [
   { id: 'zni', label: 'ЗНИ' },
   { id: 'product-status-b2b', label: 'Статус продукта B2B' },
-  { id: 'roadmap', label: 'Планы' },
+  { id: 'roadmap', label: 'Планы Digital' },
   { id: 'youjail-board', label: 'Доска' },
   { id: 'departments', label: 'Staffing' },
+  { id: 'diagrams', label: 'Диаграммы' },
 ]
 
 type WorkbookAppProps = {
@@ -45,26 +47,39 @@ export default function WorkbookApp({
   onAuthRefresh,
   onLogout,
 }: WorkbookAppProps) {
-  const visibleSheets =
-    appRole === 'roadmap'
-      ? SHEETS.filter(
-          (sheet) =>
-            sheet.id === 'roadmap' || sheet.id === 'youjail-board' || sheet.id === 'departments',
-        )
-      : SHEETS
+  const visibleSheets = useMemo(() => {
+    let sheets =
+      appRole === 'roadmap'
+        ? SHEETS.filter(
+            (sheet) =>
+              sheet.id === 'roadmap' || sheet.id === 'youjail-board' || sheet.id === 'departments',
+          )
+        : SHEETS
+    if (!canSyncTfs) {
+      sheets = sheets.filter((sheet) => sheet.id !== 'roadmap')
+    }
+    return sheets
+  }, [appRole, canSyncTfs])
   const visibleSheetIds = useMemo(() => new Set(visibleSheets.map((sheet) => sheet.id)), [visibleSheets])
   const [activeSheet, setActiveSheet] = useState<SheetId>(() => {
     const saved = loadActiveSheet()
+    let candidate: SheetId
     if (appRole === 'roadmap') {
-      return saved === 'departments' || saved === 'youjail-board' ? saved : 'roadmap'
+      candidate =
+        saved === 'departments' || saved === 'youjail-board' ? saved : 'roadmap'
+    } else {
+      candidate = saved
     }
-    return saved
+    if (candidate === 'roadmap' && !canSyncTfs) {
+      candidate = appRole === 'roadmap' ? 'departments' : 'zni'
+    }
+    return candidate
   })
   const [profileOpen, setProfileOpen] = useState(false)
 
   useEffect(() => {
     if (!visibleSheetIds.has(activeSheet)) {
-      setActiveSheet(visibleSheets[0]?.id ?? 'roadmap')
+      setActiveSheet(visibleSheets[0]?.id ?? 'zni')
     }
   }, [activeSheet, visibleSheetIds, visibleSheets])
 
@@ -100,7 +115,7 @@ export default function WorkbookApp({
                 type="button"
                 className="workbook-tab workbook-profile-btn"
                 onClick={() => setProfileOpen(true)}
-                title={accountLabel ?? 'Личный кабинет'}
+                title="Личный кабинет"
               >
                 <OrgPhoto
                   url={orgEmployeePhotoUrl}
@@ -108,7 +123,7 @@ export default function WorkbookApp({
                   className="workbook-header-avatar-img"
                   placeholderClassName="workbook-header-avatar"
                 />
-                <span className="workbook-profile-label">Личный кабинет</span>
+                <span className="workbook-profile-label">{accountLabel ?? 'Пользователь'}</span>
               </button>
               <button type="button" className="workbook-tab" onClick={() => void handleLogout()}>
                 Выйти
@@ -120,9 +135,9 @@ export default function WorkbookApp({
 
       <div className="workbook-content">
         {activeSheet === 'zni' ? (
-          <Dashboard />
+          <Dashboard canSyncTfs={canSyncTfs} />
         ) : activeSheet === 'roadmap' ? (
-          <div className="app">
+          <div className="app app-roadmap">
             <Roadmap
               canSyncTfs={canSyncTfs}
               canEditPriority={appRole === 'full'}
@@ -138,9 +153,11 @@ export default function WorkbookApp({
           <div className="app">
             <Departments canManage={canManageOrg} orgEmployeeId={orgEmployeeId} />
           </div>
+        ) : activeSheet === 'diagrams' ? (
+          <DiagramBuilder />
         ) : (
           <div className="app">
-            <ProductStatusB2B />
+            <ProductStatusB2B canManageOrg={canManageOrg} />
           </div>
         )}
       </div>

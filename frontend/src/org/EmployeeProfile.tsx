@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { getJson, patchJson, postForm, postJson } from '../api'
+import { notifyError, notifyProblem, notifySuccess } from '../toast'
 import type { ProfileData } from './types'
 import OrgPhoto from './OrgPhoto'
+import PasswordInput from './PasswordInput'
 import ProfileOfficeCalendar from './ProfileOfficeCalendar'
 
 type EmployeeProfileProps = {
@@ -14,19 +16,16 @@ export default function EmployeeProfile({ onClose }: EmployeeProfileProps) {
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [newPasswordRepeat, setNewPasswordRepeat] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   const loadProfile = async () => {
     setLoading(true)
-    setError(null)
     try {
       const data = await getJson<ProfileData>('/api/profile')
       setProfile(data)
       setFullName(data.employee?.fullName ?? '')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка загрузки профиля')
+      notifyError(err, 'Ошибка загрузки профиля')
     } finally {
       setLoading(false)
     }
@@ -38,37 +37,31 @@ export default function EmployeeProfile({ onClose }: EmployeeProfileProps) {
 
   const handleProfileSave = async (event: React.FormEvent) => {
     event.preventDefault()
-    setError(null)
-    setMessage(null)
     try {
       const data = await patchJson<ProfileData>('/api/profile', { fullName })
       setProfile(data)
-      setMessage('Профиль сохранён.')
+      notifySuccess('Профиль сохранён.')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка сохранения')
+      notifyProblem(err, 'Ошибка сохранения')
     }
   }
 
   const handlePhoto = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
-    setError(null)
-    setMessage(null)
     const form = new FormData()
     form.append('file', file)
     try {
       const data = await postForm<ProfileData>('/api/profile/photo', form)
       setProfile(data)
-      setMessage('Фото обновлено.')
+      notifySuccess('Фото обновлено.')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка загрузки фото')
+      notifyProblem(err, 'Ошибка загрузки фото')
     }
   }
 
   const handlePasswordSave = async (event: React.FormEvent) => {
     event.preventDefault()
-    setError(null)
-    setMessage(null)
     try {
       await postJson('/api/profile/password', {
         currentPassword,
@@ -78,9 +71,9 @@ export default function EmployeeProfile({ onClose }: EmployeeProfileProps) {
       setCurrentPassword('')
       setNewPassword('')
       setNewPasswordRepeat('')
-      setMessage('Пароль изменён.')
+      notifySuccess('Пароль изменён.')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка смены пароля')
+      notifyProblem(err, 'Ошибка смены пароля')
     }
   }
 
@@ -95,8 +88,6 @@ export default function EmployeeProfile({ onClose }: EmployeeProfileProps) {
         </header>
 
         {loading ? <p>Загрузка…</p> : null}
-        {error ? <p className="org-error">{error}</p> : null}
-        {message ? <p className="org-success">{message}</p> : null}
 
         {profile ? (
           <div className="org-profile-grid">
@@ -161,30 +152,27 @@ export default function EmployeeProfile({ onClose }: EmployeeProfileProps) {
               <form onSubmit={(e) => void handlePasswordSave(e)} className="org-form">
                 <label>
                   Текущий пароль
-                  <input
-                    type="password"
+                  <PasswordInput
                     value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    onChange={setCurrentPassword}
                     autoComplete="current-password"
                     required
                   />
                 </label>
                 <label>
                   Новый пароль
-                  <input
-                    type="password"
+                  <PasswordInput
                     value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
+                    onChange={setNewPassword}
                     autoComplete="new-password"
                     required
                   />
                 </label>
                 <label>
                   Повторите пароль
-                  <input
-                    type="password"
+                  <PasswordInput
                     value={newPasswordRepeat}
-                    onChange={(e) => setNewPasswordRepeat(e.target.value)}
+                    onChange={setNewPasswordRepeat}
                     autoComplete="new-password"
                     required
                   />

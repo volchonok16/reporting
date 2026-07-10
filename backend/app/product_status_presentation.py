@@ -26,6 +26,7 @@ from app.product_status_slides_template import fetch_google_slides_pptx
 from app.product_status_rich_text import (
     CellStyle,
     display_cell_text,
+    embedded_table_inner_to_plain,
     split_cell_wrapper,
     split_style_segments,
 )
@@ -319,6 +320,8 @@ def _is_presentation_internal_column(column: str) -> bool:
         return True
     if re.search(r"обратить.*вним", key):
         return True
+    if re.search(r"комментар", key):
+        return True
     if _is_full_description_notes_column(column):
         return True
     if _is_full_why_notes_column(column):
@@ -404,9 +407,14 @@ def _why_notes_source_columns(columns: list[str]) -> list[str]:
         if legacy and legacy not in sources:
             sources.append(legacy)
     elif not sources:
-        table_column = _why_value_column(columns)
-        if table_column and not _is_presentation_internal_column(table_column):
-            sources.append(table_column)
+        has_description_split = any(
+            _is_description_presentation_column(column) or _is_full_description_notes_column(column)
+            for column in columns
+        )
+        if not has_description_split:
+            table_column = _why_value_column(columns)
+            if table_column and not _is_presentation_internal_column(table_column):
+                sources.append(table_column)
     return sources
 
 
@@ -1119,11 +1127,20 @@ def _fill_market_news_slides(prs: Presentation, sheet: ProductStatusSheetOut) ->
         _fill_market_news_slide_lines(slide, chunk)
 
 
-def _try_load_market_news_sheet() -> ProductStatusSheetOut | None:
+def _try_load_market_news_sheet(db: Session | None = None) -> ProductStatusSheetOut | None:
+    from app.db import SessionLocal, close_db_session
+
+    owns_session = db is None
+    if owns_session:
+        db = SessionLocal()
     try:
-        news_data = load_b2b_news()
-    except HTTPException:
+        news_data = load_b2b_news(db=db, gid="news")
+    except Exception:
+        logger.warning("Не удалось загрузить новости для презентации", exc_info=True)
         return None
+    finally:
+        if owns_session and db is not None:
+            close_db_session(db)
     return _find_news_sheet(news_data)
 
 
@@ -1170,7 +1187,8 @@ def _fill_white_cell(
     default_text_color: RGBColor = TEXT_COLOR,
 ) -> None:
     cell_style, inner = split_cell_wrapper(value)
-    sanitized = _sanitize_cell_text(inner)
+    table_plain = embedded_table_inner_to_plain(inner)
+    sanitized = _sanitize_cell_text(table_plain if table_plain is not None else inner)
     font_size, _ = _cell_font_size(col_index, sanitized)
     frame = cell.text_frame
     frame.clear()
@@ -1193,6 +1211,15 @@ def _fill_white_cell(
         paragraph.space_after = (
             CELL_PARAGRAPH_SPACE_AFTER if output_index < len(non_empty_lines) - 1 else Pt(0)
         )
+        if table_plain is not None:
+            run = paragraph.add_run()
+            run.text = line
+            run.font.name = TABLE_FONT_NAME
+            run.font.size = font_size
+            run.font.bold = bold
+            run.font.italic = False
+            run.font.color.rgb = default_text_color
+            continue
         for segment in split_style_segments(line):
             if not segment.text:
                 continue
@@ -1204,7 +1231,7 @@ def _fill_white_cell(
             run.font.italic = segment.italic
             run.font.color.rgb = _hex_to_rgb(segment.fg) if segment.fg else default_text_color
             _set_run_strike(run, enabled=segment.strike)
-            if segment.bg and not segment.fg:
+            if segment.bg:
                 _set_run_highlight(run, segment.bg)
 
     if not cell_style.bg:
@@ -1318,8 +1345,23 @@ def _read_presentation_sections(prs: Presentation) -> list[tuple[str, list[int]]
 
 def generate_b2b_product_status_presentation(
     data: ProductStatusB2BOut | None = None,
+    *,
+    db: Session | None = None,
 ) -> tuple[bytes, str]:
-    payload = data if data is not None else load_b2b_product_status()
+    from app.db import SessionLocal, close_db_session
+
+    owns_session = db is None and data is None
+    if data is None:
+        if db is None:
+            db = SessionLocal()
+        try:
+            payload = load_b2b_product_status(db=db)
+        finally:
+            if owns_session:
+                close_db_session(db)
+                db = None
+    else:
+        payload = data
 
     prs = _open_template_presentation()
 
@@ -1355,7 +1397,7 @@ def generate_b2b_product_status_presentation(
         if index >= FIXED_SLIDE_COUNT:
             _delete_slide(prs, index)
 
-    news_sheet = _try_load_market_news_sheet()
+    news_sheet = _try_load_market_news_sheet(db)
     if news_sheet is not None:
         _fill_market_news_slides(prs, news_sheet)
 

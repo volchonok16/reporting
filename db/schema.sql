@@ -515,7 +515,7 @@ CREATE TABLE employee_time_off_day (
     id              BIGSERIAL PRIMARY KEY,
     employee_id     BIGINT       NOT NULL REFERENCES employee(id) ON DELETE CASCADE,
     day             DATE         NOT NULL,
-    kind            VARCHAR(32)  NOT NULL CHECK (kind IN ('vacation', 'dayoff', 'sick_leave')),
+    kind            VARCHAR(32)  NOT NULL CHECK (kind IN ('vacation', 'dayoff', 'sick_leave', 'business_trip')),
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     UNIQUE (employee_id, day)
@@ -524,7 +524,7 @@ CREATE TABLE employee_time_off_day (
 CREATE INDEX idx_employee_time_off_day_day ON employee_time_off_day (day);
 CREATE INDEX idx_employee_time_off_day_employee_day ON employee_time_off_day (employee_id, day);
 
-COMMENT ON TABLE employee_time_off_day IS 'График отпусков: отпуск, отгул, больничный по дням';
+COMMENT ON TABLE employee_time_off_day IS 'График отсутствий: отпуск, отгул, больничный, командировка по дням';
 
 CREATE TABLE workspace_place (
     id              BIGSERIAL PRIMARY KEY,
@@ -759,3 +759,116 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER trg_task_status_duration_calc
     BEFORE INSERT OR UPDATE ON task_status_duration
     FOR EACH ROW EXECUTE PROCEDURE fn_task_status_duration_calc();
+
+-- -----------------------------------------------------------------------------
+-- Статус продукта B2B (таблицы в БД, без Google Sheets)
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE b2b_product_status_office (
+    id              BIGSERIAL PRIMARY KEY,
+    gid             VARCHAR(32)  NOT NULL UNIQUE,
+    name            VARCHAR(255) NOT NULL,
+    sort_order      INT          NOT NULL DEFAULT 0,
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE b2b_product_status_office IS 'Продуктовые офисы B2B (вкладки «Офис: SMS», «Офис: CORE» и т.д.)';
+COMMENT ON COLUMN b2b_product_status_office.gid IS 'Идентификатор вкладки (стабильный ключ для API и UI)';
+
+CREATE TABLE b2b_product_status_row (
+    id              BIGSERIAL PRIMARY KEY,
+    office_id       BIGINT       NOT NULL REFERENCES b2b_product_status_office(id) ON DELETE CASCADE,
+    sort_order      INT          NOT NULL DEFAULT 0,
+    cells           JSONB        NOT NULL DEFAULT '{}'::jsonb,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_b2b_product_status_row_office
+    ON b2b_product_status_row (office_id, sort_order);
+
+COMMENT ON TABLE b2b_product_status_row IS 'Строка таблицы статуса продукта B2B; cells — значения колонок с rich-text разметкой';
+COMMENT ON COLUMN b2b_product_status_row.cells IS 'JSON: название колонки → текст ячейки (формат product_status_rich_text)';
+
+CREATE TABLE b2b_product_status_history (
+    id              BIGSERIAL PRIMARY KEY,
+    row_id          BIGINT       REFERENCES b2b_product_status_row(id) ON DELETE SET NULL,
+    office_id       BIGINT       NOT NULL REFERENCES b2b_product_status_office(id) ON DELETE CASCADE,
+    office_name     VARCHAR(255) NOT NULL,
+    action          VARCHAR(32)  NOT NULL,
+    field_name      VARCHAR(255),
+    old_value       TEXT,
+    new_value       TEXT,
+    changed_by      VARCHAR(255),
+    changed_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_b2b_product_status_history_office
+    ON b2b_product_status_history (office_id, changed_at DESC);
+
+COMMENT ON TABLE b2b_product_status_history IS 'История изменений строк статуса продукта B2B';
+COMMENT ON COLUMN b2b_product_status_history.action IS 'create | update | delete | restore';
+
+CREATE TABLE b2b_product_status_snapshot (
+    id              BIGSERIAL PRIMARY KEY,
+    office_id       BIGINT       NOT NULL REFERENCES b2b_product_status_office(id) ON DELETE CASCADE,
+    rows            JSONB        NOT NULL,
+    changed_by      VARCHAR(255),
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_b2b_product_status_snapshot_office
+    ON b2b_product_status_snapshot (office_id, created_at DESC, id DESC);
+
+COMMENT ON TABLE b2b_product_status_snapshot IS 'Снимки строк офиса после сохранения; используются для отката к версии';
+COMMENT ON COLUMN b2b_product_status_snapshot.rows IS 'JSON: {"rows": [{"cells": {...}}, ...]} — полный порядок строк офиса';
+
+-- -----------------------------------------------------------------------------
+-- Новости и запуски B2B
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE b2b_news_section (
+    id              BIGSERIAL PRIMARY KEY,
+    gid             VARCHAR(32)  NOT NULL UNIQUE,
+    name            VARCHAR(255) NOT NULL,
+    sort_order      INT          NOT NULL DEFAULT 0,
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE b2b_news_row (
+    id              BIGSERIAL PRIMARY KEY,
+    section_id      BIGINT       NOT NULL REFERENCES b2b_news_section(id) ON DELETE CASCADE,
+    sort_order      INT          NOT NULL DEFAULT 0,
+    cells           JSONB        NOT NULL DEFAULT '{}'::jsonb,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_b2b_news_row_section ON b2b_news_row (section_id, sort_order);
+
+CREATE TABLE b2b_news_history (
+    id              BIGSERIAL PRIMARY KEY,
+    row_id          BIGINT       REFERENCES b2b_news_row(id) ON DELETE SET NULL,
+    section_id      BIGINT       NOT NULL REFERENCES b2b_news_section(id) ON DELETE CASCADE,
+    section_name    VARCHAR(255) NOT NULL,
+    action          VARCHAR(32)  NOT NULL,
+    field_name      VARCHAR(255),
+    old_value       TEXT,
+    new_value       TEXT,
+    changed_by      VARCHAR(255),
+    changed_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_b2b_news_history_section ON b2b_news_history (section_id, changed_at DESC);
+
+CREATE TABLE b2b_news_snapshot (
+    id              BIGSERIAL PRIMARY KEY,
+    section_id      BIGINT       NOT NULL REFERENCES b2b_news_section(id) ON DELETE CASCADE,
+    rows            JSONB        NOT NULL,
+    changed_by      VARCHAR(255),
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_b2b_news_snapshot_section ON b2b_news_snapshot (section_id, created_at DESC, id DESC);

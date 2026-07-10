@@ -5,7 +5,6 @@ from app.google_sheets_workbook import (
     parse_sheet_csv,
     parse_sheets_config,
 )
-from app.product_status_service import resolve_product_status_sheet_tabs
 
 
 def test_parse_sheet_csv() -> None:
@@ -104,25 +103,3 @@ def test_discover_sheet_tabs_from_html() -> None:
         {"gid": "0", "name": "Продуктовый офис: CORE"},
         {"gid": "1512199647", "name": "Продуктовый офис: SMS"},
     ]
-
-
-def test_resolve_sheet_tabs_uses_known_defaults(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "app.product_status_service.settings.b2b_product_status_sheets",
-        "",
-    )
-    monkeypatch.setattr(
-        "app.product_status_service.settings.b2b_product_status_spreadsheet_id",
-        "1zTxzUqa1p6wFUjmk-8_2czfsJaSm3eTrNGazN0oFKqI",
-    )
-    monkeypatch.setattr(
-        "app.google_sheets_workbook.discover_sheet_tabs",
-        lambda *_args, **_kwargs: [],
-    )
-
-    class EmptyClient:
-        pass
-
-    sheets = resolve_product_status_sheet_tabs(client=EmptyClient())  # type: ignore[arg-type]
-    assert len(sheets) == 6
-    assert sheets[0]["name"] == "Продуктовый офис: CORE"

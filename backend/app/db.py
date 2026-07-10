@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Serialize startup DDL when uvicorn runs multiple workers (see docker-compose.prod.yml).
 _STARTUP_MIGRATION_LOCK_ID = 847291736
+_B2B_AUDIT_RETENTION_LOCK_ID = 847291737
 
 
 class Base(DeclarativeBase):
@@ -124,6 +125,10 @@ def ensure_startup_schema() -> None:
         "009_employee_office_days.sql",
         "010_org_chart_layout.sql",
         "011_youjail.sql",
+        "013_b2b_product_status.sql",
+        "014_b2b_product_status_snapshots.sql",
+        "015_b2b_news.sql",
+        "016_b2b_product_status_merge_why_columns.sql",
     )
     org_migrations: list[str] = []
     for migration_name in org_migration_names:
@@ -153,6 +158,23 @@ def ensure_startup_schema() -> None:
             for sql in org_migrations:
                 _execute_startup_sql(conn, sql)
             _ensure_app_user_grants(conn)
+
+
+def purge_stale_b2b_audit_records() -> None:
+    """Удаляет историю и снимки версий B2B старше срока хранения (при старте, один воркер)."""
+    from app.b2b_audit_retention import purge_old_b2b_audit_records
+
+    with engine.connect() as conn:
+        with conn.begin():
+            conn.execute(
+                text("SELECT pg_advisory_xact_lock(:lock_id)"),
+                {"lock_id": _B2B_AUDIT_RETENTION_LOCK_ID},
+            )
+            session = Session(bind=conn)
+            try:
+                purge_old_b2b_audit_records(session)
+            finally:
+                session.close()
 
 
 def get_db() -> Generator[Session, None, None]:

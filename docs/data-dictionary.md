@@ -1,7 +1,8 @@
 # Словарь данных (краткая выжимка)
 
 > **Полный глоссарий:** [glossary.md](glossary.md)  
-> **Команды (подробно):** [teams.md](teams.md)
+> **Команды (подробно):** [teams.md](teams.md)  
+> **Аудит пробелов в документации:** [documentation-gaps.md](documentation-gaps.md)
 
 ## team — каноническая команда
 
@@ -134,6 +135,26 @@
 | records_upserted | Записано в `task` |
 | parameters_json | `board`, фильтры |
 
+## workspace_place — рабочие места (бронь)
+
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| name | varchar | Отображаемое имя (`Место 23`, …) |
+| sort_order | int | Номер места и порядок строк в сетке «Бронь мест» |
+| is_active | boolean | Скрыть место из брони без удаления |
+
+Наполнение: `008_workspace_booking.sql` (23–53), `012_workspace_places_99_106.sql` (99–106). Подробнее — [glossary.md](glossary.md#workspace_place--справочник-рабочих-мест).
+
+## workspace_booking — бронь на день
+
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| place_id | bigint | FK → `workspace_place` |
+| employee_id | bigint | FK → `employee` |
+| day | date | Календарный день |
+
+Уникальность: одно место в день, один сотрудник — одно место в день.
+
 ## employee_office_day — присутствие в офисе без места
 
 | Колонка | Тип | Описание |
@@ -141,7 +162,7 @@
 | employee_id | bigint | FK на сотрудника (`employee.id`) |
 | day | date | День, когда сотрудник отметил «в офисе» |
 
-Применение: вкладка «Сотрудники в офисе» учитывает `workspace_booking` (с местом) и `employee_office_day` (без места), а также исключения по `employee_time_off_day`.
+Применение: вкладка «Сотрудники в офисе» учитывает `workspace_booking` (с местом) и `employee_office_day` (без места), а также исключения по `employee_time_off_day` (отпуск, отгул, больничный, командировка).
 
 ## org_chart_layout — ручная оргсхема
 
@@ -152,3 +173,23 @@
 | layout_json | jsonb | `nodes` с координатами карточек и `edges` с нарисованными линиями |
 
 Применение: вкладка «Пирамида» показывает всем пользователям сохранённую администратором ручную раскладку оргструктуры.
+
+## b2b_product_status_* — статус продукта B2B
+
+| Таблица | Ключевые поля | Назначение |
+|---------|---------------|------------|
+| `b2b_product_status_office` | `gid`, `name`, `sort_order` | Вкладки офисов (SMS, VOICE, CORE…) |
+| `b2b_product_status_row` | `office_id`, `sort_order`, `cells` | Строки таблицы; `cells` — jsonb с колонками и rich-text |
+| `b2b_product_status_history` | `office_id`, `row_id`, `action`, `field_name` | Журнал create/update/delete/restore |
+| `b2b_product_status_snapshot` | `office_id`, `rows`, `changed_by` | Снимок всех строк офиса после сохранения |
+
+## b2b_news_* — новости и запуски B2B
+
+| Таблица | Ключевые поля | Назначение |
+|---------|---------------|------------|
+| `b2b_news_section` | `gid`, `name`, `sort_order` | Вкладки «Новости», «Запуски» |
+| `b2b_news_row` | `section_id`, `sort_order`, `cells` | Строки; колонки зависят от вкладки |
+| `b2b_news_history` | `section_id`, `row_id`, `action` | Журнал create/update/delete/restore |
+| `b2b_news_snapshot` | `section_id`, `rows`, `changed_by` | Снимок для отката версии |
+
+Колонка «Проект координация» в `cells` доступна на запись только админам (`canManageOrg`).

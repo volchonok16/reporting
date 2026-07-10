@@ -146,6 +146,25 @@ class ProductStatusCellUpdate(BaseModel):
     columnIndex: int = Field(ge=0)
     value: str = ""
     column: str | None = None
+    expectedValue: str | None = Field(
+        default=None,
+        description="Значение ячейки на момент начала правки (для защиты от перезаписи чужих изменений)",
+    )
+    rowId: int | None = Field(
+        default=None,
+        ge=1,
+        description="Стабильный id строки в БД; предпочтительнее rowIndex",
+    )
+
+
+class ProductStatusRowDelete(BaseModel):
+    gid: str
+    rowId: int = Field(ge=1)
+
+
+class ProductStatusSheetRowOrder(BaseModel):
+    gid: str
+    rowIds: list[int] = Field(default_factory=list, min_length=1)
 
 
 class ProductStatusSaveIn(BaseModel):
@@ -153,6 +172,35 @@ class ProductStatusSaveIn(BaseModel):
         default_factory=list,
         max_length=50_000,
     )
+    deletedRows: list[ProductStatusRowDelete] = Field(default_factory=list)
+    rowOrder: list[ProductStatusSheetRowOrder] = Field(default_factory=list)
+
+
+class ProductStatusHistoryEntryOut(BaseModel):
+    id: int
+    rowId: int | None = None
+    officeName: str
+    action: str
+    fieldName: str | None = None
+    oldValue: str | None = None
+    newValue: str | None = None
+    changedBy: str | None = None
+    changedAt: str
+
+
+class ProductStatusHistoryOut(BaseModel):
+    items: list[ProductStatusHistoryEntryOut] = Field(default_factory=list)
+
+
+class ProductStatusSnapshotOut(BaseModel):
+    id: int
+    rowCount: int
+    changedBy: str | None = None
+    createdAt: str
+
+
+class ProductStatusSnapshotsOut(BaseModel):
+    items: list[ProductStatusSnapshotOut] = Field(default_factory=list)
 
 
 class TaskLookupIn(BaseModel):

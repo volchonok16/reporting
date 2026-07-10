@@ -1,100 +1,245 @@
-import type { CellStyle, TextStyleSegment } from './productStatusRichText'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { TextStyleSegment } from './productStatusRichText'
+import { PRODUCT_STATUS_ATTENTION_FG } from './productStatusRichText'
+
+const FORMAT_TOOLBAR_OPEN_KEY = 'product-status-format-toolbar-open'
 
 type ProductStatusFormatToolbarProps = {
   disabled?: boolean
   hasActiveCell: boolean
   onTextStyle: (patch: Partial<TextStyleSegment>) => void
-  onCellStyle: (patch: Partial<CellStyle>) => void
   onClearFormatting: () => void
+  onInsertTable: (rows: number, cols: number) => void
 }
 
-const TEXT_PRESETS: Array<{ label: string; patch: Partial<TextStyleSegment> }> = [
-  { label: 'Маркер (жёлтый)', patch: { bg: 'FFFF00' } },
-  { label: 'Красный текст', patch: { fg: 'FF0000' } },
-  { label: 'Синий текст', patch: { fg: '0000FF' } },
+type PresetButton = {
+  label: string
+  title?: string
+  patch: Partial<TextStyleSegment>
+  className?: string
+}
+
+const HIGHLIGHT_PRESETS: PresetButton[] = [
+  { label: 'Жёлтый', patch: { bg: 'FFFF00' }, className: 'product-status-swatch-yellow' },
+  { label: 'Зелёный', patch: { bg: 'C6EFCE' }, className: 'product-status-swatch-green' },
+  { label: 'Розовый', patch: { bg: 'FFC7CE' }, className: 'product-status-swatch-pink' },
+  { label: 'Голубой', patch: { bg: 'BDD7EE' }, className: 'product-status-swatch-blue' },
 ]
 
-const CELL_PRESETS: Array<{ label: string; patch: Partial<CellStyle> }> = [
-  { label: 'Заливка ячейки', patch: { bg: 'C6EFCE' } },
-  { label: 'Без заливки', patch: { bg: null } },
+const TEXT_COLOR_PRESETS: PresetButton[] = [
+  {
+    label: 'Красный',
+    title: 'Красный текст (как «Обратить внимание»)',
+    patch: { fg: PRODUCT_STATUS_ATTENTION_FG },
+    className: 'product-status-fg-attention',
+  },
+  { label: 'Синий', title: 'Синий текст', patch: { fg: '0000FF' }, className: 'product-status-fg-blue' },
+  { label: 'Чёрный', title: 'Чёрный текст', patch: { fg: '000000' }, className: 'product-status-fg-black' },
+  { label: 'Зелёный', title: 'Зелёный текст', patch: { fg: '008000' }, className: 'product-status-fg-green' },
+  { label: 'Серый', title: 'Серый текст', patch: { fg: '808080' }, className: 'product-status-fg-gray' },
 ]
+
+function FormatButton({
+  preset,
+  inactive,
+  onApply,
+}: {
+  preset: PresetButton
+  inactive: boolean
+  onApply: (patch: Partial<TextStyleSegment>) => void
+}) {
+  return (
+    <button
+      type="button"
+      className={['btn-secondary product-status-format-btn', preset.className].filter(Boolean).join(' ')}
+      disabled={inactive}
+      title={preset.title ?? preset.label}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={() => onApply(preset.patch)}
+    >
+      {preset.label}
+    </button>
+  )
+}
+
+function readFormatToolbarOpen(): boolean {
+  try {
+    return sessionStorage.getItem(FORMAT_TOOLBAR_OPEN_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
 
 export default function ProductStatusFormatToolbar({
   disabled = false,
   hasActiveCell,
   onTextStyle,
-  onCellStyle,
   onClearFormatting,
+  onInsertTable,
 }: ProductStatusFormatToolbarProps) {
+  const [open, setOpen] = useState(readFormatToolbarOpen)
+  const [tablePickerOpen, setTablePickerOpen] = useState(false)
+  const [tableHover, setTableHover] = useState<{ rows: number; cols: number }>({ rows: 2, cols: 2 })
+  const tablePickerRef = useRef<HTMLDivElement | null>(null)
   const inactive = disabled || !hasActiveCell
+  const tableRows = 8
+  const tableCols = 8
+
+  const tableHint = useMemo(() => `${tableHover.rows} x ${tableHover.cols}`, [tableHover])
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(FORMAT_TOOLBAR_OPEN_KEY, String(open))
+    } catch {
+      /* ignore storage errors */
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!tablePickerOpen) return
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null
+      if (tablePickerRef.current && target && !tablePickerRef.current.contains(target)) {
+        setTablePickerOpen(false)
+      }
+    }
+    window.addEventListener('pointerdown', onPointerDown)
+    return () => window.removeEventListener('pointerdown', onPointerDown)
+  }, [tablePickerOpen])
 
   return (
-    <div className="product-status-format-toolbar" role="toolbar" aria-label="Форматирование ячеек">
-      <span className="product-status-format-label">Выделение:</span>
-      {TEXT_PRESETS.map((preset) => (
-        <button
-          key={preset.label}
-          type="button"
-          className="btn-secondary product-status-format-btn"
-          disabled={inactive}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => onTextStyle(preset.patch)}
+    <div
+      className={[
+        'product-status-format-panel',
+        open ? 'product-status-format-panel--open' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
+      <button
+        type="button"
+        className="product-status-format-panel-toggle"
+        aria-expanded={open}
+        aria-controls="product-status-format-toolbar"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className="product-status-format-panel-title">Форматирование текста</span>
+        <span className="product-status-format-panel-hint">
+          {open ? 'Свернуть' : 'Маркер, цвет, жирный…'}
+        </span>
+        <span className="product-status-format-panel-chevron" aria-hidden="true">
+          {open ? '▾' : '▸'}
+        </span>
+      </button>
+      {open ? (
+        <div
+          id="product-status-format-toolbar"
+          className="product-status-format-toolbar"
+          role="toolbar"
+          aria-label="Форматирование текста"
         >
-          {preset.label}
-        </button>
-      ))}
-      <button
-        type="button"
-        className="btn-secondary product-status-format-btn"
-        disabled={inactive}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => onTextStyle({ bold: true })}
-      >
-        Ж
-      </button>
-      <button
-        type="button"
-        className="btn-secondary product-status-format-btn"
-        disabled={inactive}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => onTextStyle({ italic: true })}
-      >
-        К
-      </button>
-      <button
-        type="button"
-        className="btn-secondary product-status-format-btn"
-        disabled={inactive}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => onTextStyle({ strike: true })}
-      >
-        S̶
-      </button>
-      <button
-        type="button"
-        className="btn-secondary product-status-format-btn"
-        disabled={inactive}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={onClearFormatting}
-      >
-        Сбросить
-      </button>
-      <span className="product-status-format-sep" aria-hidden="true" />
-      <span className="product-status-format-label">Ячейка:</span>
-      {CELL_PRESETS.map((preset) => (
-        <button
-          key={preset.label}
-          type="button"
-          className="btn-secondary product-status-format-btn"
-          disabled={inactive}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => onCellStyle(preset.patch)}
-        >
-          {preset.label}
-        </button>
-      ))}
-      {!hasActiveCell && !disabled ? (
-        <span className="product-status-format-hint">Кликните в ячейку; «Сбросить» убирает выделение или всё форматирование ячейки</span>
+          <span className="product-status-format-label">Маркер:</span>
+          {HIGHLIGHT_PRESETS.map((preset) => (
+            <FormatButton key={preset.label} preset={preset} inactive={inactive} onApply={onTextStyle} />
+          ))}
+          <span className="product-status-format-sep" aria-hidden="true" />
+          <span className="product-status-format-label">Цвет:</span>
+          {TEXT_COLOR_PRESETS.map((preset) => (
+            <FormatButton key={preset.label} preset={preset} inactive={inactive} onApply={onTextStyle} />
+          ))}
+          <span className="product-status-format-sep" aria-hidden="true" />
+          <button
+            type="button"
+            className="btn-secondary product-status-format-btn product-status-format-btn-strong"
+            disabled={inactive}
+            title="Жирный"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onTextStyle({ bold: true })}
+          >
+            Ж
+          </button>
+          <button
+            type="button"
+            className="btn-secondary product-status-format-btn product-status-format-btn-em"
+            disabled={inactive}
+            title="Курсив"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onTextStyle({ italic: true })}
+          >
+            К
+          </button>
+          <button
+            type="button"
+            className="btn-secondary product-status-format-btn product-status-format-btn-underline"
+            disabled={inactive}
+            title="Подчёркнутый"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onTextStyle({ underline: true })}
+          >
+            Ч
+          </button>
+          <button
+            type="button"
+            className="btn-secondary product-status-format-btn product-status-format-btn-strike"
+            disabled={inactive}
+            title="Зачёркнутый"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onTextStyle({ strike: true })}
+          >
+            S̶
+          </button>
+          <button
+            type="button"
+            className="btn-secondary product-status-format-btn"
+            disabled={inactive}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={onClearFormatting}
+          >
+            Сбросить
+          </button>
+          <div className="product-status-table-picker" ref={tablePickerRef}>
+            <button
+              type="button"
+              className="btn-secondary product-status-format-btn"
+              disabled={inactive}
+              title="Вставить таблицу в стиле Confluence"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => setTablePickerOpen((current) => !current)}
+            >
+              Таблица
+            </button>
+            {tablePickerOpen ? (
+              <div className="product-status-table-picker-popover" role="dialog" aria-label="Выбор размера таблицы">
+                <div className="product-status-table-picker-grid">
+                  {Array.from({ length: tableRows }).map((_, row) =>
+                    Array.from({ length: tableCols }).map((__, col) => {
+                      const rows = row + 1
+                      const cols = col + 1
+                      const selected = rows <= tableHover.rows && cols <= tableHover.cols
+                      return (
+                        <button
+                          key={`${rows}-${cols}`}
+                          type="button"
+                          className={`product-status-table-picker-cell${
+                            selected ? ' product-status-table-picker-cell-selected' : ''
+                          }`}
+                          onMouseEnter={() => setTableHover({ rows, cols })}
+                          onFocus={() => setTableHover({ rows, cols })}
+                          onClick={() => {
+                            onInsertTable(rows, cols)
+                            setTablePickerOpen(false)
+                          }}
+                        />
+                      )
+                    }),
+                  )}
+                </div>
+                <div className="product-status-table-picker-hint">{tableHint}</div>
+              </div>
+            ) : null}
+          </div>
+        </div>
       ) : null}
     </div>
   )

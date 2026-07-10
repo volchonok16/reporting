@@ -8,6 +8,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { getJson, putJson } from '../api'
+import { notifyLoading, notifyProblem, notifySuccess } from '../toast'
 import type {
   DepartmentBlock,
   OrgChartLayout,
@@ -71,10 +72,6 @@ function departmentEmployeeNodeId(departmentId: number, employeeId: number): str
 
 function departmentNodeId(departmentId: number): string {
   return `department:${departmentId}`
-}
-
-function edgeId(fromNodeId: string, toNodeId: string): string {
-  return `${fromNodeId}->${toNodeId}`
 }
 
 function anchoredEdgeId(fromNodeId: string, toNodeId: string, fromAnchor: EdgeAnchor, toAnchor: EdgeAnchor): string {
@@ -376,17 +373,23 @@ function anchorPoint(node: OrgChartLayoutNode, anchor: EdgeAnchor = 'bottom'): P
 }
 
 function edgePath(edge: OrgChartLayoutEdge, from: OrgChartLayoutNode, to: OrgChartLayoutNode): string {
+  const points = edgePathPoints(edge, from, to)
+  if (points.length <= 1) return ''
+  return points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
+}
+
+function edgePathPoints(
+  edge: OrgChartLayoutEdge,
+  from: OrgChartLayoutNode,
+  to: OrgChartLayoutNode,
+): Point[] {
   const start = anchorPoint(from, edge.fromAnchor ?? 'bottom')
   const end = anchorPoint(to, edge.toAnchor ?? 'top')
   if (edge.points?.length) {
-    return [
-      `M ${start.x} ${start.y}`,
-      ...edge.points.map((point) => `L ${point.x} ${point.y}`),
-      `L ${end.x} ${end.y}`,
-    ].join(' ')
+    return [start, ...edge.points, end]
   }
   const middleY = start.y + (end.y - start.y) / 2
-  return `M ${start.x} ${start.y} V ${middleY} H ${end.x} V ${end.y}`
+  return [start, { x: start.x, y: middleY }, { x: end.x, y: middleY }, end]
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -404,6 +407,7 @@ export default function ManualOrgChartView({
 }: ManualOrgChartViewProps) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const dragMovedRef = useRef(false)
+  const edgePointDragMovedRef = useRef(false)
   const items = useMemo(
     () => buildChartItems(organizationHead, departments, standaloneRoots),
     [organizationHead, departments, standaloneRoots],
@@ -418,7 +422,6 @@ export default function ManualOrgChartView({
     point: Point
   } | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
-  const [status, setStatus] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -667,15 +670,15 @@ export default function ManualOrgChartView({
   }
 
   const saveLayout = async () => {
-    setStatus('Сохраняем...')
+    const toastId = notifyLoading('Сохраняем…', 'org-chart-save')
     try {
       const saved = await putJson<OrgChartLayout>('/api/org/org-chart-layout?scope=company', { layout })
       setLayout(reconcileLayout(saved.layout, items))
-      setStatus('Схема сохранена')
+      notifySuccess('Схема сохранена', toastId)
       setEditing(false)
       setConnectFrom(null)
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Не удалось сохранить схему')
+      notifyProblem(error, 'Не удалось сохранить схему', toastId)
     }
   }
 
@@ -734,7 +737,14 @@ export default function ManualOrgChartView({
     event.preventDefault()
     const element = event.currentTarget
     element.setPointerCapture(event.pointerId)
+    const startX = event.clientX
+    const startY = event.clientY
+    edgePointDragMovedRef.current = false
+
     const onMove = (moveEvent: PointerEvent) => {
+      if (Math.abs(moveEvent.clientX - startX) > 2 || Math.abs(moveEvent.clientY - startY) > 2) {
+        edgePointDragMovedRef.current = true
+      }
       const point = eventToCanvasPoint(moveEvent)
       if (point) moveEdgePoint(edgeIdValue, pointIndex, point)
     }
@@ -787,7 +797,6 @@ export default function ManualOrgChartView({
               </button>
             </>
           ) : null}
-          {status ? <span className="org-manual-status">{status}</span> : null}
         </div>
       ) : null}
       <div
@@ -802,6 +811,10 @@ export default function ManualOrgChartView({
           onPointerDown={(event) => editing && event.stopPropagation()}
           onClick={(event) => {
             if (!editing || !selectedEdgeId) return
+            if (edgePointDragMovedRef.current) {
+              edgePointDragMovedRef.current = false
+              return
+            }
             event.stopPropagation()
             const point = eventToCanvasPoint(event)
             if (point) addPointToSelectedEdge(point)
@@ -811,17 +824,29 @@ export default function ManualOrgChartView({
             const from = nodeById.get(edge.fromNodeId)
             const to = nodeById.get(edge.toNodeId)
             if (!from || !to) return null
+            const junctionPoints = edgePathPoints(edge, from, to).slice(1, -1)
             return (
-              <path
-                key={edge.id}
-                d={edgePath(edge, from, to)}
-                className={`org-manual-line${selectedEdgeId === edge.id ? ' org-manual-line-selected' : ''}`}
-                onClick={(event) => {
-                  if (!editing) return
-                  event.stopPropagation()
-                  setSelectedEdgeId(edge.id)
-                }}
-              />
+              <g key={edge.id}>
+                <path
+                  d={edgePath(edge, from, to)}
+                  className={`org-manual-line${selectedEdgeId === edge.id ? ' org-manual-line-selected' : ''}`}
+                  onClick={(event) => {
+                    if (!editing) return
+                    event.stopPropagation()
+                    setSelectedEdgeId(edge.id)
+                  }}
+                />
+                {(!editing || selectedEdgeId !== edge.id) &&
+                  junctionPoints.map((point, pointIndex) => (
+                    <circle
+                      key={`${edge.id}:junction:${pointIndex}`}
+                      className="org-manual-line-junction"
+                      cx={point.x}
+                      cy={point.y}
+                      r={3.5}
+                    />
+                  ))}
+              </g>
             )
           })}
           {dragConnection ? (() => {
@@ -845,6 +870,7 @@ export default function ManualOrgChartView({
                 cy={point.y}
                 r={7}
                 onPointerDown={(event) => handleEdgePointPointerDown(event, edge.id, pointIndex)}
+                onClick={(event) => event.stopPropagation()}
               />
             ))) : null}
         </svg>

@@ -10,9 +10,13 @@ export type TextStyleSegment = {
   strike: boolean
   bold: boolean
   italic: boolean
+  underline: boolean
 }
 
 export type HighlightSegment = TextStyleSegment
+
+/** Красный текста — тот же оттенок, что строка «Обратить внимание» (--attention-text). */
+export const PRODUCT_STATUS_ATTENTION_FG = 'B91C1C'
 
 /** Цвет текста без фоновой подсветки — как в Google Sheets и экспорте PPTX. */
 export function normalizeTextSegment(segment: TextStyleSegment): TextStyleSegment {
@@ -59,6 +63,7 @@ function parseStyleAttrs(raw: string): Record<string, string | boolean> {
     if (token === 'strike' || token === 's') parsed.strike = true
     else if (token === 'bold' || token === 'b') parsed.bold = true
     else if (token === 'italic' || token === 'i') parsed.italic = true
+    else if (token === 'underline' || token === 'u') parsed.underline = true
     else if (token.includes(':')) {
       const [key, value] = token.split(':', 2)
       parsed[key.trim()] = value.trim().toUpperCase()
@@ -100,6 +105,7 @@ export function splitStyleSegments(value: string): TextStyleSegment[] {
         strike: false,
         bold: false,
         italic: false,
+        underline: false,
       })
     }
     if (match[1] !== undefined) {
@@ -112,6 +118,7 @@ export function splitStyleSegments(value: string): TextStyleSegment[] {
           strike: Boolean(attrs.strike),
           bold: Boolean(attrs.bold),
           italic: Boolean(attrs.italic),
+          underline: Boolean(attrs.underline),
         }),
       )
     } else if (match[3] !== undefined) {
@@ -122,6 +129,7 @@ export function splitStyleSegments(value: string): TextStyleSegment[] {
         strike: false,
         bold: false,
         italic: false,
+        underline: false,
       })
     } else {
       segments.push({
@@ -131,6 +139,7 @@ export function splitStyleSegments(value: string): TextStyleSegment[] {
         strike: false,
         bold: false,
         italic: false,
+        underline: false,
       })
     }
     last = start + match[0].length
@@ -143,6 +152,7 @@ export function splitStyleSegments(value: string): TextStyleSegment[] {
       strike: false,
       bold: false,
       italic: false,
+      underline: false,
     })
   }
   if (segments.length === 0) {
@@ -153,13 +163,62 @@ export function splitStyleSegments(value: string): TextStyleSegment[] {
       strike: false,
       bold: false,
       italic: false,
+      underline: false,
     })
   }
   return segments
 }
 
+const TABLE_TOKEN_PREFIX = '<<tablejson:'
+const TABLE_TOKEN_SUFFIX = '>>'
+
+type EmbeddedTablePayload = {
+  text?: string
+  table?: {
+    cells?: string[][]
+  }
+  cells?: string[][]
+}
+
+function formatEmbeddedTableDoc(parsed: EmbeddedTablePayload): string {
+  const text = (parsed.text ?? '').trim()
+  const table = parsed.table ?? parsed
+  const cells = table.cells
+  if (!Array.isArray(cells)) {
+    return text
+  }
+  const lines: string[] = []
+  if (text) lines.push(text)
+  for (const row of cells) {
+    if (!Array.isArray(row)) continue
+    const rowText = row.map((cell) => String(cell).trim()).join(' | ')
+    if (rowText.replace(/\|/g, '').trim()) {
+      lines.push(rowText)
+    }
+  }
+  return lines.join('\n')
+}
+
+export function embeddedTableInnerToPlain(inner: string): string | null {
+  if (!inner.startsWith(TABLE_TOKEN_PREFIX) || !inner.endsWith(TABLE_TOKEN_SUFFIX)) {
+    return null
+  }
+  const encoded = inner.slice(TABLE_TOKEN_PREFIX.length, -TABLE_TOKEN_SUFFIX.length)
+  try {
+    const raw = decodeURIComponent(escape(atob(encoded)))
+    const parsed = JSON.parse(raw) as EmbeddedTablePayload
+    return formatEmbeddedTableDoc(parsed)
+  } catch {
+    return null
+  }
+}
+
 export function displayCellText(value: string): string {
   const { inner } = splitCellWrapper(value)
+  const tablePlain = embeddedTableInnerToPlain(inner)
+  if (tablePlain !== null) {
+    return tablePlain
+  }
   return inner
     .replace(/\[\[(?:[^;\]]|;)+::((?:[^\[]|\[(?!\[))*?)\]\]/g, '$1')
     .replace(/\$([^$]+)\$/g, '$1')
@@ -174,7 +233,8 @@ function encodeStyleSegment(segment: TextStyleSegment): string {
     !normalized.fg &&
     !normalized.strike &&
     !normalized.bold &&
-    !normalized.italic
+    !normalized.italic &&
+    !normalized.underline
   ) {
     if (normalized.bg === 'FFFF00') return `$${normalized.text}$`
     return `{{${normalized.bg}:${normalized.text}}}`
@@ -185,6 +245,7 @@ function encodeStyleSegment(segment: TextStyleSegment): string {
   if (normalized.strike) parts.push('strike')
   if (normalized.bold) parts.push('bold')
   if (normalized.italic) parts.push('italic')
+  if (normalized.underline) parts.push('underline')
   if (parts.length === 0) return normalized.text
   return `[[${parts.join(';')}::${normalized.text}]]`
 }
@@ -202,6 +263,7 @@ export function serializeEditableCell(root: HTMLElement, cellStyle: CellStyle): 
           strike: false,
           bold: false,
           italic: false,
+          underline: false,
         })
       }
       return
@@ -218,6 +280,7 @@ export function serializeEditableCell(root: HTMLElement, cellStyle: CellStyle): 
           strike: node.dataset.strike === '1',
           bold: node.dataset.bold === '1',
           italic: node.dataset.italic === '1',
+          underline: node.dataset.underline === '1',
         }),
       )
     } else {
@@ -230,6 +293,7 @@ export function serializeEditableCell(root: HTMLElement, cellStyle: CellStyle): 
           strike: false,
           bold: false,
           italic: false,
+          underline: false,
         })
       }
     }
@@ -250,6 +314,7 @@ function readMarkStyle(node: HTMLElement): TextStyleSegment {
     strike: node.dataset.strike === '1',
     bold: node.dataset.bold === '1',
     italic: node.dataset.italic === '1',
+    underline: node.dataset.underline === '1',
   })
 }
 
@@ -264,6 +329,7 @@ function applyPatchToSegment(
     strike: patch.strike !== undefined ? patch.strike : segment.strike,
     bold: patch.bold !== undefined ? patch.bold : segment.bold,
     italic: patch.italic !== undefined ? patch.italic : segment.italic,
+    underline: patch.underline !== undefined ? patch.underline : segment.underline,
   }
 }
 
@@ -282,18 +348,33 @@ function decorateStyledText(element: HTMLElement, segment: TextStyleSegment) {
   }
   if (normalized.fg) {
     element.dataset.fg = normalized.fg
-    element.style.color = `#${normalized.fg}`
+    element.classList.remove('product-status-fg-attention')
+    const fg = normalized.fg.toUpperCase()
+    if (fg === PRODUCT_STATUS_ATTENTION_FG || fg === 'FF0000' || fg === 'C00000') {
+      element.classList.add('product-status-fg-attention')
+      element.style.color = ''
+    } else {
+      element.style.color = `#${normalized.fg}`
+    }
   } else {
     delete element.dataset.fg
+    element.classList.remove('product-status-fg-attention')
     element.style.color = ''
   }
+  const textDecorations: string[] = []
   if (normalized.strike) {
     element.dataset.strike = '1'
-    element.style.textDecoration = 'line-through'
+    textDecorations.push('line-through')
   } else {
     delete element.dataset.strike
-    element.style.textDecoration = ''
   }
+  if (normalized.underline) {
+    element.dataset.underline = '1'
+    textDecorations.push('underline')
+  } else {
+    delete element.dataset.underline
+  }
+  element.style.textDecoration = textDecorations.join(' ')
   if (normalized.bold) {
     element.dataset.bold = '1'
     element.style.fontWeight = '600'
@@ -344,6 +425,97 @@ export function applyStyleToSelection(root: HTMLElement, patch: Partial<TextStyl
   }
 
   selection.removeAllRanges()
+  return true
+}
+
+function readSegmentsFromRoot(root: HTMLElement): TextStyleSegment[] {
+  const segments: TextStyleSegment[] = []
+  root.childNodes.forEach((node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent ?? ''
+      if (text) {
+        segments.push({
+          text,
+          bg: null,
+          fg: null,
+          strike: false,
+          bold: false,
+          italic: false,
+          underline: false,
+        })
+      }
+      return
+    }
+    if (!(node instanceof HTMLElement)) return
+    if (node.classList.contains('product-status-highlight')) {
+      const text = node.textContent ?? ''
+      if (text) {
+        segments.push(readMarkStyle(node))
+      }
+      return
+    }
+    const text = node.textContent ?? ''
+    if (text) {
+      segments.push({
+        text,
+        bg: null,
+        fg: null,
+        strike: false,
+        bold: false,
+        italic: false,
+        underline: false,
+      })
+    }
+  })
+  return segments
+}
+
+function renderSegmentsToRoot(root: HTMLElement, segments: TextStyleSegment[]) {
+  root.replaceChildren()
+  for (const segment of segments) {
+    if (!segment.text) continue
+    const normalized = normalizeTextSegment(segment)
+    const hasStyle =
+      normalized.bg || normalized.fg || normalized.strike || normalized.bold || normalized.italic || normalized.underline
+    if (!hasStyle) {
+      root.append(document.createTextNode(normalized.text))
+    } else {
+      root.append(createStyledMark(normalized))
+    }
+  }
+  if (!root.childNodes.length) {
+    root.append(document.createTextNode(''))
+  }
+}
+
+/** Применяет стиль к выделению или ко всему содержимому ячейки, если выделения нет. */
+export function applyStyleToCellOrSelection(
+  root: HTMLElement,
+  patch: Partial<TextStyleSegment>,
+): boolean {
+  if (applyStyleToSelection(root, patch)) {
+    return true
+  }
+
+  const segments = readSegmentsFromRoot(root)
+  if (segments.length === 0) {
+    const styled = applyPatchToSegment(
+      { text: '\u00A0', bg: null, fg: null, strike: false, bold: false, italic: false, underline: false },
+      patch,
+    )
+    const hasStyle =
+      styled.bg || styled.fg || styled.strike || styled.bold || styled.italic || styled.underline
+    if (!hasStyle) {
+      return false
+    }
+    root.replaceChildren(createStyledMark(styled))
+    return true
+  }
+
+  renderSegmentsToRoot(
+    root,
+    segments.map((segment) => applyPatchToSegment(segment, patch)),
+  )
   return true
 }
 
@@ -405,7 +577,7 @@ export function wrapCellValue(inner: string, cellStyle: CellStyle): string {
       for (const segment of splitStyleSegments(inner)) {
         if (!segment.text) continue
         const hasStyle =
-          segment.bg || segment.fg || segment.strike || segment.bold || segment.italic
+          segment.bg || segment.fg || segment.strike || segment.bold || segment.italic || segment.underline
         if (!hasStyle) {
           root.append(document.createTextNode(segment.text))
         } else {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiFetch, getSessionId } from './api'
+import AppToaster from './AppToaster'
 import Login from './Login'
 import WorkbookApp from './WorkbookApp'
 
@@ -54,15 +55,27 @@ export default function App() {
   }, [loadAuthStatus])
 
   if (authenticated === null) {
-    return <div className="loading">Загрузка…</div>
+    return (
+      <>
+        <AppToaster />
+        <div className="loading">Загрузка…</div>
+      </>
+    )
   }
 
   if (!authenticated) {
-    return <Login onSuccess={() => void loadAuthStatus()} />
+    return (
+      <>
+        <AppToaster />
+        <Login onSuccess={() => void loadAuthStatus()} />
+      </>
+    )
   }
 
   return (
-    <WorkbookApp
+    <>
+      <AppToaster />
+      <WorkbookApp
       appRole={appRole}
       canSyncTfs={canSyncTfs}
       canManageOrg={canManageOrg}
@@ -72,5 +85,6 @@ export default function App() {
       onAuthRefresh={() => void loadAuthStatus()}
       onLogout={() => setAuthenticated(false)}
     />
+    </>
   )
 }

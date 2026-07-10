@@ -1,4 +1,6 @@
-# Обзор базы данных reporting
+# Обзор базы данных
+
+> **Пробелы и устаревшие места в docs:** [documentation-gaps.md](documentation-gaps.md) reporting
 
 Документ для просмотра **структуры без тестовых данных**. DDL: `db/schema.sql`. Диаграммы: [diagrams.md](diagrams.md).
 
@@ -97,7 +99,7 @@
 | `employee` | Сотрудники организации |
 | `employee_expertise` | Экспертиза сотрудника |
 | `employee_time_off_day` | График отпусков (день + тип) |
-| `workspace_place` | Справочник рабочих мест |
+| `workspace_place` | Справочник рабочих мест (номера 23–53 и 99–106; см. миграции `008`, `012`) |
 | `workspace_booking` | Бронь места на календарный день |
 | `employee_office_day` | Дни присутствия сотрудника в офисе без привязки к месту |
 | `department` | Отделы |
@@ -110,6 +112,14 @@
 | `youjail_attachment` | Вложения карточек |
 | `youjail_execution` | Запуски исполнителя |
 | `youjail_execution_log` | Лог stdout/stderr/system |
+| `b2b_product_status_office` | Продуктовые офисы B2B (вкладки статуса продукта) |
+| `b2b_product_status_row` | Строки таблицы «Статус продукта B2B» (`cells` jsonb) |
+| `b2b_product_status_history` | История изменений строк статуса продукта B2B |
+| `b2b_product_status_snapshot` | Снимки версий офиса для отката к сохранённому состоянию |
+| `b2b_news_section` | Вкладки «Новости» и «Запуски» |
+| `b2b_news_row` | Строки таблицы новостей/запусков (`cells` jsonb) |
+| `b2b_news_history` | История изменений новостей и запусков |
+| `b2b_news_snapshot` | Снимки версий вкладки для отката |
 | `person` | Человек |
 | `person_external` | ID пользователя в Jira/TFS/Trello |
 

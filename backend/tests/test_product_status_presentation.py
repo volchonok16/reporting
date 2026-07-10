@@ -330,6 +330,26 @@ def test_slide_notes_blocks_use_legacy_why_without_full_description_column() -> 
     assert _slide_notes_text(rows, columns) == "CORE\n\nПолный зачем в заметках"
 
 
+def test_slide_notes_blocks_skip_unified_why_when_description_split_exists() -> None:
+    columns = [
+        "Проект",
+        "Полное Описание проекта и статус",
+        "Для презентации Описание проекта и статус",
+        "Зачем и для чего делаем",
+    ]
+    row = {
+        "Проект": "SMS Hub",
+        "Полное Описание проекта и статус": "Полный статус",
+        "Для презентации Описание проекта и статус": "Короткий статус",
+        "Зачем и для чего делаем": "Зачем на слайде",
+    }
+    assert _why_value_column(columns) == "Зачем и для чего делаем"
+    assert _row_values(row, columns, 4)[3] == "Зачем на слайде"
+    assert _slide_notes_blocks([row], columns) == [
+        ["SMS Hub", "Полный статус"],
+    ]
+
+
 def test_estimate_text_lines_wraps_each_paragraph_separately() -> None:
     short_lines = "Первая строка\nВторая строка\nТретья строка"
     assert _estimate_text_lines(short_lines, 40) == 3
@@ -680,6 +700,84 @@ def test_generate_presentation_colored_text_has_no_highlight_fill(mock_load) -> 
     link_run = xml[max(0, link_start - 500):link_start + 200]
     assert "val=\"1254CC\"" in link_run
     assert "<a:highlight>" not in link_run
+
+
+@patch("app.product_status_presentation._try_load_market_news_sheet", return_value=None)
+@patch("app.product_status_presentation.load_b2b_product_status")
+def test_generate_presentation_preserves_toolbar_styles(mock_load, _mock_news) -> None:
+    mock_load.return_value = ProductStatusB2BOut(
+        title="Статус продукта B2B",
+        sheets=[
+            ProductStatusSheetOut(
+                gid="0",
+                name="Продуктовый офис: CORE",
+                columns=[
+                    "Идет в презентацию",
+                    "Дата запуска",
+                    "Проект",
+                    "Для презентации Описание проекта и статус",
+                    "Зачем и для чего делаем для презентации",
+                ],
+                rows=[
+                    {
+                        "Идет в презентацию": "Да",
+                        "Дата запуска": "01.06",
+                        "Проект": "[[bold::Жирный]] [[italic::Курсив]]",
+                        "Для презентации Описание проекта и статус": (
+                            "$Жёлтый$ {{C6EFCE:Зелёный}} {{FFC7CE:Розовый}} {{BDD7EE:Голубой}} "
+                            "[[fg:B91C1C::Красный]] [[fg:0000FF::Синий]] [[fg:000000::Чёрный]] "
+                            "[[fg:008000::Зелёный текст]] [[fg:808080::Серый]] "
+                            "[[fg:0000FF;strike::Зачёркнутый]]"
+                        ),
+                        "Зачем и для чего делаем для презентации": (
+                            "[[bg:FFFF00;fg:0000FF::Маркер и цвет]]"
+                        ),
+                    }
+                ],
+                totalShown=1,
+            )
+        ],
+    )
+
+    content, _ = generate_b2b_product_status_presentation()
+    prs = Presentation(io.BytesIO(content))
+    content_slide = prs.slides[FIXED_SLIDE_COUNT]
+    xml = content_slide.part.blob.decode()
+
+    for label in (
+        "Жирный",
+        "Курсив",
+        "Жёлтый",
+        "Зелёный",
+        "Розовый",
+        "Голубой",
+        "Красный",
+        "Синий",
+        "Чёрный",
+        "Зелёный текст",
+        "Серый",
+        "Зачёркнутый",
+        "Маркер и цвет",
+    ):
+        assert f"<a:t>{label}</a:t>" in xml
+
+    bold_start = xml.index("<a:t>Жирный</a:t>")
+    bold_run = xml[max(0, bold_start - 500):bold_start + 200]
+    assert 'b="1"' in bold_run
+
+    italic_start = xml.index("<a:t>Курсив</a:t>")
+    italic_run = xml[max(0, italic_start - 500):italic_start + 200]
+    assert 'i="1"' in italic_run
+
+    strike_start = xml.index("<a:t>Зачёркнутый</a:t>")
+    strike_run = xml[max(0, strike_start - 500):strike_start + 200]
+    assert 'strike="sngStrike"' in strike_run
+
+    combo_start = xml.index("<a:t>Маркер и цвет</a:t>")
+    combo_run = xml[max(0, combo_start - 500):combo_start + 200]
+    assert 'val="FFFF00"' in combo_run
+    assert 'val="0000FF"' in combo_run
+    assert "<a:highlight>" in combo_run
 
 
 @patch("app.product_status_presentation.load_b2b_product_status")

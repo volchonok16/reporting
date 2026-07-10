@@ -1,6 +1,12 @@
 const STORAGE_KEY = 'reporting.uiState'
 
-export type SheetId = 'zni' | 'product-status-b2b' | 'roadmap' | 'youjail-board' | 'departments'
+export type SheetId =
+  | 'zni'
+  | 'product-status-b2b'
+  | 'roadmap'
+  | 'youjail-board'
+  | 'departments'
+  | 'diagrams'
 
 export type OrgPanelId =
   | 'roster'
@@ -72,6 +78,7 @@ const WORKBOOK_SHEETS: SheetId[] = [
   'roadmap',
   'youjail-board',
   'departments',
+  'diagrams',
 ]
 
 const ORG_PANELS: OrgPanelId[] = [

@@ -1,0 +1,705 @@
+/* =============================================================================
+   Mobile / responsive layout
+   Phones: ≤768px · Small phones: ≤480px · Narrow: ≤360px
+   ============================================================================= */
+
+/* --- Touch & safe area foundations --- */
+
+@media (max-width: 768px) {
+  :root {
+    --page-gutter: var(--space-md);
+    --mobile-tap-min: 44px;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    overscroll-behavior-y: none;
+  }
+
+  button,
+  .btn-primary,
+  .btn-secondary,
+  .btn-ghost,
+  .workbook-tab,
+  .board-filter-btn,
+  .product-status-sheet-tab,
+  .product-status-title-tab,
+  .login-tab,
+  .theme-toggle-btn,
+  .org-subtab,
+  .roadmap-quarter-btn,
+  .roadmap-sync-btn {
+    touch-action: manipulation;
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .login-panel button {
+    min-height: var(--mobile-tap-min);
+  }
+
+  .workbook-content {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* --- App shell --- */
+
+  .workbook-header {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  .workbook-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 2px;
+    padding-bottom: 6px;
+    scroll-snap-type: x proximity;
+  }
+
+  .workbook-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .workbook-tab {
+    flex: 0 0 auto;
+    padding: 8px 14px 9px;
+    font-size: 12px;
+    white-space: nowrap;
+    scroll-snap-align: start;
+    min-height: var(--mobile-tap-min);
+  }
+
+  .workbook-header-tools {
+    flex: 0 0 auto;
+    margin-left: auto;
+    padding-bottom: 6px;
+    gap: 4px;
+  }
+
+  .workbook-header-account {
+    gap: 2px;
+  }
+
+  .workbook-profile-btn {
+    max-width: none;
+    gap: 6px;
+    padding-inline: 10px;
+    min-height: var(--mobile-tap-min);
+  }
+
+  .workbook-profile-label {
+    max-width: 120px;
+    font-size: 12px;
+  }
+
+  .theme-toggle-compact .theme-toggle-btn {
+    min-width: var(--mobile-tap-min);
+    min-height: var(--mobile-tap-min);
+  }
+
+  .app {
+    padding: 8px var(--page-gutter) 16px;
+  }
+
+  .app-roadmap {
+    padding: 0;
+  }
+
+  .diagram-kind-tabs {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    border-radius: var(--radius-md);
+  }
+
+  .diagram-kind-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .diagram-kind-tab {
+    flex: 0 0 auto;
+    min-height: var(--mobile-tap-min);
+    white-space: nowrap;
+  }
+
+  .diagram-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .diagram-editor {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .diagram-source {
+    min-height: 260px;
+  }
+
+  .diagram-canvas {
+    min-height: 360px;
+  }
+
+  /* --- Dashboard: collapsible filters --- */
+
+  .dashboard-filters-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    order: -1;
+  }
+
+  .dashboard-filters-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--accent-blue-soft);
+    color: var(--accent-blue);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .toolbar:not(.toolbar-filters-open) .toolbar-left,
+  .toolbar:not(.toolbar-filters-open) .toolbar-right {
+    display: none;
+  }
+
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .toolbar-left,
+  .toolbar-right {
+    width: 100%;
+  }
+
+  .toolbar-right {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .toolbar-right .btn-primary,
+  .toolbar-right .btn-secondary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .select-wrap,
+  .search-wrap,
+  .date-wrap,
+  .tag-group-filter {
+    width: 100%;
+  }
+
+  .tag-group-filter-dropdown {
+    width: 100%;
+  }
+
+  .tag-group-filter-trigger {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .select-wrap select,
+  .search-wrap input,
+  .date-wrap input {
+    min-width: 0;
+    width: 100%;
+    min-height: var(--mobile-tap-min);
+  }
+
+  .search-wrap input {
+    min-width: 0;
+  }
+
+  .linked-env-filter-btn {
+    align-self: stretch;
+    width: 100%;
+    white-space: normal;
+    text-align: center;
+    min-height: var(--mobile-tap-min);
+  }
+
+  .board-filter {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .board-filter-buttons {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    border-radius: var(--radius-md);
+    scroll-snap-type: x proximity;
+  }
+
+  .board-filter-buttons::-webkit-scrollbar {
+    display: none;
+  }
+
+  .board-filter-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    scroll-snap-align: start;
+    min-height: var(--mobile-tap-min);
+  }
+
+  /* --- Metrics --- */
+
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .metric-card {
+    padding: 12px;
+    min-height: 88px;
+  }
+
+  .metric-value {
+    font-size: 24px;
+  }
+
+  .metric-card:hover {
+    transform: none;
+  }
+
+  /* --- Tables: horizontal scroll + edge hints --- */
+
+  .table-scroll,
+  .product-status-table-scroll {
+    max-height: none;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    background:
+      linear-gradient(to right, var(--surface-1) 24px, transparent 48px) 0 0 / 48px 100% no-repeat local,
+      linear-gradient(to left, var(--surface-1) 24px, transparent 48px) 100% 0 / 48px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--text-primary) 14%, transparent), transparent) 0 50% / 12px 72% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--text-primary) 14%, transparent), transparent) 100% 50% / 12px 72% no-repeat scroll;
+  }
+
+  .table-meta {
+    font-size: 12px;
+    line-height: 1.45;
+    padding: 10px 12px;
+  }
+
+  .zni-table thead th,
+  .zni-table tbody td {
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  .zni-table thead th:first-child,
+  .zni-table .cell-expand {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    background: var(--table-head-bg);
+    box-shadow: 1px 0 0 var(--border);
+  }
+
+  .zni-table tbody .cell-expand {
+    background: var(--surface-1);
+    z-index: 3;
+  }
+
+  .zni-table thead th:nth-child(2),
+  .zni-table .cell-number {
+    position: sticky;
+    left: 36px;
+    z-index: 4;
+    background: var(--table-head-bg);
+    box-shadow: 2px 0 6px color-mix(in srgb, var(--text-primary) 8%, transparent);
+  }
+
+  .zni-table tbody .cell-number {
+    background: var(--surface-1);
+    z-index: 3;
+  }
+
+  .zni-table tbody tr:hover .cell-expand,
+  .zni-table tbody tr:hover .cell-number {
+    background: var(--table-row-hover);
+  }
+
+  .zni-table tbody tr.zni-table-row-expanded .cell-expand,
+  .zni-table tbody tr.zni-table-row-expanded .cell-number {
+    background: var(--info-soft);
+  }
+
+  .row-expand-btn {
+    min-width: var(--mobile-tap-min);
+    min-height: var(--mobile-tap-min);
+    font-size: 14px;
+  }
+
+  .th-menu-trigger {
+    width: var(--mobile-tap-min);
+    height: var(--mobile-tap-min);
+    font-size: 13px;
+  }
+
+  .th-menu-panel {
+    min-width: min(280px, calc(100vw - 32px));
+    max-height: min(60vh, 420px);
+    overflow: auto;
+  }
+
+  .tag-group-filter-menu {
+    min-width: min(280px, calc(100vw - 32px));
+    max-width: calc(100vw - 32px);
+  }
+
+  .zni-detail-panel {
+    margin-left: 0;
+    margin-right: 0;
+    padding: 12px;
+  }
+
+  .business-value-input {
+    min-height: var(--mobile-tap-min);
+  }
+
+  /* --- Product status B2B --- */
+
+  .product-status-title-switcher {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .product-status-title-sep {
+    display: none;
+  }
+
+  .product-status-title-tab {
+    font-size: 18px;
+    line-height: 1.25;
+    min-height: var(--mobile-tap-min);
+  }
+
+  .product-status-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .product-status-toolbar-actions {
+    position: static;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    margin-top: 8px;
+    padding: 4px;
+  }
+
+  .product-status-toolbar-actions-group {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .product-status-toolbar-actions-group + .product-status-toolbar-actions-group {
+    border-left: none;
+    border-top: 1px solid var(--border);
+    margin-left: 0;
+    margin-top: 4px;
+    padding-left: 2px;
+    padding-top: 6px;
+  }
+
+  .product-status-toolbar-actions .product-status-toolbar-btn {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .product-status-sheet-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    border-radius: var(--radius-md);
+    scroll-snap-type: x proximity;
+  }
+
+  .product-status-sheet-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .product-status-sheet-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    scroll-snap-align: start;
+    min-height: var(--mobile-tap-min);
+  }
+
+  .product-status-format-panel-toggle {
+    min-height: var(--mobile-tap-min);
+  }
+
+  .product-status-format-panel-hint {
+    display: none;
+  }
+
+  .product-status-format-toolbar {
+    flex-wrap: wrap;
+    gap: 6px;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+
+  .product-status-format-btn {
+    min-height: 36px;
+    padding: 6px 12px;
+  }
+
+  .product-status-table-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .product-status-table-toolbar-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .product-status-table-toolbar-actions .btn-secondary {
+    width: 100%;
+  }
+
+  .product-status-table thead th:first-child,
+  .product-status-table tbody td.product-status-row-actions {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    background: var(--table-head-bg);
+    box-shadow: 2px 0 6px color-mix(in srgb, var(--text-primary) 8%, transparent);
+  }
+
+  .product-status-table tbody td.product-status-row-actions {
+    background: var(--surface-1);
+    z-index: 3;
+  }
+
+  .product-status-row-delete,
+  .product-status-row-drag {
+    min-width: var(--mobile-tap-min);
+    min-height: var(--mobile-tap-min);
+  }
+
+  .product-status-history-table th,
+  .product-status-history-table td {
+    font-size: 12px;
+    padding: 8px 6px;
+  }
+
+  .product-status-history-actions .btn-secondary {
+    width: 100%;
+    min-height: var(--mobile-tap-min);
+  }
+
+  /* --- Roadmap --- */
+
+  .roadmap-page {
+    --rm-sidebar-width: 148px;
+    --rm-timeline-zoom: 0.82;
+  }
+
+  .roadmap-toolbar {
+    padding-inline: var(--page-gutter);
+  }
+
+  .roadmap-workspace,
+  .roadmap-sheet {
+    border-radius: 0;
+  }
+
+  .roadmap-head-row,
+  .roadmap-data-row {
+    grid-template-columns: minmax(132px, var(--rm-sidebar-width)) minmax(280px, 1fr);
+  }
+
+  .roadmap-task-title {
+    font-size: 12px;
+  }
+
+  .roadmap-bar-bv-input {
+    min-height: var(--mobile-tap-min);
+  }
+
+  /* --- Modals (bottom sheet on phones) --- */
+
+  .zni-modal-overlay {
+    padding: 0;
+    align-items: flex-end;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .zni-modal {
+    width: 100%;
+    max-height: min(92vh, 900px);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+
+  .zni-modal-header {
+    padding: var(--space-lg) var(--space-lg) var(--space-md);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--surface-1);
+  }
+
+  .zni-modal-body {
+    padding: var(--space-md) var(--space-lg) calc(var(--space-xl) + env(safe-area-inset-bottom));
+  }
+
+  .zni-modal-title {
+    font-size: 20px;
+  }
+
+  .zni-modal-close {
+    min-width: var(--mobile-tap-min);
+    min-height: var(--mobile-tap-min);
+  }
+
+  /* --- Login --- */
+
+  .login-page {
+    padding: 16px;
+    padding-top: calc(16px + env(safe-area-inset-top));
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .login-theme-switch {
+    top: calc(12px + env(safe-area-inset-top));
+    right: calc(12px + env(safe-area-inset-right));
+  }
+
+  /* --- Org / staffing (supplement org.css) --- */
+
+  .org-panel-toolbar-actions .btn-primary,
+  .org-panel-toolbar-actions .btn-secondary {
+    min-height: var(--mobile-tap-min);
+  }
+
+  .org-table-actions .btn-secondary,
+  .org-table-actions .btn-ghost {
+    min-height: 36px;
+  }
+}
+
+/* Touch devices: menus open by tap, not hover */
+@media (hover: none) and (pointer: coarse) {
+  .th-menu:hover .th-menu-panel,
+  .tag-group-filter-dropdown:hover .tag-group-filter-menu {
+    display: none;
+  }
+
+  .th-menu.is-open .th-menu-panel,
+  .tag-group-filter-dropdown.is-open .tag-group-filter-menu {
+    display: block;
+  }
+}
+
+@media (min-width: 769px) {
+  .dashboard-filters-toggle {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --page-gutter: var(--space-sm);
+  }
+
+  .workbook-profile-label {
+    display: none;
+  }
+
+  .workbook-profile-btn {
+    padding-inline: 8px;
+  }
+
+  .metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar-right {
+    grid-template-columns: 1fr;
+  }
+
+  .product-status-table-toolbar-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .product-status-title-tab {
+    font-size: 16px;
+  }
+
+  .login-panel {
+    padding: var(--space-xl);
+  }
+
+  .login-tabs {
+    grid-template-columns: 1fr;
+  }
+
+  .roadmap-page {
+    --rm-sidebar-width: 120px;
+    --rm-timeline-zoom: 0.75;
+  }
+
+  .roadmap-toolbar-title h1 {
+    font-size: 15px;
+  }
+
+  .product-status-table {
+    min-width: 1200px;
+  }
+}
+
+@media (max-width: 360px) {
+  .workbook-tab {
+    padding: 8px 10px 9px;
+    font-size: 11px;
+  }
+
+  .metric-label {
+    font-size: 12px;
+  }
+
+  .metric-value {
+    font-size: 22px;
+  }
+}

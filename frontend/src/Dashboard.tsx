@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react'
 import { apiFetch, getJson } from './api'
+import { notifyError, notifyLoading, notifyProblem, notifySuccess, notifyWarning, updateLoading } from './toast'
 import { loadDashboardUiState, saveDashboardUiState } from './uiState'
 
 const ALL_BOARDS = 'all'
@@ -202,6 +203,24 @@ type ColumnHeaderProps = {
   onFilterChange?: (value: string) => void
 }
 
+function useDismissOnOutsideClick(
+  ref: RefObject<HTMLElement | null>,
+  open: boolean,
+  onDismiss: () => void,
+) {
+  useEffect(() => {
+    if (!open) return
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (ref.current?.contains(target)) return
+      onDismiss()
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [open, onDismiss, ref])
+}
+
 function ColumnHeader({
   label,
   sortOptions,
@@ -211,20 +230,31 @@ function ColumnHeader({
   filterValue,
   onFilterChange,
 }: ColumnHeaderProps) {
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
   const hasMenu = Boolean(sortOptions?.length || filterOptions?.length)
   const sortActive = Boolean(sortOptions?.some((option) => option.value === sort))
   const filterActive = Boolean(filterValue)
   const isActive = sortActive || filterActive
+
+  useDismissOnOutsideClick(menuRef, menuOpen, () => setMenuOpen(false))
 
   return (
     <th className={isActive ? 'th-active' : undefined}>
       <div className="th-header">
         <span>{label}</span>
         {hasMenu ? (
-          <div className="th-menu">
-            <span className="th-menu-trigger" title={`${label}: сортировка и фильтр`} aria-label={`${label}: меню`}>
+          <div ref={menuRef} className={`th-menu${menuOpen ? ' is-open' : ''}`}>
+            <button
+              type="button"
+              className="th-menu-trigger"
+              title={`${label}: сортировка и фильтр`}
+              aria-label={`${label}: меню`}
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((current) => !current)}
+            >
               ▾
-            </span>
+            </button>
             <div className="th-menu-panel">
               {sortOptions?.length ? (
                 <div className="th-menu-section">
@@ -234,7 +264,10 @@ function ColumnHeader({
                       key={option.value}
                       type="button"
                       className={`th-menu-item${sort === option.value ? ' is-selected' : ''}`}
-                      onClick={() => onSortChange?.(option.value)}
+                      onClick={() => {
+                        onSortChange?.(option.value)
+                        setMenuOpen(false)
+                      }}
                     >
                       {option.label}
                     </button>
@@ -249,7 +282,10 @@ function ColumnHeader({
                       key={option.value || '__all__'}
                       type="button"
                       className={`th-menu-item${filterValue === option.value ? ' is-selected' : ''}`}
-                      onClick={() => onFilterChange?.(option.value)}
+                      onClick={() => {
+                        onFilterChange?.(option.value)
+                        setMenuOpen(false)
+                      }}
                     >
                       {option.label}
                     </button>
@@ -261,6 +297,54 @@ function ColumnHeader({
         ) : null}
       </div>
     </th>
+  )
+}
+
+type TagGroupFilterProps = {
+  groups: TagFilterGroup[]
+  selected: string[]
+  label: string
+  onToggle: (key: string) => void
+}
+
+function TagGroupFilter({ groups, selected, label, onToggle }: TagGroupFilterProps) {
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  useDismissOnOutsideClick(menuRef, menuOpen, () => setMenuOpen(false))
+
+  return (
+    <div className="tag-group-filter">
+      <span className="tag-group-filter-label">Область</span>
+      <div
+        ref={menuRef}
+        className={`tag-group-filter-dropdown${menuOpen ? ' is-open' : ''}`}
+      >
+        <button
+          type="button"
+          className="tag-group-filter-trigger"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((current) => !current)}
+        >
+          {label}
+        </button>
+        <div className="tag-group-filter-menu" role="group" aria-label="Фильтр по области">
+          {groups.map((group) => {
+            const active = selected.includes(group.key)
+            return (
+              <label key={group.key} className={`tag-group-filter-option${active ? ' is-active' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={active}
+                  onChange={() => onToggle(group.key)}
+                />
+                <span className="tag-group-filter-option-label">{group.label}</span>
+              </label>
+            )
+          })}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -387,7 +471,11 @@ function isMetricFilter(value: string | undefined): value is MetricFilter {
   )
 }
 
-export default function Dashboard() {
+type DashboardProps = {
+  canSyncTfs?: boolean
+}
+
+export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
   const savedUi = loadDashboardUiState()
   const defaultQuarter = currentQuarterIsoRange()
   const [boards, setBoards] = useState<Board[]>([])
@@ -412,14 +500,13 @@ export default function Dashboard() {
   const [syncing, setSyncing] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [savingBusinessValueId, setSavingBusinessValueId] = useState<string | null>(null)
-  const [syncProgress, setSyncProgress] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set())
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   useEffect(() => {
     void getJson<Board[]>('/api/boards')
       .then((items) => setBoards(items))
-      .catch((err) => setError(err instanceof Error ? err.message : 'Ошибка загрузки досок'))
+      .catch((err) => notifyError(err, 'Ошибка загрузки досок'))
   }, [])
 
   useEffect(() => {
@@ -465,7 +552,6 @@ export default function Dashboard() {
   const loadDashboard = useCallback(async () => {
     if (!boardCode) return
     setLoading(true)
-    setError(null)
     const params = new URLSearchParams({ board: boardCode, sort })
     if (search.trim()) params.set('search', search.trim())
     if (dateFrom) params.set('date_from', dateFrom)
@@ -486,7 +572,7 @@ export default function Dashboard() {
       const payload = await getJson<DashboardData>(`/api/dashboard?${params}`)
       setData(payload)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка загрузки')
+      notifyError(err, 'Ошибка загрузки')
     } finally {
       setLoading(false)
     }
@@ -545,7 +631,7 @@ export default function Dashboard() {
     void loadDashboard()
   }, [loadDashboard])
 
-  const waitForSync = useCallback(async (targetBoard: string) => {
+  const waitForSync = useCallback(async (targetBoard: string, onProgress?: (message: string) => void) => {
     const params = `?board=${encodeURIComponent(targetBoard)}`
     const response = await apiFetch(`/api/sync${params}`, { method: 'POST' })
     if (!response.ok) {
@@ -560,7 +646,7 @@ export default function Dashboard() {
         progressMessage?: string | null
       }>(`/api/sync/${sync.id}`)
       if (status.progressMessage) {
-        setSyncProgress(status.progressMessage)
+        onProgress?.(status.progressMessage)
       }
       if (status.status === 'running') {
         await new Promise((resolve) => setTimeout(resolve, 1500))
@@ -589,16 +675,15 @@ export default function Dashboard() {
   }, [])
 
   const handleSync = async () => {
+    if (!canSyncTfs) return
     setSyncing(true)
-    setSyncProgress('Старт…')
-    setError(null)
+    const toastId = notifyLoading('Старт…', 'dashboard-sync')
     try {
-      await waitForSync(boardCode)
-      setSyncProgress(null)
+      await waitForSync(boardCode, (message) => updateLoading(message, toastId))
+      notifySuccess('Синхронизация завершена', toastId)
       await loadDashboard()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка синхронизации')
-      setSyncProgress(null)
+      notifyError(err, 'Ошибка синхронизации', toastId)
     } finally {
       setSyncing(false)
     }
@@ -606,20 +691,20 @@ export default function Dashboard() {
 
   const handleExport = async () => {
     setExporting(true)
-    setError(null)
+    const toastId = notifyLoading('Подготовка выгрузки…', 'dashboard-export')
     try {
       if (boardCode === ALL_BOARDS) {
-        await waitForSync(ALL_BOARDS)
-        setSyncProgress('Формирование CSV…')
+        await waitForSync(ALL_BOARDS, (message) => updateLoading(message, toastId))
+        updateLoading('Формирование CSV…', toastId)
         await downloadCsv(ALL_BOARDS, 'zni-report-all.csv')
-        setSyncProgress(null)
+        notifySuccess('Отчёт выгружен', toastId)
         await loadDashboard()
         return
       }
       await downloadCsv(boardCode, 'zni-report.csv')
+      notifySuccess('Отчёт выгружен', toastId)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка выгрузки')
-      setSyncProgress(null)
+      notifyError(err, 'Ошибка выгрузки', toastId)
     } finally {
       setExporting(false)
     }
@@ -636,13 +721,12 @@ export default function Dashboard() {
     const trimmed = rawValue.trim()
     const parsed = trimmed === '' ? null : Number.parseInt(trimmed, 10)
     if (trimmed !== '' && (!Number.isFinite(parsed) || parsed! < 1)) {
-      setError('Ценность для бизнеса — целое число от 1')
+      notifyWarning('Ценность для бизнеса — целое число от 1')
       return
     }
     if (parsed === item.businessValue) return
 
     setSavingBusinessValueId(item.number)
-    setError(null)
     try {
       const response = await apiFetch(`/api/tasks/${encodeURIComponent(item.number)}/business-value`, {
         method: 'PATCH',
@@ -664,7 +748,7 @@ export default function Dashboard() {
         }
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка сохранения')
+      notifyProblem(err, 'Ошибка сохранения')
     } finally {
       setSavingBusinessValueId(null)
     }
@@ -672,6 +756,16 @@ export default function Dashboard() {
 
   const selectedBoard = boards.find((b) => b.code === boardCode)
   const boardLabel = boardButtonLabel(boardCode, selectedBoard?.displayName)
+  const activeFilterCount = [
+    search.trim(),
+    dateFrom !== defaultQuarter.from ? dateFrom : '',
+    dateTo !== defaultQuarter.to ? dateTo : '',
+    statusFilter,
+    quarterFilter,
+    ectReservationFilter,
+    linkedEnvironmentFilter ? 'linked' : '',
+    tagGroupFilter.length ? 'tags' : '',
+  ].filter(Boolean).length
 
   return (
     <div className="app">
@@ -693,7 +787,21 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <header className="toolbar">
+      <header className={`toolbar${filtersOpen ? ' toolbar-filters-open' : ''}`}>
+        <button
+          type="button"
+          className="dashboard-filters-toggle btn-secondary"
+          aria-expanded={filtersOpen}
+          onClick={() => setFiltersOpen((current) => !current)}
+        >
+          {filtersOpen ? 'Скрыть фильтры' : 'Фильтры'}
+          {activeFilterCount > 0 ? (
+            <span className="dashboard-filters-badge" aria-label={`Активных фильтров: ${activeFilterCount}`}>
+              {activeFilterCount}
+            </span>
+          ) : null}
+        </button>
+
         <div className="toolbar-left">
           <label className="search-wrap">
             <input
@@ -727,27 +835,12 @@ export default function Dashboard() {
           </label>
 
           {(data?.availableTagGroups?.length ?? 0) > 0 && (
-            <div className="tag-group-filter">
-              <span className="tag-group-filter-label">Область</span>
-              <div className="tag-group-filter-dropdown">
-                <div className="tag-group-filter-trigger">{tagGroupFilterLabel()}</div>
-                <div className="tag-group-filter-menu" role="group" aria-label="Фильтр по области">
-                  {(data?.availableTagGroups ?? []).map((group) => {
-                    const active = tagGroupFilter.includes(group.key)
-                    return (
-                      <label key={group.key} className={`tag-group-filter-option${active ? ' is-active' : ''}`}>
-                        <input
-                          type="checkbox"
-                          checked={active}
-                          onChange={() => toggleTagGroupFilter(group.key)}
-                        />
-                        <span className="tag-group-filter-option-label">{group.label}</span>
-                      </label>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
+            <TagGroupFilter
+              groups={data?.availableTagGroups ?? []}
+              selected={tagGroupFilter}
+              label={tagGroupFilterLabel()}
+              onToggle={toggleTagGroupFilter}
+            />
           )}
 
           {boardCode === DIGITAL_BOARD ? (
@@ -765,7 +858,13 @@ export default function Dashboard() {
         </div>
 
         <div className="toolbar-right">
-          <button type="button" className="btn-secondary" onClick={handleSync} disabled={syncing || exporting}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={handleSync}
+            disabled={syncing || exporting || !canSyncTfs}
+            title={canSyncTfs ? undefined : 'Только администратор может обновлять данные из TFS'}
+          >
             {syncing ? 'Синхронизация…' : 'Обновить из TFS'}
           </button>
           <button type="button" className="btn-primary" onClick={handleExport} disabled={syncing || exporting}>
@@ -773,9 +872,6 @@ export default function Dashboard() {
           </button>
         </div>
       </header>
-
-      {syncProgress && <p className="banner-info">{syncProgress}</p>}
-      {error && <p className="banner-error">{error}</p>}
 
       <section className="metrics">
         <button
@@ -977,12 +1073,18 @@ export default function Dashboard() {
                         )}
                       </td>
                       <td className="cell-status">
-                        <span className="status-board">
-                          {boardStatus || workflowStatus || '—'}
-                        </span>
-                        {boardStatus && workflowStatus && boardStatus !== workflowStatus && (
-                          <span className="status-workflow">{workflowStatus}</span>
-                        )}
+                        <div className="status-stack">
+                          <span className="status-board">
+                            {boardStatus || workflowStatus || '—'}
+                          </span>
+                          <span
+                            className={`status-workflow${boardStatus && workflowStatus && boardStatus !== workflowStatus ? '' : ' status-workflow-empty'}`}
+                          >
+                            {boardStatus && workflowStatus && boardStatus !== workflowStatus
+                              ? workflowStatus
+                              : '\u00a0'}
+                          </span>
+                        </div>
                       </td>
                       <td className="cell-quarter">{item.planQuarter || '—'}</td>
                       <td

@@ -12,26 +12,27 @@ interface SafariGestureEvent extends Event {
   clientY: number
 }
 
-const MIN_SCALE = 0.35
-const MAX_SCALE = 2
-const ZOOM_STEP = 1.08
-const WHEEL_ZOOM_SENSITIVITY = 0.0016
+const MIN_SCALE = 0.12
+const MAX_SCALE = 2.5
+const ZOOM_STEP = 1.4
+const PINCH_ZOOM_SENSITIVITY = 0.0046
+const FIT_MARGIN = 36
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
-function wheelZoomFactor(deltaY: number): number {
-  const delta = clamp(-deltaY, -100, 100)
-  return Math.exp(delta * WHEEL_ZOOM_SENSITIVITY)
-}
-
-function isInteractiveTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && Boolean(target.closest('button, a, input, select, textarea, label'))
+function pinchZoomFactor(deltaY: number): number {
+  const delta = clamp(-deltaY, -120, 120)
+  return Math.exp(delta * PINCH_ZOOM_SENSITIVITY)
 }
 
 function isPinchZoomWheel(event: WheelEvent): boolean {
   return event.ctrlKey || event.metaKey
+}
+
+function isInteractiveTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest('button, a, input, select, textarea, label'))
 }
 
 export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
@@ -41,72 +42,111 @@ export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
   const scaleRef = useRef(1)
   const translateRef = useRef<Point>({ x: 0, y: 0 })
   const gestureStartScaleRef = useRef(1)
+  const userAdjustedRef = useRef(false)
   const [scale, setScale] = useState(1)
   const [translate, setTranslate] = useState<Point>({ x: 0, y: 0 })
   const [dragging, setDragging] = useState(false)
 
-  const setTranslateBoth = useCallback((next: Point | ((current: Point) => Point)) => {
-    setTranslate((current) => {
-      const resolved = typeof next === 'function' ? next(current) : next
-      translateRef.current = resolved
-      return resolved
-    })
+  const setTranslateBoth = useCallback((next: Point) => {
+    translateRef.current = next
+    setTranslate(next)
   }, [])
 
-  const centerSheet = useCallback((nextScale = scaleRef.current) => {
+  const fitToView = useCallback(() => {
     const stage = stageRef.current
     const sheet = sheetRef.current
     if (!stage || !sheet) return
-    const stageRect = stage.getBoundingClientRect()
-    const sheetRect = sheet.getBoundingClientRect()
-    const sheetWidth = sheetRect.width / nextScale
-    const sheetHeight = sheetRect.height / nextScale
+
+    const stageWidth = stage.clientWidth
+    const stageHeight = stage.clientHeight
+    const contentWidth = sheet.offsetWidth
+    const contentHeight = sheet.offsetHeight
+    if (contentWidth <= 0 || contentHeight <= 0) return
+
+    const scaleX = (stageWidth - FIT_MARGIN * 2) / contentWidth
+    const scaleY = (stageHeight - FIT_MARGIN * 2) / contentHeight
+    const nextScale = clamp(Math.min(scaleX, scaleY, 1), MIN_SCALE, MAX_SCALE)
+
+    userAdjustedRef.current = false
+    scaleRef.current = nextScale
+    setScale(nextScale)
     setTranslateBoth({
-      x: (stageRect.width - sheetWidth * nextScale) / 2,
-      y: Math.max(24, (stageRect.height - sheetHeight * nextScale) / 2),
+      x: (stageWidth - contentWidth * nextScale) / 2,
+      y: (stageHeight - contentHeight * nextScale) / 2,
     })
   }, [setTranslateBoth])
 
-  useEffect(() => {
-    scaleRef.current = scale
-  }, [scale])
+  const markUserAdjusted = useCallback(() => {
+    userAdjustedRef.current = true
+  }, [])
 
-  useEffect(() => {
-    translateRef.current = translate
-  }, [translate])
+  const applyZoom = useCallback(
+    (nextScale: number, anchorX: number, anchorY: number) => {
+      const currentScale = scaleRef.current
+      const currentTranslate = translateRef.current
+      const clamped = clamp(nextScale, MIN_SCALE, MAX_SCALE)
+      if (clamped === currentScale) return
 
-  const applyZoom = useCallback((nextScale: number, anchorX: number, anchorY: number) => {
-    const clamped = clamp(nextScale, MIN_SCALE, MAX_SCALE)
-    setScale((currentScale) => {
-      setTranslateBoth((currentTranslate) => {
-        const worldX = (anchorX - currentTranslate.x) / currentScale
-        const worldY = (anchorY - currentTranslate.y) / currentScale
-        return {
-          x: anchorX - worldX * clamped,
-          y: anchorY - worldY * clamped,
-        }
-      })
+      const worldX = (anchorX - currentTranslate.x) / currentScale
+      const worldY = (anchorY - currentTranslate.y) / currentScale
+      const nextTranslate = {
+        x: anchorX - worldX * clamped,
+        y: anchorY - worldY * clamped,
+      }
+
+      markUserAdjusted()
       scaleRef.current = clamped
-      return clamped
-    })
-  }, [setTranslateBoth])
+      translateRef.current = nextTranslate
+      setScale(clamped)
+      setTranslate(nextTranslate)
+    },
+    [markUserAdjusted],
+  )
 
   const applyPan = useCallback(
     (deltaX: number, deltaY: number) => {
-      setTranslateBoth((current) => ({
-        x: current.x - deltaX,
-        y: current.y - deltaY,
-      }))
+      markUserAdjusted()
+      setTranslateBoth({
+        x: translateRef.current.x - deltaX,
+        y: translateRef.current.y - deltaY,
+      })
     },
-    [setTranslateBoth],
+    [markUserAdjusted, setTranslateBoth],
   )
 
   useEffect(() => {
-    setScale(1)
-    scaleRef.current = 1
-    const frame = requestAnimationFrame(() => centerSheet(1))
+    userAdjustedRef.current = false
+    const frame = requestAnimationFrame(() => {
+      requestAnimationFrame(() => fitToView())
+    })
     return () => cancelAnimationFrame(frame)
-  }, [children, centerSheet])
+  }, [children, fitToView])
+
+  useEffect(() => {
+    const sheet = sheetRef.current
+    if (!sheet || typeof ResizeObserver === 'undefined') return
+
+    let frame = 0
+    const observer = new ResizeObserver(() => {
+      if (userAdjustedRef.current) return
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => fitToView())
+    })
+    observer.observe(sheet)
+    return () => {
+      cancelAnimationFrame(frame)
+      observer.disconnect()
+    }
+  }, [children, fitToView])
+
+  useEffect(() => {
+    const onResize = () => {
+      if (userAdjustedRef.current) return
+      requestAnimationFrame(() => fitToView())
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [fitToView])
 
   useEffect(() => {
     const stage = stageRef.current
@@ -114,12 +154,14 @@ export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
 
     const onWheel = (event: WheelEvent) => {
       event.preventDefault()
-      const rect = stage.getBoundingClientRect()
-      const anchorX = event.clientX - rect.left
-      const anchorY = event.clientY - rect.top
 
       if (isPinchZoomWheel(event)) {
-        applyZoom(scaleRef.current * wheelZoomFactor(event.deltaY), anchorX, anchorY)
+        const rect = stage.getBoundingClientRect()
+        applyZoom(
+          scaleRef.current * pinchZoomFactor(event.deltaY),
+          event.clientX - rect.left,
+          event.clientY - rect.top,
+        )
         return
       }
 
@@ -186,6 +228,7 @@ export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current
     if (!drag) return
+    markUserAdjusted()
     setTranslateBoth({
       x: drag.tx + (event.clientX - drag.x),
       y: drag.ty + (event.clientY - drag.y),
@@ -197,12 +240,6 @@ export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
     dragRef.current = null
     setDragging(false)
     event.currentTarget.releasePointerCapture(event.pointerId)
-  }
-
-  const resetView = () => {
-    setScale(1)
-    scaleRef.current = 1
-    requestAnimationFrame(() => centerSheet(1))
   }
 
   const zoomPercent = Math.round(scale * 100)
@@ -222,16 +259,41 @@ export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
           aria-label="Масштаб схемы"
           onPointerDown={(event) => event.stopPropagation()}
         >
-          <button type="button" className="btn-ghost org-chart-canvas-btn" onClick={() => zoomBy(1 / ZOOM_STEP)} aria-label="Уменьшить">
+          <button
+            type="button"
+            className="btn-ghost org-chart-canvas-btn"
+            onClick={() => zoomBy(1 / ZOOM_STEP)}
+            aria-label="Уменьшить"
+            title="Уменьшить"
+          >
             −
           </button>
-          <span className="org-chart-canvas-zoom">{zoomPercent}%</span>
-          <button type="button" className="btn-ghost org-chart-canvas-btn" onClick={() => zoomBy(ZOOM_STEP)} aria-label="Увеличить">
+          <button
+            type="button"
+            className="org-chart-canvas-zoom"
+            onClick={fitToView}
+            title="Вписать схему в экран"
+            aria-label={`Масштаб ${zoomPercent}%, вписать в экран`}
+          >
+            {zoomPercent}%
+          </button>
+          <button
+            type="button"
+            className="btn-ghost org-chart-canvas-btn"
+            onClick={() => zoomBy(ZOOM_STEP)}
+            aria-label="Увеличить"
+            title="Увеличить"
+          >
             +
           </button>
           <span className="org-chart-canvas-toolbar-divider" aria-hidden="true" />
-          <button type="button" className="btn-ghost org-chart-canvas-reset" onClick={resetView}>
-            По центру
+          <button
+            type="button"
+            className="btn-ghost org-chart-canvas-reset"
+            onClick={fitToView}
+            title="Вписать схему в экран"
+          >
+            Вписать
           </button>
         </div>
         <div

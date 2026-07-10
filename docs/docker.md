@@ -205,6 +205,10 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 
 Для вкладки **«Доска» (YouJail)** — миграция `db/migrations/011_youjail.sql`: проекты, типы, колонки, карточки, вложения, запуски и логи. Каталог worktree/вложений: `YOUJAIL_WORKSPACE_DIR` (по умолчанию `/app/youjail-workspace`).
 
+Дополнительные рабочие места для брони — `db/migrations/012_workspace_places_99_106.sql`: в справочник `workspace_place` добавляются места **99–106** (без дубликатов, если номер уже есть).
+
+Статус продукта B2B в PostgreSQL — `db/migrations/013_b2b_product_status.sql`: таблицы `b2b_product_status_office`, `b2b_product_status_row`, `b2b_product_status_history` и seed вкладок офисов; `db/migrations/014_b2b_product_status_snapshots.sql` — снимки версий для отката; `db/migrations/015_b2b_news.sql` — «Новости и запуски» в БД; `db/migrations/016_b2b_product_status_merge_why_columns.sql` — объединение двух столбцов «Зачем» в один. Миграции также подхватываются при старте backend (`ensure_startup_schema`).
+
 Если права нужно обновить вручную (новые таблицы org/vacation, backend создал таблицы от alex):
 
 ```bash
@@ -236,6 +240,8 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 ./scripts/migrate.sh 006_vacation_schedule.sql
 ./scripts/migrate.sh 008_workspace_booking.sql
 ./scripts/migrate.sh 009_employee_office_days.sql
+./scripts/migrate.sh 011_business_trip_time_off.sql
+./scripts/migrate.sh db/migrations/012_workspace_places_99_106.sql
 ./scripts/grant-db-users.sh
 ```
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getJson } from '../api'
+import { notifyProblem } from '../toast'
 import type { EmployeeDetail } from './types'
 import OrgPhoto from './OrgPhoto'
 
@@ -19,19 +20,17 @@ export default function EmployeeCardModal({
   onOpenEmployee,
 }: EmployeeCardModalProps) {
   const [employee, setEmployee] = useState<EmployeeDetail | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    setError(null)
     void getJson<EmployeeDetail>(`/api/org/employees/${employeeId}`)
       .then((data) => {
         if (!cancelled) setEmployee(data)
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Ошибка загрузки')
+        if (!cancelled) notifyProblem(err, 'Ошибка загрузки')
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -59,7 +58,6 @@ export default function EmployeeCardModal({
         </header>
 
         {loading ? <p>Загрузка…</p> : null}
-        {error ? <p className="org-error">{error}</p> : null}
 
         {employee ? (
           <div className="org-employee-card">

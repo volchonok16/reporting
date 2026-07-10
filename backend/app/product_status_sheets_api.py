@@ -33,6 +33,61 @@ def _quote_sheet_range(sheet_name: str) -> str:
     return f"'{escaped}'"
 
 
+def _sheet_titles_for_fetch(
+    *,
+    spreadsheet_id: str,
+    sheet_name: str,
+    gid: str,
+    api_key: str,
+    client: httpx.Client,
+) -> list[str]:
+    """Точное имя листа из metadata (gid) — приоритет над подписью в .env."""
+    titles: list[str] = []
+    resolved = _resolve_sheet_title(
+        spreadsheet_id=spreadsheet_id,
+        gid=gid,
+        api_key=api_key,
+        client=client,
+    )
+    if resolved:
+        titles.append(resolved)
+
+    configured = sheet_name.strip()
+    if configured and not _GENERIC_SHEET_NAME.match(configured) and configured not in titles:
+        titles.append(configured)
+
+    if not titles and configured:
+        titles.append(configured)
+    return titles
+
+
+def _fetch_grid_sheet(
+    *,
+    spreadsheet_id: str,
+    sheet_title: str,
+    api_key: str,
+    client: httpx.Client,
+) -> tuple[list[str], list[dict[str, str]]] | None:
+    sheet_range = f"{_quote_sheet_range(sheet_title)}!A1:Z500"
+    params = {
+        "includeGridData": "true",
+        "ranges": sheet_range,
+        "fields": _GRID_DATA_FIELDS,
+        "key": api_key,
+    }
+    response = client.get(f"{_SHEETS_API}/{spreadsheet_id}", params=params)
+    response.raise_for_status()
+
+    payload = response.json()
+    for sheet in payload.get("sheets", []):
+        data_blocks = sheet.get("data") or []
+        if not data_blocks:
+            continue
+        row_data = data_blocks[0].get("rowData") or []
+        return _parse_grid_sheet(sheet_name=sheet_title, row_data=row_data)
+    return None
+
+
 def _cell_plain_text(cell: dict) -> str:
     effective = cell.get("effectiveValue") or cell.get("userEnteredValue") or {}
     if "stringValue" in effective:
@@ -140,39 +195,37 @@ def fetch_sheet_with_formatting(
     api_key: str,
     client: httpx.Client,
 ) -> tuple[list[str], list[dict[str, str]]] | None:
-    sheet_title = sheet_name.strip()
-    if not sheet_title or _GENERIC_SHEET_NAME.match(sheet_title):
-        resolved_title = _resolve_sheet_title(
-            spreadsheet_id=spreadsheet_id,
-            gid=gid,
-            api_key=api_key,
-            client=client,
-        )
-        sheet_title = resolved_title or sheet_name
-    sheet_range = f"{_quote_sheet_range(sheet_title)}!A1:Z500"
-    params = {
-        "includeGridData": "true",
-        "ranges": sheet_range,
-        "fields": _GRID_DATA_FIELDS,
-        "key": api_key,
-    }
-    try:
-        response = client.get(f"{_SHEETS_API}/{spreadsheet_id}", params=params)
-        response.raise_for_status()
-    except httpx.HTTPError:
+    titles = _sheet_titles_for_fetch(
+        spreadsheet_id=spreadsheet_id,
+        sheet_name=sheet_name,
+        gid=gid,
+        api_key=api_key,
+        client=client,
+    )
+    last_error: httpx.HTTPError | None = None
+    for sheet_title in titles:
+        try:
+            parsed = _fetch_grid_sheet(
+                spreadsheet_id=spreadsheet_id,
+                sheet_title=sheet_title,
+                api_key=api_key,
+                client=client,
+            )
+            if parsed is not None:
+                return parsed
+        except httpx.HTTPError as exc:
+            last_error = exc
+            logger.info(
+                "product_status_sheets_api_fetch_retry sheet=%s tried_title=%r",
+                sheet_name,
+                sheet_title,
+            )
+
+    if last_error is not None:
         logger.warning(
-            "product_status_sheets_api_fetch_failed sheet=%s",
+            "product_status_sheets_api_fetch_failed sheet=%s titles=%s",
             sheet_name,
-            exc_info=True,
+            titles,
+            exc_info=last_error,
         )
-        return None
-
-    payload = response.json()
-    for sheet in payload.get("sheets", []):
-        data_blocks = sheet.get("data") or []
-        if not data_blocks:
-            continue
-        row_data = data_blocks[0].get("rowData") or []
-        return _parse_grid_sheet(sheet_name=sheet_name, row_data=row_data)
-
     return None

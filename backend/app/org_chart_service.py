@@ -131,37 +131,34 @@ def build_department_tree(
     if not members and head_member is None:
         return []
 
+    # Без руководителя отдела — все сотрудники на одном уровне (параллельно).
+    if head_member is None:
+        roots = [
+            _build_node(member, {}, {}, is_head=False)
+            for member in sorted(members, key=lambda m: _member_name(m).casefold())
+        ]
+        return roots
+
     by_employee_id: dict[int, DepartmentMember] = {m.employee_id: m for m in members}
-    if head_member is not None:
-        by_employee_id[head_member.employee_id] = head_member
+    by_employee_id[head_member.employee_id] = head_member
 
     children_by_manager: dict[int, list[DepartmentMember]] = {}
     for member in members:
-        if head_member is not None and member.employee_id == head_member.employee_id:
+        if member.employee_id == head_member.employee_id:
             continue
         manager_id = _resolve_manager_id(member, head_member)
         if manager_id is not None and manager_id in by_employee_id:
             children_by_manager.setdefault(manager_id, []).append(member)
 
     attached: dict[int, bool] = {}
-    if head_member is not None:
-        root = _build_node(head_member, children_by_manager, attached, is_head=True)
-        for member in members:
-            if member.employee_id in attached:
-                continue
-            if not _has_manager_in_department(member, head_member, by_employee_id):
-                root.children.append(_build_node(member, children_by_manager, attached))
-        root.children.sort(key=lambda n: n.person.fullName.casefold())
-        return [root]
-
-    roots: list[OrgChartNode] = []
+    root = _build_node(head_member, children_by_manager, attached, is_head=True)
     for member in members:
         if member.employee_id in attached:
             continue
         if not _has_manager_in_department(member, head_member, by_employee_id):
-            roots.append(_build_node(member, children_by_manager, attached))
-    roots.sort(key=lambda n: n.person.fullName.casefold())
-    return roots
+            root.children.append(_build_node(member, children_by_manager, attached))
+    root.children.sort(key=lambda n: n.person.fullName.casefold())
+    return [root]
 
 
 def node_for_employee(employee: Employee, *, is_head: bool = False) -> OrgChartNode:

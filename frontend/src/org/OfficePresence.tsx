@@ -1,10 +1,18 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getJson } from '../api'
+import { notifyError } from '../toast'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgPhoto from './OrgPhoto'
 import { buildHolidayKeySet } from './ruPublicHolidays'
 import { getMonthGroups, getYearDays, isDayOff, toDayKey } from './scheduleUtils'
-import type { VacationEmployee, WorkspaceOfficePresenceData } from './types'
+import type { TimeOffKind, VacationEmployee, WorkspaceOfficePresenceData } from './types'
+
+const TIME_OFF_META: Record<TimeOffKind, { label: string; className: string }> = {
+  vacation: { label: 'Отпуск', className: 'org-office-presence-vacation' },
+  dayoff: { label: 'Отгул', className: 'org-office-presence-dayoff' },
+  sick_leave: { label: 'Больничный', className: 'org-office-presence-sick' },
+  business_trip: { label: 'Командировка', className: 'org-office-presence-business-trip' },
+}
 
 function presenceKey(employeeId: number, day: string): string {
   return `${employeeId}:${day}`
@@ -13,14 +21,18 @@ function presenceKey(employeeId: number, day: string): string {
 function formatPresenceTip(
   placeName: string | null,
   officeMarked: boolean,
-): string | undefined {
+  timeOffKind: TimeOffKind | undefined,
+): string {
+  if (timeOffKind) {
+    return TIME_OFF_META[timeOffKind].label
+  }
   if (placeName) {
     return `В офисе · ${placeName}`
   }
   if (officeMarked) {
     return 'В офисе · без места'
   }
-  return undefined
+  return 'Не в офисе'
 }
 
 type EmployeeGroup = {
@@ -29,7 +41,53 @@ type EmployeeGroup = {
   employees: VacationEmployee[]
 }
 
+const PROJECT_OFFICE_LABEL = 'проектный офис'
+const BALMASHEV_LABEL = 'балмашев'
+
+function includesName(value: string, needle: string): boolean {
+  return value.toLocaleLowerCase('ru').includes(needle)
+}
+
+function buildHierarchyRank(employees: VacationEmployee[]): Map<number, number> {
+  const reports = new Map<number, VacationEmployee[]>()
+  for (const employee of employees) {
+    if (employee.managerId == null) continue
+    if (!reports.has(employee.managerId)) {
+      reports.set(employee.managerId, [])
+    }
+    reports.get(employee.managerId)?.push(employee)
+  }
+
+  for (const children of reports.values()) {
+    children.sort((a, b) => a.fullName.localeCompare(b.fullName, 'ru'))
+  }
+
+  const roots = [...employees]
+    .filter((employee) => employee.managerId == null || !employees.some((other) => other.id === employee.managerId))
+    .sort((a, b) => a.fullName.localeCompare(b.fullName, 'ru'))
+
+  const rank = new Map<number, number>()
+  let index = 0
+  const visit = (employee: VacationEmployee) => {
+    if (rank.has(employee.id)) return
+    rank.set(employee.id, index)
+    index += 1
+    for (const child of reports.get(employee.id) ?? []) {
+      visit(child)
+    }
+  }
+
+  for (const root of roots) {
+    visit(root)
+  }
+  for (const employee of employees) {
+    visit(employee)
+  }
+  return rank
+}
+
 function groupEmployeesByDepartment(employees: VacationEmployee[]): EmployeeGroup[] {
+  const rank = buildHierarchyRank(employees)
   const namedGroups = new Map<string, VacationEmployee[]>()
   const noDepartment: VacationEmployee[] = []
   for (const employee of employees) {
@@ -46,11 +104,40 @@ function groupEmployeesByDepartment(employees: VacationEmployee[]): EmployeeGrou
   const groups = Array.from(namedGroups.entries()).map(([label, groupEmployees]) => ({
     key: label,
     label,
-    employees: groupEmployees,
+    employees: [...groupEmployees].sort((a, b) => {
+      const rankDiff = (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+      if (rankDiff !== 0) return rankDiff
+      return a.fullName.localeCompare(b.fullName, 'ru')
+    }),
   }))
   if (noDepartment.length > 0) {
-    groups.unshift({ key: '__no_department__', label: 'Без отдела', employees: noDepartment })
+    groups.unshift({
+      key: '__no_department__',
+      label: 'Без отдела',
+      employees: [...noDepartment].sort((a, b) => {
+        const rankDiff = (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+        if (rankDiff !== 0) return rankDiff
+        return a.fullName.localeCompare(b.fullName, 'ru')
+      }),
+    })
   }
+  const balmashevRank = employees
+    .filter((employee) => includesName(employee.fullName, BALMASHEV_LABEL))
+    .map((employee) => rank.get(employee.id) ?? Number.MAX_SAFE_INTEGER)
+    .sort((a, b) => a - b)[0]
+  const groupSortRank = (group: EmployeeGroup) => {
+    const groupRank = Math.min(...group.employees.map((employee) => rank.get(employee.id) ?? Number.MAX_SAFE_INTEGER))
+    if (Number.isFinite(balmashevRank) && includesName(group.label, PROJECT_OFFICE_LABEL)) {
+      return balmashevRank - 0.5
+    }
+    return groupRank
+  }
+  groups.sort((a, b) => {
+    const aRank = groupSortRank(a)
+    const bRank = groupSortRank(b)
+    if (aRank !== bRank) return aRank - bRank
+    return a.label.localeCompare(b.label, 'ru')
+  })
   return groups
 }
 
@@ -60,7 +147,6 @@ export default function OfficePresence() {
   const savedOrgUi = loadOrgUiState()
   const [year, setYear] = useState(savedOrgUi.workspaceYear)
   const [data, setData] = useState<WorkspaceOfficePresenceData | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [selectedDayKey, setSelectedDayKey] = useState(() => toDayKey(new Date()))
   const [isDragScrolling, setIsDragScrolling] = useState(false)
@@ -92,6 +178,14 @@ export default function OfficePresence() {
     }
     return set
   }, [data])
+
+  const dayKindMap = useMemo(() => {
+    const map = new Map<string, TimeOffKind>()
+    for (const row of data?.timeOffDays ?? []) {
+      map.set(presenceKey(row.employeeId, row.day), row.kind)
+    }
+    return map
+  }, [data])
   const employeeGroups = useMemo(() => groupEmployeesByDepartment(data?.employees ?? []), [data?.employees])
 
   useEffect(() => {
@@ -109,7 +203,6 @@ export default function OfficePresence() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    setError(null)
     try {
       const query = new URLSearchParams({ year: String(year) })
       const response = await getJson<WorkspaceOfficePresenceData>(
@@ -117,7 +210,7 @@ export default function OfficePresence() {
       )
       setData(response)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка загрузки')
+      notifyError(err, 'Ошибка загрузки')
     } finally {
       setLoading(false)
     }
@@ -191,7 +284,7 @@ export default function OfficePresence() {
         <div className="org-vacation-toolbar-left">
           <h2>Сотрудники в офисе</h2>
           <div className="org-vacation-year-picker" role="group" aria-label="Год">
-            {[currentYear - 1, currentYear, currentYear + 1].map((y) => (
+            {[currentYear, currentYear + 1].map((y) => (
               <button
                 key={y}
                 type="button"
@@ -208,11 +301,15 @@ export default function OfficePresence() {
 
       <div className="org-vacation-legend">
         <span className="org-vacation-legend-item org-office-presence-in">В офисе</span>
+        {Object.entries(TIME_OFF_META).map(([kind, meta]) => (
+          <span key={kind} className={`org-vacation-legend-item ${meta.className}`}>
+            {meta.label}
+          </span>
+        ))}
         <span className="org-vacation-legend-item org-workspace-free">Нет отметки</span>
         <span className="org-vacation-legend-item org-vacation-weekend">Выходной и праздник</span>
       </div>
 
-      {error ? <p className="org-error">{error}</p> : null}
       {loading && !data ? <p>Загрузка…</p> : null}
 
       {data && !loading ? (
@@ -294,21 +391,26 @@ export default function OfficePresence() {
                         </td>
                         {yearDays.map((day) => {
                           const dayKey = toDayKey(day)
-                          const placeName = presenceMap.get(presenceKey(employee.id, dayKey)) ?? null
-                          const officeMarked = officeDaysSet.has(presenceKey(employee.id, dayKey))
-                          const dayOff =
-                            !placeName &&
-                            !officeMarked &&
-                            isDayOff(day, holidayKeys)
-                          const tip = formatPresenceTip(placeName, officeMarked)
+                          const cellKey = presenceKey(employee.id, dayKey)
+                          const placeName = presenceMap.get(cellKey) ?? null
+                          const officeMarked = officeDaysSet.has(cellKey)
+                          const timeOffKind = dayKindMap.get(cellKey)
+                          const dayOff = isDayOff(day, holidayKeys)
+                          const tip = formatPresenceTip(placeName, officeMarked, timeOffKind)
+                          const statusClass = timeOffKind
+                            ? TIME_OFF_META[timeOffKind].className
+                            : placeName || officeMarked
+                              ? 'org-office-presence-in'
+                              : 'org-workspace-free'
                           return (
                             <td
                               key={dayKey}
                               className={[
                                 'org-vacation-cell',
                                 'org-office-presence-cell',
-                                placeName || officeMarked ? 'org-office-presence-in' : 'org-workspace-free',
+                                statusClass,
                                 dayOff ? 'org-vacation-weekend' : '',
+                                dayKey === todayKey ? 'org-vacation-today' : '',
                                 dayKey === selectedDayKey ? 'org-vacation-cell-selected-day' : '',
                               ]
                                 .filter(Boolean)

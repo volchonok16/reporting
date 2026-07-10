@@ -2,7 +2,7 @@
 
 Описание **всех таблиц**, **полей** и **представлений** единой PostgreSQL-базы. Имена полей одинаковы для задач из Jira, TFS, Trello и прочих систем; сырые значения источника хранятся отдельно там, где это указано.
 
-**Связанные документы:** [teams.md](teams.md) · [database-overview.md](database-overview.md) · [data-dictionary.md](data-dictionary.md) · DDL: [../db/schema.sql](../db/schema.sql)
+**Связанные документы:** [teams.md](teams.md) · [database-overview.md](database-overview.md) · [data-dictionary.md](data-dictionary.md) · [documentation-gaps.md](documentation-gaps.md) · DDL: [../db/schema.sql](../db/schema.sql)
 
 ---
 
@@ -793,7 +793,7 @@ API: префикс `/api/youjail/*`. Файлы: `YOUJAIL_WORKSPACE_DIR`, `YOUJ
 | `id` | bigserial | PK |
 | `employee_id` | bigint | FK → `employee` |
 | `day` | date | Календарный день |
-| `kind` | varchar(32) | `vacation` — отпуск, `dayoff` — отгул, `sick_leave` — больничный |
+| `kind` | varchar(32) | `vacation` — отпуск, `dayoff` — отгул, `sick_leave` — больничный, `business_trip` — командировка |
 
 Уникальность: `(employee_id, day)`.
 
@@ -806,9 +806,13 @@ API: префикс `/api/youjail/*`. Файлы: `YOUJAIL_WORKSPACE_DIR`, `YOUJ
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `id` | bigint | PK |
-| `name` | varchar(255) | Название (`Место 23`, …) |
-| `sort_order` | int | Порядок в сетке |
+| `name` | varchar(255) | Название (`Место 23`, `Место 99`, …) |
+| `sort_order` | int | Порядок в сетке; номер места |
 | `is_active` | boolean | Показывать в брони |
+
+**Начальное наполнение:** миграция `008_workspace_booking.sql` — места **23–53**. Дополнительно миграция `012_workspace_places_99_106.sql` — места **99–106** (идемпотентная вставка по `sort_order`).
+
+См. также [database-overview.md](database-overview.md), [data-dictionary.md](data-dictionary.md).
 
 ---
 
@@ -839,6 +843,107 @@ API: префикс `/api/youjail/*`. Файлы: `YOUJAIL_WORKSPACE_DIR`, `YOUJ
 Уникальность: `(employee_id, day)`.
 
 Используется вместе с `workspace_booking` во вкладке «Сотрудники в офисе»: если есть бронь — показывается место, если только самоотметка — «в офисе (без места)».
+
+---
+
+## b2b_product_status_office — продуктовые офисы B2B
+
+Вкладки экрана «Статус продукта B2B» (SMS, VOICE, CORE и т.д.). Данные таблицы хранятся в PostgreSQL, без Google Sheets.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `gid` | varchar(32) | Стабильный идентификатор вкладки для API/UI |
+| `name` | varchar(255) | Подпись вкладки, напр. «Офис: SMS» |
+| `sort_order` | int | Порядок вкладок |
+| `is_active` | boolean | Скрыть офис без удаления |
+
+---
+
+## b2b_product_status_row — строка статуса продукта
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `office_id` | bigint | FK → `b2b_product_status_office` |
+| `sort_order` | int | Порядок строк на вкладке |
+| `cells` | jsonb | Значения колонок (rich-text разметка `product_status_rich_text`) |
+
+Фиксированные ключи в `cells`: «Дата запуска», «Проект координация» (редактируют только админы), «Полное Описание проекта и статус», «Для презентации Описание проекта и статус», «Зачем и для чего делаем» (текст на слайде презентации), «ЗНИ» (несколько номеров через запятую с пробелом, напр. `123456, 789012`), «Идет в презентацию», «Обратить внимание», «Комментарий» (служебный, не в презентацию). Легаси-ключи «Зачем и для чего делаем полное описание» / «…для презентации» при чтении сливаются в «Зачем и для чего делаем» (миграция `016_b2b_product_status_merge_why_columns.sql`).
+
+---
+
+## b2b_product_status_history — история правок статуса продукта
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `row_id` | bigint | FK → `b2b_product_status_row` (nullable после удаления строки) |
+| `office_id` | bigint | FK → `b2b_product_status_office` |
+| `office_name` | varchar(255) | Снимок названия офиса |
+| `action` | varchar(32) | `create`, `update`, `delete`, `restore` |
+| `field_name` | varchar(255) | Колонка при `update` |
+| `old_value` / `new_value` | text | Значения до/после |
+| `changed_by` | varchar(255) | Логин пользователя |
+| `changed_at` | timestamptz | Время изменения |
+
+API: `GET /api/product-status/b2b/history?gid=`, `GET /api/product-status/b2b/snapshots?gid=`, `POST /api/product-status/b2b/snapshots/{id}/restore?gid=` — **только админы** (PAT, legacy `app_user` без org, `org_user.role=admin`); сохранение — `POST /api/product-status/b2b/save` (все пользователи с полным доступом), удаление строки — через `deletedRows` в save или `DELETE /api/product-status/b2b/rows/{row_id}?gid=`.
+
+---
+
+## b2b_product_status_snapshot — снимки версий статуса продукта
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `office_id` | bigint | FK → `b2b_product_status_office` |
+| `rows` | jsonb | Полный снимок строк офиса: `{"rows": [{"cells": {...}}, ...]}` |
+| `changed_by` | varchar(255) | Логин пользователя при сохранении/восстановлении |
+| `created_at` | timestamptz | Время снимка |
+
+Снимок создаётся после каждого успешного «Сохранить» и после восстановления версии. В UI вкладки «История» — блок «Версии сохранений» с кнопкой «Восстановить» (кроме текущей версии).
+
+Записи `b2b_product_status_history` и `b2b_product_status_snapshot` старше **28 дней** (настройка `B2B_AUDIT_RETENTION_DAYS`) удаляются при старте backend; строки `b2b_product_status_row` не затрагиваются.
+
+---
+
+## b2b_news_section — вкладки «Новости и запуски»
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `gid` | varchar(32) | Стабильный ключ вкладки (`news`, `launches`) |
+| `name` | varchar(255) | Название вкладки («Новости», «Запуски») |
+| `sort_order` | int | Порядок вкладок в UI |
+| `is_active` | boolean | Активна ли вкладка |
+
+Seed: `news` → «Новости», `launches` → «Запуски».
+
+---
+
+## b2b_news_row — строка новостей или запусков
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `section_id` | bigint | FK → `b2b_news_section` |
+| `sort_order` | int | Порядок строки |
+| `cells` | jsonb | Значения колонок с rich-text |
+
+Колонки **«Новости»** (`gid=news`): «Дата», «Новость», «Описание».  
+Колонки **«Запуски»** (`gid=launches`): «Дата», «Продукт», «Описание».
+
+---
+
+## b2b_news_history / b2b_news_snapshot
+
+Аналогично `b2b_product_status_history` / `b2b_product_status_snapshot`, но для вкладок новостей (`section_id`, `section_name`).
+
+API: `GET /api/b2b-news`, `POST /api/b2b-news/save`, `GET /api/b2b-news/history?gid=`, `GET /api/b2b-news/snapshots?gid=`, `POST /api/b2b-news/snapshots/{id}/restore?gid=`, удаление строки — через `deletedRows` в save.
+
+Данные для слайда «Новости рынка» в презентации берутся из вкладки `gid=news` в БД.
+
+История и снимки версий (`b2b_news_history`, `b2b_news_snapshot`) старше 28 дней удаляются автоматически (см. `B2B_AUDIT_RETENTION_DAYS`); строки `b2b_news_row` не удаляются.
 
 ---
 

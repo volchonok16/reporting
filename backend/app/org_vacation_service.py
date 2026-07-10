@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.org_models import Department, DepartmentMember, Employee, EmployeeTimeOffDay
+from app.org_models import Department, DepartmentMember, Employee, EmployeeTimeOffDay, WorkspaceBooking
 from app.org_photo_service import photo_public_url
 from app.org_service import get_employee_for_org_user
 from app.org_schemas import (
@@ -17,7 +17,8 @@ from app.org_schemas import (
     VacationTimeOffDayOut,
 )
 
-EDITABLE_KINDS = frozenset({"vacation", "dayoff", "sick_leave"})
+EDITABLE_KINDS = frozenset({"vacation", "dayoff", "sick_leave", "business_trip"})
+ABSENCE_KINDS = frozenset({"vacation", "dayoff", "sick_leave", "business_trip"})
 
 
 def _parse_day(value: str) -> date:
@@ -205,6 +206,16 @@ def upsert_vacation_range(db: Session, data: VacationRangeIn, meta: dict) -> Vac
                 existing.kind = data.kind
                 affected += 1
             cursor += timedelta(days=1)
+
+        # Employee cannot keep a workspace booking on absence days.
+        if data.kind in ABSENCE_KINDS:
+            db.execute(
+                delete(WorkspaceBooking).where(
+                    WorkspaceBooking.employee_id == data.employeeId,
+                    WorkspaceBooking.day >= start,
+                    WorkspaceBooking.day <= end,
+                )
+            )
 
     db.commit()
     return VacationRangeOut(affectedDays=affected)

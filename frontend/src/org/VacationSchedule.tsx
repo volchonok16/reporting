@@ -1,9 +1,10 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getJson, putJson } from '../api'
+import { notifyError, notifyProblem, notifyWarning } from '../toast'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgPhoto from './OrgPhoto'
 import { buildHolidayKeySet } from './ruPublicHolidays'
-import { getMonthGroups, getYearDays, isDayOff, toDayKey } from './scheduleUtils'
+import { getMonthGroups, getYearDays, isDayOff, MONTH_NAMES_FULL, toDayKey } from './scheduleUtils'
 import type { EditableTimeOffKind, TimeOffKind, VacationEmployee, VacationScheduleData } from './types'
 
 type VacationScheduleProps = {
@@ -17,12 +18,14 @@ const KIND_META: Record<TimeOffKind, { label: string; className: string }> = {
   vacation: { label: 'Отпуск', className: 'vac-kind-vacation' },
   dayoff: { label: 'Отгул', className: 'vac-kind-dayoff' },
   sick_leave: { label: 'Больничный', className: 'vac-kind-sick' },
+  business_trip: { label: 'Командировка', className: 'vac-kind-business-trip' },
 }
 
 const BRUSHES: Array<{ id: EditableTimeOffKind; label: string; className: string }> = [
   { id: 'vacation', label: 'Отпуск', className: 'vac-kind-vacation' },
   { id: 'dayoff', label: 'Отгул', className: 'vac-kind-dayoff' },
   { id: 'sick_leave', label: 'Больничный', className: 'vac-kind-sick' },
+  { id: 'business_trip', label: 'Командировка', className: 'vac-kind-business-trip' },
   { id: 'erase', label: 'Рабочий', className: 'vac-kind-erase' },
 ]
 
@@ -32,7 +35,53 @@ type EmployeeGroup = {
   employees: VacationEmployee[]
 }
 
+const PROJECT_OFFICE_LABEL = 'проектный офис'
+const BALMASHEV_LABEL = 'балмашев'
+
+function includesName(value: string, needle: string): boolean {
+  return value.toLocaleLowerCase('ru').includes(needle)
+}
+
+function buildHierarchyRank(employees: VacationEmployee[]): Map<number, number> {
+  const reports = new Map<number, VacationEmployee[]>()
+  for (const employee of employees) {
+    if (employee.managerId == null) continue
+    if (!reports.has(employee.managerId)) {
+      reports.set(employee.managerId, [])
+    }
+    reports.get(employee.managerId)?.push(employee)
+  }
+
+  for (const children of reports.values()) {
+    children.sort((a, b) => a.fullName.localeCompare(b.fullName, 'ru'))
+  }
+
+  const roots = [...employees]
+    .filter((employee) => employee.managerId == null || !employees.some((other) => other.id === employee.managerId))
+    .sort((a, b) => a.fullName.localeCompare(b.fullName, 'ru'))
+
+  const rank = new Map<number, number>()
+  let index = 0
+  const visit = (employee: VacationEmployee) => {
+    if (rank.has(employee.id)) return
+    rank.set(employee.id, index)
+    index += 1
+    for (const child of reports.get(employee.id) ?? []) {
+      visit(child)
+    }
+  }
+
+  for (const root of roots) {
+    visit(root)
+  }
+  for (const employee of employees) {
+    visit(employee)
+  }
+  return rank
+}
+
 function groupEmployeesByDepartment(employees: VacationEmployee[]): EmployeeGroup[] {
+  const rank = buildHierarchyRank(employees)
   const namedGroups = new Map<string, VacationEmployee[]>()
   const noDepartment: VacationEmployee[] = []
   for (const employee of employees) {
@@ -49,12 +98,58 @@ function groupEmployeesByDepartment(employees: VacationEmployee[]): EmployeeGrou
   const groups = Array.from(namedGroups.entries()).map(([label, groupEmployees]) => ({
     key: label,
     label,
-    employees: groupEmployees,
+    employees: [...groupEmployees].sort((a, b) => {
+      const rankDiff = (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+      if (rankDiff !== 0) return rankDiff
+      return a.fullName.localeCompare(b.fullName, 'ru')
+    }),
   }))
   if (noDepartment.length > 0) {
-    groups.unshift({ key: '__no_department__', label: 'Без отдела', employees: noDepartment })
+    groups.unshift({
+      key: '__no_department__',
+      label: 'Без отдела',
+      employees: [...noDepartment].sort((a, b) => {
+        const rankDiff = (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+        if (rankDiff !== 0) return rankDiff
+        return a.fullName.localeCompare(b.fullName, 'ru')
+      }),
+    })
   }
+  const balmashevRank = employees
+    .filter((employee) => includesName(employee.fullName, BALMASHEV_LABEL))
+    .map((employee) => rank.get(employee.id) ?? Number.MAX_SAFE_INTEGER)
+    .sort((a, b) => a - b)[0]
+  const groupSortRank = (group: EmployeeGroup) => {
+    const groupRank = Math.min(...group.employees.map((employee) => rank.get(employee.id) ?? Number.MAX_SAFE_INTEGER))
+    if (Number.isFinite(balmashevRank) && includesName(group.label, PROJECT_OFFICE_LABEL)) {
+      return balmashevRank - 0.5
+    }
+    return groupRank
+  }
+  groups.sort((a, b) => {
+    const aRank = groupSortRank(a)
+    const bRank = groupSortRank(b)
+    if (aRank !== bRank) return aRank - bRank
+    return a.label.localeCompare(b.label, 'ru')
+  })
   return groups
+}
+
+function formatVacationCellTip(
+  employeeName: string,
+  day: Date,
+  kind: TimeOffKind | undefined,
+  dayOff: boolean,
+): string {
+  const dateLabel = `${day.getDate()} ${MONTH_NAMES_FULL[day.getMonth()].toLowerCase()} ${day.getFullYear()}`
+  const base = `${employeeName} · ${dateLabel}`
+  if (kind) {
+    return `${base} · ${KIND_META[kind].label}`
+  }
+  if (dayOff) {
+    return `${base} · Выходной или праздник`
+  }
+  return `${base} · Рабочий день`
 }
 
 function buildRangeDays(fromDay: string, toDay: string): string[] {
@@ -86,7 +181,6 @@ export default function VacationSchedule({
   const [internalYear, setInternalYear] = useState(savedOrgUi.vacationYear)
   const year = yearProp ?? internalYear
   const [data, setData] = useState<VacationScheduleData | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editMode, setEditMode] = useState(false)
@@ -95,6 +189,7 @@ export default function VacationSchedule({
   const [hoverDay, setHoverDay] = useState<string | null>(null)
   const [selectedDayKey, setSelectedDayKey] = useState(() => toDayKey(new Date()))
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const autoScrolledYearRef = useRef<number | null>(null)
 
   const yearDays = useMemo(() => getYearDays(year), [year])
   const monthGroups = useMemo(() => getMonthGroups(yearDays), [yearDays])
@@ -129,27 +224,32 @@ export default function VacationSchedule({
     setInternalYear(nextYear)
   }
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+  const load = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setLoading(true)
+    }
     try {
       const query = new URLSearchParams({ year: String(year) })
       const response = await getJson<VacationScheduleData>(`/api/org/vacations?${query.toString()}`)
       setData(response)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка загрузки')
+      notifyError(err, 'Ошибка загрузки')
     } finally {
-      setLoading(false)
+      if (!options?.silent) {
+        setLoading(false)
+      }
     }
   }, [year])
 
   useEffect(() => {
     void load()
     setRangeStart(null)
+    autoScrolledYearRef.current = null
   }, [load])
 
   useEffect(() => {
     if (!scrollRef.current || !data) return
+    if (autoScrolledYearRef.current === year) return
     const monthStartKey = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`
     const monthStartCell = scrollRef.current.querySelector<HTMLElement>(
       `th[data-day-key="${monthStartKey}"]`,
@@ -157,11 +257,11 @@ export default function VacationSchedule({
     if (!monthStartCell) return
     const stickyNamesWidth = 220
     scrollRef.current.scrollLeft = Math.max(0, monthStartCell.offsetLeft - stickyNamesWidth - 24)
+    autoScrolledYearRef.current = year
   }, [year, data, currentMonth])
 
   const applyRange = async (employeeId: number, fromDay: string, toDay: string) => {
     setSaving(true)
-    setError(null)
     try {
       await putJson<{ affectedDays: number }>('/api/org/vacations/range', {
         employeeId,
@@ -169,9 +269,9 @@ export default function VacationSchedule({
         toDay,
         kind: brush,
       })
-      await load()
+      await load({ silent: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка сохранения')
+      notifyProblem(err, 'Ошибка сохранения')
     } finally {
       setSaving(false)
       setRangeStart(null)
@@ -180,7 +280,11 @@ export default function VacationSchedule({
   }
 
   const handleCellClick = (employeeId: number, day: string, canEdit: boolean) => {
-    if (!editMode || !canEdit || saving) return
+    if (!editMode || saving) return
+    if (!canEdit) {
+      notifyWarning('Редактирование доступно только для своей строки.')
+      return
+    }
     if (rangeStart === null) {
       setRangeStart({ employeeId, day })
       return
@@ -206,7 +310,7 @@ export default function VacationSchedule({
         <div className="org-vacation-toolbar-left">
           <h2>График отпусков</h2>
           <div className="org-vacation-year-picker" role="group" aria-label="Год">
-            {[currentYear - 1, currentYear, currentYear + 1].map((y) => (
+            {[currentYear, currentYear + 1].map((y) => (
               <button
                 key={y}
                 type="button"
@@ -273,12 +377,11 @@ export default function VacationSchedule({
         </div>
       )}
 
-      {error ? <p className="org-error">{error}</p> : null}
-      {loading ? <p>Загрузка…</p> : null}
-      {saving ? <p>Сохранение…</p> : null}
+      {loading && !data ? <p>Загрузка…</p> : null}
 
-      {data && !loading ? (
-        <div className="org-vacation-chart-wrap">
+      {data ? (
+        <div className={`org-vacation-chart-wrap${saving ? ' org-workspace-saving' : ''}`}>
+          {saving ? <p className="org-workspace-saving-label">Сохранение…</p> : null}
           <div
             className="org-vacation-scroll"
             ref={scrollRef}
@@ -358,11 +461,12 @@ export default function VacationSchedule({
                         {yearDays.map((day) => {
                           const dayKey = toDayKey(day)
                           const kind = dayKindMap.get(`${employee.id}:${dayKey}`)
-                          const dayOff = !kind && isDayOff(day, holidayKeys)
+                          const dayOff = isDayOff(day, holidayKeys)
                           const inPreview =
                             rangeStart?.employeeId === employee.id && previewDays.has(dayKey)
                           const isSelecting =
                             rangeStart?.employeeId === employee.id && rangeStart.day === dayKey
+                          const tip = formatVacationCellTip(employee.fullName, day, kind, dayOff)
                           return (
                             <td
                               key={dayKey}
@@ -378,7 +482,8 @@ export default function VacationSchedule({
                               ]
                                 .filter(Boolean)
                                 .join(' ')}
-                              title={kind ? KIND_META[kind].label : undefined}
+                              data-tip={tip}
+                              aria-label={tip}
                               onClick={() => handleCellClick(employee.id, dayKey, employee.canEdit)}
                               onMouseEnter={() => {
                                 if (rangeStart?.employeeId === employee.id) setHoverDay(dayKey)

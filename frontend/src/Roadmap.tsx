@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import { apiFetch, getJson, patchJson } from './api'
+import { notifyError, notifyLoading, notifyProblem, notifySuccess, notifyWarning, updateLoading } from './toast'
 import type { ChangeRequest, RoadmapPriority } from './zniTypes'
 import { columnBarClass } from './roadmap/kanbanColumns'
 import {
@@ -152,18 +153,12 @@ export default function Roadmap({
   const [quarter, setQuarter] = useState(saved.quarter ?? currentQuarter())
   const [items, setItems] = useState<ChangeRequest[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [savingPriority, setSavingPriority] = useState<string | null>(null)
-  const [priorityError, setPriorityError] = useState<string | null>(null)
   const [savingComment, setSavingComment] = useState<string | null>(null)
-  const [commentError, setCommentError] = useState<string | null>(null)
   const [savingBusinessValue, setSavingBusinessValue] = useState<string | null>(null)
-  const [businessValueError, setBusinessValueError] = useState<string | null>(null)
   const [savingUseCase, setSavingUseCase] = useState<string | null>(null)
-  const [useCaseError, setUseCaseError] = useState<string | null>(null)
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({})
   const [syncing, setSyncing] = useState(false)
-  const [syncProgress, setSyncProgress] = useState<string | null>(null)
 
   const { from, to } = useMemo(() => quarterRange(year, quarter), [year, quarter])
   const fromDate = useMemo(() => parseDateInput(from), [from])
@@ -175,7 +170,6 @@ export default function Roadmap({
 
   const loadItems = useCallback(async () => {
     setLoading(true)
-    setError(null)
     try {
       const params = new URLSearchParams({
         board: DIGITAL_BOARD,
@@ -189,7 +183,7 @@ export default function Roadmap({
       )
       setItems(visible)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось загрузить планы')
+      notifyError(err, 'Не удалось загрузить планы')
       setItems([])
     } finally {
       setLoading(false)
@@ -200,7 +194,7 @@ export default function Roadmap({
     void loadItems()
   }, [loadItems])
 
-  const waitForSync = useCallback(async () => {
+  const waitForSync = useCallback(async (onProgress?: (message: string) => void) => {
     const params = `?board=${encodeURIComponent(DIGITAL_BOARD)}`
     const response = await apiFetch(`/api/sync${params}`, { method: 'POST' })
     if (!response.ok) {
@@ -215,7 +209,7 @@ export default function Roadmap({
         progressMessage?: string | null
       }>(`/api/sync/${sync.id}`)
       if (status.progressMessage) {
-        setSyncProgress(status.progressMessage)
+        onProgress?.(status.progressMessage)
       }
       if (status.status === 'running') {
         await new Promise((resolve) => setTimeout(resolve, 1500))
@@ -229,16 +223,15 @@ export default function Roadmap({
   }, [])
 
   const handleSyncFromTfs = async () => {
+    if (!canSyncTfs) return
     setSyncing(true)
-    setSyncProgress('Старт…')
-    setError(null)
+    const toastId = notifyLoading('Старт…', 'roadmap-sync')
     try {
-      await waitForSync()
-      setSyncProgress(null)
+      await waitForSync((message) => updateLoading(message, toastId))
+      notifySuccess('Синхронизация завершена', toastId)
       await loadItems()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка синхронизации')
-      setSyncProgress(null)
+      notifyError(err, 'Ошибка синхронизации', toastId)
     } finally {
       setSyncing(false)
     }
@@ -248,7 +241,6 @@ export default function Roadmap({
     async (item: ChangeRequest, priority: RoadmapPriority | null) => {
       if (item.roadmapPriority === priority) return
       setSavingPriority(item.number)
-      setPriorityError(null)
       try {
         const updated = await patchJson<ChangeRequest>(
           `/api/tasks/${encodeURIComponent(item.number)}/roadmap-priority`,
@@ -262,7 +254,7 @@ export default function Roadmap({
           ),
         )
       } catch (err) {
-        setPriorityError(err instanceof Error ? err.message : 'Не удалось сохранить приоритет')
+      notifyProblem(err, 'Не удалось сохранить приоритет')
       } finally {
         setSavingPriority(null)
       }
@@ -285,7 +277,6 @@ export default function Roadmap({
       }
 
       setSavingComment(item.number)
-      setCommentError(null)
       try {
         const updated = await patchJson<ChangeRequest>(
           `/api/tasks/${encodeURIComponent(item.number)}/roadmap-comment`,
@@ -305,7 +296,7 @@ export default function Roadmap({
           return next
         })
       } catch (err) {
-        setCommentError(err instanceof Error ? err.message : 'Не удалось сохранить комментарий')
+        notifyProblem(err, 'Не удалось сохранить комментарий')
       } finally {
         setSavingComment(null)
       }
@@ -317,13 +308,12 @@ export default function Roadmap({
     const trimmed = rawValue.trim()
     const parsed = trimmed === '' ? null : Number.parseInt(trimmed, 10)
     if (trimmed !== '' && (!Number.isFinite(parsed) || parsed! < 1)) {
-      setBusinessValueError('Ценность для бизнеса — целое число от 1')
+      notifyWarning('Ценность для бизнеса — целое число от 1')
       return
     }
     if (parsed === item.businessValue) return
 
     setSavingBusinessValue(item.number)
-    setBusinessValueError(null)
     try {
       const updated = await patchJson<ChangeRequest>(
         `/api/tasks/${encodeURIComponent(item.number)}/business-value`,
@@ -335,9 +325,7 @@ export default function Roadmap({
         ),
       )
     } catch (err) {
-      setBusinessValueError(
-        err instanceof Error ? err.message : 'Не удалось сохранить ценность для бизнеса',
-      )
+      notifyProblem(err, 'Не удалось сохранить ценность для бизнеса')
     } finally {
       setSavingBusinessValue(null)
     }
@@ -348,7 +336,6 @@ export default function Roadmap({
     if (hasUc === current) return
 
     setSavingUseCase(item.number)
-    setUseCaseError(null)
     try {
       const updated = await patchJson<ChangeRequest>(
         `/api/tasks/${encodeURIComponent(item.number)}/digital-plan-uc`,
@@ -360,7 +347,7 @@ export default function Roadmap({
         ),
       )
     } catch (err) {
-      setUseCaseError(err instanceof Error ? err.message : 'Не удалось сохранить Use Case')
+      notifyProblem(err, 'Не удалось сохранить Use Case')
     } finally {
       setSavingUseCase(null)
     }
@@ -376,8 +363,8 @@ export default function Roadmap({
     <div className="roadmap-page">
       <div className="roadmap-toolbar">
         <div className="roadmap-toolbar-title">
-          <h1>Планы</h1>
-          <p>Digital · планирование по Start Date</p>
+          <h1>Планы Digital</h1>
+          <p>Планирование по Start Date</p>
         </div>
 
         <div className="roadmap-period">
@@ -412,16 +399,15 @@ export default function Roadmap({
             {formatRuDate(from)} — {formatRuDate(to)}
           </span>
 
-          {canSyncTfs ? (
-            <button
-              type="button"
-              className="btn-secondary roadmap-sync-btn"
-              onClick={() => void handleSyncFromTfs()}
-              disabled={syncing || loading}
-            >
-              {syncing ? 'Обновление…' : 'Обновить из TFS'}
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="btn-secondary roadmap-sync-btn"
+            onClick={() => void handleSyncFromTfs()}
+            disabled={syncing || loading || !canSyncTfs}
+            title={canSyncTfs ? undefined : 'Только администратор может обновлять данные из TFS'}
+          >
+            {syncing ? 'Обновление…' : 'Обновить из TFS'}
+          </button>
         </div>
 
         <div className="roadmap-priority-legend" aria-label="Легенда приоритетов">
@@ -434,22 +420,17 @@ export default function Roadmap({
         </div>
       </div>
 
-      {syncProgress ? <div className="roadmap-sync-progress">{syncProgress}</div> : null}
-
-      {priorityError ? <div className="roadmap-error">{priorityError}</div> : null}
-      {commentError ? <div className="roadmap-error">{commentError}</div> : null}
-      {businessValueError ? <div className="roadmap-error">{businessValueError}</div> : null}
-      {useCaseError ? <div className="roadmap-error">{useCaseError}</div> : null}
-      {error ? <div className="roadmap-error">{error}</div> : null}
-
       <div className="roadmap-workspace">
         <div className="roadmap-sheet">
           {isTodayVisible ? (
             <div className="roadmap-today-layer" aria-hidden>
-              <div
-                className="roadmap-today-line"
-                style={{ '--today-left': `${todayLeft}%` } as CSSProperties}
-              />
+              <div className="roadmap-today-sidebar" />
+              <div className="roadmap-today-track">
+                <div
+                  className="roadmap-today-line"
+                  style={{ '--today-left': `${todayLeft}%` } as CSSProperties}
+                />
+              </div>
             </div>
           ) : null}
 

@@ -166,6 +166,14 @@ class Settings(BaseSettings):
         alias="B2B_NEWS_SHEET_PUBLIC_URL",
         description="Ссылка на таблицу новостей (кнопка «Открыть таблицу»).",
     )
+    b2b_audit_retention_days: int = Field(
+        default=28,
+        alias="B2B_AUDIT_RETENTION_DAYS",
+        description=(
+            "Срок хранения истории правок и снимков версий B2B (дней). "
+            "Строки таблиц не удаляются."
+        ),
+    )
     google_sheets_api_key: str = Field(
         default="",
         alias="GOOGLE_SHEETS_API_KEY",

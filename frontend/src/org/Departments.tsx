@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { deleteJson, getJson, patchJson, postForm, postJson, putJson, resolvePhotoUrl } from '../api'
+import { notifyProblem } from '../toast'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgChartCanvas from './OrgChartCanvas'
 import OrgChartView from './OrgChartView'
@@ -8,6 +9,7 @@ import WorkspaceBooking from './WorkspaceBooking'
 import OfficePresence from './OfficePresence'
 import EmployeeCardModal from './EmployeeCardModal'
 import OrgPhoto from './OrgPhoto'
+import OrgFilterIcon from './OrgFilterIcon'
 import { buildHolidayKeySet } from './ruPublicHolidays'
 import { MONTH_NAMES_FULL, WEEKDAY_NAMES, getMonthDays, isWeekendDay, toDayKey } from './scheduleUtils'
 import type {
@@ -128,7 +130,6 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const [expertiseDirections, setExpertiseDirections] = useState<ExpertiseDirection[]>([])
   const [employeeOptions, setEmployeeOptions] = useState<SelectOption[]>([])
   const [orgChart, setOrgChart] = useState<OrgChartData | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   const [employeeForm, setEmployeeForm] = useState({ ...EMPTY_EMPLOYEE })
@@ -153,6 +154,13 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const [employeeOfficeDays, setEmployeeOfficeDays] = useState<OfficeDay[]>([])
   const [loadingEmployeeOfficeDays, setLoadingEmployeeOfficeDays] = useState(false)
   const [savingEmployeeOfficeDay, setSavingEmployeeOfficeDay] = useState<string | null>(null)
+  const [rosterNamePrefix, setRosterNamePrefix] = useState('')
+  const [rosterManagerFilter, setRosterManagerFilter] = useState('')
+  const [rosterNameSort, setRosterNameSort] = useState<'asc' | 'desc'>('asc')
+  const [activeRosterFilter, setActiveRosterFilter] = useState<'name' | 'manager' | 'department' | null>(
+    null,
+  )
+  const [rosterDepartmentFilter, setRosterDepartmentFilter] = useState('')
   const photoInputRef = useRef<HTMLInputElement>(null)
   const userPickedAllCompany = useRef(savedOrgUi.allCompany)
 
@@ -218,7 +226,6 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   }, [panel, selectedDepartmentId])
 
   const loadBase = useCallback(async () => {
-    setError(null)
     try {
       const [deptData, empData, posData, roleData, dirData, optData] = await Promise.all([
         getJson<Department[]>('/api/org/departments'),
@@ -247,7 +254,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
         return deptData[0].id
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка загрузки')
+      notifyProblem(err, 'Ошибка загрузки')
     }
   }, [])
 
@@ -276,7 +283,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
         )
         setEmployeeOfficeDays(response)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Ошибка загрузки дней офиса')
+        notifyProblem(err, 'Ошибка загрузки дней офиса')
       } finally {
         setLoadingEmployeeOfficeDays(false)
       }
@@ -289,17 +296,143 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   }, [loadBase])
 
   useEffect(() => {
+    if (!activeRosterFilter) return
+    const handleDocumentMouseDown = (event: MouseEvent) => {
+      const target = event.target as Element | null
+      if (target?.closest('.org-th-filter')) return
+      setActiveRosterFilter(null)
+    }
+    const handleDocumentKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setActiveRosterFilter(null)
+      }
+    }
+    document.addEventListener('mousedown', handleDocumentMouseDown)
+    document.addEventListener('keydown', handleDocumentKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentMouseDown)
+      document.removeEventListener('keydown', handleDocumentKeyDown)
+    }
+  }, [activeRosterFilter])
+
+  useEffect(() => {
     if (panel === 'roster' && selectedDepartmentId !== null) {
       void loadMembers(selectedDepartmentId).catch((err) =>
-        setError(err instanceof Error ? err.message : 'Ошибка'),
+        notifyProblem(err, 'Ошибка')
       )
     }
     if (panel === 'pyramid') {
       void loadChart(selectedDepartmentId).catch((err) =>
-        setError(err instanceof Error ? err.message : 'Ошибка'),
+        notifyProblem(err, 'Ошибка')
       )
     }
   }, [panel, selectedDepartmentId, loadMembers, loadChart])
+
+  useEffect(() => {
+    setRosterNamePrefix('')
+    setRosterManagerFilter('')
+    setRosterDepartmentFilter('')
+    setRosterNameSort('asc')
+  }, [selectedDepartmentId, isAllCompanyView])
+
+  const rosterRows = useMemo(() => {
+    const baseRows = isAllCompanyView
+      ? employees.map((emp) => ({
+          key: `emp-${emp.id}`,
+          employeeId: emp.id,
+          fullName: emp.fullName,
+          photoUrl: emp.photoUrl,
+          secondary: formatDepartments(emp.departments),
+          position: emp.position ?? '—',
+          managerName: emp.managerName ?? '—',
+          email: emp.email ?? '—',
+          dailyWorkHours: String(emp.dailyWorkHours),
+          expertise: formatExpertises(emp.expertises),
+          memberId: null as number | null,
+        }))
+      : members.map((member) => {
+          const emp = employeeById.get(member.employeeId)
+          return {
+            key: `member-${member.id}`,
+            employeeId: member.employeeId,
+            fullName: member.employeeName,
+            photoUrl: member.photoUrl ?? emp?.photoUrl,
+            secondary: member.teamRoleName ?? '—',
+            position: member.displayPosition ?? '—',
+            managerName: member.managerName ?? '—',
+            email: member.displayEmail ?? emp?.email ?? '—',
+            dailyWorkHours: String(emp?.dailyWorkHours ?? '—'),
+            expertise: formatExpertises(emp?.expertises),
+            memberId: member.id,
+          }
+        })
+
+    const normalizedPrefix = rosterNamePrefix.trim().toLowerCase()
+    return baseRows
+      .filter((row) =>
+        normalizedPrefix
+          ? row.fullName.trim().toLowerCase().startsWith(normalizedPrefix)
+          : true,
+      )
+      .filter((row) => (rosterManagerFilter ? row.managerName === rosterManagerFilter : true))
+      .filter((row) => {
+        if (!isAllCompanyView || !rosterDepartmentFilter) return true
+        if (rosterDepartmentFilter === '__without_department__') {
+          return row.secondary === '—'
+        }
+        return row.secondary === rosterDepartmentFilter
+      })
+      .sort((a, b) => {
+        const cmp = a.fullName.localeCompare(b.fullName, 'ru')
+        return rosterNameSort === 'asc' ? cmp : -cmp
+      })
+  }, [
+    isAllCompanyView,
+    employees,
+    members,
+    employeeById,
+    rosterNamePrefix,
+    rosterManagerFilter,
+    rosterDepartmentFilter,
+    rosterNameSort,
+  ])
+
+  const rosterNamePrefixOptions = useMemo(() => {
+    const options = new Set<string>()
+    for (const row of rosterRows) {
+      const letter = row.fullName.trim().charAt(0).toUpperCase()
+      if (letter) options.add(letter)
+    }
+    return [...options].sort((a, b) => a.localeCompare(b, 'ru'))
+  }, [rosterRows])
+
+  const rosterManagerOptions = useMemo(() => {
+    const options = new Set<string>()
+    for (const row of rosterRows) {
+      if (row.managerName !== '—') {
+        options.add(row.managerName)
+      }
+    }
+    return [...options].sort((a, b) => a.localeCompare(b, 'ru'))
+  }, [rosterRows])
+
+  const rosterDepartmentOptions = useMemo(() => {
+    if (!isAllCompanyView) return []
+    const options = new Set<string>()
+    for (const employee of employees) {
+      for (const department of employee.departments) {
+        if (department.departmentName) {
+          options.add(department.departmentName)
+        }
+      }
+    }
+    return [...options].sort((a, b) => a.localeCompare(b, 'ru'))
+  }, [isAllCompanyView, employees])
+
+  const hasEmployeesWithoutDepartment = useMemo(
+    () => isAllCompanyView && employees.some((employee) => employee.departments.length === 0),
+    [isAllCompanyView, employees],
+  )
 
   const refreshAll = async () => {
     setLoading(true)
@@ -394,7 +527,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       })
       await loadEmployeeOfficeDays(editingEmployeeId, employeeOfficeYear, employeeOfficeMonth)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка сохранения дней офиса')
+      notifyProblem(err, 'Ошибка сохранения дней офиса')
     } finally {
       setSavingEmployeeOfficeDay(null)
     }
@@ -421,7 +554,6 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const saveEmployee = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!canManage || savingEmployee) return
-    setError(null)
     const body = {
       fullName: employeeForm.fullName.trim(),
       email: employeeForm.email.trim() || null,
@@ -461,7 +593,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       closeEmployeeModal()
       await refreshAll()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка сохранения сотрудника')
+      notifyProblem(err, 'Ошибка сохранения сотрудника')
     } finally {
       setSavingEmployee(false)
     }
@@ -473,7 +605,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       await deleteJson(`/api/org/employees/${id}`)
       await refreshAll()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка удаления')
+      notifyProblem(err, 'Ошибка удаления')
     }
   }
 
@@ -514,7 +646,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       setShowDepartmentModal(false)
       await refreshAll()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка сохранения отдела')
+      notifyProblem(err, 'Ошибка сохранения отдела')
     }
   }
 
@@ -525,7 +657,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       if (selectedDepartmentId === id) setSelectedDepartmentId(null)
       await refreshAll()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка удаления')
+      notifyProblem(err, 'Ошибка удаления')
     }
   }
 
@@ -569,7 +701,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       await loadMembers(selectedDepartmentId)
       await loadBase()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка сохранения участника')
+      notifyProblem(err, 'Ошибка сохранения участника')
     }
   }
 
@@ -580,7 +712,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       await loadMembers(selectedDepartmentId)
       await loadBase()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка удаления')
+      notifyProblem(err, 'Ошибка удаления')
     }
   }
 
@@ -591,7 +723,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       await postJson('/api/org/job-positions', { name: name.trim() })
       await loadBase()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка')
+      notifyProblem(err, 'Ошибка')
     }
   }
 
@@ -602,13 +734,12 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       await postJson('/api/org/expertise-directions', { name: name.trim() })
       await loadBase()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка')
+      notifyProblem(err, 'Ошибка')
     }
   }
 
   const addEmployeeExpertise = async () => {
     if (!editingEmployeeId || !expertiseDirectionId || !canManage) return
-    setError(null)
     try {
       await postJson(`/api/org/employees/${editingEmployeeId}/expertise`, {
         expertiseDirectionId: Number(expertiseDirectionId),
@@ -618,19 +749,22 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       setExpertiseLevel('')
       await loadBase()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка добавления экспертизы')
+      notifyProblem(err, 'Ошибка добавления экспертизы')
     }
+  }
+
+  const toggleRosterFilter = (filter: 'name' | 'manager' | 'department') => {
+    setActiveRosterFilter((value) => (value === filter ? null : filter))
   }
 
   const removeEmployeeExpertise = async (expertiseId: number) => {
     if (!editingEmployeeId || !canManage) return
     if (!window.confirm('Удалить экспертизу?')) return
-    setError(null)
     try {
       await deleteJson(`/api/org/employees/${editingEmployeeId}/expertise/${expertiseId}`)
       await loadBase()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка удаления экспертизы')
+      notifyProblem(err, 'Ошибка удаления экспертизы')
     }
   }
 
@@ -639,12 +773,12 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       <nav className="org-subtabs" aria-label="Разделы отделов">
         {(
           [
-            ['roster', 'Состав'],
-            ['pyramid', 'Пирамида'],
-            ['employees', 'Сотрудники'],
             ['vacations', 'График отпусков'],
             ['workspace', 'Бронь мест'],
             ['office_presence', 'Сотрудники в офисе'],
+            ['roster', 'Состав'],
+            ['pyramid', 'Пирамида'],
+            ['employees', 'Сотрудники'],
             ['manage', 'Управление'],
           ] as const
         ).map(([id, label]) => (
@@ -686,7 +820,6 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
         </div>
       ) : null}
 
-      {error ? <p className="org-error">{error}</p> : null}
       {loading ? <p>Обновление…</p> : null}
 
       {panel === 'roster' ? (
@@ -705,10 +838,139 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
             <table className="org-table">
               <thead>
                 <tr>
-                  <th>ФИО</th>
-                  <th>{isAllCompanyView ? 'Отдел' : 'Роль'}</th>
+                  <th>
+                    <div className="org-th-filter">
+                      <div className="org-th-filter-head">
+                        <span>ФИО</span>
+                        <button
+                          type="button"
+                          className={[
+                            'org-th-filter-icon-btn',
+                            activeRosterFilter === 'name' || rosterNamePrefix ? ' org-th-filter-icon-btn-active' : '',
+                          ].join('')}
+                          aria-label="Открыть фильтр ФИО"
+                          aria-expanded={activeRosterFilter === 'name'}
+                          onClick={() => toggleRosterFilter('name')}
+                        >
+                          <OrgFilterIcon />
+                        </button>
+                      </div>
+                      {activeRosterFilter === 'name' ? (
+                        <div className="org-th-filter-popover">
+                          <div className="org-th-filter-controls">
+                            <select
+                              value={rosterNamePrefix}
+                              onChange={(e) => setRosterNamePrefix(e.target.value)}
+                              aria-label="Фильтр ФИО по букве"
+                            >
+                              <option value="">Все</option>
+                              {rosterNamePrefixOptions.map((letter) => (
+                                <option key={letter} value={letter}>
+                                  {letter}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              className="btn-ghost org-th-sort-btn"
+                              onClick={() =>
+                                setRosterNameSort((value) => (value === 'asc' ? 'desc' : 'asc'))
+                              }
+                              title={rosterNameSort === 'asc' ? 'Сортировка А-Я' : 'Сортировка Я-А'}
+                            >
+                              {rosterNameSort === 'asc' ? 'А-Я' : 'Я-А'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </th>
+                  <th>
+                    {isAllCompanyView ? (
+                      <div className="org-th-filter">
+                        <div className="org-th-filter-head">
+                          <span>Отдел</span>
+                          <button
+                            type="button"
+                            className={[
+                              'org-th-filter-icon-btn',
+                              activeRosterFilter === 'department' || rosterDepartmentFilter
+                                ? ' org-th-filter-icon-btn-active'
+                                : '',
+                            ].join('')}
+                            aria-label="Открыть фильтр отдела"
+                            aria-expanded={activeRosterFilter === 'department'}
+                            onClick={() => toggleRosterFilter('department')}
+                          >
+                            <OrgFilterIcon />
+                          </button>
+                        </div>
+                        {activeRosterFilter === 'department' ? (
+                          <div className="org-th-filter-popover">
+                            <div className="org-th-filter-controls">
+                              <select
+                                value={rosterDepartmentFilter}
+                                onChange={(e) => setRosterDepartmentFilter(e.target.value)}
+                                aria-label="Фильтр по отделу"
+                              >
+                                <option value="">Все</option>
+                                {hasEmployeesWithoutDepartment ? (
+                                  <option value="__without_department__">Без отдела</option>
+                                ) : null}
+                                {rosterDepartmentOptions.map((department) => (
+                                  <option key={department} value={department}>
+                                    {department}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      'Роль'
+                    )}
+                  </th>
                   <th>Должность</th>
-                  <th>Руководитель</th>
+                  <th>
+                    <div className="org-th-filter">
+                      <div className="org-th-filter-head">
+                        <span>Руководитель</span>
+                        <button
+                          type="button"
+                          className={[
+                            'org-th-filter-icon-btn',
+                            activeRosterFilter === 'manager' || rosterManagerFilter
+                              ? ' org-th-filter-icon-btn-active'
+                              : '',
+                          ].join('')}
+                          aria-label="Открыть фильтр руководителя"
+                          aria-expanded={activeRosterFilter === 'manager'}
+                          onClick={() => toggleRosterFilter('manager')}
+                        >
+                          <OrgFilterIcon />
+                        </button>
+                      </div>
+                      {activeRosterFilter === 'manager' ? (
+                        <div className="org-th-filter-popover">
+                          <div className="org-th-filter-controls">
+                            <select
+                              value={rosterManagerFilter}
+                              onChange={(e) => setRosterManagerFilter(e.target.value)}
+                              aria-label="Фильтр по руководителю"
+                            >
+                              <option value="">Все</option>
+                              {rosterManagerOptions.map((manager) => (
+                                <option key={manager} value={manager}>
+                                  {manager}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </th>
                   <th>Email</th>
                   <th>Рабочих часов в день</th>
                   <th>Экспертиза</th>
@@ -716,56 +978,47 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                 </tr>
               </thead>
               <tbody>
-                {isAllCompanyView
-                  ? employees.map((emp) => (
-                      <tr key={emp.id}>
-                        <td>
-                          <PersonCell
-                            employeeId={emp.id}
-                            name={emp.fullName}
-                            photoUrl={emp.photoUrl}
-                            onOpen={openEmployeeCard}
-                          />
-                        </td>
-                        <td>{formatDepartments(emp.departments)}</td>
-                        <td>{emp.position ?? '—'}</td>
-                        <td>{emp.managerName ?? '—'}</td>
-                        <td>{emp.email ?? '—'}</td>
-                        <td>{emp.dailyWorkHours}</td>
-                        <td>{formatExpertises(emp.expertises)}</td>
-                      </tr>
-                    ))
-                  : members.map((member) => {
-                      const emp = employeeById.get(member.employeeId)
-                      return (
-                        <tr key={member.id}>
-                          <td>
-                            <PersonCell
-                              employeeId={member.employeeId}
-                              name={member.employeeName}
-                              photoUrl={member.photoUrl ?? emp?.photoUrl}
-                              onOpen={openEmployeeCard}
-                            />
-                          </td>
-                          <td>{member.teamRoleName ?? '—'}</td>
-                          <td>{member.displayPosition ?? '—'}</td>
-                          <td>{member.managerName ?? '—'}</td>
-                          <td>{member.displayEmail ?? emp?.email ?? '—'}</td>
-                          <td>{emp?.dailyWorkHours ?? '—'}</td>
-                          <td>{formatExpertises(emp?.expertises)}</td>
-                          {canManage ? (
-                            <td className="org-table-actions">
-                              <button type="button" className="btn-ghost" onClick={() => openEditMember(member)}>
-                                Изм.
-                              </button>
-                              <button type="button" className="btn-ghost" onClick={() => void removeMember(member.id)}>
-                                ✕
-                              </button>
-                            </td>
-                          ) : null}
-                        </tr>
-                      )
-                    })}
+                {rosterRows.map((row) => (
+                  <tr key={row.key}>
+                    <td>
+                      <PersonCell
+                        employeeId={row.employeeId}
+                        name={row.fullName}
+                        photoUrl={row.photoUrl}
+                        onOpen={openEmployeeCard}
+                      />
+                    </td>
+                    <td>{row.secondary}</td>
+                    <td>{row.position}</td>
+                    <td>{row.managerName}</td>
+                    <td>{row.email}</td>
+                    <td>{row.dailyWorkHours}</td>
+                    <td>{row.expertise}</td>
+                    {canManage && !isAllCompanyView ? (
+                      <td className="org-table-actions">
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() => {
+                            const member = members.find((item) => item.id === row.memberId)
+                            if (member) openEditMember(member)
+                          }}
+                        >
+                          Изм.
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() => {
+                            if (row.memberId != null) void removeMember(row.memberId)
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}

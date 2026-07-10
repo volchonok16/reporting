@@ -10,6 +10,10 @@ import {
   type B2bPanelId,
 } from './uiState'
 
+type ProductStatusB2BProps = {
+  canManageOrg?: boolean
+}
+
 function B2bTitleSwitcher({
   panel,
   onPanelChange,
@@ -48,7 +52,7 @@ function B2bTitleSwitcher({
   )
 }
 
-export default function ProductStatusB2B() {
+export default function ProductStatusB2B({ canManageOrg = false }: ProductStatusB2BProps) {
   const [panel, setPanel] = useState<B2bPanelId>(() => loadB2bPanel())
 
   useEffect(() => {
@@ -74,6 +78,12 @@ export default function ProductStatusB2B() {
           presentationFilename="status-produkta-b2b.pptx"
           headerTitle={renderTitleSwitcher()}
           lazySheets
+          fixedColumns
+          enableRowDelete
+          enableRowReorder
+          enableHistory={canManageOrg}
+          canEditAdminColumns={canManageOrg}
+          commitOnRefresh
         />
       ) : null}
       {panel === 'news' ? (
@@ -84,6 +94,11 @@ export default function ProductStatusB2B() {
           saveGid={saveB2bNewsGid}
           headerTitle={renderTitleSwitcher()}
           lazySheets
+          fixedColumns
+          enableRowDelete
+          enableRowReorder
+          enableHistory
+          commitOnRefresh
         />
       ) : null}
     </>
