@@ -11,12 +11,13 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.youjail_models import (
     YouJailAttachment,
+    YouJailBoard,
     YouJailCard,
     YouJailColumn,
     YouJailExecution,
@@ -24,11 +25,18 @@ from app.youjail_models import (
     YouJailProject,
     YouJailTaskType,
 )
+from app.youjail_terminal import run_command_with_pty
 
 logger = logging.getLogger(__name__)
 
 EXECUTORS = ("manual", "claude", "codex", "gemini", "pi", "openclaw", "opencode")
 EXECUTION_STATUSES = ("idle", "queued", "running", "succeeded", "failed")
+DEFAULT_COLUMNS = (
+    ("backlog", "Backlog", "backlog", 1),
+    ("in_progress", "In Progress", "progress", 2),
+    ("blocked", "Blocked", "blocked", 3),
+    ("done", "Done", "done", 4),
+)
 
 
 def _utcnow() -> datetime:
@@ -69,8 +77,58 @@ def _attachment_url(attachment_id: int) -> str:
     return f"/api/youjail/attachments/{attachment_id}/download"
 
 
-def _card_query() -> Select:
-    return select(YouJailCard).order_by(
+def _serialize_board(board: YouJailBoard) -> dict:
+    return {
+        "id": board.id,
+        "name": board.name,
+        "slug": board.slug,
+        "description": board.description or "",
+        "sortOrder": board.sort_order,
+        "isActive": board.is_active,
+    }
+
+
+def _resolve_board_id(db: Session, board_id: int | None) -> int:
+    if board_id is not None:
+        board = db.get(YouJailBoard, board_id)
+        if board is None:
+            raise HTTPException(status_code=404, detail="Доска не найдена.")
+        return board.id
+    board = db.scalar(
+        select(YouJailBoard).where(YouJailBoard.is_active.is_(True)).order_by(YouJailBoard.sort_order.asc()).limit(1)
+    )
+    if board is None:
+        raise HTTPException(status_code=500, detail="Доски YouJail не инициализированы.")
+    return board.id
+
+
+def _apply_fuzzy_search(query: Select, needle: str) -> Select:
+    pattern = f"%{needle}%"
+    title_similarity = func.similarity(YouJailCard.title, needle)
+    description_similarity = func.similarity(YouJailCard.description_md, needle)
+    return (
+        query.where(
+            or_(
+                YouJailCard.title.op("%")(needle),
+                YouJailCard.description_md.op("%")(needle),
+                YouJailCard.title.ilike(pattern),
+                YouJailCard.description_md.ilike(pattern),
+            )
+        )
+        .order_by(
+            desc(func.greatest(title_similarity, description_similarity)),
+            YouJailCard.pinned.desc(),
+            YouJailCard.sort_order.asc(),
+            YouJailCard.id.asc(),
+        )
+    )
+
+
+def _card_query(*, fuzzy_search: str | None = None) -> Select:
+    query = select(YouJailCard)
+    if fuzzy_search:
+        return _apply_fuzzy_search(query, fuzzy_search)
+    return query.order_by(
         YouJailCard.pinned.desc(),
         YouJailCard.sort_order.asc(),
         YouJailCard.id.asc(),
@@ -138,6 +196,7 @@ def _serialize_card(db: Session, card: YouJailCard, *, detailed: bool = False) -
     )
     return {
         "id": card.id,
+        "boardId": card.board_id,
         "columnId": card.column_id,
         "columnKey": column.column_key if column else "",
         "projectId": card.project_id,
@@ -168,10 +227,23 @@ def _serialize_card(db: Session, card: YouJailCard, *, detailed: bool = False) -
 def load_board(
     db: Session,
     *,
+    board_id: int | None = None,
     search: str | None = None,
     archived: str = "false",
 ) -> dict:
-    columns = db.scalars(select(YouJailColumn).order_by(YouJailColumn.sort_order.asc())).all()
+    resolved_board_id = _resolve_board_id(db, board_id)
+    board = db.get(YouJailBoard, resolved_board_id)
+    if board is None:
+        raise HTTPException(status_code=404, detail="Доска не найдена.")
+
+    boards = db.scalars(
+        select(YouJailBoard).where(YouJailBoard.is_active.is_(True)).order_by(YouJailBoard.sort_order.asc())
+    ).all()
+    columns = db.scalars(
+        select(YouJailColumn)
+        .where(YouJailColumn.board_id == resolved_board_id)
+        .order_by(YouJailColumn.sort_order.asc())
+    ).all()
     projects = db.scalars(
         select(YouJailProject).where(YouJailProject.is_active.is_(True)).order_by(YouJailProject.name.asc())
     ).all()
@@ -179,24 +251,21 @@ def load_board(
         select(YouJailTaskType).where(YouJailTaskType.is_active.is_(True)).order_by(YouJailTaskType.sort_order.asc())
     ).all()
 
-    query = _card_query()
+    needle = (search or "").strip()
+    query = _card_query(fuzzy_search=needle or None).where(YouJailCard.board_id == resolved_board_id)
     if archived == "true":
         query = query.where(YouJailCard.archived.is_(True))
     elif archived != "all":
         query = query.where(YouJailCard.archived.is_(False))
 
-    needle = (search or "").strip()
-    if needle:
-        pattern = f"%{needle}%"
-        query = query.where(
-            or_(YouJailCard.title.ilike(pattern), YouJailCard.description_md.ilike(pattern))
-        )
-
     cards = db.scalars(query).all()
     return {
+        "board": _serialize_board(board),
+        "boards": [_serialize_board(item) for item in boards],
         "columns": [
             {
                 "id": column.id,
+                "boardId": column.board_id,
                 "columnKey": column.column_key,
                 "title": column.title,
                 "tone": column.tone,
@@ -237,17 +306,58 @@ def get_card(db: Session, card_id: int) -> dict:
     return _serialize_card(db, card, detailed=True)
 
 
-def _default_backlog_column_id(db: Session) -> int:
-    column = db.scalar(select(YouJailColumn).where(YouJailColumn.column_key == "backlog"))
+def _default_backlog_column_id(db: Session, board_id: int) -> int:
+    column = db.scalar(
+        select(YouJailColumn).where(
+            YouJailColumn.board_id == board_id,
+            YouJailColumn.column_key == "backlog",
+        )
+    )
     if column is None:
         raise HTTPException(status_code=500, detail="Колонки YouJail не инициализированы.")
     return column.id
 
 
+def list_boards(db: Session) -> list[dict]:
+    boards = db.scalars(select(YouJailBoard).order_by(YouJailBoard.sort_order.asc())).all()
+    return [_serialize_board(board) for board in boards]
+
+
+def create_board(db: Session, data: dict) -> dict:
+    slug = _slugify(data.get("slug") or data["name"])
+    existing = db.scalar(select(YouJailBoard).where(YouJailBoard.slug == slug))
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="Доска с таким slug уже существует.")
+
+    board = YouJailBoard(
+        name=data["name"].strip(),
+        slug=slug,
+        description=(data.get("description") or "").strip(),
+        sort_order=int(data.get("sortOrder") or 0),
+        updated_at=_utcnow(),
+    )
+    db.add(board)
+    db.flush()
+    for column_key, title, tone, sort_order in DEFAULT_COLUMNS:
+        db.add(
+            YouJailColumn(
+                board_id=board.id,
+                column_key=column_key,
+                title=title,
+                tone=tone,
+                sort_order=sort_order,
+            )
+        )
+    db.commit()
+    db.refresh(board)
+    return _serialize_board(board)
+
+
 def create_card(db: Session, data: dict, *, created_by: str | None) -> dict:
-    column_id = data.get("columnId") or _default_backlog_column_id(db)
+    board_id = _resolve_board_id(db, data.get("boardId"))
+    column_id = data.get("columnId") or _default_backlog_column_id(db, board_id)
     column = db.get(YouJailColumn, column_id)
-    if column is None:
+    if column is None or column.board_id != board_id:
         raise HTTPException(status_code=400, detail="Колонка не найдена.")
 
     executor = (data.get("executor") or "manual").strip().lower()
@@ -255,6 +365,7 @@ def create_card(db: Session, data: dict, *, created_by: str | None) -> dict:
         raise HTTPException(status_code=400, detail="Неизвестный исполнитель.")
 
     card = YouJailCard(
+        board_id=board_id,
         column_id=column_id,
         project_id=data.get("projectId"),
         task_type_id=data.get("taskTypeId"),
@@ -311,7 +422,7 @@ def move_card(db: Session, card_id: int, *, column_id: int, sort_order: int | No
     if card is None:
         raise HTTPException(status_code=404, detail="Карточка не найдена.")
     column = db.get(YouJailColumn, column_id)
-    if column is None:
+    if column is None or column.board_id != card.board_id:
         raise HTTPException(status_code=400, detail="Колонка не найдена.")
     card.column_id = column_id
     card.sort_order = sort_order if sort_order is not None else _next_sort_order(db, column_id)
@@ -555,20 +666,17 @@ def _run_execution_thread(execution_id: int, card_id: int, command: str | None, 
             seq = _append_log(db, execution_id, seq, "system", f"Команда: {command}")
             if feedback:
                 seq = _append_log(db, execution_id, seq, "system", f"Обратная связь: {feedback}")
-            completed = subprocess.run(
+
+            def on_text_line(stream: str, line: str) -> None:
+                nonlocal seq
+                seq = _append_log(db, execution_id, seq, stream, line)
+
+            exit_code = run_command_with_pty(
+                execution_id,
                 command,
-                shell=True,
                 cwd=execution.worktree_path or None,
-                capture_output=True,
-                text=True,
+                on_text_line=on_text_line,
             )
-            if completed.stdout:
-                for line in completed.stdout.splitlines():
-                    seq = _append_log(db, execution_id, seq, "stdout", line)
-            if completed.stderr:
-                for line in completed.stderr.splitlines():
-                    seq = _append_log(db, execution_id, seq, "stderr", line)
-            exit_code = completed.returncode
             status = "succeeded" if exit_code == 0 else "failed"
             error_message = None if exit_code == 0 else f"Код выхода {exit_code}"
         else:
@@ -577,17 +685,31 @@ def _run_execution_thread(execution_id: int, card_id: int, command: str | None, 
                 execution_id,
                 seq,
                 "system",
-                "YOUJAIL_EXECUTOR_COMMAND не задан — демо-режим.",
+                "YOUJAIL_EXECUTOR_COMMAND не задан — демо-режим (PTY).",
             )
-            seq = _append_log(db, execution_id, seq, "stdout", f"Задача: {card.title}")
+            demo_command = (
+                f'printf "%s\\n" "Задача: {card.title.replace(chr(34), chr(92)+chr(34))}"; '
+                f'printf "%s\\n" "Откройте терминал в браузере для live-вывода."; sleep 1'
+            )
             if card.description_md:
-                for line in card.description_md.splitlines()[:20]:
-                    seq = _append_log(db, execution_id, seq, "stdout", line)
+                for line in card.description_md.splitlines()[:10]:
+                    safe_line = line.replace('"', '\\"')
+                    demo_command += f'; printf "%s\\n" "{safe_line}"'
             if feedback:
-                seq = _append_log(db, execution_id, seq, "stdout", f"Retry feedback: {feedback}")
-            exit_code = 0
-            status = "succeeded"
-            error_message = None
+                demo_command += f'; printf "%s\\n" "Retry feedback: {feedback.replace(chr(34), chr(92)+chr(34))}"'
+
+            def on_demo_line(stream: str, line: str) -> None:
+                nonlocal seq
+                seq = _append_log(db, execution_id, seq, stream, line)
+
+            exit_code = run_command_with_pty(
+                execution_id,
+                demo_command,
+                cwd=execution.worktree_path or None,
+                on_text_line=on_demo_line,
+            )
+            status = "succeeded" if exit_code == 0 else "failed"
+            error_message = None if exit_code == 0 else f"Код выхода {exit_code}"
 
         execution.status = status
         execution.exit_code = exit_code

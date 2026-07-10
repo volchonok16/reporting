@@ -42,6 +42,7 @@
   flex-wrap: wrap;
 }
 
+.youjail-board-select,
 .youjail-search,
 .youjail-archived-filter,
 .youjail-create-input,
@@ -548,12 +549,35 @@
   resize: vertical;
 }
 
+.youjail-terminal {
+  height: 280px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #0f1419;
+}
+
+.youjail-log-history {
+  margin-top: 10px;
+}
+
+.youjail-log-history summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.youjail-board-select {
+  min-width: 160px;
+}
+
 .youjail-error-inline {
   margin: 0;
   color: var(--danger);
   font-size: 12px;
 }
 
+@media (max-width: 960px) {
   .youjail-detail-body {
     grid-template-columns: 1fr;
   }

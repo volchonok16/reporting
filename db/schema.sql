@@ -422,6 +422,17 @@ COMMENT ON TABLE org_chart_layout IS 'Сохранённая ручная рас
 -- YouJail — отдельная kanban-доска (не связана с task / ЗНИ)
 -- -----------------------------------------------------------------------------
 
+CREATE TABLE youjail_board (
+    id              BIGSERIAL PRIMARY KEY,
+    name            VARCHAR(255) NOT NULL,
+    slug            VARCHAR(64) NOT NULL UNIQUE,
+    description     TEXT NOT NULL DEFAULT '',
+    sort_order      INTEGER NOT NULL DEFAULT 0,
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE youjail_project (
     id              BIGSERIAL PRIMARY KEY,
     name            VARCHAR(255) NOT NULL,
@@ -445,14 +456,18 @@ CREATE TABLE youjail_task_type (
 
 CREATE TABLE youjail_column (
     id              BIGSERIAL PRIMARY KEY,
-    column_key      VARCHAR(32) NOT NULL UNIQUE,
+    board_id        BIGINT NOT NULL REFERENCES youjail_board(id) ON DELETE CASCADE,
+    column_key      VARCHAR(32) NOT NULL,
     title           VARCHAR(128) NOT NULL,
     tone            VARCHAR(32) NOT NULL,
     sort_order      INTEGER NOT NULL
 );
 
+CREATE UNIQUE INDEX ix_youjail_column_board_key ON youjail_column (board_id, column_key);
+
 CREATE TABLE youjail_card (
     id              BIGSERIAL PRIMARY KEY,
+    board_id        BIGINT NOT NULL REFERENCES youjail_board(id) ON DELETE CASCADE,
     column_id       BIGINT NOT NULL REFERENCES youjail_column(id) ON DELETE RESTRICT,
     project_id      BIGINT REFERENCES youjail_project(id) ON DELETE SET NULL,
     task_type_id    BIGINT REFERENCES youjail_task_type(id) ON DELETE SET NULL,
@@ -473,6 +488,11 @@ CREATE TABLE youjail_card (
 );
 
 CREATE INDEX ix_youjail_card_column_sort ON youjail_card (column_id, sort_order, id);
+CREATE INDEX ix_youjail_card_board_column ON youjail_card (board_id, column_id, sort_order, id);
+
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX ix_youjail_card_title_trgm ON youjail_card USING gin (title gin_trgm_ops);
+CREATE INDEX ix_youjail_card_description_trgm ON youjail_card USING gin (description_md gin_trgm_ops);
 
 CREATE TABLE youjail_attachment (
     id              BIGSERIAL PRIMARY KEY,
@@ -722,13 +742,17 @@ INSERT INTO canonical_status (code, name, category, sort_order, is_terminal) VAL
     ('cancelled',     'Отменено',         'cancelled', 100, TRUE)
 ON CONFLICT (code) DO NOTHING;
 
-INSERT INTO youjail_column (column_key, title, tone, sort_order)
+INSERT INTO youjail_board (id, name, slug, sort_order)
+VALUES (1, 'Основная', 'main', 1)
+ON CONFLICT (slug) DO NOTHING;
+
+INSERT INTO youjail_column (board_id, column_key, title, tone, sort_order)
 VALUES
-    ('backlog', 'Backlog', 'backlog', 1),
-    ('in_progress', 'In Progress', 'progress', 2),
-    ('blocked', 'Blocked', 'blocked', 3),
-    ('done', 'Done', 'done', 4)
-ON CONFLICT (column_key) DO NOTHING;
+    (1, 'backlog', 'Backlog', 'backlog', 1),
+    (1, 'in_progress', 'In Progress', 'progress', 2),
+    (1, 'blocked', 'Blocked', 'blocked', 3),
+    (1, 'done', 'Done', 'done', 4)
+ON CONFLICT (board_id, column_key) DO NOTHING;
 
 INSERT INTO youjail_task_type (name, instructions_md, sort_order)
 VALUES

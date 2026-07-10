@@ -3,6 +3,22 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
+class YouJailBoardMetaOut(BaseModel):
+    id: int
+    name: str
+    slug: str
+    description: str = ""
+    sortOrder: int = 0
+    isActive: bool = True
+
+
+class YouJailBoardIn(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    slug: str | None = Field(default=None, min_length=1, max_length=64)
+    description: str = ""
+    sortOrder: int = 0
+
+
 class YouJailProjectOut(BaseModel):
     id: int
     name: str
@@ -15,7 +31,7 @@ class YouJailProjectOut(BaseModel):
 
 class YouJailProjectIn(BaseModel):
     name: str = Field(min_length=1, max_length=255)
-    slug: str = Field(min_length=1, max_length=64)
+    slug: str | None = Field(default=None, min_length=1, max_length=64)
     repoPath: str | None = None
     contextMd: str = ""
     instructionsMd: str = ""
@@ -45,6 +61,7 @@ class YouJailTaskTypeIn(BaseModel):
 
 class YouJailColumnOut(BaseModel):
     id: int
+    boardId: int
     columnKey: str
     title: str
     tone: str
@@ -84,6 +101,7 @@ class YouJailExecutionOut(BaseModel):
 
 class YouJailCardOut(BaseModel):
     id: int
+    boardId: int
     columnId: int
     columnKey: str
     projectId: int | None = None
@@ -109,6 +127,8 @@ class YouJailCardOut(BaseModel):
 
 
 class YouJailBoardOut(BaseModel):
+    board: YouJailBoardMetaOut
+    boards: list[YouJailBoardMetaOut]
     columns: list[YouJailColumnOut]
     cards: list[YouJailCardOut]
     projects: list[YouJailProjectOut]
@@ -118,6 +138,7 @@ class YouJailBoardOut(BaseModel):
 class YouJailCardIn(BaseModel):
     title: str = Field(min_length=1, max_length=1000)
     descriptionMd: str = ""
+    boardId: int | None = None
     columnId: int | None = None
     projectId: int | None = None
     taskTypeId: int | None = None

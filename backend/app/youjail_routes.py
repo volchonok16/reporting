@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.auth_sessions import get_session_with_meta
 from app.db import get_db
 from app.youjail_schemas import (
+    YouJailBoardIn,
+    YouJailBoardMetaOut,
     YouJailBoardOut,
     YouJailCardIn,
     YouJailCardMoveIn,
@@ -20,6 +22,7 @@ from app.youjail_schemas import (
     YouJailAttachmentOut,
 )
 from app.youjail_service import (
+    create_board,
     create_card,
     create_project,
     create_task_type,
@@ -27,6 +30,7 @@ from app.youjail_service import (
     delete_card,
     get_card,
     get_execution,
+    list_boards,
     list_card_executions,
     list_projects,
     list_task_types,
@@ -39,25 +43,52 @@ from app.youjail_service import (
     update_card,
     update_project,
 )
+from app.youjail_terminal import (
+    resize_execution_terminal,
+    terminal_broker,
+    write_execution_input,
+)
 
 router = APIRouter(prefix="/api/youjail", tags=["youjail"])
 
 
-def _load_session_meta(x_session_id: str | None = Header(default=None, alias="X-Session-Id")) -> dict:
+def _require_session_meta(x_session_id: str | None) -> dict:
     auth, meta = get_session_with_meta(x_session_id)
     if auth is None:
         raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
     return meta
 
 
+def _load_session_meta(x_session_id: str | None = Header(default=None, alias="X-Session-Id")) -> dict:
+    return _require_session_meta(x_session_id)
+
+
+@router.get("/boards", response_model=list[YouJailBoardMetaOut])
+def api_list_boards(
+    db: Session = Depends(get_db),
+    _: dict = Depends(_load_session_meta),
+) -> list[dict]:
+    return list_boards(db)
+
+
+@router.post("/boards", response_model=YouJailBoardMetaOut)
+def api_create_board(
+    payload: YouJailBoardIn,
+    db: Session = Depends(get_db),
+    _: dict = Depends(_load_session_meta),
+) -> dict:
+    return create_board(db, payload.model_dump())
+
+
 @router.get("/board", response_model=YouJailBoardOut)
 def api_load_board(
+    board_id: int | None = Query(default=None, alias="boardId"),
     search: str | None = Query(default=None),
     archived: str = Query(default="false", pattern="^(false|true|all)$"),
     db: Session = Depends(get_db),
     _: dict = Depends(_load_session_meta),
 ) -> dict:
-    return load_board(db, search=search, archived=archived)
+    return load_board(db, board_id=board_id, search=search, archived=archived)
 
 
 @router.get("/cards/{card_id}", response_model=YouJailCardOut)
@@ -178,6 +209,49 @@ def api_get_execution(
     _: dict = Depends(_load_session_meta),
 ) -> dict:
     return get_execution(db, execution_id, with_logs=True)
+
+
+@router.websocket("/executions/{execution_id}/terminal")
+async def api_execution_terminal(
+    websocket: WebSocket,
+    execution_id: int,
+    x_session_id: str | None = Query(default=None, alias="X-Session-Id"),
+) -> None:
+    try:
+        _require_session_meta(x_session_id)
+    except HTTPException:
+        await websocket.close(code=4401)
+        return
+
+    await websocket.accept()
+    terminal_broker.subscribe(execution_id, websocket)
+    try:
+        while True:
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                break
+            if "bytes" in message and message["bytes"] is not None:
+                write_execution_input(execution_id, message["bytes"])
+            elif "text" in message and message["text"] is not None:
+                payload = message["text"]
+                if payload.startswith("{"):
+                    import json
+
+                    try:
+                        data = json.loads(payload)
+                    except json.JSONDecodeError:
+                        write_execution_input(execution_id, payload.encode("utf-8"))
+                        continue
+                    if data.get("type") == "resize":
+                        rows = int(data.get("rows") or 24)
+                        cols = int(data.get("cols") or 80)
+                        resize_execution_terminal(execution_id, rows, cols)
+                        continue
+                write_execution_input(execution_id, payload.encode("utf-8"))
+    except WebSocketDisconnect:
+        pass
+    finally:
+        terminal_broker.unsubscribe(execution_id, websocket)
 
 
 @router.get("/projects", response_model=list[YouJailProjectOut])

@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useState, type DragEvent, type FormEve
 import { getJson, postJson } from '../api'
 import YouJailCardDetail from './YouJailCardDetail'
 import YouJailProjectsPanel from './YouJailProjectsPanel'
-import type { YouJailBoard, YouJailCard, YouJailColumn, YouJailProject } from './types'
+import type { YouJailBoard, YouJailBoardMeta, YouJailCard, YouJailColumn, YouJailProject } from './types'
 import '../youjail.css'
+
+const BOARD_STORAGE_KEY = 'youjail.activeBoardId'
 
 type ArchivedFilter = 'false' | 'true' | 'all'
 
@@ -15,6 +17,12 @@ function cardsForColumn(cards: YouJailCard[], columnId: number): YouJailCard[] {
 
 export default function YouJailBoard() {
   const [board, setBoard] = useState<YouJailBoard | null>(null)
+  const [activeBoardId, setActiveBoardId] = useState<number | null>(() => {
+    const saved = localStorage.getItem(BOARD_STORAGE_KEY)
+    return saved ? Number(saved) : null
+  })
+  const [newBoardName, setNewBoardName] = useState('')
+  const [showBoardForm, setShowBoardForm] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -30,16 +38,21 @@ export default function YouJailBoard() {
     setError(null)
     try {
       const params = new URLSearchParams({ archived })
+      if (activeBoardId) params.set('boardId', String(activeBoardId))
       if (search.trim()) params.set('search', search.trim())
       const payload = await getJson<YouJailBoard>(`/api/youjail/board?${params}`)
       setBoard(payload)
+      if (payload.board?.id) {
+        setActiveBoardId(payload.board.id)
+        localStorage.setItem(BOARD_STORAGE_KEY, String(payload.board.id))
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось загрузить доску')
       setBoard(null)
     } finally {
       setLoading(false)
     }
-  }, [archived, search])
+  }, [activeBoardId, archived, search])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -57,7 +70,10 @@ export default function YouJailBoard() {
     if (!title) return
     setError(null)
     try {
-      await postJson<YouJailCard>('/api/youjail/cards', { title })
+      await postJson<YouJailCard>('/api/youjail/cards', {
+        title,
+        boardId: activeBoardId ?? board?.board.id,
+      })
       setDraftTitle('')
       setShowCreateForm(false)
       await loadBoard()
@@ -121,6 +137,23 @@ export default function YouJailBoard() {
     clearDragState()
   }
 
+  const createBoard = async (event: FormEvent) => {
+    event.preventDefault()
+    const name = newBoardName.trim()
+    if (!name) return
+    setError(null)
+    try {
+      const created = await postJson<YouJailBoardMeta>('/api/youjail/boards', { name })
+      setNewBoardName('')
+      setShowBoardForm(false)
+      setActiveBoardId(created.id)
+      localStorage.setItem(BOARD_STORAGE_KEY, String(created.id))
+      await loadBoard()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось создать доску')
+    }
+  }
+
   const columnCards = useMemo(() => {
     if (!board) return new Map<number, YouJailCard[]>()
     return new Map(board.columns.map((column) => [column.id, cardsForColumn(board.cards, column.id)]))
@@ -134,12 +167,30 @@ export default function YouJailBoard() {
           <p>Отдельная kanban-доска с заметками, проектами, исполнителями и логами запусков.</p>
         </div>
         <div className="youjail-toolbar-actions">
+          <select
+            className="youjail-board-select"
+            value={activeBoardId ?? board?.board.id ?? ''}
+            onChange={(event) => {
+              const nextId = Number(event.target.value)
+              setActiveBoardId(nextId)
+              localStorage.setItem(BOARD_STORAGE_KEY, String(nextId))
+            }}
+          >
+            {(board?.boards ?? []).map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+          <button type="button" className="btn-secondary" onClick={() => setShowBoardForm((current) => !current)}>
+            + Доска
+          </button>
           <input
             type="search"
             className="youjail-search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Поиск по названию и заметкам"
+            placeholder="Fuzzy-поиск (опечатки, часть слова)"
           />
           <select
             className="youjail-archived-filter"
@@ -167,6 +218,25 @@ export default function YouJailBoard() {
           </button>
         </div>
       </div>
+
+      {showBoardForm ? (
+        <form className="youjail-create-form" onSubmit={(event) => void createBoard(event)}>
+          <input
+            type="text"
+            className="youjail-create-input"
+            value={newBoardName}
+            onChange={(event) => setNewBoardName(event.target.value)}
+            placeholder="Название новой доски"
+            autoFocus
+          />
+          <button type="submit" className="btn-primary" disabled={!newBoardName.trim()}>
+            Создать доску
+          </button>
+          <button type="button" className="btn-ghost" onClick={() => setShowBoardForm(false)}>
+            Отмена
+          </button>
+        </form>
+      ) : null}
 
       {showCreateForm ? (
         <form className="youjail-create-form" onSubmit={(event) => void addCard(event)}>

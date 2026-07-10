@@ -728,7 +728,20 @@
 
 ## YouJail — отдельная kanban-доска
 
-Самостоятельный модуль на вкладке **«Доска»**. Не связан с `task` / ЗНИ / TFS.
+Самостоятельный модуль на вкладке **«Доска»**. Не связан с `task` / ЗНИ / TFS. Поддерживает **несколько досок**, **fuzzy-поиск** (`pg_trgm`), **PTY-терминал** в браузере (WebSocket + xterm.js) и CLI **`ty`**.
+
+### youjail_board
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `name` | varchar(255) | Название доски |
+| `slug` | varchar(64) | Уникальный код |
+| `description` | text | Описание |
+| `sort_order` | integer | Порядок в списке |
+| `is_active` | boolean | Активна |
+
+У каждой доски свой набор колонок (`youjail_column.board_id`) и карточек (`youjail_card.board_id`). Seed: доска `main` («Основная»).
 
 ### youjail_project
 
@@ -753,13 +766,15 @@
 
 | Поле | Тип | Описание |
 |------|-----|----------|
-| `column_key` | varchar(32) | `backlog`, `in_progress`, `blocked`, `done` |
+| `board_id` | bigint | FK → `youjail_board` |
+| `column_key` | varchar(32) | `backlog`, `in_progress`, `blocked`, `done` (уникально в рамках доски) |
 | `title`, `tone`, `sort_order` | | Отображение колонки на доске |
 
 ### youjail_card
 
 | Поле | Тип | Описание |
 |------|-----|----------|
+| `board_id` | bigint | FK → `youjail_board` |
 | `column_id` | bigint | FK → `youjail_column` |
 | `project_id`, `task_type_id` | bigint | Проект и тип |
 | `title` | varchar(1000) | Заголовок |
@@ -772,9 +787,9 @@
 
 ### youjail_attachment, youjail_execution, youjail_execution_log
 
-Вложения к карточке; запуски исполнителя и построчный лог (`stdout` / `stderr` / `system`).
+Вложения к карточке; запуски исполнителя и построчный лог (`stdout` / `stderr` / `system` / `pty`).
 
-API: префикс `/api/youjail/*`. Файлы: `YOUJAIL_WORKSPACE_DIR`, `YOUJAIL_EXECUTOR_COMMAND`.
+API: префикс `/api/youjail/*`. WebSocket PTY: `GET /api/youjail/executions/{id}/terminal?X-Session-Id=…`. Fuzzy-поиск: `GET /api/youjail/board?search=…&boardId=…`. CLI: `python backend/scripts/ty.py` (команды `boards`, `cards`, `exec`, `search`). Файлы: `YOUJAIL_WORKSPACE_DIR`, `YOUJAIL_EXECUTOR_COMMAND`.
 
 ---
 

@@ -1,6 +1,6 @@
 const SESSION_KEY = 'reportingSessionId'
 
-function resolveApiBase(): string {
+export function resolveApiBase(): string {
   const fromEnv = (import.meta.env.VITE_API_URL as string | undefined)?.trim().replace(/\/$/, '') ?? ''
   if (typeof window === 'undefined') return fromEnv
 

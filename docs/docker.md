@@ -203,7 +203,7 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 
 Для ручной оргсхемы добавлена миграция `db/migrations/010_org_chart_layout.sql`: таблица `org_chart_layout` хранит координаты карточек и линии вкладки «Пирамида».
 
-Для вкладки **«Доска» (YouJail)** — миграция `db/migrations/011_youjail.sql`: проекты, типы, колонки, карточки, вложения, запуски и логи. Каталог worktree/вложений: `YOUJAIL_WORKSPACE_DIR` (по умолчанию `/app/youjail-workspace`).
+Для вкладки **«Доска» (YouJail)** — миграция `db/migrations/011_youjail.sql`: проекты, типы, колонки, карточки, вложения, запуски и логи. Каталог worktree/вложений: `YOUJAIL_WORKSPACE_DIR` (по умолчанию `/app/youjail-workspace`). Миграция `db/migrations/017_youjail_boards_fuzzy.sql`: таблица `youjail_board`, `board_id` у колонок и карточек, индексы `pg_trgm` для fuzzy-поиска. CLI: `python backend/scripts/ty.py boards list`.
 
 Дополнительные рабочие места для брони — `db/migrations/012_workspace_places_99_106.sql`: в справочник `workspace_place` добавляются места **99–106** (без дубликатов, если номер уже есть).
 

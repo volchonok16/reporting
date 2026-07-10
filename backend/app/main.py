@@ -1,5 +1,6 @@
 import logging
 from datetime import date
+import asyncio
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -77,7 +78,10 @@ app.add_middleware(
 
 
 @app.on_event("startup")
-def startup() -> None:
+async def startup() -> None:
+    from app.youjail_terminal import set_main_event_loop
+
+    set_main_event_loop(asyncio.get_running_loop())
     ensure_startup_schema()
     purge_stale_b2b_audit_records()
 

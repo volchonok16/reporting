@@ -1,7 +1,17 @@
+export type YouJailBoardMeta = {
+  id: number
+  name: string
+  slug: string
+  description: string
+  sortOrder: number
+  isActive: boolean
+}
+
 export type YouJailColumnTone = 'backlog' | 'progress' | 'blocked' | 'done'
 
 export type YouJailColumn = {
   id: number
+  boardId: number
   columnKey: string
   title: string
   tone: YouJailColumnTone
@@ -59,6 +69,7 @@ export type YouJailExecution = {
 
 export type YouJailCard = {
   id: number
+  boardId: number
   columnId: number
   columnKey: string
   projectId?: number | null
@@ -84,6 +95,8 @@ export type YouJailCard = {
 }
 
 export type YouJailBoard = {
+  board: YouJailBoardMeta
+  boards: YouJailBoardMeta[]
   columns: YouJailColumn[]
   cards: YouJailCard[]
   projects: YouJailProject[]

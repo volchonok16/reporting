@@ -6,6 +6,19 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db import Base
 
 
+class YouJailBoard(Base):
+    __tablename__ = "youjail_board"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class YouJailProject(Base):
     __tablename__ = "youjail_project"
 
@@ -35,7 +48,8 @@ class YouJailColumn(Base):
     __tablename__ = "youjail_column"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    column_key: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
+    board_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_board.id"), nullable=False)
+    column_key: Mapped[str] = mapped_column(String(32), nullable=False)
     title: Mapped[str] = mapped_column(String(128), nullable=False)
     tone: Mapped[str] = mapped_column(String(32), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -45,6 +59,7 @@ class YouJailCard(Base):
     __tablename__ = "youjail_card"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    board_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_board.id"), nullable=False)
     column_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_column.id"), nullable=False)
     project_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("youjail_project.id"))
     task_type_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("youjail_task_type.id"))

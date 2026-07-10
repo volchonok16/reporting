@@ -9,6 +9,7 @@ import type {
   YouJailTaskType,
 } from './types'
 import { YOUJAIL_EXECUTORS } from './types'
+import YouJailTerminal from './YouJailTerminal'
 
 type YouJailCardDetailProps = {
   cardId: number | null
@@ -94,6 +95,11 @@ export default function YouJailCardDetail({
     }, 1500)
     return () => window.clearInterval(timer)
   }, [execution, loadCard])
+
+  const terminalRunning =
+    execution?.status === 'running' ||
+    execution?.status === 'queued' ||
+    card?.executionStatus === 'running'
 
   const previewHtml = useMemo(
     () => (card ? renderMarkdown(card.descriptionMd) : ''),
@@ -441,17 +447,29 @@ export default function YouJailCardDetail({
               </section>
 
               <section className="youjail-execution-log">
-                <h3>Лог выполнения</h3>
+                <h3>PTY-терминал</h3>
                 {!execution ? (
                   <p className="youjail-muted">Запусков пока не было</p>
                 ) : (
-                  <div className="youjail-log-stream">
-                    {(execution.logs ?? []).map((line) => (
-                      <div key={line.id} className={`youjail-log-line is-${line.stream}`}>
-                        {line.content}
-                      </div>
-                    ))}
-                  </div>
+                  <>
+                    <YouJailTerminal
+                      executionId={execution.id}
+                      running={terminalRunning}
+                      historyLogs={execution.logs ?? []}
+                    />
+                    {!terminalRunning && (execution.logs?.length ?? 0) > 0 ? (
+                      <details className="youjail-log-history">
+                        <summary>Текстовый лог (копия)</summary>
+                        <div className="youjail-log-stream">
+                          {(execution.logs ?? []).map((line) => (
+                            <div key={line.id} className={`youjail-log-line is-${line.stream}`}>
+                              {line.content}
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    ) : null}
+                  </>
                 )}
               </section>
             </div>
