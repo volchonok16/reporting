@@ -203,6 +203,8 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 
 Для ручной оргсхемы добавлена миграция `db/migrations/010_org_chart_layout.sql`: таблица `org_chart_layout` хранит координаты карточек и линии вкладки «Пирамида».
 
+Для вкладки **«Доска» (YouJail)** — миграция `db/migrations/011_youjail.sql`: проекты, типы, колонки, карточки, вложения, запуски и логи. Каталог worktree/вложений: `YOUJAIL_WORKSPACE_DIR` (по умолчанию `/app/youjail-workspace`).
+
 Если права нужно обновить вручную (новые таблицы org/vacation, backend создал таблицы от alex):
 
 ```bash

@@ -200,6 +200,23 @@ class Settings(BaseSettings):
         alias="ORG_UPLOADS_DIR",
         description="Локальный каталог фото сотрудников (fallback, если MinIO недоступен).",
     )
+    youjail_workspace_dir: str = Field(
+        default="/app/youjail-workspace",
+        alias="YOUJAIL_WORKSPACE_DIR",
+        description="Корень git worktree и вложений YouJail.",
+    )
+    youjail_executor_command: str = Field(
+        default="",
+        alias="YOUJAIL_EXECUTOR_COMMAND",
+        description=(
+            "Команда исполнителя: шаблон с {worktree_path}, {title}, {description}, {card_id}. "
+            "Пусто — демо-режим (лог без реального агента)."
+        ),
+    )
+    youjail_max_attachment_bytes: int = Field(
+        default=10 * 1024 * 1024,
+        alias="YOUJAIL_MAX_ATTACHMENT_BYTES",
+    )
     minio_endpoint: str = Field(
         default="",
         alias="MINIO_ENDPOINT",

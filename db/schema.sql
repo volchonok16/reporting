@@ -418,6 +418,99 @@ CREATE UNIQUE INDEX ux_org_chart_layout_company
 
 COMMENT ON TABLE org_chart_layout IS 'Сохранённая ручная раскладка оргсхемы';
 
+-- -----------------------------------------------------------------------------
+-- YouJail — отдельная kanban-доска (не связана с task / ЗНИ)
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE youjail_project (
+    id              BIGSERIAL PRIMARY KEY,
+    name            VARCHAR(255) NOT NULL,
+    slug            VARCHAR(64) NOT NULL UNIQUE,
+    repo_path       TEXT,
+    context_md      TEXT NOT NULL DEFAULT '',
+    instructions_md TEXT NOT NULL DEFAULT '',
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE youjail_task_type (
+    id              BIGSERIAL PRIMARY KEY,
+    name            VARCHAR(128) NOT NULL UNIQUE,
+    instructions_md TEXT NOT NULL DEFAULT '',
+    sort_order      INTEGER NOT NULL DEFAULT 0,
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE youjail_column (
+    id              BIGSERIAL PRIMARY KEY,
+    column_key      VARCHAR(32) NOT NULL UNIQUE,
+    title           VARCHAR(128) NOT NULL,
+    tone            VARCHAR(32) NOT NULL,
+    sort_order      INTEGER NOT NULL
+);
+
+CREATE TABLE youjail_card (
+    id              BIGSERIAL PRIMARY KEY,
+    column_id       BIGINT NOT NULL REFERENCES youjail_column(id) ON DELETE RESTRICT,
+    project_id      BIGINT REFERENCES youjail_project(id) ON DELETE SET NULL,
+    task_type_id    BIGINT REFERENCES youjail_task_type(id) ON DELETE SET NULL,
+    title           VARCHAR(1000) NOT NULL,
+    description_md  TEXT NOT NULL DEFAULT '',
+    pinned          BOOLEAN NOT NULL DEFAULT FALSE,
+    archived        BOOLEAN NOT NULL DEFAULT FALSE,
+    closed_at       TIMESTAMPTZ,
+    scheduled_at    TIMESTAMPTZ,
+    sort_order      INTEGER NOT NULL DEFAULT 0,
+    executor        VARCHAR(64) NOT NULL DEFAULT 'manual',
+    worktree_path   TEXT,
+    worktree_branch VARCHAR(255),
+    execution_status VARCHAR(32) NOT NULL DEFAULT 'idle',
+    created_by      VARCHAR(255),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX ix_youjail_card_column_sort ON youjail_card (column_id, sort_order, id);
+
+CREATE TABLE youjail_attachment (
+    id              BIGSERIAL PRIMARY KEY,
+    card_id         BIGINT NOT NULL REFERENCES youjail_card(id) ON DELETE CASCADE,
+    filename        VARCHAR(512) NOT NULL,
+    storage_path    TEXT NOT NULL,
+    content_type    VARCHAR(128),
+    size_bytes      BIGINT NOT NULL DEFAULT 0,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE youjail_execution (
+    id              BIGSERIAL PRIMARY KEY,
+    card_id         BIGINT NOT NULL REFERENCES youjail_card(id) ON DELETE CASCADE,
+    executor        VARCHAR(64) NOT NULL,
+    status          VARCHAR(32) NOT NULL DEFAULT 'running',
+    started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finished_at     TIMESTAMPTZ,
+    exit_code       INTEGER,
+    error_message   TEXT,
+    worktree_path   TEXT
+);
+
+CREATE INDEX ix_youjail_execution_card_started ON youjail_execution (card_id, started_at DESC);
+
+CREATE TABLE youjail_execution_log (
+    id              BIGSERIAL PRIMARY KEY,
+    execution_id    BIGINT NOT NULL REFERENCES youjail_execution(id) ON DELETE CASCADE,
+    seq             INTEGER NOT NULL,
+    stream          VARCHAR(16) NOT NULL DEFAULT 'stdout',
+    content         TEXT NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (execution_id, seq)
+);
+
+COMMENT ON TABLE youjail_card IS 'Карточки доски YouJail';
+COMMENT ON TABLE youjail_execution IS 'Запуски исполнителя по карточке YouJail';
+
 CREATE TABLE employee_time_off_day (
     id              BIGSERIAL PRIMARY KEY,
     employee_id     BIGINT       NOT NULL REFERENCES employee(id) ON DELETE CASCADE,
@@ -628,6 +721,21 @@ INSERT INTO canonical_status (code, name, category, sort_order, is_terminal) VAL
     ('done',          'Готово',           'done',      90, TRUE),
     ('cancelled',     'Отменено',         'cancelled', 100, TRUE)
 ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO youjail_column (column_key, title, tone, sort_order)
+VALUES
+    ('backlog', 'Backlog', 'backlog', 1),
+    ('in_progress', 'In Progress', 'progress', 2),
+    ('blocked', 'Blocked', 'blocked', 3),
+    ('done', 'Done', 'done', 4)
+ON CONFLICT (column_key) DO NOTHING;
+
+INSERT INTO youjail_task_type (name, instructions_md, sort_order)
+VALUES
+    ('feature', 'Реализовать новую функциональность.', 1),
+    ('bugfix', 'Исправить ошибку и добавить регрессионную проверку.', 2),
+    ('chore', 'Техническое обслуживание без изменения поведения.', 3)
+ON CONFLICT (name) DO NOTHING;
 
 -- team: без seed — команды создаёт ETL/скрипт по доскам, тегам, area path
 

@@ -123,6 +123,7 @@ def ensure_startup_schema() -> None:
         "008_workspace_booking.sql",
         "009_employee_office_days.sql",
         "010_org_chart_layout.sql",
+        "011_youjail.sql",
     )
     org_migrations: list[str] = []
     for migration_name in org_migration_names:

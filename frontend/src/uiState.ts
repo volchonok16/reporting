@@ -1,6 +1,6 @@
 const STORAGE_KEY = 'reporting.uiState'
 
-export type SheetId = 'zni' | 'product-status-b2b' | 'roadmap' | 'departments'
+export type SheetId = 'zni' | 'product-status-b2b' | 'roadmap' | 'youjail-board' | 'departments'
 
 export type OrgPanelId =
   | 'roster'
@@ -66,7 +66,13 @@ function writeUiState(patch: UiState): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...patch }))
 }
 
-const WORKBOOK_SHEETS: SheetId[] = ['zni', 'product-status-b2b', 'roadmap', 'departments']
+const WORKBOOK_SHEETS: SheetId[] = [
+  'zni',
+  'product-status-b2b',
+  'roadmap',
+  'youjail-board',
+  'departments',
+]
 
 const ORG_PANELS: OrgPanelId[] = [
   'roster',

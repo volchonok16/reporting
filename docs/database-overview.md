@@ -103,6 +103,13 @@
 | `department` | Отделы |
 | `department_member` | Состав отдела |
 | `org_chart_layout` | Сохранённая ручная раскладка оргсхемы (координаты карточек и линии) |
+| `youjail_project` | Проекты доски YouJail (repo, контекст) |
+| `youjail_task_type` | Типы карточек YouJail |
+| `youjail_column` | Колонки kanban (Backlog … Done) |
+| `youjail_card` | Карточки YouJail с заметками markdown |
+| `youjail_attachment` | Вложения карточек |
+| `youjail_execution` | Запуски исполнителя |
+| `youjail_execution_log` | Лог stdout/stderr/system |
 | `person` | Человек |
 | `person_external` | ID пользователя в Jira/TFS/Trello |
 

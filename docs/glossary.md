@@ -726,6 +726,58 @@
 
 ---
 
+## YouJail — отдельная kanban-доска
+
+Самостоятельный модуль на вкладке **«Доска»**. Не связан с `task` / ЗНИ / TFS.
+
+### youjail_project
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `name` | varchar(255) | Название проекта |
+| `slug` | varchar(64) | Уникальный код |
+| `repo_path` | text | Путь к git-репозиторию для worktree |
+| `context_md` | text | Кэш контекста проекта (markdown) |
+| `instructions_md` | text | Инструкции для исполнителя |
+| `is_active` | boolean | Активен |
+
+### youjail_task_type
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `name` | varchar(128) | Тип задачи (`feature`, `bugfix`, …) |
+| `instructions_md` | text | Подсказки для агента |
+
+### youjail_column
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `column_key` | varchar(32) | `backlog`, `in_progress`, `blocked`, `done` |
+| `title`, `tone`, `sort_order` | | Отображение колонки на доске |
+
+### youjail_card
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `column_id` | bigint | FK → `youjail_column` |
+| `project_id`, `task_type_id` | bigint | Проект и тип |
+| `title` | varchar(1000) | Заголовок |
+| `description_md` | text | Заметки (markdown) |
+| `pinned`, `archived` | boolean | Закрепление / архив |
+| `closed_at`, `scheduled_at` | timestamptz | Закрытие / план |
+| `executor` | varchar(64) | `manual`, `claude`, `codex`, … |
+| `worktree_path`, `worktree_branch` | text | Git worktree |
+| `execution_status` | varchar(32) | `idle`, `queued`, `running`, `succeeded`, `failed` |
+
+### youjail_attachment, youjail_execution, youjail_execution_log
+
+Вложения к карточке; запуски исполнителя и построчный лог (`stdout` / `stderr` / `system`).
+
+API: префикс `/api/youjail/*`. Файлы: `YOUJAIL_WORKSPACE_DIR`, `YOUJAIL_EXECUTOR_COMMAND`.
+
+---
+
 ## job_position, team_role, expertise_direction
 
 Справочники должностей, ролей в отделе и направлений экспертизы. Поля: `name`, `sort_order`, `is_active`, timestamps. Таблица `employee_expertise` связывает сотрудника с направлением и уровнем (`level`).

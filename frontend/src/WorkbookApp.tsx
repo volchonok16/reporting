@@ -3,6 +3,7 @@ import { apiFetch, clearSessionId } from './api'
 import Dashboard from './Dashboard'
 import ProductStatusB2B from './ProductStatusB2B'
 import Roadmap from './Roadmap'
+import YouJailBoard from './YouJailBoard'
 import Departments from './org/Departments'
 import EmployeeProfile from './org/EmployeeProfile'
 import OrgPhoto from './org/OrgPhoto'
@@ -19,6 +20,7 @@ const SHEETS: SheetTab[] = [
   { id: 'zni', label: 'ЗНИ' },
   { id: 'product-status-b2b', label: 'Статус продукта B2B' },
   { id: 'roadmap', label: 'Планы' },
+  { id: 'youjail-board', label: 'Доска' },
   { id: 'departments', label: 'Staffing' },
 ]
 
@@ -45,13 +47,16 @@ export default function WorkbookApp({
 }: WorkbookAppProps) {
   const visibleSheets =
     appRole === 'roadmap'
-      ? SHEETS.filter((sheet) => sheet.id === 'roadmap' || sheet.id === 'departments')
+      ? SHEETS.filter(
+          (sheet) =>
+            sheet.id === 'roadmap' || sheet.id === 'youjail-board' || sheet.id === 'departments',
+        )
       : SHEETS
   const visibleSheetIds = useMemo(() => new Set(visibleSheets.map((sheet) => sheet.id)), [visibleSheets])
   const [activeSheet, setActiveSheet] = useState<SheetId>(() => {
     const saved = loadActiveSheet()
     if (appRole === 'roadmap') {
-      return saved === 'departments' ? 'departments' : 'roadmap'
+      return saved === 'departments' || saved === 'youjail-board' ? saved : 'roadmap'
     }
     return saved
   })
@@ -124,6 +129,10 @@ export default function WorkbookApp({
               canEditComment
               canEditBusinessValue={appRole === 'full'}
             />
+          </div>
+        ) : activeSheet === 'youjail-board' ? (
+          <div className="app">
+            <YouJailBoard />
           </div>
         ) : activeSheet === 'departments' ? (
           <div className="app">

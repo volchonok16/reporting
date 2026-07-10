@@ -50,6 +50,7 @@ from app.schemas import (
 from app.sync_service import run_sync
 from app.tfs_auth import TfsAuth, build_tfs_auth
 from app.org_routes import profile_router, router as org_router, users_router
+from app.youjail_routes import router as youjail_router
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,7 @@ def startup() -> None:
 app.include_router(org_router)
 app.include_router(profile_router)
 app.include_router(users_router)
+app.include_router(youjail_router)
 
 
 def require_pat(x_session_id: str | None = Header(default=None, alias="X-Session-Id")) -> str:
