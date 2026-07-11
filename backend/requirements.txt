@@ -11,4 +11,5 @@ python-pptx==1.0.2
 openpyxl==3.1.5
 google-auth==2.40.0
 requests==2.32.3
+boto3==1.38.38
 typer==0.15.1
