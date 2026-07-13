@@ -4,6 +4,7 @@ import EmployeeCardModal from '../org/EmployeeCardModal'
 import '../org/org.css'
 import { notifyError, notifyProblem, notifySuccess } from '../toast'
 import YouJailAssigneeSelect from './YouJailAssigneeSelect'
+import YouJailCardExecution from './YouJailCardExecution'
 import YouJailMentionTextarea from './YouJailMentionTextarea'
 import { handleMentionPreviewClick } from './mentionPreview'
 import YouJailTagSelect from './YouJailTagSelect'
@@ -70,6 +71,17 @@ export default function YouJailCardDetail({
       setLoading(false)
     }
   }, [cardId])
+
+  const refreshCard = useCallback(async () => {
+    if (cardId === null) return
+    try {
+      const payload = await getJson<YouJailCard>(`/api/youjail/cards/${cardId}`)
+      setCard(payload)
+      onUpdated(payload)
+    } catch {
+      // фоновый опрос во время выполнения
+    }
+  }, [cardId, onUpdated])
 
   useEffect(() => {
     void loadCard()
@@ -378,18 +390,48 @@ export default function YouJailCardDetail({
 
             <div className="youjail-detail-side">
               <div className="youjail-detail-actions">
-                <button type="button" className="btn-ghost" onClick={() => void runAction('pin')}>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={runningAction !== null}
+                  onClick={() => void runAction('pin')}
+                >
                   {card.pinned ? 'Открепить' : 'Закрепить'}
                 </button>
-                <button type="button" className="btn-ghost" onClick={() => void runAction('archive')}>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={runningAction !== null}
+                  onClick={() => void runAction('archive')}
+                >
                   {card.archived ? 'Вернуть' : 'В архив'}
                 </button>
-                <button type="button" className="btn-ghost" onClick={() => void runAction('close')}>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={runningAction !== null}
+                  onClick={() => void runAction('close')}
+                >
                   {card.closedAt ? 'Открыть' : 'Закрыть'}
                 </button>
-                <button type="button" className="btn-ghost youjail-danger" onClick={() => void runAction('delete')}>
+                <button
+                  type="button"
+                  className="btn-ghost youjail-danger"
+                  disabled={runningAction !== null}
+                  onClick={() => void runAction('delete')}
+                >
                   Удалить
                 </button>
+              </div>
+
+              <YouJailCardExecution card={card} disabled={saving} onRefreshCard={refreshCard} />
+
+              <div className="youjail-meta">
+                {card.assigneeName ? <p>Ответственный: {card.assigneeName}</p> : null}
+                {card.createdBy ? <p>Автор: {card.createdBy}</p> : null}
+                <p>Создана: {new Date(card.createdAt).toLocaleString('ru-RU')}</p>
+                <p>Обновлена: {new Date(card.updatedAt).toLocaleString('ru-RU')}</p>
+                {card.closedAt ? <p>Закрыта: {new Date(card.closedAt).toLocaleString('ru-RU')}</p> : null}
               </div>
             </div>
           </div>

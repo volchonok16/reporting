@@ -541,6 +541,7 @@ def toggle_workspace_booking(db: Session, data: WorkspaceBookingToggleIn, meta: 
         if not can_edit_employee_vacation(meta, actor_employee_id, existing.employee_id):
             raise HTTPException(status_code=403, detail="Недостаточно прав для перебронирования.")
         db.delete(existing)
+        db.flush()
 
     employee_day_booking = db.scalar(
         select(WorkspaceBooking)
@@ -550,20 +551,17 @@ def toggle_workspace_booking(db: Session, data: WorkspaceBookingToggleIn, meta: 
             WorkspaceBooking.day == day,
         )
     )
-    if (
-        employee_day_booking is not None
-        and employee_day_booking.place is not None
-        and not employee_day_booking.place.is_active
-    ):
-        # Старая бронь на неактивном месте не должна блокировать новое бронирование.
-        db.delete(employee_day_booking)
-        employee_day_booking = None
 
     if employee_day_booking is not None and employee_day_booking.place_id != data.placeId:
-        raise HTTPException(
-            status_code=409,
-            detail="У сотрудника уже есть бронь на этот день.",
+        place_inactive = (
+            employee_day_booking.place is not None and not employee_day_booking.place.is_active
         )
+        if not place_inactive:
+            raise HTTPException(
+                status_code=409,
+                detail="У сотрудника уже есть бронь на этот день.",
+            )
+
     if employee_day_booking is not None:
         employee_day_booking.place_id = data.placeId
     else:

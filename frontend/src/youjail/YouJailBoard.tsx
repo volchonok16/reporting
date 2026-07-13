@@ -499,9 +499,20 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
           </select>
           <span className="youjail-count">{loading ? '…' : `${totalCards} карточек`}</span>
           <YouJailProjectsPanel
+            projects={board?.projects ?? []}
             onCreated={(project: YouJailProject) =>
               setBoard((current) =>
                 current ? { ...current, projects: [...current.projects, project] } : current,
+              )
+            }
+            onUpdated={(project: YouJailProject) =>
+              setBoard((current) =>
+                current
+                  ? {
+                      ...current,
+                      projects: current.projects.map((item) => (item.id === project.id ? project : item)),
+                    }
+                  : current,
               )
             }
           />
