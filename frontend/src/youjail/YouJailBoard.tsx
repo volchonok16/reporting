@@ -4,6 +4,7 @@ import OrgPhoto from '../org/OrgPhoto'
 import YouJailCardDetail from './YouJailCardDetail'
 import { mentionPreviewText } from './markdown'
 import YouJailProjectsPanel from './YouJailProjectsPanel'
+import YouJailTeamsPanel from './YouJailTeamsPanel'
 import type { YouJailBoard, YouJailBoardMeta, YouJailCard, YouJailColumn, YouJailProject } from './types'
 import '../youjail.css'
 
@@ -17,7 +18,11 @@ function cardsForColumn(cards: YouJailCard[], columnId: number): YouJailCard[] {
     .sort((left, right) => left.sortOrder - right.sortOrder || left.id - right.id)
 }
 
-export default function YouJailBoard() {
+type YouJailBoardProps = {
+  canManageOrg?: boolean
+}
+
+export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps) {
   const [board, setBoard] = useState<YouJailBoard | null>(null)
   const [activeBoardId, setActiveBoardId] = useState<number | null>(() => {
     const saved = localStorage.getItem(BOARD_STORAGE_KEY)
@@ -254,20 +259,41 @@ export default function YouJailBoard() {
               </option>
             ))}
           </select>
-          <button type="button" className="btn-secondary" onClick={() => setShowBoardForm((current) => !current)}>
-            + Доска
-          </button>
-          <button
-            type="button"
-            className="btn-ghost youjail-danger"
-            disabled={!board || (board.boards?.length ?? 0) <= 1}
-            onClick={() => void deleteBoard()}
-          >
-            Удалить доску
-          </button>
-          <button type="button" className="btn-secondary" onClick={() => setShowColumnForm((current) => !current)}>
-            + Колонка
-          </button>
+          <YouJailTeamsPanel
+            canManageOrg={canManageOrg}
+            activeBoard={board?.board ?? null}
+            onBoardTeamsUpdated={(updatedBoard) =>
+              setBoard((current) =>
+                current
+                  ? {
+                      ...current,
+                      board: updatedBoard,
+                      boards: current.boards.map((item) =>
+                        item.id === updatedBoard.id ? updatedBoard : item,
+                      ),
+                    }
+                  : current,
+              )
+            }
+          />
+          {canManageOrg ? (
+            <>
+              <button type="button" className="btn-secondary" onClick={() => setShowBoardForm((current) => !current)}>
+                + Доска
+              </button>
+              <button
+                type="button"
+                className="btn-ghost youjail-danger"
+                disabled={!board || (board.boards?.length ?? 0) <= 1}
+                onClick={() => void deleteBoard()}
+              >
+                Удалить доску
+              </button>
+              <button type="button" className="btn-secondary" onClick={() => setShowColumnForm((current) => !current)}>
+                + Колонка
+              </button>
+            </>
+          ) : null}
           <input
             type="search"
             className="youjail-search"
@@ -302,7 +328,7 @@ export default function YouJailBoard() {
         </div>
       </div>
 
-      {showBoardForm ? (
+      {canManageOrg && showBoardForm ? (
         <form className="youjail-create-form" onSubmit={(event) => void createBoard(event)}>
           <input
             type="text"
@@ -321,7 +347,7 @@ export default function YouJailBoard() {
         </form>
       ) : null}
 
-      {showColumnForm ? (
+      {canManageOrg && showColumnForm ? (
         <form className="youjail-create-form" onSubmit={(event) => void createColumn(event)}>
           <input
             type="text"
@@ -381,7 +407,7 @@ export default function YouJailBoard() {
               aria-label={`${column.title}, ${cards.length}`}
             >
               <header className="youjail-column-header">
-                {editingColumnId === column.id ? (
+                {canManageOrg && editingColumnId === column.id ? (
                   <input
                     className="youjail-column-title-input"
                     value={editingColumnTitle}
@@ -390,7 +416,7 @@ export default function YouJailBoard() {
                     onBlur={() => void saveColumnTitle(column.id)}
                     onKeyDown={(event) => handleColumnTitleKeyDown(event, column.id)}
                   />
-                ) : (
+                ) : canManageOrg ? (
                   <button
                     type="button"
                     className="youjail-column-title-btn"
@@ -399,6 +425,8 @@ export default function YouJailBoard() {
                   >
                     <h2>{column.title}</h2>
                   </button>
+                ) : (
+                  <h2>{column.title}</h2>
                 )}
                 <span className="youjail-column-count">{cards.length}</span>
               </header>

@@ -115,3 +115,35 @@ class YouJailExecutionLog(Base):
     stream: Mapped[str] = mapped_column(String(16), default="stdout")
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class YouJailTeam(Base):
+    __tablename__ = "youjail_team"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class YouJailTeamMember(Base):
+    __tablename__ = "youjail_team_member"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    team_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_team.id"), nullable=False)
+    employee_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("employee.id"), nullable=False)
+    role: Mapped[str] = mapped_column(String(32), default="member")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class YouJailBoardTeam(Base):
+    __tablename__ = "youjail_board_team"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    board_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_board.id"), nullable=False)
+    team_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_team.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

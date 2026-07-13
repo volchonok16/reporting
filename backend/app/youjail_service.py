@@ -11,21 +11,33 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import Select, desc, func, or_, select
+from sqlalchemy import Select, delete, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.org_models import Employee
 from app.org_photo_service import photo_public_url
+from app.youjail_access import (
+    actor_employee_id,
+    assert_board_access,
+    assert_card_access,
+    assert_youjail_admin,
+    accessible_board_ids,
+    is_youjail_admin,
+    team_member_count,
+)
 from app.youjail_models import (
     YouJailAttachment,
     YouJailBoard,
+    YouJailBoardTeam,
     YouJailCard,
     YouJailColumn,
     YouJailExecution,
     YouJailExecutionLog,
     YouJailProject,
     YouJailTaskType,
+    YouJailTeam,
+    YouJailTeamMember,
 )
 from app.youjail_terminal import run_command_with_pty
 
@@ -79,7 +91,24 @@ def _attachment_url(attachment_id: int) -> str:
     return f"/api/youjail/attachments/{attachment_id}/download"
 
 
-def _serialize_board(board: YouJailBoard) -> dict:
+def _board_team_ids(db: Session, board_id: int) -> list[int]:
+    return list(
+        db.scalars(select(YouJailBoardTeam.team_id).where(YouJailBoardTeam.board_id == board_id)).all()
+    )
+
+
+def _set_board_teams(db: Session, board_id: int, team_ids: list[int]) -> None:
+    unique_ids = sorted({int(team_id) for team_id in team_ids})
+    for team_id in unique_ids:
+        team = db.get(YouJailTeam, team_id)
+        if team is None or not team.is_active:
+            raise HTTPException(status_code=400, detail=f"Команда {team_id} не найдена.")
+    db.execute(delete(YouJailBoardTeam).where(YouJailBoardTeam.board_id == board_id))
+    for team_id in unique_ids:
+        db.add(YouJailBoardTeam(board_id=board_id, team_id=team_id))
+
+
+def _serialize_board(db: Session, board: YouJailBoard) -> dict:
     return {
         "id": board.id,
         "name": board.name,
@@ -87,20 +116,31 @@ def _serialize_board(board: YouJailBoard) -> dict:
         "description": board.description or "",
         "sortOrder": board.sort_order,
         "isActive": board.is_active,
+        "teamIds": _board_team_ids(db, board.id),
     }
 
 
-def _resolve_board_id(db: Session, board_id: int | None) -> int:
+def _filter_boards_query(query: Select, db: Session, meta: dict) -> Select:
+    allowed = accessible_board_ids(db, meta)
+    if allowed is None:
+        return query
+    if not allowed:
+        return query.where(YouJailBoard.id == -1)
+    return query.where(YouJailBoard.id.in_(allowed))
+
+
+def _resolve_board_id(db: Session, board_id: int | None, meta: dict) -> int:
     if board_id is not None:
         board = db.get(YouJailBoard, board_id)
         if board is None:
             raise HTTPException(status_code=404, detail="Доска не найдена.")
+        assert_board_access(db, meta, board.id)
         return board.id
-    board = db.scalar(
-        select(YouJailBoard).where(YouJailBoard.is_active.is_(True)).order_by(YouJailBoard.sort_order.asc()).limit(1)
-    )
+    query = select(YouJailBoard).where(YouJailBoard.is_active.is_(True)).order_by(YouJailBoard.sort_order.asc())
+    query = _filter_boards_query(query, db, meta)
+    board = db.scalar(query.limit(1))
     if board is None:
-        raise HTTPException(status_code=500, detail="Доски YouJail не инициализированы.")
+        raise HTTPException(status_code=403, detail="Нет доступных досок.")
     return board.id
 
 
@@ -253,18 +293,18 @@ def _serialize_card(db: Session, card: YouJailCard, *, detailed: bool = False) -
 def load_board(
     db: Session,
     *,
+    meta: dict,
     board_id: int | None = None,
     search: str | None = None,
     archived: str = "false",
 ) -> dict:
-    resolved_board_id = _resolve_board_id(db, board_id)
+    resolved_board_id = _resolve_board_id(db, board_id, meta)
     board = db.get(YouJailBoard, resolved_board_id)
     if board is None:
         raise HTTPException(status_code=404, detail="Доска не найдена.")
 
-    boards = db.scalars(
-        select(YouJailBoard).where(YouJailBoard.is_active.is_(True)).order_by(YouJailBoard.sort_order.asc())
-    ).all()
+    boards_query = select(YouJailBoard).where(YouJailBoard.is_active.is_(True)).order_by(YouJailBoard.sort_order.asc())
+    boards = db.scalars(_filter_boards_query(boards_query, db, meta)).all()
     columns = db.scalars(
         select(YouJailColumn)
         .where(YouJailColumn.board_id == resolved_board_id)
@@ -286,8 +326,8 @@ def load_board(
 
     cards = db.scalars(query).all()
     return {
-        "board": _serialize_board(board),
-        "boards": [_serialize_board(item) for item in boards],
+        "board": _serialize_board(db, board),
+        "boards": [_serialize_board(db, item) for item in boards],
         "columns": [_serialize_column(column) for column in columns],
         "cards": [_serialize_card(db, card) for card in cards],
         "projects": [
@@ -315,10 +355,8 @@ def load_board(
     }
 
 
-def get_card(db: Session, card_id: int) -> dict:
-    card = db.get(YouJailCard, card_id)
-    if card is None:
-        raise HTTPException(status_code=404, detail="Карточка не найдена.")
+def get_card(db: Session, card_id: int, *, meta: dict) -> dict:
+    card = assert_card_access(db, meta, card_id)
     return _serialize_card(db, card, detailed=True)
 
 
@@ -334,12 +372,14 @@ def _default_backlog_column_id(db: Session, board_id: int) -> int:
     return column.id
 
 
-def list_boards(db: Session) -> list[dict]:
-    boards = db.scalars(select(YouJailBoard).order_by(YouJailBoard.sort_order.asc())).all()
-    return [_serialize_board(board) for board in boards]
+def list_boards(db: Session, *, meta: dict) -> list[dict]:
+    query = select(YouJailBoard).where(YouJailBoard.is_active.is_(True)).order_by(YouJailBoard.sort_order.asc())
+    boards = db.scalars(_filter_boards_query(query, db, meta)).all()
+    return [_serialize_board(db, board) for board in boards]
 
 
-def create_board(db: Session, data: dict) -> dict:
+def create_board(db: Session, data: dict, *, meta: dict) -> dict:
+    assert_youjail_admin(meta)
     slug = _slugify(data.get("slug") or data["name"])
     existing = db.scalar(select(YouJailBoard).where(YouJailBoard.slug == slug))
     if existing is not None:
@@ -364,12 +404,17 @@ def create_board(db: Session, data: dict) -> dict:
                 sort_order=sort_order,
             )
         )
+    team_ids = data.get("teamIds") or []
+    if team_ids:
+        _set_board_teams(db, board.id, team_ids)
     db.commit()
     db.refresh(board)
-    return _serialize_board(board)
+    return _serialize_board(db, board)
 
 
-def delete_board(db: Session, board_id: int) -> None:
+def delete_board(db: Session, board_id: int, *, meta: dict) -> None:
+    assert_youjail_admin(meta)
+    assert_board_access(db, meta, board_id)
     board = db.get(YouJailBoard, board_id)
     if board is None:
         raise HTTPException(status_code=404, detail="Доска не найдена.")
@@ -384,10 +429,19 @@ def delete_board(db: Session, board_id: int) -> None:
     db.commit()
 
 
-def create_column(db: Session, board_id: int, data: dict) -> dict:
+def set_board_teams(db: Session, board_id: int, team_ids: list[int], *, meta: dict) -> dict:
+    assert_youjail_admin(meta)
     board = db.get(YouJailBoard, board_id)
     if board is None:
         raise HTTPException(status_code=404, detail="Доска не найдена.")
+    _set_board_teams(db, board_id, team_ids)
+    db.commit()
+    return _serialize_board(db, board)
+
+
+def create_column(db: Session, board_id: int, data: dict, *, meta: dict) -> dict:
+    assert_youjail_admin(meta)
+    assert_board_access(db, meta, board_id)
 
     title = data["title"].strip()
     base_key = _slugify(data.get("columnKey") or title).replace("-", "_")[:28] or "column"
@@ -420,10 +474,12 @@ def create_column(db: Session, board_id: int, data: dict) -> dict:
     return _serialize_column(column)
 
 
-def update_column(db: Session, column_id: int, data: dict) -> dict:
+def update_column(db: Session, column_id: int, data: dict, *, meta: dict) -> dict:
+    assert_youjail_admin(meta)
     column = db.get(YouJailColumn, column_id)
     if column is None:
         raise HTTPException(status_code=404, detail="Колонка не найдена.")
+    assert_board_access(db, meta, column.board_id)
 
     if data.get("title") is not None:
         column.title = data["title"].strip()
@@ -435,8 +491,8 @@ def update_column(db: Session, column_id: int, data: dict) -> dict:
     return _serialize_column(column)
 
 
-def create_card(db: Session, data: dict, *, created_by: str | None) -> dict:
-    board_id = _resolve_board_id(db, data.get("boardId"))
+def create_card(db: Session, data: dict, *, created_by: str | None, meta: dict) -> dict:
+    board_id = _resolve_board_id(db, data.get("boardId"), meta)
     column_id = data.get("columnId") or _default_backlog_column_id(db, board_id)
     column = db.get(YouJailColumn, column_id)
     if column is None or column.board_id != board_id:
@@ -467,13 +523,11 @@ def create_card(db: Session, data: dict, *, created_by: str | None) -> dict:
     db.add(card)
     db.commit()
     db.refresh(card)
-    return get_card(db, card.id)
+    return get_card(db, card.id, meta=meta)
 
 
-def update_card(db: Session, card_id: int, data: dict) -> dict:
-    card = db.get(YouJailCard, card_id)
-    if card is None:
-        raise HTTPException(status_code=404, detail="Карточка не найдена.")
+def update_card(db: Session, card_id: int, data: dict, *, meta: dict) -> dict:
+    card = assert_card_access(db, meta, card_id)
 
     if data.get("title") is not None:
         card.title = data["title"].strip()
@@ -497,7 +551,7 @@ def update_card(db: Session, card_id: int, data: dict) -> dict:
         card.assignee_employee_id = assignee_id
     if data.get("columnId") is not None:
         column = db.get(YouJailColumn, data["columnId"])
-        if column is None:
+        if column is None or column.board_id != card.board_id:
             raise HTTPException(status_code=400, detail="Колонка не найдена.")
         card.column_id = column.id
     if data.get("sortOrder") is not None:
@@ -506,13 +560,18 @@ def update_card(db: Session, card_id: int, data: dict) -> dict:
     card.updated_at = _utcnow()
     db.commit()
     db.refresh(card)
-    return get_card(db, card.id)
+    return get_card(db, card.id, meta=meta)
 
 
-def move_card(db: Session, card_id: int, *, column_id: int, sort_order: int | None) -> dict:
-    card = db.get(YouJailCard, card_id)
-    if card is None:
-        raise HTTPException(status_code=404, detail="Карточка не найдена.")
+def move_card(
+    db: Session,
+    card_id: int,
+    *,
+    column_id: int,
+    sort_order: int | None,
+    meta: dict,
+) -> dict:
+    card = assert_card_access(db, meta, card_id)
     column = db.get(YouJailColumn, column_id)
     if column is None or column.board_id != card.board_id:
         raise HTTPException(status_code=400, detail="Колонка не найдена.")
@@ -521,21 +580,17 @@ def move_card(db: Session, card_id: int, *, column_id: int, sort_order: int | No
     card.updated_at = _utcnow()
     db.commit()
     db.refresh(card)
-    return get_card(db, card.id)
+    return get_card(db, card.id, meta=meta)
 
 
-def delete_card(db: Session, card_id: int) -> None:
-    card = db.get(YouJailCard, card_id)
-    if card is None:
-        raise HTTPException(status_code=404, detail="Карточка не найдена.")
+def delete_card(db: Session, card_id: int, *, meta: dict) -> None:
+    card = assert_card_access(db, meta, card_id)
     db.delete(card)
     db.commit()
 
 
-def set_card_flag(db: Session, card_id: int, **flags: bool | datetime | None) -> dict:
-    card = db.get(YouJailCard, card_id)
-    if card is None:
-        raise HTTPException(status_code=404, detail="Карточка не найдена.")
+def set_card_flag(db: Session, card_id: int, *, meta: dict, **flags: bool | datetime | None) -> dict:
+    card = assert_card_access(db, meta, card_id)
     if "pinned" in flags:
         card.pinned = bool(flags["pinned"])
     if "archived" in flags:
@@ -545,7 +600,150 @@ def set_card_flag(db: Session, card_id: int, **flags: bool | datetime | None) ->
     card.updated_at = _utcnow()
     db.commit()
     db.refresh(card)
-    return get_card(db, card.id)
+    return get_card(db, card.id, meta=meta)
+
+
+def _serialize_team_member(db: Session, member: YouJailTeamMember) -> dict:
+    employee = db.get(Employee, member.employee_id)
+    return {
+        "id": member.id,
+        "teamId": member.team_id,
+        "employeeId": member.employee_id,
+        "employeeName": employee.full_name if employee else "—",
+        "employeePhotoUrl": photo_public_url(employee.photo_path) if employee else None,
+        "role": member.role,
+    }
+
+
+def _serialize_team(db: Session, team: YouJailTeam, *, with_members: bool = False) -> dict:
+    payload = {
+        "id": team.id,
+        "name": team.name,
+        "slug": team.slug,
+        "description": team.description or "",
+        "sortOrder": team.sort_order,
+        "isActive": team.is_active,
+        "memberCount": team_member_count(db, team.id),
+        "members": [],
+    }
+    if with_members:
+        members = db.scalars(
+            select(YouJailTeamMember)
+            .where(YouJailTeamMember.team_id == team.id)
+            .order_by(YouJailTeamMember.id.asc())
+        ).all()
+        payload["members"] = [_serialize_team_member(db, member) for member in members]
+    return payload
+
+
+def list_teams(db: Session, *, meta: dict, detailed: bool = False) -> list[dict]:
+    query = select(YouJailTeam).where(YouJailTeam.is_active.is_(True)).order_by(YouJailTeam.sort_order.asc())
+    if not is_youjail_admin(meta):
+        employee_id = actor_employee_id(db, meta)
+        if employee_id is None:
+            return []
+        query = (
+            select(YouJailTeam)
+            .join(YouJailTeamMember, YouJailTeamMember.team_id == YouJailTeam.id)
+            .where(
+                YouJailTeamMember.employee_id == employee_id,
+                YouJailTeam.is_active.is_(True),
+            )
+            .order_by(YouJailTeam.sort_order.asc())
+        )
+    teams = db.scalars(query).unique().all()
+    return [_serialize_team(db, team, with_members=detailed) for team in teams]
+
+
+def create_team(db: Session, data: dict, *, meta: dict) -> dict:
+    assert_youjail_admin(meta)
+    slug = _slugify(data.get("slug") or data["name"])
+    existing = db.scalar(select(YouJailTeam).where(YouJailTeam.slug == slug))
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="Команда с таким slug уже существует.")
+    team = YouJailTeam(
+        name=data["name"].strip(),
+        slug=slug,
+        description=(data.get("description") or "").strip(),
+        sort_order=int(data.get("sortOrder") or 0),
+        updated_at=_utcnow(),
+    )
+    db.add(team)
+    db.commit()
+    db.refresh(team)
+    return _serialize_team(db, team, with_members=True)
+
+
+def update_team(db: Session, team_id: int, data: dict, *, meta: dict) -> dict:
+    assert_youjail_admin(meta)
+    team = db.get(YouJailTeam, team_id)
+    if team is None:
+        raise HTTPException(status_code=404, detail="Команда не найдена.")
+    if data.get("name") is not None:
+        team.name = data["name"].strip()
+    if data.get("description") is not None:
+        team.description = data["description"]
+    if data.get("sortOrder") is not None:
+        team.sort_order = int(data["sortOrder"])
+    if data.get("isActive") is not None:
+        team.is_active = bool(data["isActive"])
+    team.updated_at = _utcnow()
+    db.commit()
+    db.refresh(team)
+    return _serialize_team(db, team, with_members=True)
+
+
+def delete_team(db: Session, team_id: int, *, meta: dict) -> None:
+    assert_youjail_admin(meta)
+    team = db.get(YouJailTeam, team_id)
+    if team is None:
+        raise HTTPException(status_code=404, detail="Команда не найдена.")
+    db.delete(team)
+    db.commit()
+
+
+def add_team_member(db: Session, team_id: int, data: dict, *, meta: dict) -> dict:
+    assert_youjail_admin(meta)
+    team = db.get(YouJailTeam, team_id)
+    if team is None:
+        raise HTTPException(status_code=404, detail="Команда не найдена.")
+    employee_id = int(data["employeeId"])
+    employee = db.get(Employee, employee_id)
+    if employee is None or not employee.is_active:
+        raise HTTPException(status_code=400, detail="Сотрудник не найден.")
+    existing = db.scalar(
+        select(YouJailTeamMember).where(
+            YouJailTeamMember.team_id == team_id,
+            YouJailTeamMember.employee_id == employee_id,
+        )
+    )
+    if existing is None:
+        db.add(
+            YouJailTeamMember(
+                team_id=team_id,
+                employee_id=employee_id,
+                role=(data.get("role") or "member").strip()[:32],
+            )
+        )
+        db.commit()
+    return _serialize_team(db, team, with_members=True)
+
+
+def remove_team_member(db: Session, team_id: int, employee_id: int, *, meta: dict) -> dict:
+    assert_youjail_admin(meta)
+    team = db.get(YouJailTeam, team_id)
+    if team is None:
+        raise HTTPException(status_code=404, detail="Команда не найдена.")
+    member = db.scalar(
+        select(YouJailTeamMember).where(
+            YouJailTeamMember.team_id == team_id,
+            YouJailTeamMember.employee_id == employee_id,
+        )
+    )
+    if member is not None:
+        db.delete(member)
+        db.commit()
+    return _serialize_team(db, team, with_members=True)
 
 
 def list_projects(db: Session) -> list[dict]:
@@ -648,10 +846,8 @@ def create_task_type(db: Session, data: dict) -> dict:
     }
 
 
-async def save_attachment(db: Session, card_id: int, file: UploadFile) -> dict:
-    card = db.get(YouJailCard, card_id)
-    if card is None:
-        raise HTTPException(status_code=404, detail="Карточка не найдена.")
+async def save_attachment(db: Session, card_id: int, file: UploadFile, *, meta: dict) -> dict:
+    card = assert_card_access(db, meta, card_id)
     if not file.filename:
         raise HTTPException(status_code=400, detail="Файл не выбран.")
 
@@ -678,20 +874,22 @@ async def save_attachment(db: Session, card_id: int, file: UploadFile) -> dict:
     return _serialize_attachment(attachment)
 
 
-def load_attachment_file(db: Session, attachment_id: int) -> tuple[Path, str, str | None]:
+def load_attachment_file(db: Session, attachment_id: int, *, meta: dict) -> tuple[Path, str, str | None]:
     attachment = db.get(YouJailAttachment, attachment_id)
     if attachment is None:
         raise HTTPException(status_code=404, detail="Вложение не найдено.")
+    assert_card_access(db, meta, attachment.card_id)
     path = Path(attachment.storage_path)
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Файл вложения отсутствует.")
     return path, attachment.filename, attachment.content_type
 
 
-def delete_attachment(db: Session, attachment_id: int) -> None:
+def delete_attachment(db: Session, attachment_id: int, *, meta: dict) -> None:
     attachment = db.get(YouJailAttachment, attachment_id)
     if attachment is None:
         raise HTTPException(status_code=404, detail="Вложение не найдено.")
+    assert_card_access(db, meta, attachment.card_id)
     path = Path(attachment.storage_path)
     if path.is_file():
         path.unlink(missing_ok=True)
@@ -830,10 +1028,8 @@ def _run_execution_thread(execution_id: int, card_id: int, command: str | None, 
         db.close()
 
 
-def start_execution(db: Session, card_id: int, *, executor: str | None, feedback: str | None) -> dict:
-    card = db.get(YouJailCard, card_id)
-    if card is None:
-        raise HTTPException(status_code=404, detail="Карточка не найдена.")
+def start_execution(db: Session, card_id: int, *, executor: str | None, feedback: str | None, meta: dict) -> dict:
+    card = assert_card_access(db, meta, card_id)
     if card.execution_status == "running":
         raise HTTPException(status_code=409, detail="Карточка уже выполняется.")
 
@@ -875,14 +1071,16 @@ def start_execution(db: Session, card_id: int, *, executor: str | None, feedback
     return _serialize_execution(db, execution, with_logs=False)
 
 
-def get_execution(db: Session, execution_id: int, *, with_logs: bool = True) -> dict:
+def get_execution(db: Session, execution_id: int, *, meta: dict, with_logs: bool = True) -> dict:
     execution = db.get(YouJailExecution, execution_id)
     if execution is None:
         raise HTTPException(status_code=404, detail="Запуск не найден.")
+    assert_card_access(db, meta, execution.card_id)
     return _serialize_execution(db, execution, with_logs=with_logs)
 
 
-def list_card_executions(db: Session, card_id: int) -> list[dict]:
+def list_card_executions(db: Session, card_id: int, *, meta: dict) -> list[dict]:
+    assert_card_access(db, meta, card_id)
     executions = db.scalars(
         select(YouJailExecution)
         .where(YouJailExecution.card_id == card_id)

@@ -790,7 +790,34 @@
 
 Вложения к карточке; запуски исполнителя и построчный лог (`stdout` / `stderr` / `system` / `pty`).
 
-API: префикс `/api/youjail/*`. Управление: `DELETE /api/youjail/boards/{id}`, `POST /api/youjail/boards/{id}/columns`, `PATCH /api/youjail/columns/{id}`. WebSocket PTY: `GET /api/youjail/executions/{id}/terminal?X-Session-Id=…`. Fuzzy-поиск: `GET /api/youjail/board?search=…&boardId=…`. CLI: `python backend/scripts/ty.py` (команды `boards`, `cards`, `exec`, `search`). Файлы: `YOUJAIL_WORKSPACE_DIR`, `YOUJAIL_EXECUTOR_COMMAND`.
+### youjail_team
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `name`, `slug` | varchar | Название и уникальный ключ команды YouJail |
+| `description` | text | Описание |
+| `is_active`, `sort_order` | | Активность и порядок в списке |
+
+### youjail_team_member
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `team_id` | bigint | FK → `youjail_team` |
+| `employee_id` | bigint | FK → `employee` |
+| `role` | varchar(32) | `member` (по умолчанию) |
+
+Уникальность: `(team_id, employee_id)`.
+
+### youjail_board_team
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `board_id` | bigint | FK → `youjail_board` |
+| `team_id` | bigint | FK → `youjail_team` |
+
+Связь M:N: доска видна участникам любой из привязанных команд. Без привязанных команд доска доступна только админам.
+
+API: префикс `/api/youjail/*`. `DELETE /api/youjail/boards/{id}`, `POST /api/youjail/boards/{id}/columns`, `PATCH /api/youjail/columns/{id}`, `GET/POST/PATCH/DELETE /api/youjail/teams`, `PUT /api/youjail/boards/{id}/teams`. Доступ: админы (`can_manage_org`) видят все доски; пользователи — только доски, привязанные к командам, в которых они состоят (`youjail_board_team` + `youjail_team_member`). WebSocket PTY: `GET /api/youjail/executions/{id}/terminal?X-Session-Id=…`. Fuzzy-поиск: `GET /api/youjail/board?search=…&boardId=…`. CLI: `python backend/scripts/ty.py` (команды `boards`, `cards`, `exec`, `search`). Файлы: `YOUJAIL_WORKSPACE_DIR`, `YOUJAIL_EXECUTOR_COMMAND`.
 
 ---
 

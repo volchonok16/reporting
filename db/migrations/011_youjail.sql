@@ -89,13 +89,7 @@ CREATE TABLE IF NOT EXISTS youjail_execution_log (
     UNIQUE (execution_id, seq)
 );
 
-INSERT INTO youjail_column (column_key, title, tone, sort_order)
-VALUES
-    ('backlog', 'Backlog', 'backlog', 1),
-    ('in_progress', 'In Progress', 'progress', 2),
-    ('blocked', 'Blocked', 'blocked', 3),
-    ('done', 'Done', 'done', 4)
-ON CONFLICT (column_key) DO NOTHING;
+-- Seed колонок перенесён в 017_youjail_boards_fuzzy.sql (board_id + уникальность по доске).
 
 INSERT INTO youjail_task_type (name, instructions_md, sort_order)
 VALUES

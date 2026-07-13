@@ -5,13 +5,11 @@ import YouJailMentionTextarea from './YouJailMentionTextarea'
 import { renderMarkdown } from './markdown'
 import type {
   YouJailCard,
-  YouJailExecution,
   YouJailExecutor,
   YouJailProject,
   YouJailTaskType,
 } from './types'
 import { YOUJAIL_EXECUTORS } from './types'
-import YouJailTerminal from './YouJailTerminal'
 
 type YouJailCardDetailProps = {
   cardId: number | null
@@ -50,8 +48,6 @@ export default function YouJailCardDetail({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notesTab, setNotesTab] = useState<'edit' | 'preview'>('edit')
-  const [retryFeedback, setRetryFeedback] = useState('')
-  const [execution, setExecution] = useState<YouJailExecution | null>(null)
   const [runningAction, setRunningAction] = useState<string | null>(null)
 
   const loadCard = useCallback(async () => {
@@ -61,7 +57,6 @@ export default function YouJailCardDetail({
     try {
       const payload = await getJson<YouJailCard>(`/api/youjail/cards/${cardId}`)
       setCard(payload)
-      setExecution(payload.latestExecution ?? null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось загрузить карточку')
       setCard(null)
@@ -83,26 +78,6 @@ export default function YouJailCardDetail({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [cardId, onClose])
 
-  useEffect(() => {
-    if (!execution || execution.status === 'succeeded' || execution.status === 'failed') return
-    const timer = window.setInterval(() => {
-      void getJson<YouJailExecution>(`/api/youjail/executions/${execution.id}`)
-        .then((payload) => {
-          setExecution(payload)
-          if (payload.status !== 'running') {
-            void loadCard()
-          }
-        })
-        .catch(() => undefined)
-    }, 1500)
-    return () => window.clearInterval(timer)
-  }, [execution, loadCard])
-
-  const terminalRunning =
-    execution?.status === 'running' ||
-    execution?.status === 'queued' ||
-    card?.executionStatus === 'running'
-
   const previewHtml = useMemo(
     () => (card ? renderMarkdown(card.descriptionMd) : ''),
     [card?.descriptionMd, card],
@@ -123,7 +98,7 @@ export default function YouJailCardDetail({
     }
   }
 
-  const runAction = async (action: 'execute' | 'retry' | 'pin' | 'archive' | 'close' | 'delete') => {
+  const runAction = async (action: 'pin' | 'archive' | 'close' | 'delete') => {
     if (!card) return
     setRunningAction(action)
     setError(null)
@@ -135,26 +110,9 @@ export default function YouJailCardDetail({
         onClose()
         return
       }
-      const endpoint =
-        action === 'execute'
-          ? `/api/youjail/cards/${card.id}/execute`
-          : action === 'retry'
-            ? `/api/youjail/cards/${card.id}/retry`
-            : `/api/youjail/cards/${card.id}/${action}`
-      const payload =
-        action === 'retry'
-          ? await postJson<YouJailExecution>(endpoint, { retryFeedback })
-          : action === 'execute'
-            ? await postJson<YouJailExecution>(endpoint, {})
-            : await postJson<YouJailCard>(endpoint, {})
-      if (action === 'execute' || action === 'retry') {
-        setExecution(payload as YouJailExecution)
-        void loadCard()
-      } else {
-        const updated = payload as YouJailCard
-        setCard(updated)
-        onUpdated(updated)
-      }
+      const updated = await postJson<YouJailCard>(`/api/youjail/cards/${card.id}/${action}`, {})
+      setCard(updated)
+      onUpdated(updated)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Операция не удалась')
     } finally {
@@ -405,22 +363,6 @@ export default function YouJailCardDetail({
 
             <div className="youjail-detail-side">
               <div className="youjail-detail-actions">
-                <button
-                  type="button"
-                  className="btn-primary"
-                  disabled={runningAction !== null || card.executionStatus === 'running'}
-                  onClick={() => void runAction('execute')}
-                >
-                  {runningAction === 'execute' ? 'Запуск…' : 'Выполнить'}
-                </button>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  disabled={runningAction !== null}
-                  onClick={() => void runAction('retry')}
-                >
-                  Повторить
-                </button>
                 <button type="button" className="btn-ghost" onClick={() => void runAction('pin')}>
                   {card.pinned ? 'Открепить' : 'Закрепить'}
                 </button>
@@ -434,59 +376,6 @@ export default function YouJailCardDetail({
                   Удалить
                 </button>
               </div>
-
-              <label className="youjail-field">
-                <span>Feedback для retry</span>
-                <textarea
-                  className="youjail-retry-feedback"
-                  value={retryFeedback}
-                  onChange={(event) => setRetryFeedback(event.target.value)}
-                  placeholder="Что исправить при повторном запуске"
-                />
-              </label>
-
-              <section className="youjail-meta">
-                <p>
-                  <strong>Статус:</strong> {card.executionStatus}
-                </p>
-                {card.worktreePath ? (
-                  <p>
-                    <strong>Worktree:</strong> <code>{card.worktreePath}</code>
-                  </p>
-                ) : null}
-                {card.closedAt ? (
-                  <p>
-                    <strong>Закрыта:</strong> {new Date(card.closedAt).toLocaleString('ru-RU')}
-                  </p>
-                ) : null}
-              </section>
-
-              <section className="youjail-execution-log">
-                <h3>PTY-терминал</h3>
-                {!execution ? (
-                  <p className="youjail-muted">Запусков пока не было</p>
-                ) : (
-                  <>
-                    <YouJailTerminal
-                      executionId={execution.id}
-                      running={terminalRunning}
-                      historyLogs={execution.logs ?? []}
-                    />
-                    {!terminalRunning && (execution.logs?.length ?? 0) > 0 ? (
-                      <details className="youjail-log-history">
-                        <summary>Текстовый лог (копия)</summary>
-                        <div className="youjail-log-stream">
-                          {(execution.logs ?? []).map((line) => (
-                            <div key={line.id} className={`youjail-log-line is-${line.stream}`}>
-                              {line.content}
-                            </div>
-                          ))}
-                        </div>
-                      </details>
-                    ) : null}
-                  </>
-                )}
-              </section>
             </div>
           </div>
         ) : null}

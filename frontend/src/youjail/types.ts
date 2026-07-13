@@ -5,6 +5,27 @@ export type YouJailBoardMeta = {
   description: string
   sortOrder: number
   isActive: boolean
+  teamIds: number[]
+}
+
+export type YouJailTeamMember = {
+  id: number
+  teamId: number
+  employeeId: number
+  employeeName: string
+  employeePhotoUrl?: string | null
+  role: string
+}
+
+export type YouJailTeam = {
+  id: number
+  name: string
+  slug: string
+  description: string
+  sortOrder: number
+  isActive: boolean
+  memberCount: number
+  members: YouJailTeamMember[]
 }
 
 export type YouJailColumnTone = 'backlog' | 'progress' | 'blocked' | 'done' | 'custom' | string

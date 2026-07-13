@@ -742,6 +742,151 @@
   font-size: 12px;
 }
 
+.youjail-teams-panel {
+  position: relative;
+}
+
+.youjail-teams-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  width: min(720px, 92vw);
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-lg);
+}
+
+.youjail-teams-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.youjail-teams-popover-head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.youjail-teams-create {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.youjail-teams-create input {
+  flex: 1;
+  min-width: 0;
+}
+
+.youjail-teams-layout {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 12px;
+  min-height: 180px;
+}
+
+.youjail-teams-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.youjail-team-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.youjail-team-item.is-active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
+}
+
+.youjail-team-count {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.youjail-team-detail h4,
+.youjail-board-teams h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.youjail-team-members {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.youjail-team-member-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.youjail-team-member-photo,
+.youjail-team-member-photo--placeholder {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.youjail-team-member-photo--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface-2));
+}
+
+.youjail-team-add-member {
+  display: flex;
+  gap: 8px;
+}
+
+.youjail-team-add-member select {
+  flex: 1;
+  min-width: 0;
+}
+
+.youjail-board-teams {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.youjail-board-teams-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-bottom: 10px;
+}
+
+.youjail-board-team-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
 @media (max-width: 960px) {
   .youjail-detail-body {
     grid-template-columns: 1fr;

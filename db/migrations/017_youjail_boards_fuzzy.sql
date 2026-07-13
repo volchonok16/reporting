@@ -26,6 +26,14 @@ DROP INDEX IF EXISTS youjail_column_column_key_key;
 CREATE UNIQUE INDEX IF NOT EXISTS ix_youjail_column_board_key
     ON youjail_column (board_id, column_key);
 
+INSERT INTO youjail_column (board_id, column_key, title, tone, sort_order)
+VALUES
+    (1, 'backlog', 'Backlog', 'backlog', 1),
+    (1, 'in_progress', 'In Progress', 'progress', 2),
+    (1, 'blocked', 'Blocked', 'blocked', 3),
+    (1, 'done', 'Done', 'done', 4)
+ON CONFLICT (board_id, column_key) DO NOTHING;
+
 ALTER TABLE youjail_card ADD COLUMN IF NOT EXISTS board_id BIGINT;
 UPDATE youjail_card SET board_id = 1 WHERE board_id IS NULL;
 ALTER TABLE youjail_card ALTER COLUMN board_id SET NOT NULL;

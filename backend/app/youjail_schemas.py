@@ -10,6 +10,7 @@ class YouJailBoardMetaOut(BaseModel):
     description: str = ""
     sortOrder: int = 0
     isActive: bool = True
+    teamIds: list[int] = Field(default_factory=list)
 
 
 class YouJailBoardIn(BaseModel):
@@ -17,6 +18,50 @@ class YouJailBoardIn(BaseModel):
     slug: str | None = Field(default=None, min_length=1, max_length=64)
     description: str = ""
     sortOrder: int = 0
+    teamIds: list[int] = Field(default_factory=list)
+
+
+class YouJailBoardTeamsIn(BaseModel):
+    teamIds: list[int] = Field(default_factory=list)
+
+
+class YouJailTeamMemberOut(BaseModel):
+    id: int
+    teamId: int
+    employeeId: int
+    employeeName: str
+    employeePhotoUrl: str | None = None
+    role: str = "member"
+
+
+class YouJailTeamOut(BaseModel):
+    id: int
+    name: str
+    slug: str
+    description: str = ""
+    sortOrder: int = 0
+    isActive: bool = True
+    memberCount: int = 0
+    members: list[YouJailTeamMemberOut] = Field(default_factory=list)
+
+
+class YouJailTeamIn(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    slug: str | None = Field(default=None, min_length=1, max_length=64)
+    description: str = ""
+    sortOrder: int = 0
+
+
+class YouJailTeamUpdateIn(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+    sortOrder: int | None = None
+    isActive: bool | None = None
+
+
+class YouJailTeamMemberIn(BaseModel):
+    employeeId: int
+    role: str = "member"
 
 
 class YouJailProjectOut(BaseModel):
