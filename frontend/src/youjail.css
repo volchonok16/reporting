@@ -3002,6 +3002,40 @@
   margin-bottom: 10px;
 }
 
+.youjail-link-chip-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.youjail-link-chip-row .youjail-zni-link,
+.youjail-link-chip-row .youjail-related-card-btn {
+  flex: 1;
+  min-width: 0;
+}
+
+.youjail-link-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.youjail-link-remove:hover {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface-2));
+  color: var(--danger);
+}
+
 .youjail-zni-link {
   display: grid;
   grid-template-columns: auto 1fr auto;

@@ -222,7 +222,7 @@ class Settings(BaseSettings):
         ),
     )
     youjail_max_attachment_bytes: int = Field(
-        default=50 * 1024 * 1024,
+        default=10 * 1024 * 1024,
         alias="YOUJAIL_MAX_ATTACHMENT_BYTES",
     )
     minio_endpoint: str = Field(

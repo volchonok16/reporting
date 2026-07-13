@@ -9,28 +9,16 @@ from sqlalchemy.orm import Session
 from app.youjail_access import accessible_board_ids
 from app.youjail_models import YouJailBoard, YouJailCard
 
-PERSONAL_CARD_KEY_PREFIX = "MY"
 _CARD_KEY_RE = re.compile(r"^([A-Za-z0-9_-]+)-(\d+)$")
 
 
-def global_card_key(board: YouJailBoard, card_number: int) -> str:
+def card_key_for_board(board: YouJailBoard, card_number: int, **_kwargs) -> str:
     prefix = board.slug.upper().replace("-", "")
     return f"{prefix}-{card_number}"
 
 
-def card_key_for_board(
-    board: YouJailBoard,
-    card_number: int,
-    *,
-    viewer_employee_id: int | None = None,
-) -> str:
-    if (
-        board.owner_employee_id is not None
-        and viewer_employee_id is not None
-        and board.owner_employee_id == viewer_employee_id
-    ):
-        return f"{PERSONAL_CARD_KEY_PREFIX}-{card_number}"
-    return global_card_key(board, card_number)
+def global_card_key(board: YouJailBoard, card_number: int) -> str:
+    return card_key_for_board(board, card_number)
 
 
 def resolve_card_number(board: YouJailBoard, card_key: str) -> int | None:
@@ -38,13 +26,6 @@ def resolve_card_number(board: YouJailBoard, card_key: str) -> int | None:
     if not match:
         return None
     prefix, number_raw = match.group(1), int(match.group(2))
-    if board.owner_employee_id is not None:
-        if prefix == PERSONAL_CARD_KEY_PREFIX:
-            return number_raw
-        legacy_prefix = board.slug.upper().replace("-", "")
-        if prefix == legacy_prefix:
-            return number_raw
-        return None
     expected = board.slug.upper().replace("-", "")
     if prefix != expected:
         return None
@@ -90,11 +71,7 @@ def find_card_by_key(db: Session, meta: dict, card_key: str) -> YouJailCard:
     matches: list[tuple[YouJailBoard, YouJailCard]] = []
 
     for board in _accessible_boards(db, meta):
-        board_prefix = _board_prefix(board)
-        key_matches = prefix == board_prefix
-        if not key_matches and prefix == PERSONAL_CARD_KEY_PREFIX and board.owner_employee_id is not None:
-            key_matches = True
-        if not key_matches:
+        if prefix != _board_prefix(board):
             continue
 
         card = db.scalar(

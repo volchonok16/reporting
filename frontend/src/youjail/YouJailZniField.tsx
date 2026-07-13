@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { postJson } from '../api'
 import { formatZniNumbers, parseZniNumbers, ZNI_NUMBERS_PLACEHOLDER } from '../productStatusZni'
 import ZniDetailModal from '../ZniDetailModal'
@@ -44,11 +44,14 @@ export default function YouJailZniField({
   onChange,
   onBlur,
 }: YouJailZniFieldProps) {
+  const [draft, setDraft] = useState('')
   const [lookup, setLookup] = useState<Record<string, YouJailLinkedZni>>({})
   const [modalItem, setModalItem] = useState<ChangeRequest | null>(null)
 
-  const parsedNumbers = useMemo(() => parseZniNumbers(value), [value])
-  const lookupKey = parsedNumbers.join(',')
+  const committedNumbers = useMemo(() => parseZniNumbers(value), [value])
+
+  const draftNumbers = useMemo(() => parseZniNumbers(draft), [draft])
+  const lookupKey = draftNumbers.join(',')
 
   useEffect(() => {
     if (!lookupKey) {
@@ -59,7 +62,7 @@ export default function YouJailZniField({
     let cancelled = false
     const timer = window.setTimeout(() => {
       void postJson<YouJailZniLookupResponse>('/api/youjail/zni/lookup', {
-        numbers: parsedNumbers,
+        numbers: draftNumbers,
       })
         .then((payload) => {
           if (cancelled) return
@@ -78,10 +81,32 @@ export default function YouJailZniField({
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [lookupKey, parsedNumbers])
+  }, [draftNumbers, lookupKey])
 
-  const displayItems = linked.length > 0 ? linked : parsedNumbers.map((number) => lookup[number]).filter(Boolean)
-  const missingNumbers = parsedNumbers.filter((number) => !lookup[number] && !linked.some((item) => item.number === number))
+  const commitDraft = useCallback(() => {
+    const added = parseZniNumbers(draft)
+    if (added.length === 0) return
+    const merged = formatZniNumbers([...new Set([...committedNumbers, ...added])])
+    setDraft('')
+    onChange(merged)
+    onBlur(merged)
+  }, [committedNumbers, draft, onBlur, onChange])
+
+  const removeZni = useCallback(
+    (number: string) => {
+      const merged = formatZniNumbers(committedNumbers.filter((item) => item !== number))
+      onChange(merged)
+      onBlur(merged)
+    },
+    [committedNumbers, onBlur, onChange],
+  )
+
+  const displayItems = useMemo(() => {
+    const linkedByNumber = new Map(linked.map((item) => [item.number, item]))
+    return committedNumbers.map((number) => linkedByNumber.get(number) ?? { number, title: number })
+  }, [committedNumbers, linked])
+
+  const missingNumbers = draftNumbers.filter((number) => !lookup[number])
 
   return (
     <div className="youjail-zni-field">
@@ -89,44 +114,53 @@ export default function YouJailZniField({
         <span>ЗНИ</span>
         <input
           type="text"
-          value={value}
+          value={draft}
           disabled={disabled}
-          placeholder={ZNI_NUMBERS_PLACEHOLDER}
-          onChange={(event) => onChange(event.target.value)}
-          onBlur={() => {
-            const normalized = formatZniNumbers(parseZniNumbers(value))
-            if (normalized !== value) {
-              onChange(normalized)
+          placeholder={committedNumbers.length > 0 ? 'Добавить номер…' : ZNI_NUMBERS_PLACEHOLDER}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              commitDraft()
             }
-            onBlur(normalized)
           }}
+          onBlur={() => commitDraft()}
         />
       </label>
       <p className="youjail-muted youjail-zni-hint">
-        Номера через запятую. Данные подтягиваются из синхронизированной базы ЗНИ.
+        Введите номер и нажмите Enter — поле очистится. Связь снимается крестиком у карточки ЗНИ.
       </p>
 
       {displayItems.length > 0 ? (
         <div className="youjail-zni-links">
           {displayItems.map((item) => (
-            <button
-              key={item.number}
-              type="button"
-              className="youjail-zni-link"
-              onClick={() => setModalItem(toChangeRequest(item))}
-            >
-              <span className="youjail-zni-link-number">{item.number}</span>
-              <span className="youjail-zni-link-title">{item.title}</span>
-              {item.boardName ? <span className="youjail-zni-link-board">{item.boardName}</span> : null}
-            </button>
+            <div key={item.number} className="youjail-link-chip-row">
+              <button
+                type="button"
+                className="youjail-zni-link"
+                onClick={() => setModalItem(toChangeRequest(item))}
+              >
+                <span className="youjail-zni-link-number">{item.number}</span>
+                <span className="youjail-zni-link-title">{item.title}</span>
+                {item.boardName ? <span className="youjail-zni-link-board">{item.boardName}</span> : null}
+              </button>
+              {!disabled ? (
+                <button
+                  type="button"
+                  className="youjail-link-remove"
+                  aria-label={`Убрать связь с ЗНИ ${item.number}`}
+                  onClick={() => removeZni(item.number)}
+                >
+                  ×
+                </button>
+              ) : null}
+            </div>
           ))}
         </div>
       ) : null}
 
       {missingNumbers.length > 0 ? (
-        <p className="youjail-zni-missing">
-          Не найдены в базе: {missingNumbers.join(', ')}
-        </p>
+        <p className="youjail-zni-missing">Не найдены в базе: {missingNumbers.join(', ')}</p>
       ) : null}
 
       <ZniDetailModal item={modalItem} onClose={() => setModalItem(null)} />
