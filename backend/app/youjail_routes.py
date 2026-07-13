@@ -26,6 +26,7 @@ from app.youjail_schemas import (
     YouJailTaskTypeOut,
     YouJailTagIn,
     YouJailTagOut,
+    YouJailTeamBoardsIn,
     YouJailTeamIn,
     YouJailTeamMemberIn,
     YouJailTeamOut,
@@ -59,6 +60,7 @@ from app.youjail_service import (
     remove_team_member,
     save_attachment,
     set_board_teams,
+    set_team_boards,
     set_card_flag,
     start_execution,
     update_card,
@@ -142,6 +144,16 @@ def api_remove_team_member(
     meta: dict = Depends(_load_session_meta),
 ) -> dict:
     return remove_team_member(db, team_id, employee_id, meta=meta)
+
+
+@router.put("/teams/{team_id}/boards", response_model=YouJailTeamOut)
+def api_set_team_boards(
+    team_id: int,
+    payload: YouJailTeamBoardsIn,
+    db: Session = Depends(get_db),
+    meta: dict = Depends(_load_session_meta),
+) -> dict:
+    return set_team_boards(db, team_id, payload.boardIds, meta=meta)
 
 
 @router.get("/boards", response_model=list[YouJailBoardMetaOut])

@@ -197,6 +197,10 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
     cardWasDraggedRef.current = false
     event.dataTransfer.setData('text/plain', String(cardId))
     event.dataTransfer.effectAllowed = 'move'
+    if (event.dataTransfer.setDragImage) {
+      const target = event.currentTarget
+      event.dataTransfer.setDragImage(target, Math.min(24, target.clientWidth / 2), 16)
+    }
     setDraggedCardId(cardId)
     window.requestAnimationFrame(() => {
       cardWasDraggedRef.current = true
@@ -409,6 +413,26 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
           <p>Отдельная kanban-доска с заметками, проектами, исполнителями и логами запусков.</p>
         </div>
         <div className="youjail-toolbar-actions">
+          {canManageOrg ? (
+            <button
+              type="button"
+              className={`youjail-columns-btn${boardEditMode ? ' is-active' : ''}`}
+              onClick={() => {
+                setBoardEditMode((current) => {
+                  if (current) {
+                    setEditingColumnId(null)
+                    setEditingColumnTitle('')
+                    setShowColumnForm(false)
+                    cancelColumnDelete()
+                    clearColumnDragState()
+                  }
+                  return !current
+                })
+              }}
+            >
+              {boardEditMode ? '✓ Готово' : '✎ Колонки'}
+            </button>
+          ) : null}
           <select
             className="youjail-board-select"
             value={activeBoardId ?? board?.board.id ?? ''}
@@ -426,24 +450,6 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
           </select>
           {canManageOrg ? (
             <>
-              <button
-                type="button"
-                className={boardEditMode ? 'btn-primary' : 'btn-secondary'}
-                onClick={() => {
-                  setBoardEditMode((current) => {
-                    if (current) {
-                      setEditingColumnId(null)
-                      setEditingColumnTitle('')
-                      setShowColumnForm(false)
-                      cancelColumnDelete()
-                      clearColumnDragState()
-                    }
-                    return !current
-                  })
-                }}
-              >
-                {boardEditMode ? 'Готово' : 'Колонки'}
-              </button>
               <button type="button" className="btn-secondary" onClick={() => setShowBoardForm((current) => !current)}>
                 + Доска
               </button>
@@ -556,7 +562,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
           <div className="youjail-edit-banner-main">
             <strong>Редактирование колонок</strong>
             <span>
-              Перетащите ⋮⋮ для порядка · нажмите название, чтобы переименовать · выберите цвет · удалите ненужные колонки
+              Перетащите ⋮⋮ для порядка · нажмите название, чтобы переименовать · выберите цвет · удалите ненужные колонки. Нажмите «✓ Готово», чтобы снова перетаскивать карточки.
             </span>
           </div>
           <button
@@ -716,7 +722,6 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
                 ) : null}
                 {cards.map((card) => (
                   <div key={card.id} className="youjail-card-slot">
-                    {draggedCardId === card.id ? <div className="youjail-card-placeholder" aria-hidden /> : null}
                     <article
                       className={`youjail-card${draggedCardId === card.id ? ' is-dragging' : ''}${card.pinned ? ' is-pinned' : ''}`}
                       draggable={!boardEditMode}

@@ -191,6 +191,12 @@ def _board_team_ids(db: Session, board_id: int) -> list[int]:
     )
 
 
+def _team_board_ids(db: Session, team_id: int) -> list[int]:
+    return list(
+        db.scalars(select(YouJailBoardTeam.board_id).where(YouJailBoardTeam.team_id == team_id)).all()
+    )
+
+
 def _set_board_teams(db: Session, board_id: int, team_ids: list[int]) -> None:
     unique_ids = sorted({int(team_id) for team_id in team_ids})
     for team_id in unique_ids:
@@ -550,6 +556,31 @@ def set_board_teams(db: Session, board_id: int, team_ids: list[int], *, meta: di
     return _serialize_board(db, board)
 
 
+def set_team_boards(db: Session, team_id: int, board_ids: list[int], *, meta: dict) -> dict:
+    assert_youjail_admin(meta)
+    team = db.get(YouJailTeam, team_id)
+    if team is None or not team.is_active:
+        raise HTTPException(status_code=404, detail="Команда не найдена.")
+
+    target_board_ids = sorted({int(board_id) for board_id in board_ids})
+    for board_id in target_board_ids:
+        board = db.get(YouJailBoard, board_id)
+        if board is None or not board.is_active:
+            raise HTTPException(status_code=400, detail=f"Доска {board_id} не найдена.")
+
+    boards = db.scalars(select(YouJailBoard).where(YouJailBoard.is_active.is_(True))).all()
+    for board in boards:
+        current_team_ids = set(_board_team_ids(db, board.id))
+        if board.id in target_board_ids:
+            current_team_ids.add(team_id)
+        else:
+            current_team_ids.discard(team_id)
+        _set_board_teams(db, board.id, sorted(current_team_ids))
+
+    db.commit()
+    return _serialize_team(db, team, with_members=True)
+
+
 def create_column(db: Session, board_id: int, data: dict, *, meta: dict) -> dict:
     assert_youjail_admin(meta)
     assert_board_access(db, meta, board_id)
@@ -793,6 +824,7 @@ def _serialize_team(db: Session, team: YouJailTeam, *, with_members: bool = Fals
         "sortOrder": team.sort_order,
         "isActive": team.is_active,
         "memberCount": team_member_count(db, team.id),
+        "boardIds": _team_board_ids(db, team.id),
         "members": [],
     }
     if with_members:

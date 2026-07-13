@@ -35,6 +35,8 @@ export default function OrgPhoto({ url, name, className, placeholderClassName }:
       src={src}
       alt=""
       className={className}
+      draggable={false}
+      onDragStart={(event) => event.preventDefault()}
       onError={() => setFailed(true)}
     />
   )

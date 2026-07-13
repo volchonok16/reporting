@@ -42,7 +42,12 @@ class YouJailTeamOut(BaseModel):
     sortOrder: int = 0
     isActive: bool = True
     memberCount: int = 0
+    boardIds: list[int] = Field(default_factory=list)
     members: list[YouJailTeamMemberOut] = Field(default_factory=list)
+
+
+class YouJailTeamBoardsIn(BaseModel):
+    boardIds: list[int] = Field(default_factory=list)
 
 
 class YouJailTeamIn(BaseModel):

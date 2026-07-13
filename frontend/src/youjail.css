@@ -42,6 +42,25 @@
   flex-wrap: wrap;
 }
 
+.youjail-columns-btn {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.youjail-columns-btn.is-active,
+.youjail-columns-btn:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
+  color: var(--accent);
+}
+
 .youjail-board-select,
 .youjail-search,
 .youjail-archived-filter,
@@ -238,22 +257,12 @@
 }
 
 .youjail-card.is-dragging {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  opacity: 0.35;
+  opacity: 0.45;
   cursor: grabbing;
-  pointer-events: none;
 }
 
 .youjail-board.is-card-dragging .youjail-column {
   transition: outline-color 0.12s ease;
-}
-
-.youjail-board.is-edit-mode .youjail-card {
-  cursor: default;
-  pointer-events: none;
-  opacity: 0.45;
 }
 
 .youjail-board.is-edit-mode .youjail-column {
@@ -948,9 +957,89 @@
 }
 
 .youjail-assignee-select {
+  position: relative;
+}
+
+.youjail-assignee-input {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 40px;
+  padding: 4px 8px;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+
+.youjail-assignee-input.is-disabled {
+  opacity: 0.7;
+}
+
+.youjail-assignee-search {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  padding: 4px 0;
+}
+
+.youjail-assignee-search:focus {
+  outline: none;
+}
+
+.youjail-assignee-clear {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.youjail-assignee-suggestions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 240px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-md);
+}
+
+.youjail-assignee-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.youjail-assignee-option.is-active,
+.youjail-assignee-option:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.youjail-assignee-empty {
+  padding: 8px 10px;
+  margin: 0;
 }
 
 .youjail-assignee-photo,
@@ -970,11 +1059,6 @@
   font-weight: 700;
   background: color-mix(in srgb, var(--accent) 16%, var(--surface-2));
   color: var(--text-secondary);
-}
-
-.youjail-assignee-picker {
-  flex: 1;
-  min-width: 0;
 }
 
 .youjail-mention-editor {
@@ -1075,10 +1159,16 @@
 
 .youjail-teams-popover-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 10px;
+}
+
+.youjail-teams-help {
+  margin: 4px 0 0;
+  font-size: 12px;
+  max-width: 52ch;
 }
 
 .youjail-teams-popover-head h3 {
@@ -1138,6 +1228,107 @@
 .youjail-board-teams h4 {
   margin: 0 0 8px;
   font-size: 14px;
+}
+
+.youjail-team-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.youjail-team-tab {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  border-radius: var(--radius-full);
+  padding: 6px 12px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+
+.youjail-team-tab.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.youjail-team-member-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.youjail-team-member-remove {
+  border: 0;
+  background: transparent;
+  color: var(--danger);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+
+.youjail-team-member-remove:hover {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.youjail-team-add-member input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+
+.youjail-team-member-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.youjail-team-member-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.youjail-team-member-suggestion:hover {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
+}
+
+.youjail-team-boards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.youjail-team-boards-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.youjail-team-board-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
 }
 
 .youjail-team-members {

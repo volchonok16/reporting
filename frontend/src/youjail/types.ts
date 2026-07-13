@@ -25,6 +25,7 @@ export type YouJailTeam = {
   sortOrder: number
   isActive: boolean
   memberCount: number
+  boardIds: number[]
   members: YouJailTeamMember[]
 }
 
