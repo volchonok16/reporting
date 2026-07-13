@@ -267,6 +267,20 @@ body {
   padding-bottom: 12px;
 }
 
+.workbook-content:has(.youjail-page) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.workbook-content:has(.youjail-page) > .app {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
 .app-roadmap {
   flex: 1;
   min-height: 0;
