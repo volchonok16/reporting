@@ -7,6 +7,7 @@ from app.db import get_db
 from app.youjail_schemas import (
     YouJailAttachmentOut,
     YouJailBoardIn,
+    YouJailBoardMemberIn,
     YouJailBoardMetaOut,
     YouJailBoardOut,
     YouJailBoardTeamsIn,
@@ -33,6 +34,7 @@ from app.youjail_schemas import (
     YouJailTeamUpdateIn,
 )
 from app.youjail_service import (
+    add_board_member,
     add_team_member,
     create_board,
     create_card,
@@ -57,6 +59,7 @@ from app.youjail_service import (
     load_attachment_file,
     load_board,
     move_card,
+    remove_board_member,
     remove_team_member,
     save_attachment,
     set_board_teams,
@@ -191,6 +194,26 @@ def api_set_board_teams(
     meta: dict = Depends(_load_session_meta),
 ) -> dict:
     return set_board_teams(db, board_id, payload.teamIds, meta=meta)
+
+
+@router.post("/boards/{board_id}/members", response_model=YouJailBoardMetaOut)
+def api_add_board_member(
+    board_id: int,
+    payload: YouJailBoardMemberIn,
+    db: Session = Depends(get_db),
+    meta: dict = Depends(_load_session_meta),
+) -> dict:
+    return add_board_member(db, board_id, payload.model_dump(), meta=meta)
+
+
+@router.delete("/boards/{board_id}/members/{employee_id}", response_model=YouJailBoardMetaOut)
+def api_remove_board_member(
+    board_id: int,
+    employee_id: int,
+    db: Session = Depends(get_db),
+    meta: dict = Depends(_load_session_meta),
+) -> dict:
+    return remove_board_member(db, board_id, employee_id, meta=meta)
 
 
 @router.post("/boards/{board_id}/columns", response_model=YouJailColumnOut)

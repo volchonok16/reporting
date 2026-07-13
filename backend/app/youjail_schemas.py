@@ -8,6 +8,19 @@ class YouJailTeamRefOut(BaseModel):
     name: str
 
 
+class YouJailBoardMemberOut(BaseModel):
+    employeeId: int
+    employeeName: str
+    employeePhotoUrl: str | None = None
+    role: str
+    isOwner: bool = False
+
+
+class YouJailBoardMemberIn(BaseModel):
+    employeeId: int
+    role: str = "member"
+
+
 class YouJailBoardMetaOut(BaseModel):
     id: int
     name: str
@@ -17,8 +30,10 @@ class YouJailBoardMetaOut(BaseModel):
     isActive: bool = True
     ownerEmployeeId: int | None = None
     isPersonal: bool = False
+    canManage: bool = False
     teamIds: list[int] = Field(default_factory=list)
     teams: list[YouJailTeamRefOut] = Field(default_factory=list)
+    members: list[YouJailBoardMemberOut] = Field(default_factory=list)
 
 
 class YouJailBoardIn(BaseModel):

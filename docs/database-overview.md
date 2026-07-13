@@ -106,6 +106,7 @@
 | `department_member` | Состав отдела |
 | `org_chart_layout` | Сохранённая ручная раскладка оргсхемы (координаты карточек и линии) |
 | `youjail_board` | Доски YouJail (общие/командные и личные по `owner_employee_id`) |
+| `youjail_board_member` | Прямой доступ к доске: `admin` или `member` |
 | `youjail_project` | Проекты доски YouJail (repo, контекст) |
 | `youjail_task_type` | Типы карточек YouJail |
 | `youjail_column` | Колонки kanban (Backlog … Done) |

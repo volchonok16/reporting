@@ -572,6 +572,18 @@ CREATE INDEX ix_youjail_team_member_employee ON youjail_team_member (employee_id
 CREATE INDEX ix_youjail_board_team_board ON youjail_board_team (board_id);
 CREATE INDEX ix_youjail_board_team_team ON youjail_board_team (team_id);
 
+CREATE TABLE youjail_board_member (
+    id              BIGSERIAL PRIMARY KEY,
+    board_id        BIGINT NOT NULL REFERENCES youjail_board(id) ON DELETE CASCADE,
+    employee_id     BIGINT NOT NULL REFERENCES employee(id) ON DELETE CASCADE,
+    role            VARCHAR(32) NOT NULL DEFAULT 'member',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (board_id, employee_id)
+);
+
+CREATE INDEX ix_youjail_board_member_board ON youjail_board_member (board_id);
+CREATE INDEX ix_youjail_board_member_employee ON youjail_board_member (employee_id);
+
 CREATE TABLE youjail_tag (
     id              BIGSERIAL PRIMARY KEY,
     name            VARCHAR(128) NOT NULL,

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type
 import { deleteJson, getJson, patchJson, postJson } from '../api'
 import { notifyError, notifyProblem, notifySuccess, notifyWarning } from '../toast'
 import OrgPhoto from '../org/OrgPhoto'
+import YouJailBoardAccessPanel from './YouJailBoardAccessPanel'
 import YouJailCardDetail from './YouJailCardDetail'
 import { mentionPreviewText } from './markdown'
 import YouJailProjectsPanel from './YouJailProjectsPanel'
@@ -99,6 +100,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
 
   const totalCards = board?.cards.length ?? 0
   const columns = board?.columns ?? []
+  const canManageBoard = Boolean(board?.board.canManage)
 
   const addCard = async (event: FormEvent) => {
     event.preventDefault()
@@ -433,7 +435,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
           </div>
         </div>
         <div className="youjail-toolbar-actions">
-          {canManageOrg ? (
+          {canManageBoard ? (
             <button
               type="button"
               className={`youjail-columns-btn${boardEditMode ? ' is-active' : ''}`}
@@ -481,10 +483,32 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
               >
                 Удалить доску
               </button>
+            </>
+          ) : null}
+          {canManageBoard ? (
+            <>
               {!boardEditMode ? (
                 <button type="button" className="btn-secondary" onClick={() => setShowColumnForm((current) => !current)}>
                   + Колонка
                 </button>
+              ) : null}
+              {board ? (
+                <YouJailBoardAccessPanel
+                  board={board.board}
+                  onUpdated={(updatedBoard) =>
+                    setBoard((current) =>
+                      current
+                        ? {
+                            ...current,
+                            board: updatedBoard,
+                            boards: current.boards.map((item) =>
+                              item.id === updatedBoard.id ? updatedBoard : item,
+                            ),
+                          }
+                        : current,
+                    )
+                  }
+                />
               ) : null}
             </>
           ) : null}
@@ -569,7 +593,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
         </form>
       ) : null}
 
-      {canManageOrg && showColumnForm ? (
+      {canManageBoard && showColumnForm ? (
         <form className="youjail-create-form" onSubmit={(event) => void createColumn(event)}>
           <input
             type="text"
@@ -683,7 +707,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
                       ⋮⋮
                     </button>
                   ) : null}
-                  {canManageOrg && boardEditMode && editingColumnId === column.id ? (
+                  {canManageBoard && boardEditMode && editingColumnId === column.id ? (
                     <input
                       className="youjail-column-title-input"
                       value={editingColumnTitle}
@@ -692,7 +716,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
                       onBlur={() => void saveColumnTitle(column.id)}
                       onKeyDown={(event) => handleColumnTitleKeyDown(event, column.id)}
                     />
-                  ) : canManageOrg && boardEditMode ? (
+                  ) : canManageBoard && boardEditMode ? (
                     <button
                       type="button"
                       className="youjail-column-title-btn"
@@ -705,7 +729,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
                     <h2>{column.title}</h2>
                   )}
                   <span className="youjail-column-count">{cards.length}</span>
-                  {canManageOrg && boardEditMode && columns.length > 1 ? (
+                  {canManageBoard && boardEditMode && columns.length > 1 ? (
                     <button
                       type="button"
                       className="youjail-column-delete-btn"
@@ -717,7 +741,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
                     </button>
                   ) : null}
                 </div>
-                {canManageOrg && boardEditMode ? (
+                {canManageBoard && boardEditMode ? (
                   <div className="youjail-column-tones" role="radiogroup" aria-label={`Цвет колонки ${column.title}`}>
                     {COLUMN_TONES.map((tone) => (
                       <button
@@ -828,7 +852,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
             </section>
           )
         })}
-        {boardEditMode && canManageOrg ? (
+        {boardEditMode && canManageBoard ? (
           <section className="youjail-column youjail-column-add">
             <form
               className="youjail-column-add-form"

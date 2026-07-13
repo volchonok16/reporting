@@ -1719,6 +1719,81 @@
   background: var(--bg-hover);
 }
 
+.youjail-board-access-panel {
+  position: relative;
+}
+
+.youjail-board-access-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  width: min(480px, 92vw);
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-lg);
+}
+
+.youjail-board-access-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.youjail-board-access-head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.youjail-board-access-members {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.youjail-board-access-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.youjail-board-access-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.youjail-board-access-role-select {
+  min-width: 108px;
+  font-size: 12px;
+}
+
+.youjail-board-access-role.is-owner {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.youjail-board-access-add-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.youjail-board-access-add-controls input {
+  flex: 1;
+  min-width: 0;
+}
+
 @media (max-width: 960px) {
   .youjail-detail-body {
     grid-template-columns: 1fr;

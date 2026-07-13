@@ -3,6 +3,14 @@ export type YouJailTeamRef = {
   name: string
 }
 
+export type YouJailBoardMember = {
+  employeeId: number
+  employeeName: string
+  employeePhotoUrl?: string | null
+  role: 'admin' | 'member'
+  isOwner?: boolean
+}
+
 export type YouJailBoardMeta = {
   id: number
   name: string
@@ -12,8 +20,10 @@ export type YouJailBoardMeta = {
   isActive: boolean
   ownerEmployeeId?: number | null
   isPersonal?: boolean
+  canManage?: boolean
   teamIds: number[]
   teams: YouJailTeamRef[]
+  members?: YouJailBoardMember[]
 }
 
 export type YouJailTeamMember = {

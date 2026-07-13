@@ -18,17 +18,21 @@ from app.config import settings
 from app.org_models import Employee
 from app.org_photo_service import photo_public_url
 from app.youjail_access import (
+    BOARD_MEMBER_ROLES,
     actor_employee_id,
     assert_board_access,
+    assert_board_manage,
     assert_card_access,
     assert_youjail_admin,
     accessible_board_ids,
+    can_manage_board,
     is_youjail_admin,
     team_member_count,
 )
 from app.youjail_models import (
     YouJailAttachment,
     YouJailBoard,
+    YouJailBoardMember,
     YouJailBoardTeam,
     YouJailCard,
     YouJailCardTag,
@@ -225,8 +229,46 @@ def _set_board_teams(db: Session, board_id: int, team_ids: list[int]) -> None:
         db.add(YouJailBoardTeam(board_id=board_id, team_id=team_id))
 
 
-def _serialize_board(db: Session, board: YouJailBoard) -> dict:
+def _board_members_out(db: Session, board: YouJailBoard) -> list[dict]:
+    members: list[dict] = []
+    if board.owner_employee_id is not None:
+        owner = db.get(Employee, board.owner_employee_id)
+        if owner is not None:
+            members.append(
+                {
+                    "employeeId": owner.id,
+                    "employeeName": owner.full_name,
+                    "employeePhotoUrl": photo_public_url(owner.photo_path),
+                    "role": "admin",
+                    "isOwner": True,
+                }
+            )
+    rows = db.scalars(
+        select(YouJailBoardMember)
+        .where(YouJailBoardMember.board_id == board.id)
+        .order_by(YouJailBoardMember.id.asc())
+    ).all()
+    for row in rows:
+        if board.owner_employee_id is not None and row.employee_id == board.owner_employee_id:
+            continue
+        employee = db.get(Employee, row.employee_id)
+        if employee is None:
+            continue
+        members.append(
+            {
+                "employeeId": employee.id,
+                "employeeName": employee.full_name,
+                "employeePhotoUrl": photo_public_url(employee.photo_path),
+                "role": row.role,
+                "isOwner": False,
+            }
+        )
+    return members
+
+
+def _serialize_board(db: Session, board: YouJailBoard, meta: dict) -> dict:
     is_personal = board.owner_employee_id is not None
+    can_manage = can_manage_board(db, meta, board.id)
     return {
         "id": board.id,
         "name": board.name,
@@ -236,8 +278,10 @@ def _serialize_board(db: Session, board: YouJailBoard) -> dict:
         "isActive": board.is_active,
         "ownerEmployeeId": board.owner_employee_id,
         "isPersonal": is_personal,
+        "canManage": can_manage,
         "teamIds": [] if is_personal else _board_team_ids(db, board.id),
         "teams": [] if is_personal else _board_teams(db, board.id),
+        "members": _board_members_out(db, board) if can_manage else [],
     }
 
 
@@ -502,8 +546,8 @@ def load_board(
     tags_map = _card_tags_map(db, card_ids)
     all_tags = list_tags(db)
     return {
-        "board": _serialize_board(db, board),
-        "boards": [_serialize_board(db, item) for item in boards],
+        "board": _serialize_board(db, board, meta),
+        "boards": [_serialize_board(db, item, meta) for item in boards],
         "columns": [_serialize_column(column) for column in columns],
         "cards": [_serialize_card(db, card, tags_map=tags_map, board_slug=board.slug) for card in cards],
         "projects": [
@@ -553,7 +597,7 @@ def list_boards(db: Session, *, meta: dict) -> list[dict]:
     _ensure_personal_board(db, meta)
     query = select(YouJailBoard).where(YouJailBoard.is_active.is_(True)).order_by(YouJailBoard.sort_order.asc())
     boards = db.scalars(_filter_boards_query(query, db, meta)).all()
-    return [_serialize_board(db, board) for board in boards]
+    return [_serialize_board(db, board, meta) for board in boards]
 
 
 def create_board(db: Session, data: dict, *, meta: dict) -> dict:
@@ -587,7 +631,62 @@ def create_board(db: Session, data: dict, *, meta: dict) -> dict:
         _set_board_teams(db, board.id, team_ids)
     db.commit()
     db.refresh(board)
-    return _serialize_board(db, board)
+    return _serialize_board(db, board, meta)
+
+
+def add_board_member(db: Session, board_id: int, data: dict, *, meta: dict) -> dict:
+    assert_board_manage(db, meta, board_id)
+    board = db.get(YouJailBoard, board_id)
+    if board is None:
+        raise HTTPException(status_code=404, detail="Доска не найдена.")
+
+    employee_id = int(data["employeeId"])
+    role = (data.get("role") or "member").strip().lower()
+    if role not in BOARD_MEMBER_ROLES:
+        raise HTTPException(status_code=400, detail="Роль должна быть admin или member.")
+
+    if board.owner_employee_id == employee_id:
+        raise HTTPException(status_code=400, detail="Владелец доски уже имеет полный доступ.")
+
+    employee = db.get(Employee, employee_id)
+    if employee is None or not employee.is_active:
+        raise HTTPException(status_code=404, detail="Сотрудник не найден.")
+
+    row = db.scalar(
+        select(YouJailBoardMember).where(
+            YouJailBoardMember.board_id == board_id,
+            YouJailBoardMember.employee_id == employee_id,
+        )
+    )
+    if row is None:
+        db.add(YouJailBoardMember(board_id=board_id, employee_id=employee_id, role=role))
+    else:
+        row.role = role
+    db.commit()
+    db.refresh(board)
+    return _serialize_board(db, board, meta)
+
+
+def remove_board_member(db: Session, board_id: int, employee_id: int, *, meta: dict) -> dict:
+    assert_board_manage(db, meta, board_id)
+    board = db.get(YouJailBoard, board_id)
+    if board is None:
+        raise HTTPException(status_code=404, detail="Доска не найдена.")
+    if board.owner_employee_id == employee_id:
+        raise HTTPException(status_code=400, detail="Нельзя убрать владельца доски.")
+
+    row = db.scalar(
+        select(YouJailBoardMember).where(
+            YouJailBoardMember.board_id == board_id,
+            YouJailBoardMember.employee_id == employee_id,
+        )
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Участник не найден.")
+    db.delete(row)
+    db.commit()
+    db.refresh(board)
+    return _serialize_board(db, board, meta)
 
 
 def delete_board(db: Session, board_id: int, *, meta: dict) -> None:
@@ -616,7 +715,7 @@ def set_board_teams(db: Session, board_id: int, team_ids: list[int], *, meta: di
         raise HTTPException(status_code=404, detail="Доска не найдена.")
     _set_board_teams(db, board_id, team_ids)
     db.commit()
-    return _serialize_board(db, board)
+    return _serialize_board(db, board, meta)
 
 
 def set_team_boards(db: Session, team_id: int, board_ids: list[int], *, meta: dict) -> dict:
@@ -650,8 +749,7 @@ def set_team_boards(db: Session, team_id: int, board_ids: list[int], *, meta: di
 
 
 def create_column(db: Session, board_id: int, data: dict, *, meta: dict) -> dict:
-    assert_youjail_admin(meta)
-    assert_board_access(db, meta, board_id)
+    assert_board_manage(db, meta, board_id)
 
     title = data["title"].strip()
     base_key = _slugify(data.get("columnKey") or title).replace("-", "_")[:28] or "column"
@@ -685,11 +783,10 @@ def create_column(db: Session, board_id: int, data: dict, *, meta: dict) -> dict
 
 
 def update_column(db: Session, column_id: int, data: dict, *, meta: dict) -> dict:
-    assert_youjail_admin(meta)
     column = db.get(YouJailColumn, column_id)
     if column is None:
         raise HTTPException(status_code=404, detail="Колонка не найдена.")
-    assert_board_access(db, meta, column.board_id)
+    assert_board_manage(db, meta, column.board_id)
 
     if data.get("title") is not None:
         column.title = data["title"].strip()
@@ -710,11 +807,10 @@ def delete_column(
     move_to_column_id: int | None,
     meta: dict,
 ) -> None:
-    assert_youjail_admin(meta)
     column = db.get(YouJailColumn, column_id)
     if column is None:
         raise HTTPException(status_code=404, detail="Колонка не найдена.")
-    assert_board_access(db, meta, column.board_id)
+    assert_board_manage(db, meta, column.board_id)
 
     columns_count = db.scalar(
         select(func.count()).select_from(YouJailColumn).where(YouJailColumn.board_id == column.board_id)

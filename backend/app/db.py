@@ -135,6 +135,7 @@ def ensure_startup_schema() -> None:
         "020_youjail_tags.sql",
         "021_youjail_card_number.sql",
         "022_youjail_personal_board.sql",
+        "023_youjail_board_member.sql",
     )
     org_migrations: list[str] = []
     for migration_name in org_migration_names:
