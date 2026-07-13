@@ -845,11 +845,11 @@ def load_board(
 
     cards = db.scalars(query).all()
     card_ids = [card.id for card in cards]
+    viewer_id = actor_employee_id(db, meta)
     tags_map = _card_tags_map(db, card_ids)
     zni_map = _card_zni_map(db, card_ids)
     related_map = card_related_cards_map(db, card_ids, viewer_employee_id=viewer_id)
     all_tags = list_tags(db)
-    viewer_id = actor_employee_id(db, meta)
     return {
         "board": _serialize_board(db, board, meta, pin_state=pin_state),
         "boards": [_serialize_board(db, item, meta, pin_state=pin_state) for item in boards],
