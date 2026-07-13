@@ -161,6 +161,25 @@ class YouJailZniLookupOut(BaseModel):
     items: list[YouJailZniOut] = Field(default_factory=list)
 
 
+class YouJailCardEventOut(BaseModel):
+    id: int
+    eventType: str
+    actorEmployeeId: int | None = None
+    actorName: str | None = None
+    actorPhotoUrl: str | None = None
+    payload: dict = Field(default_factory=dict)
+    createdAt: datetime
+    summary: str
+
+
+class YouJailRelatedCardOut(BaseModel):
+    id: int
+    cardKey: str
+    title: str
+    columnTitle: str | None = None
+    linkKind: str
+
+
 class YouJailColumnOut(BaseModel):
     id: int
     boardId: int
@@ -242,6 +261,9 @@ class YouJailCardOut(BaseModel):
     tags: list[YouJailTagOut] = Field(default_factory=list)
     zniNumbers: str = ""
     znis: list[YouJailZniOut] = Field(default_factory=list)
+    relatedCardKeys: str = ""
+    relatedCards: list[YouJailRelatedCardOut] = Field(default_factory=list)
+    history: list[YouJailCardEventOut] = Field(default_factory=list)
     createdBy: str | None = None
     createdAt: datetime
     updatedAt: datetime
@@ -271,6 +293,7 @@ class YouJailCardIn(BaseModel):
     assigneeEmployeeId: int | None = None
     tagIds: list[int] | None = None
     zniNumbers: str | None = None
+    relatedCardKeys: str | None = None
 
 
 class YouJailCardUpdateIn(BaseModel):
@@ -285,6 +308,7 @@ class YouJailCardUpdateIn(BaseModel):
     tagIds: list[int] | None = None
     sortOrder: int | None = None
     zniNumbers: str | None = None
+    relatedCardKeys: str | None = None
 
 
 class YouJailCardMoveIn(BaseModel):

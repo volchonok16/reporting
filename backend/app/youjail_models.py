@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -191,4 +192,27 @@ class YouJailCardZni(Base):
     card_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_card.id"), nullable=False)
     task_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("task.id"), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class YouJailCardEvent(Base):
+    __tablename__ = "youjail_card_event"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    card_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_card.id"), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    actor_employee_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("employee.id", ondelete="SET NULL")
+    )
+    actor_label: Mapped[str | None] = mapped_column(String(255))
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class YouJailCardLink(Base):
+    __tablename__ = "youjail_card_link"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    card_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_card.id"), nullable=False)
+    related_card_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_card.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

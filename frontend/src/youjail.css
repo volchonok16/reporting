@@ -903,6 +903,230 @@
   grid-template-columns: 1fr;
 }
 
+.youjail-detail-side {
+  padding: 16px 18px;
+  overflow: auto;
+  border-left: 1px solid var(--border);
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.youjail-side-card {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-1);
+}
+
+.youjail-side-card h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+
+.youjail-detail-header-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.youjail-header-action {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.youjail-header-action:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.youjail-header-action.is-danger {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
+
+.youjail-history-panel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-1);
+  overflow: hidden;
+}
+
+.youjail-history-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  list-style: none;
+}
+
+.youjail-history-summary::-webkit-details-marker {
+  display: none;
+}
+
+.youjail-history-count {
+  min-width: 22px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--border) 45%, transparent);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.youjail-history-empty {
+  margin: 0;
+  padding: 0 14px 14px;
+}
+
+.youjail-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.youjail-history-item {
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.youjail-history-item-head {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 10px;
+  align-items: start;
+}
+
+.youjail-history-photo,
+.youjail-history-photo--placeholder {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  grid-row: span 2;
+}
+
+.youjail-history-photo--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface-2));
+}
+
+.youjail-history-actor {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.youjail-history-text {
+  margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+
+.youjail-history-time {
+  grid-column: 2;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.youjail-links-field,
+.youjail-links-hint {
+  margin-top: 4px;
+}
+
+.youjail-related-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.youjail-related-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.youjail-related-label {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+
+.youjail-related-card-btn {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.youjail-related-card-btn.is-zni {
+  border-color: color-mix(in srgb, #2563eb 25%, var(--border));
+  background: color-mix(in srgb, #2563eb 6%, var(--surface-2));
+}
+
+.youjail-related-card-btn:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.youjail-related-card-key {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.youjail-related-card-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.youjail-related-card-column {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .youjail-detail-main,
 .youjail-detail-side {
   padding: 16px 18px;

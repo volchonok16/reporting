@@ -961,6 +961,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
         allTags={board?.tags ?? []}
         canManageOrg={canManageOrg}
         onClose={() => setSelectedCardId(null)}
+        onOpenCard={setSelectedCardId}
         onUpdated={handleCardUpdated}
         onDeleted={handleCardDeleted}
         onTagsCatalogUpdated={(tags) =>

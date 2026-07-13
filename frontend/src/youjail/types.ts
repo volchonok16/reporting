@@ -92,6 +92,25 @@ export type YouJailLinkedZni = {
   boardName?: string | null
 }
 
+export type YouJailRelatedCard = {
+  id: number
+  cardKey: string
+  title: string
+  columnTitle?: string | null
+  linkKind: 'manual' | 'zni' | string
+}
+
+export type YouJailCardEvent = {
+  id: number
+  eventType: string
+  actorEmployeeId?: number | null
+  actorName?: string | null
+  actorPhotoUrl?: string | null
+  payload: Record<string, unknown>
+  createdAt: string
+  summary: string
+}
+
 export type YouJailAttachment = {
   id: number
   cardId: number
@@ -151,6 +170,9 @@ export type YouJailCard = {
   tags: YouJailTag[]
   zniNumbers: string
   znis: YouJailLinkedZni[]
+  relatedCardKeys: string
+  relatedCards: YouJailRelatedCard[]
+  history: YouJailCardEvent[]
   createdBy?: string | null
   createdAt: string
   updatedAt: string

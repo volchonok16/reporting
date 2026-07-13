@@ -4,16 +4,14 @@ import EmployeeCardModal from '../org/EmployeeCardModal'
 import '../org/org.css'
 import { notifyError, notifyProblem, notifySuccess } from '../toast'
 import YouJailAssigneeSelect from './YouJailAssigneeSelect'
+import YouJailCardHistory from './YouJailCardHistory'
+import YouJailCardLinksField from './YouJailCardLinksField'
 import YouJailMentionTextarea from './YouJailMentionTextarea'
 import { handleMentionPreviewClick } from './mentionPreview'
 import YouJailTagSelect from './YouJailTagSelect'
 import YouJailZniField from './YouJailZniField'
 import { renderMarkdown } from './markdown'
-import type {
-  YouJailCard,
-  YouJailProject,
-  YouJailTag,
-} from './types'
+import type { YouJailCard, YouJailProject, YouJailTag } from './types'
 
 type YouJailCardDetailProps = {
   cardId: number | null
@@ -23,6 +21,7 @@ type YouJailCardDetailProps = {
   onClose: () => void
   onUpdated: (card: YouJailCard) => void
   onDeleted: (cardId: number) => void
+  onOpenCard?: (cardId: number) => void
   onTagsCatalogUpdated?: (tags: YouJailTag[]) => void
 }
 
@@ -49,6 +48,7 @@ export default function YouJailCardDetail({
   onClose,
   onUpdated,
   onDeleted,
+  onOpenCard,
   onTagsCatalogUpdated,
 }: YouJailCardDetailProps) {
   const [card, setCard] = useState<YouJailCard | null>(null)
@@ -89,20 +89,21 @@ export default function YouJailCardDetail({
     [card?.descriptionMd, card],
   )
 
-  const handlePreviewClick = useCallback(
-    (event: MouseEvent<HTMLDivElement>) => {
-      handleMentionPreviewClick(event, setMentionEmployeeId)
-    },
-    [],
-  )
+  const handlePreviewClick = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    handleMentionPreviewClick(event, setMentionEmployeeId)
+  }, [])
+
+  const applyCard = (updated: YouJailCard) => {
+    setCard(updated)
+    onUpdated(updated)
+  }
 
   const saveCard = async (patch: Record<string, unknown>) => {
     if (!card) return
     setSaving(true)
     try {
       const updated = await patchJson<YouJailCard>(`/api/youjail/cards/${card.id}`, patch)
-      setCard(updated)
-      onUpdated(updated)
+      applyCard(updated)
     } catch (err) {
       notifyProblem(err, 'Не удалось сохранить')
     } finally {
@@ -123,8 +124,7 @@ export default function YouJailCardDetail({
         return
       }
       const updated = await postJson<YouJailCard>(`/api/youjail/cards/${card.id}/${action}`, {})
-      setCard(updated)
-      onUpdated(updated)
+      applyCard(updated)
       if (action === 'pin') {
         notifySuccess(updated.pinned ? 'Карточка закреплена' : 'Карточка откреплена')
       } else if (action === 'archive') {
@@ -141,9 +141,7 @@ export default function YouJailCardDetail({
 
   const downloadAttachment = async (path: string, filename: string) => {
     const response = await apiFetch(path)
-    if (!response.ok) {
-      throw new Error('Не удалось скачать вложение')
-    }
+    if (!response.ok) throw new Error('Не удалось скачать вложение')
     const blob = await response.blob()
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -204,6 +202,42 @@ export default function YouJailCardDetail({
             )}
           </div>
           <div className="youjail-detail-header-actions">
+            {card ? (
+              <div className="youjail-detail-header-menu">
+                <button
+                  type="button"
+                  className="youjail-header-action"
+                  disabled={runningAction !== null}
+                  onClick={() => void runAction('pin')}
+                >
+                  {card.pinned ? 'Открепить' : 'Закрепить'}
+                </button>
+                <button
+                  type="button"
+                  className="youjail-header-action"
+                  disabled={runningAction !== null}
+                  onClick={() => void runAction('archive')}
+                >
+                  {card.archived ? 'Из архива' : 'В архив'}
+                </button>
+                <button
+                  type="button"
+                  className="youjail-header-action"
+                  disabled={runningAction !== null}
+                  onClick={() => void runAction('close')}
+                >
+                  {card.closedAt ? 'Открыть' : 'Закрыть'}
+                </button>
+                <button
+                  type="button"
+                  className="youjail-header-action is-danger"
+                  disabled={runningAction !== null}
+                  onClick={() => void runAction('delete')}
+                >
+                  Удалить
+                </button>
+              </div>
+            ) : null}
             {saving ? <span className="youjail-saving-badge">Сохранение…</span> : null}
             <button type="button" className="youjail-detail-close" onClick={onClose} aria-label="Закрыть">
               ×
@@ -214,12 +248,12 @@ export default function YouJailCardDetail({
         {loading || !card ? <div className="youjail-detail-loading">Загрузка карточки…</div> : null}
 
         {card ? (
-          <div className="youjail-detail-body youjail-detail-body-single">
+          <div className="youjail-detail-body">
             <div className="youjail-detail-main">
               <section className="youjail-notes-card">
                 <div className="youjail-notes-card-head">
                   <h3>Описание</h3>
-                  <p className="youjail-muted">Пишите ниже — сверху сразу виден результат. Поддерживаются списки, **жирный**, `код`, @сотрудник.</p>
+                  <p className="youjail-muted">Пишите ниже — сверху сразу виден результат.</p>
                 </div>
                 <div
                   className="youjail-notes-preview youjail-notes-preview-main"
@@ -276,14 +310,6 @@ export default function YouJailCardDetail({
                     onTagsCatalogUpdated={onTagsCatalogUpdated}
                   />
                 </label>
-
-                <YouJailZniField
-                  value={card.zniNumbers ?? ''}
-                  linked={card.znis ?? []}
-                  disabled={saving}
-                  onChange={(zniNumbers) => setCard({ ...card, zniNumbers })}
-                  onBlur={(zniNumbers) => void saveCard({ zniNumbers })}
-                />
 
                 <label className="youjail-field">
                   <span>Ответственный</span>
@@ -367,53 +393,31 @@ export default function YouJailCardDetail({
                   </ul>
                 )}
               </section>
+            </div>
 
-              <section className="youjail-detail-actions-section">
-                <h3>Действия</h3>
-                <div className="youjail-detail-actions">
-                  <button
-                    type="button"
-                    className="youjail-action-btn"
-                    disabled={runningAction !== null}
-                    onClick={() => void runAction('pin')}
-                  >
-                    {card.pinned ? 'Открепить' : 'Закрепить'}
-                  </button>
-                  <button
-                    type="button"
-                    className="youjail-action-btn"
-                    disabled={runningAction !== null}
-                    onClick={() => void runAction('archive')}
-                  >
-                    {card.archived ? 'Вернуть из архива' : 'В архив'}
-                  </button>
-                  <button
-                    type="button"
-                    className="youjail-action-btn"
-                    disabled={runningAction !== null}
-                    onClick={() => void runAction('close')}
-                  >
-                    {card.closedAt ? 'Открыть снова' : 'Закрыть'}
-                  </button>
-                  <button
-                    type="button"
-                    className="youjail-action-btn youjail-action-btn-danger"
-                    disabled={runningAction !== null}
-                    onClick={() => void runAction('delete')}
-                  >
-                    Удалить
-                  </button>
-                </div>
+            <aside className="youjail-detail-side">
+              <section className="youjail-side-card">
+                <h3>Связи</h3>
+                <YouJailZniField
+                  value={card.zniNumbers ?? ''}
+                  linked={card.znis ?? []}
+                  disabled={saving}
+                  onChange={(zniNumbers) => setCard({ ...card, zniNumbers })}
+                  onBlur={(zniNumbers) => void saveCard({ zniNumbers })}
+                />
+                <YouJailCardLinksField
+                  value={card.relatedCardKeys ?? ''}
+                  relatedCards={card.relatedCards ?? []}
+                  currentCardKey={card.cardKey}
+                  disabled={saving}
+                  onChange={(relatedCardKeys) => setCard({ ...card, relatedCardKeys })}
+                  onBlur={(relatedCardKeys) => void saveCard({ relatedCardKeys })}
+                  onOpenCard={onOpenCard}
+                />
               </section>
 
-              <div className="youjail-meta youjail-meta-footer">
-                {card.assigneeName ? <p>Ответственный: {card.assigneeName}</p> : null}
-                {card.createdBy ? <p>Автор: {card.createdBy}</p> : null}
-                <p>Создана: {new Date(card.createdAt).toLocaleString('ru-RU')}</p>
-                <p>Обновлена: {new Date(card.updatedAt).toLocaleString('ru-RU')}</p>
-                {card.closedAt ? <p>Закрыта: {new Date(card.closedAt).toLocaleString('ru-RU')}</p> : null}
-              </div>
-            </div>
+              <YouJailCardHistory events={card.history ?? []} />
+            </aside>
           </div>
         ) : null}
       </aside>

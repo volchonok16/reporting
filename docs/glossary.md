@@ -788,14 +788,15 @@
 |------|-----|----------|
 | `board_id` | bigint | FK → `youjail_board` |
 | `column_id` | bigint | FK → `youjail_column` |
-| `card_number` | integer | Порядковый номер карточки внутри доски; ключ `cardKey` = `SLUG-N` (например `MAIN-42`) |
+| `card_number` | integer | Порядковый номер на доске |
+| `cardKey` | string (API) | `SLUG-N` для командных досок; для **личной** — `MY-N` (без employee_id в ключе) |
 | `project_id`, `task_type_id` | bigint | Проект и тип |
 | `title` | varchar(1000) | Заголовок |
 | `description_md` | text | Заметки (markdown); упоминания сотрудников: `@[ФИО](employee:ID)` |
 | `pinned`, `archived` | boolean | Закрепление / архив |
 | `closed_at`, `scheduled_at` | timestamptz | Закрытие / план |
 | `executor` | varchar(64) | AI-агент: `manual`, `claude`, `codex`, … |
-| `assignee_employee_id` | bigint | FK → `employee` — ответственный сотрудник (назначение карточки) |
+| `assignee_employee_id` | bigint | FK → `employee` — ответственный; при создании подставляется автор карточки |
 | `worktree_path`, `worktree_branch` | text | Git worktree |
 | `execution_status` | varchar(32) | `idle`, `queued`, `running`, `succeeded`, `failed` |
 | `zniNumbers` | string (API) | Номера ЗНИ через запятую; в БД — `youjail_card_zni` |
@@ -809,6 +810,27 @@
 | `sort_order` | integer | Порядок как в поле ввода |
 
 Связь M:N. Ввод: `123456, 789012`. API: `zniNumbers`, `znis[]`; lookup: `POST /api/youjail/zni/lookup`. Несуществующий номер при сохранении → HTTP 400.
+
+### youjail_card_event
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `card_id` | bigint | FK → `youjail_card` |
+| `event_type` | varchar(64) | `created`, `moved`, `title_changed`, `zni_changed`, … |
+| `actor_employee_id` | bigint | FK → `employee` |
+| `payload` | jsonb | Детали изменения |
+| `created_at` | timestamptz | Время |
+
+API: `history[]` в `GET /api/youjail/cards/{id}`.
+
+### youjail_card_link
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `card_id` | bigint | FK → `youjail_card` |
+| `related_card_id` | bigint | FK → `youjail_card` |
+
+API: `relatedCardKeys`, `relatedCards` (в т.ч. по общей ЗНИ).
 
 ### youjail_attachment, youjail_execution, youjail_execution_log
 

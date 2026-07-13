@@ -30,6 +30,18 @@ from app.youjail_access import (
     is_youjail_admin,
     team_member_count,
 )
+from app.youjail_activity import (
+    card_snapshot,
+    list_card_history,
+    list_card_relations,
+    log_attachment_event,
+    log_card_created,
+    log_card_flag,
+    log_card_moved,
+    record_card_field_changes,
+    set_card_links,
+)
+from app.youjail_card_keys import card_key_for_board
 from app.youjail_models import (
     YouJailAttachment,
     YouJailBoard,
@@ -286,11 +298,6 @@ def _next_card_number(db: Session, board_id: int) -> int:
         select(func.coalesce(func.max(YouJailCard.card_number), 0)).where(YouJailCard.board_id == board_id)
     )
     return int(current or 0) + 1
-
-
-def _card_key(board_slug: str, card_number: int) -> str:
-    prefix = board_slug.upper().replace("-", "")
-    return f"{prefix}-{card_number}"
 
 
 def _attachment_url(attachment_id: int) -> str:
@@ -576,9 +583,8 @@ def _serialize_card(
         .order_by(YouJailExecution.started_at.desc())
         .limit(1)
     )
-    if board_slug is None:
-        board = db.get(YouJailBoard, card.board_id)
-        board_slug = board.slug if board else "board"
+    board = db.get(YouJailBoard, card.board_id)
+    card_key = card_key_for_board(board, card.card_number) if board else f"CARD-{card.card_number}"
     zni_data = zni_map.get(card.id, {"numbers": "", "items": []}) if zni_map is not None else _card_zni_map(db, [card.id]).get(
         card.id,
         {"numbers": "", "items": []},
@@ -589,7 +595,7 @@ def _serialize_card(
         "columnId": card.column_id,
         "columnKey": column.column_key if column else "",
         "cardNumber": card.card_number,
-        "cardKey": _card_key(board_slug, card.card_number),
+        "cardKey": card_key,
         "projectId": card.project_id,
         "projectName": project.name if project else None,
         "taskTypeId": card.task_type_id,
@@ -695,9 +701,22 @@ def load_board(
     }
 
 
+def _card_context_snapshot(db: Session, card: YouJailCard) -> dict:
+    zni_map = _card_zni_map(db, [card.id])
+    tags_map = _card_tags_map(db, [card.id])
+    zni_numbers = zni_map.get(card.id, {}).get("numbers", "")
+    tag_names = [tag["name"] for tag in tags_map.get(card.id, [])]
+    return card_snapshot(db, card, zni_numbers=zni_numbers, tag_names=tag_names)
+
+
 def get_card(db: Session, card_id: int, *, meta: dict) -> dict:
     card = assert_card_access(db, meta, card_id)
-    return _serialize_card(db, card, detailed=True)
+    payload = _serialize_card(db, card, detailed=True)
+    relations = list_card_relations(db, card)
+    payload["history"] = list_card_history(db, card)
+    payload["relatedCardKeys"] = relations["relatedCardKeys"]
+    payload["relatedCards"] = relations["relatedCards"]
+    return payload
 
 
 def _default_backlog_column_id(db: Session, board_id: int) -> int:
@@ -980,7 +999,9 @@ def create_card(db: Session, data: dict, *, created_by: str | None, meta: dict) 
         raise HTTPException(status_code=400, detail="Неизвестный исполнитель.")
 
     assignee_id = data.get("assigneeEmployeeId")
-    if assignee_id is not None:
+    if assignee_id is None:
+        assignee_id = actor_employee_id(db, meta)
+    else:
         _resolve_assignee(db, assignee_id)
 
     card = YouJailCard(
@@ -999,18 +1020,23 @@ def create_card(db: Session, data: dict, *, created_by: str | None, meta: dict) 
         updated_at=_utcnow(),
     )
     db.add(card)
-    db.commit()
+    db.flush()
     db.refresh(card)
     if data.get("tagIds") is not None:
         _set_card_tags(db, card.id, data["tagIds"])
     if "zniNumbers" in data:
         _set_card_znis(db, card.id, data.get("zniNumbers"))
+    if "relatedCardKeys" in data:
+        set_card_links(db, card, meta, data.get("relatedCardKeys"))
+    log_card_created(db, card, meta)
     db.commit()
+    db.refresh(card)
     return get_card(db, card.id, meta=meta)
 
 
 def update_card(db: Session, card_id: int, data: dict, *, meta: dict) -> dict:
     card = assert_card_access(db, meta, card_id)
+    before = _card_context_snapshot(db, card)
 
     if data.get("title") is not None:
         card.title = data["title"].strip()
@@ -1043,8 +1069,14 @@ def update_card(db: Session, card_id: int, data: dict, *, meta: dict) -> dict:
         _set_card_tags(db, card.id, data["tagIds"])
     if "zniNumbers" in data:
         _set_card_znis(db, card.id, data.get("zniNumbers"))
+    if "relatedCardKeys" in data:
+        set_card_links(db, card, meta, data.get("relatedCardKeys"))
 
     card.updated_at = _utcnow()
+    db.flush()
+    db.refresh(card)
+    after = _card_context_snapshot(db, card)
+    record_card_field_changes(db, card.id, meta, before, after)
     db.commit()
     db.refresh(card)
     return get_card(db, card.id, meta=meta)
@@ -1062,9 +1094,12 @@ def move_card(
     column = db.get(YouJailColumn, column_id)
     if column is None or column.board_id != card.board_id:
         raise HTTPException(status_code=400, detail="Колонка не найдена.")
+    from_column_id = card.column_id
     card.column_id = column_id
     card.sort_order = sort_order if sort_order is not None else _next_sort_order(db, column_id)
     card.updated_at = _utcnow()
+    if from_column_id != column_id:
+        log_card_moved(db, card.id, meta, from_column_id=from_column_id, to_column_id=column_id)
     db.commit()
     db.refresh(card)
     return get_card(db, card.id, meta=meta)
@@ -1079,11 +1114,20 @@ def delete_card(db: Session, card_id: int, *, meta: dict) -> None:
 def set_card_flag(db: Session, card_id: int, *, meta: dict, **flags: bool | datetime | None) -> dict:
     card = assert_card_access(db, meta, card_id)
     if "pinned" in flags:
-        card.pinned = bool(flags["pinned"])
+        next_pinned = bool(flags["pinned"])
+        if card.pinned != next_pinned:
+            log_card_flag(db, card.id, meta, "pinned" if next_pinned else "unpinned")
+        card.pinned = next_pinned
     if "archived" in flags:
-        card.archived = bool(flags["archived"])
+        next_archived = bool(flags["archived"])
+        if card.archived != next_archived:
+            log_card_flag(db, card.id, meta, "archived" if next_archived else "unarchived")
+        card.archived = next_archived
     if "closedAt" in flags:
-        card.closed_at = flags["closedAt"]
+        next_closed = flags["closedAt"]
+        if (card.closed_at is None) != (next_closed is None):
+            log_card_flag(db, card.id, meta, "closed" if next_closed else "reopened")
+        card.closed_at = next_closed
     card.updated_at = _utcnow()
     db.commit()
     db.refresh(card)
@@ -1357,6 +1401,7 @@ async def save_attachment(db: Session, card_id: int, file: UploadFile, *, meta: 
         size_bytes=len(content),
     )
     db.add(attachment)
+    log_attachment_event(db, card_id, meta, added=True, filename=file.filename)
     db.commit()
     db.refresh(attachment)
     return _serialize_attachment(attachment)
@@ -1381,6 +1426,7 @@ def delete_attachment(db: Session, attachment_id: int, *, meta: dict) -> None:
     path = Path(attachment.storage_path)
     if path.is_file():
         path.unlink(missing_ok=True)
+    log_attachment_event(db, attachment.card_id, meta, added=False, filename=attachment.filename)
     db.delete(attachment)
     db.commit()
 

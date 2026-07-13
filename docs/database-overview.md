@@ -114,6 +114,8 @@
 | `youjail_tag` | Теги карточек YouJail (labels) |
 | `youjail_card_tag` | Связь карточки и тегов |
 | `youjail_card_zni` | Привязка карточки к ЗНИ (`task`, `change_request`) |
+| `youjail_card_event` | История изменений карточки |
+| `youjail_card_link` | Связи карточек на одной доске |
 | `youjail_attachment` | Вложения карточек |
 | `youjail_execution` | Запуски исполнителя |
 | `youjail_execution_log` | Лог stdout/stderr/system |
