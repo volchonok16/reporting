@@ -30,6 +30,7 @@ class YouJailBoardMetaOut(BaseModel):
     isActive: bool = True
     ownerEmployeeId: int | None = None
     isPersonal: bool = False
+    pinned: bool = False
     canManage: bool = False
     teamIds: list[int] = Field(default_factory=list)
     teams: list[YouJailTeamRefOut] = Field(default_factory=list)

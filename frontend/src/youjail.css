@@ -20,8 +20,223 @@
   gap: var(--space-lg);
   flex-wrap: wrap;
   padding: var(--space-md) var(--page-gutter);
-  background: var(--surface-1);
-  border-bottom: 1px solid var(--border);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 7%, var(--surface-1)), var(--surface-1) 58%),
+    var(--surface-1);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
+}
+
+.youjail-toolbar-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.youjail-board-kind-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.youjail-board-kind-badge.is-personal {
+  background: color-mix(in srgb, #8b5cf6 18%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, #8b5cf6 35%, var(--border));
+  color: color-mix(in srgb, #8b5cf6 85%, var(--text-primary));
+}
+
+.youjail-board-kind-badge.is-team {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  color: var(--accent);
+}
+
+.youjail-board-title-pin {
+  font-size: 14px;
+  opacity: 0.85;
+}
+
+.youjail-board-picker {
+  position: relative;
+}
+
+.youjail-board-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 180px;
+  max-width: min(320px, 42vw);
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-1) 88%, transparent);
+  color: var(--text-primary);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 8%, transparent);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.youjail-board-picker-trigger:hover,
+.youjail-board-picker.is-open .youjail-board-picker-trigger {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.youjail-board-picker-trigger-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  font-weight: 600;
+}
+
+.youjail-board-picker-chevron {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 0.15s ease;
+}
+
+.youjail-board-picker.is-open .youjail-board-picker-chevron {
+  transform: rotate(225deg) translateY(2px);
+}
+
+.youjail-board-picker-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 50;
+  width: min(360px, 88vw);
+  max-height: min(420px, 60vh);
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-1) 92%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-lg);
+}
+
+.youjail-board-picker-section + .youjail-board-picker-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.youjail-board-picker-section-title {
+  margin: 0 0 6px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.youjail-board-picker-item {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  border-radius: 10px;
+}
+
+.youjail-board-picker-item.is-active {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.youjail-board-picker-item.is-pinned:not(.is-active) {
+  background: color-mix(in srgb, #f59e0b 8%, transparent);
+}
+
+.youjail-board-picker-select {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 10px;
+}
+
+.youjail-board-picker-select:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.youjail-board-picker-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.youjail-board-picker-check {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.youjail-board-picker-pin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.youjail-board-picker-pin:hover,
+.youjail-board-picker-pin.is-active {
+  color: color-mix(in srgb, #f59e0b 80%, var(--accent));
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+}
+
+.youjail-board-picker-pin:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.youjail-board-picker-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.youjail-board-picker-icon.is-personal {
+  background: color-mix(in srgb, #8b5cf6 16%, var(--surface-2));
+  color: color-mix(in srgb, #8b5cf6 85%, var(--text-primary));
+}
+
+.youjail-board-picker-icon.is-team {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-2));
+  color: var(--accent);
+}
+
+.youjail-board-picker-empty {
+  margin: 0;
+  padding: 10px;
+  color: var(--text-muted);
+  font-size: 13px;
 }
 
 .youjail-toolbar-title h1 {
@@ -95,8 +310,9 @@
 }
 
 .youjail-toolbar-group-board {
-  background: color-mix(in srgb, var(--accent) 6%, var(--surface-2));
-  border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 35%, transparent);
 }
 
 .youjail-toolbar-group-manage {

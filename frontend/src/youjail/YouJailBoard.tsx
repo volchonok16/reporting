@@ -3,6 +3,7 @@ import { deleteJson, getJson, patchJson, postJson } from '../api'
 import { notifyError, notifyProblem, notifySuccess, notifyWarning } from '../toast'
 import OrgPhoto from '../org/OrgPhoto'
 import YouJailBoardAccessPanel from './YouJailBoardAccessPanel'
+import YouJailBoardPicker, { sortYouJailBoards } from './YouJailBoardPicker'
 import YouJailCardDetail from './YouJailCardDetail'
 import { mentionPreviewText } from './markdown'
 import YouJailProjectsPanel from './YouJailProjectsPanel'
@@ -410,11 +411,44 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
   const boardTeams = board?.board.teams ?? []
   const isPersonalBoard = Boolean(board?.board.isPersonal)
 
+  const handleBoardSelect = (boardId: number) => {
+    setActiveBoardId(boardId)
+    localStorage.setItem(BOARD_STORAGE_KEY, String(boardId))
+  }
+
+  const handleToggleBoardPin = async (boardId: number) => {
+    const updated = await postJson<YouJailBoardMeta>(`/api/youjail/boards/${boardId}/pin`, {})
+    setBoard((current) => {
+      if (!current) return current
+      const boards = sortYouJailBoards(
+        current.boards.map((item) => (item.id === updated.id ? updated : item)),
+      )
+      return {
+        ...current,
+        board: current.board.id === updated.id ? updated : current.board,
+        boards,
+      }
+    })
+    return updated
+  }
+
   return (
     <div className="youjail-page">
       <div className="youjail-toolbar">
         <div className="youjail-toolbar-title">
-          <h1>{board?.board.name ?? 'YouJail'}</h1>
+          <div className="youjail-toolbar-title-row">
+            {isPersonalBoard ? (
+              <span className="youjail-board-kind-badge is-personal" title="Личная доска">
+                Личная
+              </span>
+            ) : (
+              <span className="youjail-board-kind-badge is-team" title="Командная доска">
+                Команда
+              </span>
+            )}
+            <h1>{board?.board.name ?? 'YouJail'}</h1>
+            {board?.board.pinned ? <span className="youjail-board-title-pin" title="Закреплена">📌</span> : null}
+          </div>
           <div className="youjail-board-teams-row">
             {isPersonalBoard ? (
               <span className="youjail-board-team-chip is-personal">Личная доска</span>
@@ -436,24 +470,12 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
         </div>
         <div className="youjail-toolbar-actions">
           <div className="youjail-toolbar-group youjail-toolbar-group-board">
-            <label className="youjail-toolbar-field">
-              <span className="youjail-sr-only">Доска</span>
-              <select
-                className="youjail-board-select"
-                value={activeBoardId ?? board?.board.id ?? ''}
-                onChange={(event) => {
-                  const nextId = Number(event.target.value)
-                  setActiveBoardId(nextId)
-                  localStorage.setItem(BOARD_STORAGE_KEY, String(nextId))
-                }}
-              >
-                {(board?.boards ?? []).map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.isPersonal ? `${item.name} · личная` : item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <YouJailBoardPicker
+              boards={board?.boards ?? []}
+              activeBoardId={activeBoardId ?? board?.board.id ?? null}
+              onSelect={handleBoardSelect}
+              onTogglePin={handleToggleBoardPin}
+            />
             <span className="youjail-count-badge" title="Карточек на доске">
               {loading ? '…' : totalCards}
             </span>

@@ -47,6 +47,7 @@ from app.youjail_models import (
     YouJailAttachment,
     YouJailBoard,
     YouJailBoardMember,
+    YouJailBoardPin,
     YouJailBoardTeam,
     YouJailCard,
     YouJailCardComment,
@@ -392,7 +393,30 @@ def _board_members_out(db: Session, board: YouJailBoard) -> list[dict]:
     return members
 
 
-def _serialize_board(db: Session, board: YouJailBoard, meta: dict) -> dict:
+def _board_pin_state(db: Session, meta: dict) -> dict[int, int]:
+    employee_id = actor_employee_id(db, meta)
+    if employee_id is None:
+        return {}
+    rows = db.scalars(
+        select(YouJailBoardPin)
+        .where(YouJailBoardPin.employee_id == employee_id)
+        .order_by(YouJailBoardPin.pinned_at.asc(), YouJailBoardPin.id.asc())
+    ).all()
+    return {row.board_id: index for index, row in enumerate(rows)}
+
+
+def _sort_boards(boards: list[YouJailBoard], pin_state: dict[int, int]) -> list[YouJailBoard]:
+    def sort_key(board: YouJailBoard) -> tuple[int, int, str]:
+        if board.id in pin_state:
+            return (0, pin_state[board.id], board.name.lower())
+        return (1, board.sort_order, board.name.lower())
+
+    return sorted(boards, key=sort_key)
+
+
+def _serialize_board(db: Session, board: YouJailBoard, meta: dict, *, pin_state: dict[int, int] | None = None) -> dict:
+    if pin_state is None:
+        pin_state = _board_pin_state(db, meta)
     is_personal = board.owner_employee_id is not None
     can_manage = can_manage_board(db, meta, board.id)
     return {
@@ -404,11 +428,41 @@ def _serialize_board(db: Session, board: YouJailBoard, meta: dict) -> dict:
         "isActive": board.is_active,
         "ownerEmployeeId": board.owner_employee_id,
         "isPersonal": is_personal,
+        "pinned": board.id in pin_state,
         "canManage": can_manage,
         "teamIds": [] if is_personal else _board_team_ids(db, board.id),
         "teams": [] if is_personal else _board_teams(db, board.id),
         "members": _board_members_out(db, board) if can_manage else [],
     }
+
+
+def toggle_board_pin(db: Session, board_id: int, *, meta: dict) -> dict:
+    assert_board_access(db, meta, board_id)
+    employee_id = actor_employee_id(db, meta)
+    if employee_id is None:
+        raise HTTPException(status_code=400, detail="Нужна привязка к сотруднику в оргструктуре.")
+
+    pin = db.scalar(
+        select(YouJailBoardPin).where(
+            YouJailBoardPin.employee_id == employee_id,
+            YouJailBoardPin.board_id == board_id,
+        )
+    )
+    if pin is not None:
+        db.delete(pin)
+    else:
+        db.add(
+            YouJailBoardPin(
+                employee_id=employee_id,
+                board_id=board_id,
+                pinned_at=_utcnow(),
+            )
+        )
+    db.commit()
+    board = db.get(YouJailBoard, board_id)
+    if board is None:
+        raise HTTPException(status_code=404, detail="Доска не найдена.")
+    return _serialize_board(db, board, meta)
 
 
 def _ensure_personal_board(db: Session, meta: dict) -> None:
@@ -695,7 +749,9 @@ def load_board(
         raise HTTPException(status_code=404, detail="Доска не найдена.")
 
     boards_query = select(YouJailBoard).where(YouJailBoard.is_active.is_(True)).order_by(YouJailBoard.sort_order.asc())
-    boards = db.scalars(_filter_boards_query(boards_query, db, meta)).all()
+    boards_raw = db.scalars(_filter_boards_query(boards_query, db, meta)).all()
+    pin_state = _board_pin_state(db, meta)
+    boards = _sort_boards(boards_raw, pin_state)
     columns = db.scalars(
         select(YouJailColumn)
         .where(YouJailColumn.board_id == resolved_board_id)
@@ -721,8 +777,8 @@ def load_board(
     zni_map = _card_zni_map(db, card_ids)
     all_tags = list_tags(db)
     return {
-        "board": _serialize_board(db, board, meta),
-        "boards": [_serialize_board(db, item, meta) for item in boards],
+        "board": _serialize_board(db, board, meta, pin_state=pin_state),
+        "boards": [_serialize_board(db, item, meta, pin_state=pin_state) for item in boards],
         "columns": [_serialize_column(column) for column in columns],
         "cards": [
             _serialize_card(db, card, tags_map=tags_map, zni_map=zni_map, board_slug=board.slug)
@@ -788,8 +844,10 @@ def _default_backlog_column_id(db: Session, board_id: int) -> int:
 def list_boards(db: Session, *, meta: dict) -> list[dict]:
     _ensure_personal_board(db, meta)
     query = select(YouJailBoard).where(YouJailBoard.is_active.is_(True)).order_by(YouJailBoard.sort_order.asc())
-    boards = db.scalars(_filter_boards_query(query, db, meta)).all()
-    return [_serialize_board(db, board, meta) for board in boards]
+    boards_raw = db.scalars(_filter_boards_query(query, db, meta)).all()
+    pin_state = _board_pin_state(db, meta)
+    boards = _sort_boards(boards_raw, pin_state)
+    return [_serialize_board(db, board, meta, pin_state=pin_state) for board in boards]
 
 
 def create_board(db: Session, data: dict, *, meta: dict) -> dict:

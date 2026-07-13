@@ -166,6 +166,19 @@ class YouJailBoardMember(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class YouJailBoardPin(Base):
+    __tablename__ = "youjail_board_pin"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    employee_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("employee.id", ondelete="CASCADE"), nullable=False
+    )
+    board_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("youjail_board.id", ondelete="CASCADE"), nullable=False
+    )
+    pinned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class YouJailTag(Base):
     __tablename__ = "youjail_tag"
 

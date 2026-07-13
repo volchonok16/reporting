@@ -72,6 +72,7 @@ from app.youjail_service import (
     set_team_boards,
     set_card_flag,
     start_execution,
+    toggle_board_pin,
     update_card,
     update_column,
     update_project,
@@ -190,6 +191,15 @@ def api_delete_board(
 ) -> dict[str, bool]:
     delete_board(db, board_id, meta=meta)
     return {"ok": True}
+
+
+@router.post("/boards/{board_id}/pin", response_model=YouJailBoardMetaOut)
+def api_toggle_board_pin(
+    board_id: int,
+    db: Session = Depends(get_db),
+    meta: dict = Depends(_load_session_meta),
+) -> dict:
+    return toggle_board_pin(db, board_id, meta=meta)
 
 
 @router.put("/boards/{board_id}/teams", response_model=YouJailBoardMetaOut)

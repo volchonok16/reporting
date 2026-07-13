@@ -20,6 +20,7 @@ export type YouJailBoardMeta = {
   isActive: boolean
   ownerEmployeeId?: number | null
   isPersonal?: boolean
+  pinned?: boolean
   canManage?: boolean
   teamIds: number[]
   teams: YouJailTeamRef[]

@@ -584,6 +584,18 @@ CREATE TABLE youjail_board_member (
 CREATE INDEX ix_youjail_board_member_board ON youjail_board_member (board_id);
 CREATE INDEX ix_youjail_board_member_employee ON youjail_board_member (employee_id);
 
+CREATE TABLE youjail_board_pin (
+    id              BIGSERIAL PRIMARY KEY,
+    employee_id     BIGINT NOT NULL REFERENCES employee(id) ON DELETE CASCADE,
+    board_id        BIGINT NOT NULL REFERENCES youjail_board(id) ON DELETE CASCADE,
+    pinned_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (employee_id, board_id)
+);
+
+CREATE INDEX ix_youjail_board_pin_employee ON youjail_board_pin (employee_id, pinned_at ASC);
+
+COMMENT ON TABLE youjail_board_pin IS 'Закреплённые доски YouJail (настройка пользователя)';
+
 CREATE TABLE youjail_tag (
     id              BIGSERIAL PRIMARY KEY,
     name            VARCHAR(128) NOT NULL,
