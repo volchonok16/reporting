@@ -43,6 +43,7 @@ from app.youjail_service import (
     delete_attachment,
     delete_board,
     delete_card,
+    delete_column,
     delete_team,
     get_card,
     get_execution,
@@ -198,6 +199,17 @@ def api_update_column(
     meta: dict = Depends(_load_session_meta),
 ) -> dict:
     return update_column(db, column_id, payload.model_dump(exclude_unset=True), meta=meta)
+
+
+@router.delete("/columns/{column_id}")
+def api_delete_column(
+    column_id: int,
+    move_to_column_id: int | None = Query(default=None, alias="moveToColumnId"),
+    db: Session = Depends(get_db),
+    meta: dict = Depends(_load_session_meta),
+) -> dict[str, bool]:
+    delete_column(db, column_id, move_to_column_id=move_to_column_id, meta=meta)
+    return {"ok": True}
 
 
 @router.get("/board", response_model=YouJailBoardOut)

@@ -604,6 +604,56 @@ def update_column(db: Session, column_id: int, data: dict, *, meta: dict) -> dic
     return _serialize_column(column)
 
 
+def delete_column(
+    db: Session,
+    column_id: int,
+    *,
+    move_to_column_id: int | None,
+    meta: dict,
+) -> None:
+    assert_youjail_admin(meta)
+    column = db.get(YouJailColumn, column_id)
+    if column is None:
+        raise HTTPException(status_code=404, detail="Колонка не найдена.")
+    assert_board_access(db, meta, column.board_id)
+
+    columns_count = db.scalar(
+        select(func.count()).select_from(YouJailColumn).where(YouJailColumn.board_id == column.board_id)
+    )
+    if int(columns_count or 0) <= 1:
+        raise HTTPException(status_code=400, detail="Нельзя удалить последнюю колонку на доске.")
+
+    cards = db.scalars(
+        select(YouJailCard)
+        .where(YouJailCard.column_id == column_id)
+        .order_by(YouJailCard.sort_order.asc(), YouJailCard.id.asc())
+    ).all()
+    if cards:
+        if move_to_column_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="В колонке есть карточки. Укажите колонку, куда их перенести.",
+            )
+        target = db.get(YouJailColumn, move_to_column_id)
+        if target is None or target.board_id != column.board_id or target.id == column_id:
+            raise HTTPException(status_code=400, detail="Колонка для переноса карточек не найдена.")
+
+        base_order = db.scalar(
+            select(func.coalesce(func.max(YouJailCard.sort_order), -1)).where(
+                YouJailCard.column_id == move_to_column_id
+            )
+        )
+        next_order = int(base_order or -1) + 1
+        for card in cards:
+            card.column_id = move_to_column_id
+            card.sort_order = next_order
+            card.updated_at = _utcnow()
+            next_order += 1
+
+    db.delete(column)
+    db.commit()
+
+
 def create_card(db: Session, data: dict, *, created_by: str | None, meta: dict) -> dict:
     board_id = _resolve_board_id(db, data.get("boardId"), meta)
     column_id = data.get("columnId") or _default_backlog_column_id(db, board_id)

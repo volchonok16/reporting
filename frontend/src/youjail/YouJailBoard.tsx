@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from 'react'
 import { deleteJson, getJson, patchJson, postJson } from '../api'
-import { notifyError, notifyProblem, notifySuccess } from '../toast'
+import { notifyError, notifyProblem, notifySuccess, notifyWarning } from '../toast'
 import OrgPhoto from '../org/OrgPhoto'
 import YouJailCardDetail from './YouJailCardDetail'
 import { mentionPreviewText } from './markdown'
@@ -26,6 +26,12 @@ function cardsForColumn(cards: YouJailCard[], columnId: number): YouJailCard[] {
   return cards
     .filter((card) => card.columnId === columnId)
     .sort((left, right) => left.sortOrder - right.sortOrder || left.id - right.id)
+}
+
+function defaultMoveTargetId(columns: YouJailColumn[], excludeColumnId: number): number | null {
+  const others = columns.filter((column) => column.id !== excludeColumnId)
+  const backlog = others.find((column) => column.columnKey === 'backlog')
+  return backlog?.id ?? others[0]?.id ?? null
 }
 
 type YouJailBoardProps = {
@@ -58,6 +64,10 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
     columnId: number
     position: ColumnDropPosition
   } | null>(null)
+  const [columnPendingDelete, setColumnPendingDelete] = useState<YouJailColumn | null>(null)
+  const [deleteMoveTargetId, setDeleteMoveTargetId] = useState<number | null>(null)
+  const [deletingColumn, setDeletingColumn] = useState(false)
+  const [inlineNewColumnTitle, setInlineNewColumnTitle] = useState('')
   const cardWasDraggedRef = useRef(false)
 
   const loadBoard = useCallback(async () => {
@@ -283,20 +293,61 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
     }
   }
 
-  const createColumn = async (event: FormEvent) => {
+  const createColumn = async (event: FormEvent, titleOverride?: string) => {
     event.preventDefault()
-    const title = newColumnTitle.trim()
+    const title = (titleOverride ?? newColumnTitle).trim()
     const boardId = activeBoardId ?? board?.board.id
     if (!title || !boardId) return
     try {
       await postJson<YouJailColumn>(`/api/youjail/boards/${boardId}/columns`, { title })
       setNewColumnTitle('')
+      setInlineNewColumnTitle('')
       setShowColumnForm(false)
       notifySuccess('Колонка добавлена')
       await loadBoard()
     } catch (err) {
       notifyProblem(err, 'Не удалось добавить колонку')
     }
+  }
+
+  const requestDeleteColumn = (column: YouJailColumn, cardCount: number) => {
+    if (columns.length <= 1) {
+      notifyWarning('Нельзя удалить последнюю колонку на доске')
+      return
+    }
+    if (cardCount === 0) {
+      if (!window.confirm(`Удалить колонку «${column.title}»?`)) return
+      void confirmDeleteColumn(column.id, null)
+      return
+    }
+    setColumnPendingDelete(column)
+    setDeleteMoveTargetId(defaultMoveTargetId(columns, column.id))
+  }
+
+  const confirmDeleteColumn = async (columnId: number, moveToColumnId: number | null) => {
+    setDeletingColumn(true)
+    try {
+      const query = moveToColumnId ? `?moveToColumnId=${moveToColumnId}` : ''
+      await deleteJson(`/api/youjail/columns/${columnId}${query}`)
+      setColumnPendingDelete(null)
+      setDeleteMoveTargetId(null)
+      if (editingColumnId === columnId) {
+        setEditingColumnId(null)
+        setEditingColumnTitle('')
+      }
+      notifySuccess('Колонка удалена')
+      await loadBoard()
+    } catch (err) {
+      notifyProblem(err, 'Не удалось удалить колонку')
+    } finally {
+      setDeletingColumn(false)
+    }
+  }
+
+  const cancelColumnDelete = () => {
+    if (deletingColumn) return
+    setColumnPendingDelete(null)
+    setDeleteMoveTargetId(null)
   }
 
   const saveColumnTitle = async (columnId: number) => {
@@ -383,13 +434,15 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
                     if (current) {
                       setEditingColumnId(null)
                       setEditingColumnTitle('')
+                      setShowColumnForm(false)
+                      cancelColumnDelete()
                       clearColumnDragState()
                     }
                     return !current
                   })
                 }}
               >
-                {boardEditMode ? 'Готово' : 'Редактировать колонки'}
+                {boardEditMode ? 'Готово' : 'Колонки'}
               </button>
               <button type="button" className="btn-secondary" onClick={() => setShowBoardForm((current) => !current)}>
                 + Доска
@@ -402,9 +455,11 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
               >
                 Удалить доску
               </button>
-              <button type="button" className="btn-secondary" onClick={() => setShowColumnForm((current) => !current)}>
-                + Колонка
-              </button>
+              {!boardEditMode ? (
+                <button type="button" className="btn-secondary" onClick={() => setShowColumnForm((current) => !current)}>
+                  + Колонка
+                </button>
+              ) : null}
             </>
           ) : null}
           <input
@@ -494,6 +549,31 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
             Отмена
           </button>
         </form>
+      ) : null}
+
+      {boardEditMode ? (
+        <div className="youjail-edit-banner" role="status">
+          <div className="youjail-edit-banner-main">
+            <strong>Редактирование колонок</strong>
+            <span>
+              Перетащите ⋮⋮ для порядка · нажмите название, чтобы переименовать · выберите цвет · удалите ненужные колонки
+            </span>
+          </div>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => {
+              setEditingColumnId(null)
+              setEditingColumnTitle('')
+              setShowColumnForm(false)
+              cancelColumnDelete()
+              clearColumnDragState()
+              setBoardEditMode(false)
+            }}
+          >
+            Готово
+          </button>
+        </div>
       ) : null}
 
       {showCreateForm ? (
@@ -588,22 +668,48 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
                     <h2>{column.title}</h2>
                   )}
                   <span className="youjail-column-count">{cards.length}</span>
+                  {canManageOrg && boardEditMode && columns.length > 1 ? (
+                    <button
+                      type="button"
+                      className="youjail-column-delete-btn"
+                      title={`Удалить колонку «${column.title}»`}
+                      aria-label={`Удалить колонку ${column.title}`}
+                      onClick={() => requestDeleteColumn(column, cards.length)}
+                    >
+                      ✕
+                    </button>
+                  ) : null}
                 </div>
                 {canManageOrg && boardEditMode ? (
-                  <select
-                    className="youjail-column-tone-select"
-                    value={column.tone}
-                    aria-label={`Цвет колонки ${column.title}`}
-                    onChange={(event) => void saveColumnTone(column.id, event.target.value)}
-                  >
+                  <div className="youjail-column-tones" role="radiogroup" aria-label={`Цвет колонки ${column.title}`}>
                     {COLUMN_TONES.map((tone) => (
-                      <option key={tone.value} value={tone.value}>
-                        {tone.label}
-                      </option>
+                      <button
+                        key={tone.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={column.tone === tone.value}
+                        aria-label={tone.label}
+                        title={tone.label}
+                        className={`youjail-column-tone is-${tone.value}${column.tone === tone.value ? ' is-active' : ''}`}
+                        onClick={() => void saveColumnTone(column.id, tone.value)}
+                      />
                     ))}
-                  </select>
+                  </div>
                 ) : null}
               </header>
+              {boardEditMode ? (
+                <div className="youjail-column-edit-summary">
+                  {cards.length === 0 ? (
+                    <p>Колонка пустая — можно удалить без переноса карточек</p>
+                  ) : (
+                    <p>
+                      <strong>{cards.length}</strong>{' '}
+                      {cards.length === 1 ? 'карточка' : cards.length < 5 ? 'карточки' : 'карточек'}
+                      {' · '}при удалении будут перенесены в другую колонку
+                    </p>
+                  )}
+                </div>
+              ) : (
               <div className={`youjail-column-cards${isDropTarget ? ' is-drop-target' : ''}`}>
                 {cards.length === 0 && !isDropTarget ? (
                   <div className="youjail-column-empty">Перетащите карточку сюда</div>
@@ -622,7 +728,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
                         }, 0)
                       }}
                       onClick={() => {
-                        if (cardWasDraggedRef.current) return
+                        if (boardEditMode || cardWasDraggedRef.current) return
                         setSelectedCardId(card.id)
                       }}
                     >
@@ -682,10 +788,87 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
                   </div>
                 ))}
               </div>
+              )}
             </section>
           )
         })}
+        {boardEditMode && canManageOrg ? (
+          <section className="youjail-column youjail-column-add">
+            <form
+              className="youjail-column-add-form"
+              onSubmit={(event) => void createColumn(event, inlineNewColumnTitle)}
+            >
+              <h2>Новая колонка</h2>
+              <input
+                type="text"
+                value={inlineNewColumnTitle}
+                onChange={(event) => setInlineNewColumnTitle(event.target.value)}
+                placeholder="Название колонки"
+              />
+              <button type="submit" className="btn-primary" disabled={!inlineNewColumnTitle.trim()}>
+                Добавить
+              </button>
+            </form>
+          </section>
+        ) : null}
       </div>
+
+      {columnPendingDelete ? (
+        <div className="youjail-delete-backdrop" onClick={cancelColumnDelete}>
+          <div
+            className="youjail-delete-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="youjail-delete-column-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="youjail-delete-column-title">Удалить колонку «{columnPendingDelete.title}»?</h3>
+            <p className="youjail-muted">
+              В колонке{' '}
+              <strong>
+                {columnCards.get(columnPendingDelete.id)?.length ?? 0}
+              </strong>{' '}
+              {(columnCards.get(columnPendingDelete.id)?.length ?? 0) === 1
+                ? 'карточка'
+                : (columnCards.get(columnPendingDelete.id)?.length ?? 0) < 5
+                  ? 'карточки'
+                  : 'карточек'}
+              . Выберите, куда их перенести:
+            </p>
+            <label className="youjail-field">
+              <span>Перенести в</span>
+              <select
+                value={deleteMoveTargetId ?? ''}
+                disabled={deletingColumn}
+                onChange={(event) =>
+                  setDeleteMoveTargetId(event.target.value ? Number(event.target.value) : null)
+                }
+              >
+                {columns
+                  .filter((column) => column.id !== columnPendingDelete.id)
+                  .map((column) => (
+                    <option key={column.id} value={column.id}>
+                      {column.title}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <div className="youjail-delete-actions">
+              <button type="button" className="btn-ghost" disabled={deletingColumn} onClick={cancelColumnDelete}>
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="btn-primary youjail-danger-btn"
+                disabled={deletingColumn || !deleteMoveTargetId}
+                onClick={() => void confirmDeleteColumn(columnPendingDelete.id, deleteMoveTargetId)}
+              >
+                {deletingColumn ? 'Удаление…' : 'Удалить колонку'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <YouJailCardDetail
         cardId={selectedCardId}
