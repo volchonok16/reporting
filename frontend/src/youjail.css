@@ -29,6 +29,41 @@
   font-size: 20px;
 }
 
+.youjail-board-teams-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.youjail-board-teams-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.youjail-board-team-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.youjail-board-team-chip.is-muted {
+  background: color-mix(in srgb, var(--border) 35%, transparent);
+  border-color: var(--border);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
 .youjail-toolbar-title p {
   margin: 4px 0 0;
   font-size: 13px;
@@ -1125,13 +1160,41 @@
 }
 
 .youjail-mention-chip {
-  display: inline-flex;
-  align-items: center;
+  display: inline;
+  margin: 0 1px;
   padding: 0 6px;
+  border: 0;
   border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   color: var(--accent);
+  font: inherit;
   font-weight: 600;
+  line-height: 1.5;
+  cursor: pointer;
+  text-decoration: none;
+  vertical-align: baseline;
+}
+
+.youjail-mention-chip:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  text-decoration: underline;
+}
+
+.youjail-notes-live-preview {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+
+.youjail-notes-live-preview-label {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.youjail-notes-preview-inline {
+  min-height: 0;
+  padding: 8px 10px;
 }
 
 .youjail-error-inline {

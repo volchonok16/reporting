@@ -1,3 +1,8 @@
+export type YouJailTeamRef = {
+  id: number
+  name: string
+}
+
 export type YouJailBoardMeta = {
   id: number
   name: string
@@ -6,6 +11,7 @@ export type YouJailBoardMeta = {
   sortOrder: number
   isActive: boolean
   teamIds: number[]
+  teams: YouJailTeamRef[]
 }
 
 export type YouJailTeamMember = {

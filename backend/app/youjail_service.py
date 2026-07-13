@@ -191,6 +191,18 @@ def _board_team_ids(db: Session, board_id: int) -> list[int]:
     )
 
 
+def _board_teams(db: Session, board_id: int) -> list[dict]:
+    team_ids = _board_team_ids(db, board_id)
+    if not team_ids:
+        return []
+    teams = db.scalars(
+        select(YouJailTeam)
+        .where(YouJailTeam.id.in_(team_ids), YouJailTeam.is_active.is_(True))
+        .order_by(YouJailTeam.name.asc())
+    ).all()
+    return [{"id": team.id, "name": team.name} for team in teams]
+
+
 def _team_board_ids(db: Session, team_id: int) -> list[int]:
     return list(
         db.scalars(select(YouJailBoardTeam.board_id).where(YouJailBoardTeam.team_id == team_id)).all()
@@ -217,6 +229,7 @@ def _serialize_board(db: Session, board: YouJailBoard) -> dict:
         "sortOrder": board.sort_order,
         "isActive": board.is_active,
         "teamIds": _board_team_ids(db, board.id),
+        "teams": _board_teams(db, board.id),
     }
 
 

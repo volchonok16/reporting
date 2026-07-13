@@ -6,9 +6,19 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;')
 }
 
+export const EMPLOYEE_MENTION_PATTERN = /@\[([^\]]+)\]\(employee:(\d+)\)/
+
+function renderEmployeeMention(_match: string, name: string, employeeId: string): string {
+  const safeName = escapeHtml(name)
+  return `<button type="button" class="youjail-mention-chip" data-employee-id="${employeeId}">${safeName}</button>`
+}
+
+function replaceEmployeeMentions(text: string): string {
+  return text.replace(EMPLOYEE_MENTION_PATTERN, renderEmployeeMention)
+}
+
 function inlineMarkdown(text: string): string {
-  return escapeHtml(text)
-    .replace(/@\[([^\]]+)\]\(employee:\d+\)/g, '<span class="youjail-mention-chip">@$1</span>')
+  return replaceEmployeeMentions(escapeHtml(text))
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
@@ -17,7 +27,7 @@ function inlineMarkdown(text: string): string {
 
 export function mentionPreviewText(markdown: string): string {
   return markdown
-    .replace(/@\[([^\]]+)\]\(employee:\d+\)/g, '@$1')
+    .replace(EMPLOYEE_MENTION_PATTERN, '$1')
     .split('\n')
     .find((line) => line.trim()) ?? ''
 }

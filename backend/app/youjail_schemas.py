@@ -3,6 +3,11 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
+class YouJailTeamRefOut(BaseModel):
+    id: int
+    name: str
+
+
 class YouJailBoardMetaOut(BaseModel):
     id: int
     name: str
@@ -11,6 +16,7 @@ class YouJailBoardMetaOut(BaseModel):
     sortOrder: int = 0
     isActive: bool = True
     teamIds: list[int] = Field(default_factory=list)
+    teams: list[YouJailTeamRefOut] = Field(default_factory=list)
 
 
 class YouJailBoardIn(BaseModel):

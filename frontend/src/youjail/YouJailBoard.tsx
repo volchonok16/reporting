@@ -405,12 +405,25 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
     return new Map(board.columns.map((column) => [column.id, cardsForColumn(board.cards, column.id)]))
   }, [board])
 
+  const boardTeams = board?.board.teams ?? []
+
   return (
     <div className="youjail-page">
       <div className="youjail-toolbar">
         <div className="youjail-toolbar-title">
-          <h1>YouJail</h1>
-          <p>Отдельная kanban-доска с заметками, проектами, исполнителями и логами запусков.</p>
+          <h1>{board?.board.name ?? 'YouJail'}</h1>
+          <div className="youjail-board-teams-row">
+            <span className="youjail-board-teams-label">Команды:</span>
+            {boardTeams.length > 0 ? (
+              boardTeams.map((team) => (
+                <span key={team.id} className="youjail-board-team-chip">
+                  {team.name}
+                </span>
+              ))
+            ) : (
+              <span className="youjail-board-team-chip is-muted">только админы</span>
+            )}
+          </div>
         </div>
         <div className="youjail-toolbar-actions">
           {canManageOrg ? (
@@ -879,6 +892,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
         cardId={selectedCardId}
         projects={board?.projects ?? []}
         allTags={board?.tags ?? []}
+        canManageOrg={canManageOrg}
         onClose={() => setSelectedCardId(null)}
         onUpdated={handleCardUpdated}
         onDeleted={handleCardDeleted}

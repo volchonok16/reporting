@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
 import { apiFetch, deleteJson, getJson, patchJson, postForm, postJson } from '../api'
+import EmployeeCardModal from '../org/EmployeeCardModal'
+import '../org/org.css'
 import { notifyError, notifyProblem, notifySuccess } from '../toast'
 import YouJailAssigneeSelect from './YouJailAssigneeSelect'
 import YouJailMentionTextarea from './YouJailMentionTextarea'
+import { handleMentionPreviewClick } from './mentionPreview'
 import YouJailTagSelect from './YouJailTagSelect'
 import { renderMarkdown } from './markdown'
 import type {
@@ -15,6 +18,7 @@ type YouJailCardDetailProps = {
   cardId: number | null
   projects: YouJailProject[]
   allTags: YouJailTag[]
+  canManageOrg?: boolean
   onClose: () => void
   onUpdated: (card: YouJailCard) => void
   onDeleted: (cardId: number) => void
@@ -40,6 +44,7 @@ export default function YouJailCardDetail({
   cardId,
   projects,
   allTags,
+  canManageOrg = false,
   onClose,
   onUpdated,
   onDeleted,
@@ -48,6 +53,7 @@ export default function YouJailCardDetail({
   const [card, setCard] = useState<YouJailCard | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [mentionEmployeeId, setMentionEmployeeId] = useState<number | null>(null)
   const [notesTab, setNotesTab] = useState<'edit' | 'preview'>('edit')
   const [runningAction, setRunningAction] = useState<string | null>(null)
 
@@ -81,6 +87,13 @@ export default function YouJailCardDetail({
   const previewHtml = useMemo(
     () => (card ? renderMarkdown(card.descriptionMd) : ''),
     [card?.descriptionMd, card],
+  )
+
+  const handlePreviewClick = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      handleMentionPreviewClick(event, setMentionEmployeeId)
+    },
+    [],
   )
 
   const saveCard = async (patch: Record<string, unknown>) => {
@@ -214,18 +227,31 @@ export default function YouJailCardDetail({
                   </button>
                 </div>
                 {notesTab === 'edit' ? (
-                  <YouJailMentionTextarea
-                    className="youjail-notes-editor"
-                    value={card.descriptionMd}
-                    disabled={saving}
-                    placeholder="Markdown-заметки: списки, **жирный**, `код`, @сотрудник…"
-                    onChange={(descriptionMd) => setCard({ ...card, descriptionMd })}
-                    onBlur={() => void saveCard({ descriptionMd: card.descriptionMd })}
-                  />
+                  <>
+                    <YouJailMentionTextarea
+                      className="youjail-notes-editor"
+                      value={card.descriptionMd}
+                      disabled={saving}
+                      placeholder="Markdown-заметки: списки, **жирный**, `код`, @сотрудник…"
+                      onChange={(descriptionMd) => setCard({ ...card, descriptionMd })}
+                      onBlur={() => void saveCard({ descriptionMd: card.descriptionMd })}
+                    />
+                    {card.descriptionMd.trim() ? (
+                      <div className="youjail-notes-live-preview">
+                        <p className="youjail-notes-live-preview-label">Как видят отметки:</p>
+                        <div
+                          className="youjail-notes-preview youjail-notes-preview-inline"
+                          dangerouslySetInnerHTML={{ __html: previewHtml }}
+                          onClick={handlePreviewClick}
+                        />
+                      </div>
+                    ) : null}
+                  </>
                 ) : (
                   <div
                     className="youjail-notes-preview"
                     dangerouslySetInnerHTML={{ __html: previewHtml }}
+                    onClick={handlePreviewClick}
                   />
                 )}
               </div>
@@ -369,6 +395,15 @@ export default function YouJailCardDetail({
           </div>
         ) : null}
       </aside>
+
+      {mentionEmployeeId !== null ? (
+        <EmployeeCardModal
+          employeeId={mentionEmployeeId}
+          canManage={canManageOrg}
+          onClose={() => setMentionEmployeeId(null)}
+          onOpenEmployee={setMentionEmployeeId}
+        />
+      ) : null}
     </div>
   )
 }
