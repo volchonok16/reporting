@@ -1,16 +1,15 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { apiFetch, deleteJson, getJson, patchJson, postForm, postJson } from '../api'
 import EmployeeCardModal from '../org/EmployeeCardModal'
 import '../org/org.css'
 import { notifyError, notifyProblem, notifySuccess } from '../toast'
 import YouJailAssigneeSelect from './YouJailAssigneeSelect'
+import YouJailCardComments from './YouJailCardComments'
 import YouJailCardHistory from './YouJailCardHistory'
 import YouJailCardLinksField from './YouJailCardLinksField'
-import YouJailMentionTextarea from './YouJailMentionTextarea'
-import { handleMentionPreviewClick } from './mentionPreview'
+import YouJailUnifiedNotesEditor from './YouJailUnifiedNotesEditor'
 import YouJailTagSelect from './YouJailTagSelect'
 import YouJailZniField from './YouJailZniField'
-import { renderMarkdown } from './markdown'
 import type { YouJailCard, YouJailProject, YouJailTag } from './types'
 
 type YouJailCardDetailProps = {
@@ -83,15 +82,6 @@ export default function YouJailCardDetail({
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [cardId, onClose])
-
-  const previewHtml = useMemo(
-    () => (card ? renderMarkdown(card.descriptionMd) : ''),
-    [card?.descriptionMd, card],
-  )
-
-  const handlePreviewClick = useCallback((event: MouseEvent<HTMLDivElement>) => {
-    handleMentionPreviewClick(event, setMentionEmployeeId)
-  }, [])
 
   const applyCard = (updated: YouJailCard) => {
     setCard(updated)
@@ -253,26 +243,26 @@ export default function YouJailCardDetail({
               <section className="youjail-notes-card">
                 <div className="youjail-notes-card-head">
                   <h3>Описание</h3>
-                  <p className="youjail-muted">Пишите ниже — сверху сразу виден результат.</p>
+                  <p className="youjail-muted">
+                    Нажмите на поле, чтобы редактировать. Поддерживаются списки, **жирный**, `код`, @сотрудник.
+                  </p>
                 </div>
-                <div
-                  className="youjail-notes-preview youjail-notes-preview-main"
-                  dangerouslySetInnerHTML={{
-                    __html:
-                      previewHtml ||
-                      '<p class="youjail-notes-empty">Пока пусто. Начните вводить текст в поле ниже.</p>',
-                  }}
-                  onClick={handlePreviewClick}
-                />
-                <YouJailMentionTextarea
-                  className="youjail-notes-editor youjail-notes-editor-pane"
+                <YouJailUnifiedNotesEditor
                   value={card.descriptionMd}
                   disabled={saving}
                   placeholder="Текст задачи, детали, чек-лист…"
                   onChange={(descriptionMd) => setCard({ ...card, descriptionMd })}
                   onBlur={() => void saveCard({ descriptionMd: card.descriptionMd })}
+                  onMentionClick={setMentionEmployeeId}
                 />
               </section>
+
+              <YouJailCardComments
+                cardId={card.id}
+                comments={card.comments ?? []}
+                disabled={saving}
+                onCommentAdded={() => void loadCard()}
+              />
 
               <div className="youjail-detail-grid">
                 <label className="youjail-field youjail-field-full">

@@ -185,6 +185,16 @@ def log_attachment_event(db: Session, card_id: int, meta: dict, *, added: bool, 
     )
 
 
+def log_card_comment(db: Session, card_id: int, meta: dict, *, comment_id: int, preview: str) -> None:
+    log_card_event(
+        db,
+        card_id,
+        "comment_added",
+        meta,
+        payload={"commentId": comment_id, "preview": preview[:200]},
+    )
+
+
 def format_event_summary(event_type: str, payload: dict) -> str:
     if event_type == "created":
         column = payload.get("columnTitle") or "колонку"
@@ -229,6 +239,9 @@ def format_event_summary(event_type: str, payload: dict) -> str:
         return f"Добавил связь с {payload.get('relatedCardKey') or 'карточкой'}"
     if event_type == "link_removed":
         return f"Убрал связь с {payload.get('relatedCardKey') or 'карточкой'}"
+    if event_type == "comment_added":
+        preview = (payload.get("preview") or "").strip()
+        return f"Оставил комментарий{': ' + preview if preview else ''}"
     return event_type
 
 

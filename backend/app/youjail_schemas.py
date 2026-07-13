@@ -211,6 +211,29 @@ class YouJailAttachmentOut(BaseModel):
     createdAt: datetime
 
 
+class YouJailCommentAttachmentOut(BaseModel):
+    id: int
+    commentId: int
+    filename: str
+    contentType: str | None = None
+    sizeBytes: int
+    downloadUrl: str
+    isImage: bool = False
+    createdAt: datetime
+
+
+class YouJailCommentOut(BaseModel):
+    id: int
+    cardId: int
+    bodyMd: str = ""
+    authorEmployeeId: int | None = None
+    authorName: str | None = None
+    authorPhotoUrl: str | None = None
+    createdAt: datetime
+    updatedAt: datetime
+    attachments: list[YouJailCommentAttachmentOut] = Field(default_factory=list)
+
+
 class YouJailExecutionLogOut(BaseModel):
     id: int
     seq: int
@@ -264,6 +287,7 @@ class YouJailCardOut(BaseModel):
     relatedCardKeys: str = ""
     relatedCards: list[YouJailRelatedCardOut] = Field(default_factory=list)
     history: list[YouJailCardEventOut] = Field(default_factory=list)
+    comments: list[YouJailCommentOut] = Field(default_factory=list)
     createdBy: str | None = None
     createdAt: datetime
     updatedAt: datetime

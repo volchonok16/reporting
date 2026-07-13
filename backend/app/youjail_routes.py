@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -18,6 +18,7 @@ from app.youjail_schemas import (
     YouJailColumnIn,
     YouJailColumnOut,
     YouJailColumnUpdateIn,
+    YouJailCommentOut,
     YouJailExecuteIn,
     YouJailExecutionOut,
     YouJailProjectIn,
@@ -40,6 +41,7 @@ from app.youjail_service import (
     add_team_member,
     create_board,
     create_card,
+    create_card_comment,
     create_column,
     create_project,
     create_tag,
@@ -59,6 +61,7 @@ from app.youjail_service import (
     list_task_types,
     list_teams,
     load_attachment_file,
+    load_comment_attachment_file,
     load_board,
     lookup_znis,
     move_card,
@@ -522,3 +525,24 @@ def api_delete_attachment(
 ) -> dict[str, bool]:
     delete_attachment(db, attachment_id, meta=meta)
     return {"ok": True}
+
+
+@router.post("/cards/{card_id}/comments", response_model=YouJailCommentOut)
+async def api_create_card_comment(
+    card_id: int,
+    body_md: str = Form(""),
+    files: list[UploadFile] = File(default=[]),
+    db: Session = Depends(get_db),
+    meta: dict = Depends(_load_session_meta),
+) -> dict:
+    return await create_card_comment(db, card_id, body_md=body_md, files=files, meta=meta)
+
+
+@router.get("/comment-attachments/{attachment_id}/download")
+def api_download_comment_attachment(
+    attachment_id: int,
+    db: Session = Depends(get_db),
+    meta: dict = Depends(_load_session_meta),
+) -> FileResponse:
+    path, filename, content_type = load_comment_attachment_file(db, attachment_id, meta=meta)
+    return FileResponse(path, filename=filename, media_type=content_type or "application/octet-stream")

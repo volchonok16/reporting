@@ -121,6 +121,29 @@ export type YouJailAttachment = {
   createdAt: string
 }
 
+export type YouJailCommentAttachment = {
+  id: number
+  commentId: number
+  filename: string
+  contentType?: string | null
+  sizeBytes: number
+  downloadUrl: string
+  isImage: boolean
+  createdAt: string
+}
+
+export type YouJailCardComment = {
+  id: number
+  cardId: number
+  bodyMd: string
+  authorEmployeeId?: number | null
+  authorName?: string | null
+  authorPhotoUrl?: string | null
+  createdAt: string
+  updatedAt: string
+  attachments: YouJailCommentAttachment[]
+}
+
 export type YouJailExecutionLog = {
   id: number
   seq: number
@@ -173,6 +196,7 @@ export type YouJailCard = {
   relatedCardKeys: string
   relatedCards: YouJailRelatedCard[]
   history: YouJailCardEvent[]
+  comments: YouJailCardComment[]
   createdBy?: string | null
   createdAt: string
   updatedAt: string

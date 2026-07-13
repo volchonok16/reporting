@@ -116,6 +116,8 @@
 | `youjail_card_zni` | Привязка карточки к ЗНИ (`task`, `change_request`) |
 | `youjail_card_event` | История изменений карточки |
 | `youjail_card_link` | Связи карточек на одной доске |
+| `youjail_card_comment` | Комментарии к карточке YouJail |
+| `youjail_comment_attachment` | Вложения к комментариям |
 | `youjail_attachment` | Вложения карточек |
 | `youjail_execution` | Запуски исполнителя |
 | `youjail_execution_log` | Лог stdout/stderr/system |

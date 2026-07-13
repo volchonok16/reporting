@@ -832,6 +832,30 @@ API: `history[]` в `GET /api/youjail/cards/{id}`.
 
 API: `relatedCardKeys`, `relatedCards` (в т.ч. по общей ЗНИ).
 
+### youjail_card_comment
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `card_id` | bigint | FK → `youjail_card` |
+| `body_md` | text | Текст комментария (markdown, @упоминания) |
+| `author_employee_id` | bigint | FK → `employee` (автор) |
+| `author_label` | varchar(255) | Имя, если сотрудник не привязан |
+| `created_at`, `updated_at` | timestamptz | Время создания и обновления |
+
+API: `comments[]` в `GET /api/youjail/cards/{id}`; создание: `POST /api/youjail/cards/{id}/comments` (multipart: `body_md`, `files[]`). Событие `comment_added` в `youjail_card_event`.
+
+### youjail_comment_attachment
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `comment_id` | bigint | FK → `youjail_card_comment` |
+| `filename` | varchar(512) | Имя файла |
+| `storage_path` | text | Путь на диске (`YOUJAIL_WORKSPACE_DIR`) |
+| `content_type` | varchar(128) | MIME-тип |
+| `size_bytes` | bigint | Размер |
+
+Скачивание: `GET /api/youjail/comment-attachments/{id}/download`. Изображения отображаются inline в UI.
+
 ### youjail_attachment, youjail_execution, youjail_execution_log
 
 Вложения к карточке; запуски исполнителя и построчный лог (`stdout` / `stderr` / `system` / `pty`).
@@ -882,7 +906,7 @@ API: `relatedCardKeys`, `relatedCards` (в т.ч. по общей ЗНИ).
 
 Связь M:N: у карточки может быть несколько тегов. API: `GET/POST /api/youjail/tags`, обновление карточки — поле `tagIds`.
 
-API: префикс `/api/youjail/*`. `DELETE /api/youjail/boards/{id}`, `POST /api/youjail/boards/{id}/columns`, `PATCH /api/youjail/columns/{id}`, `DELETE /api/youjail/columns/{id}?moveToColumnId=…`, `POST/DELETE /api/youjail/boards/{id}/members`, `POST /api/youjail/zni/lookup`, `GET/POST/PATCH/DELETE /api/youjail/teams`, `PUT /api/youjail/teams/{id}/boards`, `PUT /api/youjail/boards/{id}/teams`, `GET/POST /api/youjail/tags`. Доступ к доске: админы организации — все; пользователи — команды, личная доска (`owner_employee_id`), прямой доступ (`youjail_board_member`). Управление колонками: глобальный админ, владелец личной доски или `youjail_board_member.role = admin`. WebSocket PTY: `GET /api/youjail/executions/{id}/terminal?X-Session-Id=…`. Fuzzy-поиск: `GET /api/youjail/board?search=…&boardId=…`. CLI: `python backend/scripts/ty.py`.
+API: префикс `/api/youjail/*`. `DELETE /api/youjail/boards/{id}`, `POST /api/youjail/boards/{id}/columns`, `PATCH /api/youjail/columns/{id}`, `DELETE /api/youjail/columns/{id}?moveToColumnId=…`, `POST/DELETE /api/youjail/boards/{id}/members`, `POST /api/youjail/zni/lookup`, `POST /api/youjail/cards/{id}/comments`, `GET /api/youjail/comment-attachments/{id}/download`, `GET/POST/PATCH/DELETE /api/youjail/teams`, `PUT /api/youjail/teams/{id}/boards`, `PUT /api/youjail/boards/{id}/teams`, `GET/POST /api/youjail/tags`. Доступ к доске: админы организации — все; пользователи — команды, личная доска (`owner_employee_id`), прямой доступ (`youjail_board_member`). Управление колонками: глобальный админ, владелец личной доски или `youjail_board_member.role = admin`. WebSocket PTY: `GET /api/youjail/executions/{id}/terminal?X-Session-Id=…`. Fuzzy-поиск: `GET /api/youjail/board?search=…&boardId=…`. CLI: `python backend/scripts/ty.py`.
 
 ---
 

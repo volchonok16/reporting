@@ -649,6 +649,33 @@ CREATE INDEX ix_youjail_card_link_related ON youjail_card_link (related_card_id)
 COMMENT ON TABLE youjail_card_event IS 'История изменений карточки YouJail';
 COMMENT ON TABLE youjail_card_link IS 'Связи карточек YouJail на одной доске';
 
+CREATE TABLE youjail_card_comment (
+    id                  BIGSERIAL PRIMARY KEY,
+    card_id             BIGINT NOT NULL REFERENCES youjail_card(id) ON DELETE CASCADE,
+    body_md             TEXT NOT NULL DEFAULT '',
+    author_employee_id  BIGINT REFERENCES employee(id) ON DELETE SET NULL,
+    author_label        VARCHAR(255),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX ix_youjail_card_comment_card ON youjail_card_comment (card_id, created_at ASC, id ASC);
+
+CREATE TABLE youjail_comment_attachment (
+    id              BIGSERIAL PRIMARY KEY,
+    comment_id      BIGINT NOT NULL REFERENCES youjail_card_comment(id) ON DELETE CASCADE,
+    filename        VARCHAR(512) NOT NULL,
+    storage_path    TEXT NOT NULL,
+    content_type    VARCHAR(128),
+    size_bytes      BIGINT NOT NULL DEFAULT 0,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX ix_youjail_comment_attachment_comment ON youjail_comment_attachment (comment_id);
+
+COMMENT ON TABLE youjail_card_comment IS 'Комментарии к карточке YouJail';
+COMMENT ON TABLE youjail_comment_attachment IS 'Вложения к комментариям YouJail';
+
 CREATE TABLE employee_time_off_day (
     id              BIGSERIAL PRIMARY KEY,
     employee_id     BIGINT       NOT NULL REFERENCES employee(id) ON DELETE CASCADE,

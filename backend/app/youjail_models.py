@@ -216,3 +216,29 @@ class YouJailCardLink(Base):
     card_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_card.id"), nullable=False)
     related_card_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_card.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class YouJailCardComment(Base):
+    __tablename__ = "youjail_card_comment"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    card_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_card.id"), nullable=False)
+    body_md: Mapped[str] = mapped_column(Text, default="")
+    author_employee_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("employee.id", ondelete="SET NULL")
+    )
+    author_label: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class YouJailCommentAttachment(Base):
+    __tablename__ = "youjail_comment_attachment"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    comment_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_card_comment.id"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    storage_path: Mapped[str] = mapped_column(Text, nullable=False)
+    content_type: Mapped[str | None] = mapped_column(String(128))
+    size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

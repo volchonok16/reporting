@@ -8,6 +8,7 @@ type YouJailMentionTextareaProps = {
   disabled?: boolean
   placeholder?: string
   className?: string
+  autoFocus?: boolean
   onChange: (value: string) => void
   onBlur?: () => void
 }
@@ -31,6 +32,7 @@ export default function YouJailMentionTextarea({
   disabled = false,
   placeholder,
   className,
+  autoFocus = false,
   onChange,
   onBlur,
 }: YouJailMentionTextareaProps) {
@@ -64,6 +66,15 @@ export default function YouJailMentionTextarea({
       })
       .slice(0, 8)
   }, [employees, mentionQuery, mentionStart])
+
+  useEffect(() => {
+    if (!autoFocus) return
+    const element = textareaRef.current
+    if (!element) return
+    element.focus()
+    const cursor = element.value.length
+    element.setSelectionRange(cursor, cursor)
+  }, [autoFocus])
 
   const syncMentionState = () => {
     const element = textareaRef.current

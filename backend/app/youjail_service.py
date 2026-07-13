@@ -36,6 +36,7 @@ from app.youjail_activity import (
     list_card_relations,
     log_attachment_event,
     log_card_created,
+    log_card_comment,
     log_card_flag,
     log_card_moved,
     record_card_field_changes,
@@ -48,9 +49,11 @@ from app.youjail_models import (
     YouJailBoardMember,
     YouJailBoardTeam,
     YouJailCard,
+    YouJailCardComment,
     YouJailCardTag,
     YouJailCardZni,
     YouJailColumn,
+    YouJailCommentAttachment,
     YouJailExecution,
     YouJailExecutionLog,
     YouJailProject,
@@ -304,6 +307,14 @@ def _attachment_url(attachment_id: int) -> str:
     return f"/api/youjail/attachments/{attachment_id}/download"
 
 
+def _comment_attachment_url(attachment_id: int) -> str:
+    return f"/api/youjail/comment-attachments/{attachment_id}/download"
+
+
+def _is_image_content_type(content_type: str | None) -> bool:
+    return bool(content_type and content_type.startswith("image/"))
+
+
 def _board_team_ids(db: Session, board_id: int) -> list[int]:
     return list(
         db.scalars(select(YouJailBoardTeam.team_id).where(YouJailBoardTeam.board_id == board_id)).all()
@@ -505,6 +516,48 @@ def _serialize_attachment(attachment: YouJailAttachment) -> dict:
         "downloadUrl": _attachment_url(attachment.id),
         "createdAt": attachment.created_at,
     }
+
+
+def _serialize_comment_attachment(attachment: YouJailCommentAttachment) -> dict:
+    return {
+        "id": attachment.id,
+        "commentId": attachment.comment_id,
+        "filename": attachment.filename,
+        "contentType": attachment.content_type,
+        "sizeBytes": attachment.size_bytes,
+        "downloadUrl": _comment_attachment_url(attachment.id),
+        "isImage": _is_image_content_type(attachment.content_type),
+        "createdAt": attachment.created_at,
+    }
+
+
+def _serialize_comment(db: Session, comment: YouJailCardComment) -> dict:
+    employee = db.get(Employee, comment.author_employee_id) if comment.author_employee_id else None
+    attachments = db.scalars(
+        select(YouJailCommentAttachment)
+        .where(YouJailCommentAttachment.comment_id == comment.id)
+        .order_by(YouJailCommentAttachment.created_at.asc())
+    ).all()
+    return {
+        "id": comment.id,
+        "cardId": comment.card_id,
+        "bodyMd": comment.body_md or "",
+        "authorEmployeeId": comment.author_employee_id,
+        "authorName": employee.full_name if employee else comment.author_label,
+        "authorPhotoUrl": photo_public_url(employee.photo_path) if employee else None,
+        "createdAt": comment.created_at,
+        "updatedAt": comment.updated_at,
+        "attachments": [_serialize_comment_attachment(item) for item in attachments],
+    }
+
+
+def list_card_comments(db: Session, card_id: int) -> list[dict]:
+    comments = db.scalars(
+        select(YouJailCardComment)
+        .where(YouJailCardComment.card_id == card_id)
+        .order_by(YouJailCardComment.created_at.asc(), YouJailCardComment.id.asc())
+    ).all()
+    return [_serialize_comment(db, comment) for comment in comments]
 
 
 def _serialize_execution(db: Session, execution: YouJailExecution, *, with_logs: bool = False) -> dict:
@@ -716,6 +769,7 @@ def get_card(db: Session, card_id: int, *, meta: dict) -> dict:
     payload["history"] = list_card_history(db, card)
     payload["relatedCardKeys"] = relations["relatedCardKeys"]
     payload["relatedCards"] = relations["relatedCards"]
+    payload["comments"] = list_card_comments(db, card.id)
     return payload
 
 
@@ -1429,6 +1483,79 @@ def delete_attachment(db: Session, attachment_id: int, *, meta: dict) -> None:
     log_attachment_event(db, attachment.card_id, meta, added=False, filename=attachment.filename)
     db.delete(attachment)
     db.commit()
+
+
+async def create_card_comment(
+    db: Session,
+    card_id: int,
+    *,
+    body_md: str,
+    files: list[UploadFile],
+    meta: dict,
+) -> dict:
+    card = assert_card_access(db, meta, card_id)
+    text = body_md.strip()
+    if not text and not files:
+        raise HTTPException(status_code=400, detail="Комментарий пустой.")
+
+    author_id = actor_employee_id(db, meta)
+    author_label = meta.get("account_label") or meta.get("login") or "Пользователь"
+    if author_id is not None:
+        employee = db.get(Employee, author_id)
+        if employee is not None:
+            author_label = employee.full_name
+    comment = YouJailCardComment(
+        card_id=card.id,
+        body_md=text,
+        author_employee_id=author_id,
+        author_label=author_label,
+        updated_at=_utcnow(),
+    )
+    db.add(comment)
+    db.flush()
+
+    for file in files:
+        if not file.filename:
+            continue
+        content = await file.read()
+        if len(content) > settings.youjail_max_attachment_bytes:
+            raise HTTPException(status_code=400, detail=f"Файл «{file.filename}» слишком большой.")
+        ext = Path(file.filename).suffix
+        storage_name = f"comment_{comment.id}_{uuid4().hex}{ext}"
+        storage_path = attachments_dir() / storage_name
+        storage_path.write_bytes(content)
+        content_type, _ = mimetypes.guess_type(file.filename)
+        db.add(
+            YouJailCommentAttachment(
+                comment_id=comment.id,
+                filename=file.filename,
+                storage_path=str(storage_path),
+                content_type=content_type,
+                size_bytes=len(content),
+            )
+        )
+
+    preview = text or (files[0].filename if files else "")
+    log_card_comment(db, card.id, meta, comment_id=comment.id, preview=preview)
+    db.commit()
+    db.refresh(comment)
+    return _serialize_comment(db, comment)
+
+
+def load_comment_attachment_file(
+    db: Session, attachment_id: int, *, meta: dict
+) -> tuple[Path, str, str | None]:
+    attachment = db.get(YouJailCommentAttachment, attachment_id)
+    if attachment is None:
+        raise HTTPException(status_code=404, detail="Вложение не найдено.")
+    comment = db.get(YouJailCardComment, attachment.comment_id)
+    if comment is None:
+        raise HTTPException(status_code=404, detail="Комментарий не найден.")
+    assert_card_access(db, meta, comment.card_id)
+    path = Path(attachment.storage_path)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Файл вложения отсутствует.")
+    return path, attachment.filename, attachment.content_type
 
 
 def _append_log(db: Session, execution_id: int, seq: int, stream: str, content: str) -> int:
