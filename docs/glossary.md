@@ -740,8 +740,9 @@
 | `description` | text | Описание |
 | `sort_order` | integer | Порядок в списке |
 | `is_active` | boolean | Активна |
+| `owner_employee_id` | bigint | FK → `employee`; личная доска сотрудника (`NULL` = общая/командная) |
 
-У каждой доски свой набор колонок (`youjail_column.board_id`) и карточек (`youjail_card.board_id`). Seed: доска `main` («Основная»).
+У каждой доски свой набор колонок (`youjail_column.board_id`) и карточек (`youjail_card.board_id`). Seed: доска `main` («Основная»). **Личная доска** создаётся автоматически при первом входе в YouJail: название = `employee.full_name`, slug `personal-{employee_id}`; видна только владельцу и админам; к командам не привязывается.
 
 ### youjail_project
 
@@ -817,7 +818,7 @@
 | `board_id` | bigint | FK → `youjail_board` |
 | `team_id` | bigint | FK → `youjail_team` |
 
-Связь M:N: доска видна участникам любой из привязанных команд. Без привязанных команд доска доступна только админам.
+Связь M:N: доска видна участникам любой из привязанных команд. Без привязанных команд доска доступна только админам. Личные доски (`owner_employee_id IS NOT NULL`) в команды не включаются.
 
 ### youjail_tag
 
@@ -837,7 +838,7 @@
 
 Связь M:N: у карточки может быть несколько тегов. API: `GET/POST /api/youjail/tags`, обновление карточки — поле `tagIds`.
 
-API: префикс `/api/youjail/*`. `DELETE /api/youjail/boards/{id}`, `POST /api/youjail/boards/{id}/columns`, `PATCH /api/youjail/columns/{id}`, `DELETE /api/youjail/columns/{id}?moveToColumnId=…`, `GET/POST/PATCH/DELETE /api/youjail/teams`, `PUT /api/youjail/teams/{id}/boards`, `PUT /api/youjail/boards/{id}/teams`, `GET/POST /api/youjail/tags`. Доступ: админы (`can_manage_org`) видят все доски; пользователи — только доски, привязанные к командам, в которых они состоят (`youjail_board_team` + `youjail_team_member`). WebSocket PTY: `GET /api/youjail/executions/{id}/terminal?X-Session-Id=…`. Fuzzy-поиск: `GET /api/youjail/board?search=…&boardId=…`. CLI: `python backend/scripts/ty.py` (команды `boards`, `cards`, `exec`, `search`). Файлы: `YOUJAIL_WORKSPACE_DIR`, `YOUJAIL_EXECUTOR_COMMAND`.
+API: префикс `/api/youjail/*`. `DELETE /api/youjail/boards/{id}`, `POST /api/youjail/boards/{id}/columns`, `PATCH /api/youjail/columns/{id}`, `DELETE /api/youjail/columns/{id}?moveToColumnId=…`, `GET/POST/PATCH/DELETE /api/youjail/teams`, `PUT /api/youjail/teams/{id}/boards`, `PUT /api/youjail/boards/{id}/teams`, `GET/POST /api/youjail/tags`. Доступ: админы (`can_manage_org`) видят все доски; пользователи — доски команд (`youjail_board_team` + `youjail_team_member`) и свою личную доску (`owner_employee_id`). WebSocket PTY: `GET /api/youjail/executions/{id}/terminal?X-Session-Id=…`. Fuzzy-поиск: `GET /api/youjail/board?search=…&boardId=…`. CLI: `python backend/scripts/ty.py` (команды `boards`, `cards`, `exec`, `search`). Файлы: `YOUJAIL_WORKSPACE_DIR`, `YOUJAIL_EXECUTOR_COMMAND`.
 
 ---
 

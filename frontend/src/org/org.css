@@ -2295,6 +2295,61 @@
   line-height: 1.2;
 }
 
+.org-workspace-panel .org-vacation-chart-wrap,
+.org-workspace-chart-wrap {
+  width: 100%;
+  max-width: none;
+}
+
+.org-workspace-scroll-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.org-workspace-scroll-btn {
+  min-width: 36px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.org-workspace-scroll-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.org-workspace-scroll-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.org-workspace-scroll-hint {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.org-workspace-panel .org-vacation-scroll,
+.org-workspace-chart {
+  width: 100%;
+  max-width: none;
+}
+
+.org-workspace-chart .org-workspace-grid {
+  min-width: 100%;
+}
+
 .org-workspace-chart {
   --schedule-head-row-1: 30px;
   --schedule-head-row-2: 20px;
@@ -2939,8 +2994,14 @@
   }
 
   .org-vacation-year-picker,
-  .org-workspace-book-for {
+  .org-workspace-book-for,
+  .org-workspace-scroll-controls {
     flex-wrap: wrap;
+  }
+
+  .org-workspace-scroll-hint {
+    margin-left: 0;
+    width: 100%;
   }
 
   .org-table th,

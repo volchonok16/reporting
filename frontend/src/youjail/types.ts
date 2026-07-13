@@ -10,6 +10,8 @@ export type YouJailBoardMeta = {
   description: string
   sortOrder: number
   isActive: boolean
+  ownerEmployeeId?: number | null
+  isPersonal?: boolean
   teamIds: number[]
   teams: YouJailTeamRef[]
 }

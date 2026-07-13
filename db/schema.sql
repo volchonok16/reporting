@@ -429,9 +429,14 @@ CREATE TABLE youjail_board (
     description     TEXT NOT NULL DEFAULT '',
     sort_order      INTEGER NOT NULL DEFAULT 0,
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    owner_employee_id BIGINT REFERENCES employee(id) ON DELETE CASCADE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE UNIQUE INDEX ix_youjail_board_personal_owner
+  ON youjail_board (owner_employee_id)
+  WHERE owner_employee_id IS NOT NULL;
 
 CREATE TABLE youjail_project (
     id              BIGSERIAL PRIMARY KEY,

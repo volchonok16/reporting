@@ -406,6 +406,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
   }, [board])
 
   const boardTeams = board?.board.teams ?? []
+  const isPersonalBoard = Boolean(board?.board.isPersonal)
 
   return (
     <div className="youjail-page">
@@ -413,15 +414,21 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
         <div className="youjail-toolbar-title">
           <h1>{board?.board.name ?? 'YouJail'}</h1>
           <div className="youjail-board-teams-row">
-            <span className="youjail-board-teams-label">Команды:</span>
-            {boardTeams.length > 0 ? (
-              boardTeams.map((team) => (
-                <span key={team.id} className="youjail-board-team-chip">
-                  {team.name}
-                </span>
-              ))
+            {isPersonalBoard ? (
+              <span className="youjail-board-team-chip is-personal">Личная доска</span>
             ) : (
-              <span className="youjail-board-team-chip is-muted">только админы</span>
+              <>
+                <span className="youjail-board-teams-label">Команды:</span>
+                {boardTeams.length > 0 ? (
+                  boardTeams.map((team) => (
+                    <span key={team.id} className="youjail-board-team-chip">
+                      {team.name}
+                    </span>
+                  ))
+                ) : (
+                  <span className="youjail-board-team-chip is-muted">только админы</span>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -457,7 +464,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
           >
             {(board?.boards ?? []).map((item) => (
               <option key={item.id} value={item.id}>
-                {item.name}
+                {item.isPersonal ? `${item.name} (личная)` : item.name}
               </option>
             ))}
           </select>
@@ -469,7 +476,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
               <button
                 type="button"
                 className="btn-ghost youjail-danger"
-                disabled={!board || (board.boards?.length ?? 0) <= 1}
+                disabled={!board || (board.boards?.length ?? 0) <= 1 || isPersonalBoard}
                 onClick={() => void deleteBoard()}
               >
                 Удалить доску

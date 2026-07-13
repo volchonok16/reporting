@@ -210,6 +210,11 @@ def _team_board_ids(db: Session, team_id: int) -> list[int]:
 
 
 def _set_board_teams(db: Session, board_id: int, team_ids: list[int]) -> None:
+    board = db.get(YouJailBoard, board_id)
+    if board is not None and board.owner_employee_id is not None:
+        if team_ids:
+            raise HTTPException(status_code=400, detail="Личную доску нельзя привязать к команде.")
+        return
     unique_ids = sorted({int(team_id) for team_id in team_ids})
     for team_id in unique_ids:
         team = db.get(YouJailTeam, team_id)
@@ -221,6 +226,7 @@ def _set_board_teams(db: Session, board_id: int, team_ids: list[int]) -> None:
 
 
 def _serialize_board(db: Session, board: YouJailBoard) -> dict:
+    is_personal = board.owner_employee_id is not None
     return {
         "id": board.id,
         "name": board.name,
@@ -228,9 +234,49 @@ def _serialize_board(db: Session, board: YouJailBoard) -> dict:
         "description": board.description or "",
         "sortOrder": board.sort_order,
         "isActive": board.is_active,
-        "teamIds": _board_team_ids(db, board.id),
-        "teams": _board_teams(db, board.id),
+        "ownerEmployeeId": board.owner_employee_id,
+        "isPersonal": is_personal,
+        "teamIds": [] if is_personal else _board_team_ids(db, board.id),
+        "teams": [] if is_personal else _board_teams(db, board.id),
     }
+
+
+def _ensure_personal_board(db: Session, meta: dict) -> None:
+    employee_id = actor_employee_id(db, meta)
+    if employee_id is None:
+        return
+    employee = db.get(Employee, employee_id)
+    if employee is None or not employee.is_active:
+        return
+
+    board = db.scalar(select(YouJailBoard).where(YouJailBoard.owner_employee_id == employee_id))
+    if board is not None:
+        if board.name != employee.full_name:
+            board.name = employee.full_name
+            board.updated_at = _utcnow()
+            db.commit()
+        return
+
+    board = YouJailBoard(
+        name=employee.full_name,
+        slug=f"personal-{employee_id}",
+        sort_order=10_000 + employee_id,
+        owner_employee_id=employee_id,
+        updated_at=_utcnow(),
+    )
+    db.add(board)
+    db.flush()
+    for column_key, title, tone, sort_order in DEFAULT_COLUMNS:
+        db.add(
+            YouJailColumn(
+                board_id=board.id,
+                column_key=column_key,
+                title=title,
+                tone=tone,
+                sort_order=sort_order,
+            )
+        )
+    db.commit()
 
 
 def _filter_boards_query(query: Select, db: Session, meta: dict) -> Select:
@@ -424,6 +470,7 @@ def load_board(
     search: str | None = None,
     archived: str = "false",
 ) -> dict:
+    _ensure_personal_board(db, meta)
     resolved_board_id = _resolve_board_id(db, board_id, meta)
     board = db.get(YouJailBoard, resolved_board_id)
     if board is None:
@@ -503,6 +550,7 @@ def _default_backlog_column_id(db: Session, board_id: int) -> int:
 
 
 def list_boards(db: Session, *, meta: dict) -> list[dict]:
+    _ensure_personal_board(db, meta)
     query = select(YouJailBoard).where(YouJailBoard.is_active.is_(True)).order_by(YouJailBoard.sort_order.asc())
     boards = db.scalars(_filter_boards_query(query, db, meta)).all()
     return [_serialize_board(db, board) for board in boards]
@@ -548,6 +596,8 @@ def delete_board(db: Session, board_id: int, *, meta: dict) -> None:
     board = db.get(YouJailBoard, board_id)
     if board is None:
         raise HTTPException(status_code=404, detail="Доска не найдена.")
+    if board.owner_employee_id is not None:
+        raise HTTPException(status_code=400, detail="Личную доску нельзя удалить.")
 
     active_count = db.scalar(
         select(func.count()).select_from(YouJailBoard).where(YouJailBoard.is_active.is_(True))
@@ -580,6 +630,11 @@ def set_team_boards(db: Session, team_id: int, board_ids: list[int], *, meta: di
         board = db.get(YouJailBoard, board_id)
         if board is None or not board.is_active:
             raise HTTPException(status_code=400, detail=f"Доска {board_id} не найдена.")
+        if board.owner_employee_id is not None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Доска «{board.name}» — личная, её нельзя привязать к команде.",
+            )
 
     boards = db.scalars(select(YouJailBoard).where(YouJailBoard.is_active.is_(True))).all()
     for board in boards:

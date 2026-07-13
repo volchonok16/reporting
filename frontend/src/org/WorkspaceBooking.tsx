@@ -155,6 +155,17 @@ function isPlaceNotFoundError(err: unknown): boolean {
   return err.message.toLowerCase().includes('место не найдено')
 }
 
+const WORKSPACE_NAME_COL_WIDTH = 88
+const WORKSPACE_MIN_DAY_CELL = 24
+const WORKSPACE_MAX_DAY_CELL = 56
+const WORKSPACE_VISIBLE_DAYS = 31
+
+function computeWorkspaceDayCellSize(containerWidth: number): number {
+  const available = Math.max(0, containerWidth - WORKSPACE_NAME_COL_WIDTH)
+  const stretched = Math.floor(available / WORKSPACE_VISIBLE_DAYS)
+  return Math.min(WORKSPACE_MAX_DAY_CELL, Math.max(WORKSPACE_MIN_DAY_CELL, stretched))
+}
+
 export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProps) {
   const today = new Date()
   const currentYear = today.getFullYear()
@@ -170,7 +181,13 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   const [bookForEmployeeId, setBookForEmployeeId] = useState<number | null>(null)
   const [selectedDayKey, setSelectedDayKey] = useState(() => toDayKey(new Date()))
   const [isDragScrolling, setIsDragScrolling] = useState(false)
+  const [dayCellSize, setDayCellSize] = useState(WORKSPACE_MIN_DAY_CELL)
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(false)
+  const chartWrapRef = useRef<HTMLDivElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const dayCellSizeRef = useRef(WORKSPACE_MIN_DAY_CELL)
+  const prevDayCellSizeRef = useRef(WORKSPACE_MIN_DAY_CELL)
   const dragStateRef = useRef<{
     pointerId: number
     startX: number
@@ -283,23 +300,93 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     void load()
   }, [load])
 
+  const updateScrollState = useCallback(() => {
+    const scrollEl = scrollRef.current
+    if (!scrollEl) return
+    setCanScrollLeft(scrollEl.scrollLeft > 2)
+    setCanScrollRight(scrollEl.scrollLeft + scrollEl.clientWidth < scrollEl.scrollWidth - 2)
+  }, [])
+
+  const updateChartLayout = useCallback(() => {
+    const wrap = chartWrapRef.current
+    if (!wrap) return
+    setDayCellSize(computeWorkspaceDayCellSize(wrap.clientWidth))
+    updateScrollState()
+  }, [updateScrollState])
+
+  useEffect(() => {
+    dayCellSizeRef.current = dayCellSize
+  }, [dayCellSize])
+
+  useEffect(() => {
+    const scrollEl = scrollRef.current
+    if (!scrollEl) return
+    const prev = prevDayCellSizeRef.current
+    if (prev !== dayCellSize && prev > 0) {
+      scrollEl.scrollLeft = (scrollEl.scrollLeft / prev) * dayCellSize
+    }
+    prevDayCellSizeRef.current = dayCellSize
+    updateScrollState()
+  }, [dayCellSize, updateScrollState])
+
+  useEffect(() => {
+    const wrap = chartWrapRef.current
+    const scrollEl = scrollRef.current
+    if (!wrap) return
+
+    const observer = new ResizeObserver(() => {
+      updateChartLayout()
+    })
+    observer.observe(wrap)
+
+    scrollEl?.addEventListener('scroll', updateScrollState, { passive: true })
+    updateChartLayout()
+
+    return () => {
+      observer.disconnect()
+      scrollEl?.removeEventListener('scroll', updateScrollState)
+    }
+  }, [data, updateChartLayout, updateScrollState])
+
+  const scrollToMonthStart = useCallback(
+    (behavior: ScrollBehavior = 'smooth') => {
+      const scrollEl = scrollRef.current
+      if (!scrollEl || year !== currentYear) return
+      const monthStartKey = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`
+      const monthStartIndex = yearDays.findIndex((day) => toDayKey(day) === monthStartKey)
+      if (monthStartIndex < 0) return
+      scrollEl.scrollTo({
+        left: Math.max(0, monthStartIndex * dayCellSizeRef.current),
+        behavior,
+      })
+    },
+    [year, currentYear, currentMonth, yearDays],
+  )
+
   useEffect(() => {
     if (!scrollRef.current || !data || year !== currentYear) return
     const monthStartKey = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`
     const monthStartIndex = yearDays.findIndex((day) => toDayKey(day) === monthStartKey)
     if (monthStartIndex < 0) return
-    const monthStartCell = scrollRef.current.querySelector<HTMLElement>(
-      `th[data-day-key="${monthStartKey}"]`,
-    )
-    if (!monthStartCell) return
     const alignToCurrentMonth = () => {
-      const dayWidth = monthStartCell.offsetWidth || 26
-      scrollRef.current!.scrollLeft = Math.max(0, monthStartIndex * dayWidth)
+      if (!scrollRef.current) return
+      scrollRef.current.scrollLeft = Math.max(0, monthStartIndex * dayCellSizeRef.current)
+      updateScrollState()
     }
     alignToCurrentMonth()
     const rafId = window.requestAnimationFrame(alignToCurrentMonth)
     return () => window.cancelAnimationFrame(rafId)
-  }, [year, data, currentYear, currentMonth, yearDays])
+  }, [year, data, currentYear, currentMonth, yearDays, updateScrollState])
+
+  const scrollChart = useCallback(
+    (direction: -1 | 1) => {
+      const scrollEl = scrollRef.current
+      if (!scrollEl) return
+      const step = Math.max(scrollEl.clientWidth - WORKSPACE_NAME_COL_WIDTH, dayCellSize * 7)
+      scrollEl.scrollBy({ left: direction * step, behavior: 'smooth' })
+    },
+    [dayCellSize],
+  )
 
   const resetBookForSelf = useCallback(() => {
     if (!data?.isAdmin) return
@@ -637,13 +724,46 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
       {loading && !data ? <p>Загрузка…</p> : null}
 
       {data ? (
-        <div className={`org-vacation-chart-wrap${saving ? ' org-workspace-saving' : ''}`}>
+        <div
+          ref={chartWrapRef}
+          className={`org-vacation-chart-wrap org-workspace-chart-wrap${saving ? ' org-workspace-saving' : ''}`}
+        >
           {saving ? <p className="org-workspace-saving-label">Сохранение…</p> : null}
+          <div className="org-workspace-scroll-controls">
+            <button
+              type="button"
+              className="org-workspace-scroll-btn"
+              onClick={() => scrollChart(-1)}
+              disabled={!canScrollLeft}
+              aria-label="Прокрутить календарь влево"
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              className="org-workspace-scroll-btn"
+              onClick={() => scrollToMonthStart()}
+              disabled={year !== currentYear}
+            >
+              Текущий месяц
+            </button>
+            <button
+              type="button"
+              className="org-workspace-scroll-btn"
+              onClick={() => scrollChart(1)}
+              disabled={!canScrollRight}
+              aria-label="Прокрутить календарь вправо"
+            >
+              →
+            </button>
+            <span className="org-workspace-scroll-hint">Кнопки или перетаскивание мышью</span>
+          </div>
           <div
             className={`org-vacation-scroll org-workspace-scroll org-workspace-chart${
               isDragScrolling ? ' org-workspace-scroll-dragging' : ''
             }`}
             ref={scrollRef}
+            style={{ '--vac-cell-size': `${dayCellSize}px` } as React.CSSProperties}
             aria-label="Календарь брони — прокрутка влево и вправо"
             onPointerDown={handleScrollPointerDown}
             onPointerMove={handleScrollPointerMove}

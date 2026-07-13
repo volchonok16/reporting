@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.app_access import can_manage_org
 from app.org_service import get_employee_for_org_user
-from app.youjail_models import YouJailBoardTeam, YouJailCard, YouJailTeam, YouJailTeamMember
+from app.youjail_models import YouJailBoardTeam, YouJailBoard, YouJailCard, YouJailTeam, YouJailTeamMember
 
 
 def actor_employee_id(db: Session, meta: dict) -> int | None:
@@ -38,7 +38,16 @@ def accessible_board_ids(db: Session, meta: dict) -> set[int] | None:
         )
         .distinct()
     ).all()
-    return set(rows)
+    allowed = set(rows)
+    personal_board_id = db.scalar(
+        select(YouJailBoard.id).where(
+            YouJailBoard.owner_employee_id == employee_id,
+            YouJailBoard.is_active.is_(True),
+        )
+    )
+    if personal_board_id is not None:
+        allowed.add(personal_board_id)
+    return allowed
 
 
 def assert_youjail_admin(meta: dict) -> None:

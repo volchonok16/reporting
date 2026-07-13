@@ -15,6 +15,8 @@ class YouJailBoardMetaOut(BaseModel):
     description: str = ""
     sortOrder: int = 0
     isActive: bool = True
+    ownerEmployeeId: int | None = None
+    isPersonal: bool = False
     teamIds: list[int] = Field(default_factory=list)
     teams: list[YouJailTeamRefOut] = Field(default_factory=list)
 

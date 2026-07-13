@@ -64,6 +64,12 @@
   font-weight: 500;
 }
 
+.youjail-board-team-chip.is-personal {
+  background: color-mix(in srgb, #6366f1 14%, var(--surface-2));
+  border-color: color-mix(in srgb, #6366f1 32%, var(--border));
+  color: color-mix(in srgb, #6366f1 78%, var(--text-primary));
+}
+
 .youjail-toolbar-title p {
   margin: 4px 0 0;
   font-size: 13px;

@@ -141,6 +141,7 @@ export default function YouJailTeamsPanel({
     )
   }
 
+  const teamAssignableBoards = boards.filter((board) => !board.isPersonal)
   const availableEmployees = employees.filter(
     (employee) => !selectedTeam?.members.some((member) => member.employeeId === employee.id),
   )
@@ -291,8 +292,10 @@ export default function YouJailTeamsPanel({
                       Отметьте доски, к которым у команды «{selectedTeam.name}» есть доступ.
                     </p>
                     <div className="youjail-team-boards-checks">
-                      {boards.length === 0 ? <p className="youjail-muted">Досок пока нет</p> : null}
-                      {boards.map((board) => (
+                      {teamAssignableBoards.length === 0 ? (
+                        <p className="youjail-muted">Общих досок пока нет</p>
+                      ) : null}
+                      {teamAssignableBoards.map((board) => (
                         <label key={board.id} className="youjail-team-board-check">
                           <input
                             type="checkbox"
