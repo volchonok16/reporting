@@ -702,6 +702,10 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
         <p className="org-workspace-edit-hint org-workspace-edit-hint-standalone">
           Отметьте нужные ячейки, затем нажмите «Сохранить».
         </p>
+      ) : data ? (
+        <p className="org-workspace-view-hint">
+          Зелёные ячейки — ваши брони, серые — занято другими. Нажмите «Редактировать», чтобы выбрать места на год.
+        </p>
       ) : null}
 
       <div className="org-workspace-legend">
@@ -756,7 +760,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
             >
               →
             </button>
-            <span className="org-workspace-scroll-hint">Кнопки или перетаскивание мышью</span>
+            <span className="org-workspace-scroll-hint">Листайте кнопками или перетаскивайте сетку мышью</span>
           </div>
           <div
             className={`org-vacation-scroll org-workspace-scroll org-workspace-chart${

@@ -93,15 +93,17 @@ export default function YouJailBoardAccessPanel({ board, onUpdated }: YouJailBoa
   return (
     <div className="youjail-board-access-panel">
       <button type="button" className="btn-secondary" onClick={() => setOpen((current) => !current)}>
-        Доступ
+        {open ? 'Скрыть доступ' : 'Доступ'}
       </button>
       {open ? (
         <div className="youjail-board-access-popover">
           <div className="youjail-board-access-head">
             <div>
-              <h3>Доступ к доске</h3>
+              <h3>Кто видит доску</h3>
               <p className="youjail-muted">
-                Админы управляют колонками и участниками. Участники работают с карточками.
+                {board.isPersonal
+                  ? 'Личная доска: по умолчанию видна только вам. Добавьте коллег, чтобы работать вместе.'
+                  : 'Админы настраивают колонки и участников. Участники создают и двигают карточки.'}
               </p>
             </div>
             <button type="button" className="btn-ghost" onClick={() => setOpen(false)} aria-label="Закрыть">
@@ -110,7 +112,9 @@ export default function YouJailBoardAccessPanel({ board, onUpdated }: YouJailBoa
           </div>
 
           <div className="youjail-board-access-members">
-            {members.length === 0 ? <p className="youjail-muted">Участников пока нет</p> : null}
+            {members.length === 0 ? (
+              <p className="youjail-muted">Пока только вы. Найдите сотрудника ниже, чтобы открыть доступ.</p>
+            ) : null}
             {members.map((member) => (
               <div key={member.employeeId} className="youjail-board-access-row">
                 <OrgPhoto
@@ -170,7 +174,7 @@ export default function YouJailBoardAccessPanel({ board, onUpdated }: YouJailBoa
             {memberQuery.trim() ? (
               <div className="youjail-team-member-suggestions">
                 {suggestions.length === 0 ? (
-                  <p className="youjail-muted">Никого не найдено</p>
+                  <p className="youjail-muted">Никого не найдено — попробуйте другое имя</p>
                 ) : (
                   suggestions.map((employee) => (
                     <button
@@ -191,7 +195,11 @@ export default function YouJailBoardAccessPanel({ board, onUpdated }: YouJailBoa
                   ))
                 )}
               </div>
-            ) : null}
+            ) : (
+              <p className="youjail-muted youjail-board-access-search-hint">
+                Введите имя сотрудника, чтобы добавить его на доску
+              </p>
+            )}
           </div>
         </div>
       ) : null}

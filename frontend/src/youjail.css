@@ -83,6 +83,77 @@
   flex-wrap: wrap;
 }
 
+.youjail-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 4px 8px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--border) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.youjail-toolbar-group-board {
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
+}
+
+.youjail-toolbar-group-manage {
+  background: color-mix(in srgb, #6366f1 6%, var(--surface-2));
+  border-color: color-mix(in srgb, #6366f1 18%, var(--border));
+}
+
+.youjail-toolbar-group-admin {
+  background: color-mix(in srgb, var(--border) 22%, transparent);
+}
+
+.youjail-toolbar-field {
+  display: inline-flex;
+  align-items: center;
+}
+
+.youjail-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-full);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.youjail-page-hint {
+  margin: 0;
+  padding: 10px var(--page-gutter);
+  font-size: 13px;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface-2));
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.youjail-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.youjail-btn-add-card {
+  white-space: nowrap;
+}
+
 .youjail-columns-btn {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -696,6 +767,91 @@
   border-bottom: 1px solid var(--border);
 }
 
+.youjail-detail-header-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.youjail-detail-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.youjail-detail-title-input {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 4px 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.youjail-detail-title-input:focus {
+  outline: none;
+  border-bottom-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.youjail-detail-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.youjail-detail-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.youjail-saving-badge {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.youjail-detail-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.youjail-detail-badge.is-pinned {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+.youjail-detail-badge.is-archived {
+  background: color-mix(in srgb, var(--border) 45%, transparent);
+  color: var(--text-secondary);
+}
+
+.youjail-detail-badge.is-closed {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
 .youjail-detail-kicker {
   margin: 0 0 4px;
   font-size: 12px;
@@ -743,6 +899,10 @@
   min-height: 0;
 }
 
+.youjail-detail-body-single {
+  grid-template-columns: 1fr;
+}
+
 .youjail-detail-main,
 .youjail-detail-side {
   padding: 16px 18px;
@@ -773,6 +933,67 @@
 
 .youjail-notes {
   margin-bottom: 16px;
+}
+
+.youjail-notes-card {
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.youjail-notes-card-head {
+  margin-bottom: 10px;
+}
+
+.youjail-notes-card-head h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.youjail-notes-card-head .youjail-muted {
+  margin: 0;
+  font-size: 12px;
+}
+
+.youjail-notes-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.youjail-notes-unified {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.youjail-notes-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.youjail-notes-panes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.youjail-notes-preview-main {
+  min-height: 260px;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.youjail-notes-editor-pane {
+  min-height: 260px;
+  max-height: 420px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
 }
 
 .youjail-notes-tabs {
@@ -893,11 +1114,68 @@
   padding: 0;
 }
 
+.youjail-detail-actions-section {
+  margin: 18px 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.youjail-detail-actions-section h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
 .youjail-detail-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 14px;
+  margin-bottom: 0;
+}
+
+.youjail-action-btn {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.youjail-action-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.youjail-action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.youjail-action-btn-danger {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface-2));
+}
+
+.youjail-action-btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 14%, var(--surface-2));
+}
+
+.youjail-attachment-remove {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.youjail-empty-hint {
+  margin: 0;
+}
+
+.youjail-meta-footer {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
 }
 
 .youjail-danger {
@@ -1792,6 +2070,11 @@
 .youjail-board-access-add-controls input {
   flex: 1;
   min-width: 0;
+}
+
+.youjail-board-access-search-hint {
+  margin: 0;
+  font-size: 12px;
 }
 
 @media (max-width: 960px) {

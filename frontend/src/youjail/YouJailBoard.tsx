@@ -13,10 +13,10 @@ import '../youjail.css'
 const BOARD_STORAGE_KEY = 'youjail.activeBoardId'
 
 const COLUMN_TONES = [
-  { value: 'backlog', label: 'Backlog' },
-  { value: 'progress', label: 'In Progress' },
-  { value: 'blocked', label: 'Blocked' },
-  { value: 'done', label: 'Done' },
+  { value: 'backlog', label: 'Новые' },
+  { value: 'progress', label: 'В работе' },
+  { value: 'blocked', label: 'Заблокировано' },
+  { value: 'done', label: 'Готово' },
   { value: 'custom', label: 'Своя' },
 ] as const
 
@@ -435,58 +435,79 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
           </div>
         </div>
         <div className="youjail-toolbar-actions">
-          {canManageBoard ? (
-            <button
-              type="button"
-              className={`youjail-columns-btn${boardEditMode ? ' is-active' : ''}`}
-              onClick={() => {
-                setBoardEditMode((current) => {
-                  if (current) {
-                    setEditingColumnId(null)
-                    setEditingColumnTitle('')
-                    setShowColumnForm(false)
-                    cancelColumnDelete()
-                    clearColumnDragState()
-                  }
-                  return !current
-                })
-              }}
+          <div className="youjail-toolbar-group youjail-toolbar-group-board">
+            <label className="youjail-toolbar-field">
+              <span className="youjail-sr-only">Доска</span>
+              <select
+                className="youjail-board-select"
+                value={activeBoardId ?? board?.board.id ?? ''}
+                onChange={(event) => {
+                  const nextId = Number(event.target.value)
+                  setActiveBoardId(nextId)
+                  localStorage.setItem(BOARD_STORAGE_KEY, String(nextId))
+                }}
+              >
+                {(board?.boards ?? []).map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.isPersonal ? `${item.name} · личная` : item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span className="youjail-count-badge" title="Карточек на доске">
+              {loading ? '…' : totalCards}
+            </span>
+          </div>
+
+          <div className="youjail-toolbar-group">
+            <input
+              type="search"
+              className="youjail-search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Поиск по карточкам…"
+              aria-label="Поиск по карточкам"
+            />
+            <select
+              className="youjail-archived-filter"
+              value={archived}
+              onChange={(event) => setArchived(event.target.value as ArchivedFilter)}
+              aria-label="Показать карточки"
             >
-              {boardEditMode ? '✓ Готово' : '✎ Колонки'}
-            </button>
-          ) : null}
-          <select
-            className="youjail-board-select"
-            value={activeBoardId ?? board?.board.id ?? ''}
-            onChange={(event) => {
-              const nextId = Number(event.target.value)
-              setActiveBoardId(nextId)
-              localStorage.setItem(BOARD_STORAGE_KEY, String(nextId))
-            }}
+              <option value="false">Активные</option>
+              <option value="true">Архив</option>
+              <option value="all">Все</option>
+            </select>
+          </div>
+
+          <button
+            type="button"
+            className="btn-primary youjail-btn-add-card"
+            onClick={() => setShowCreateForm((current) => !current)}
           >
-            {(board?.boards ?? []).map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.isPersonal ? `${item.name} (личная)` : item.name}
-              </option>
-            ))}
-          </select>
-          {canManageOrg ? (
-            <>
-              <button type="button" className="btn-secondary" onClick={() => setShowBoardForm((current) => !current)}>
-                + Доска
-              </button>
+            + Карточка
+          </button>
+
+          {canManageBoard ? (
+            <div className="youjail-toolbar-group youjail-toolbar-group-manage">
               <button
                 type="button"
-                className="btn-ghost youjail-danger"
-                disabled={!board || (board.boards?.length ?? 0) <= 1 || isPersonalBoard}
-                onClick={() => void deleteBoard()}
+                className={`youjail-columns-btn${boardEditMode ? ' is-active' : ''}`}
+                onClick={() => {
+                  setBoardEditMode((current) => {
+                    if (current) {
+                      setEditingColumnId(null)
+                      setEditingColumnTitle('')
+                      setShowColumnForm(false)
+                      cancelColumnDelete()
+                      clearColumnDragState()
+                    }
+                    return !current
+                  })
+                }}
               >
-                Удалить доску
+                {boardEditMode ? 'Готово' : 'Колонки'}
               </button>
-            </>
-          ) : null}
-          {canManageBoard ? (
-            <>
               {!boardEditMode ? (
                 <button type="button" className="btn-secondary" onClick={() => setShowColumnForm((current) => !current)}>
                   + Колонка
@@ -510,69 +531,67 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
                   }
                 />
               ) : null}
-            </>
+            </div>
           ) : null}
-          <input
-            type="search"
-            className="youjail-search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Fuzzy-поиск (опечатки, часть слова)"
-          />
-          <select
-            className="youjail-archived-filter"
-            value={archived}
-            onChange={(event) => setArchived(event.target.value as ArchivedFilter)}
-          >
-            <option value="false">Активные</option>
-            <option value="true">Архив</option>
-            <option value="all">Все</option>
-          </select>
-          <span className="youjail-count">{loading ? '…' : `${totalCards} карточек`}</span>
-          <YouJailProjectsPanel
-            projects={board?.projects ?? []}
-            onCreated={(project: YouJailProject) =>
-              setBoard((current) =>
-                current ? { ...current, projects: [...current.projects, project] } : current,
-              )
-            }
-            onUpdated={(project: YouJailProject) =>
-              setBoard((current) =>
-                current
-                  ? {
-                      ...current,
-                      projects: current.projects.map((item) => (item.id === project.id ? project : item)),
-                    }
-                  : current,
-              )
-            }
-          />
-          <YouJailTeamsPanel
-            canManageOrg={canManageOrg}
-            activeBoard={board?.board ?? null}
-            onBoardTeamsUpdated={(updatedBoard) =>
-              setBoard((current) =>
-                current
-                  ? {
-                      ...current,
-                      board: updatedBoard,
-                      boards: current.boards.map((item) =>
-                        item.id === updatedBoard.id ? updatedBoard : item,
-                      ),
-                    }
-                  : current,
-              )
-            }
-          />
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => setShowCreateForm((current) => !current)}
-          >
-            + Карточка
-          </button>
+
+          {canManageOrg ? (
+            <div className="youjail-toolbar-group youjail-toolbar-group-admin">
+              <button type="button" className="btn-secondary" onClick={() => setShowBoardForm((current) => !current)}>
+                + Доска
+              </button>
+              <YouJailProjectsPanel
+                projects={board?.projects ?? []}
+                onCreated={(project: YouJailProject) =>
+                  setBoard((current) =>
+                    current ? { ...current, projects: [...current.projects, project] } : current,
+                  )
+                }
+                onUpdated={(project: YouJailProject) =>
+                  setBoard((current) =>
+                    current
+                      ? {
+                          ...current,
+                          projects: current.projects.map((item) => (item.id === project.id ? project : item)),
+                        }
+                      : current,
+                  )
+                }
+              />
+              <YouJailTeamsPanel
+                canManageOrg={canManageOrg}
+                activeBoard={board?.board ?? null}
+                onBoardTeamsUpdated={(updatedBoard) =>
+                  setBoard((current) =>
+                    current
+                      ? {
+                          ...current,
+                          board: updatedBoard,
+                          boards: current.boards.map((item) =>
+                            item.id === updatedBoard.id ? updatedBoard : item,
+                          ),
+                        }
+                      : current,
+                  )
+                }
+              />
+              <button
+                type="button"
+                className="btn-ghost youjail-danger"
+                disabled={!board || (board.boards?.length ?? 0) <= 1 || isPersonalBoard}
+                onClick={() => void deleteBoard()}
+              >
+                Удалить доску
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
+
+      {!boardEditMode && board && !loading ? (
+        <p className="youjail-page-hint">
+          Нажмите на карточку, чтобы открыть. Перетащите карточку в другую колонку, чтобы изменить статус.
+        </p>
+      ) : null}
 
       {canManageOrg && showBoardForm ? (
         <form className="youjail-create-form" onSubmit={(event) => void createBoard(event)}>
@@ -617,7 +636,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
           <div className="youjail-edit-banner-main">
             <strong>Редактирование колонок</strong>
             <span>
-              Перетащите ⋮⋮ для порядка · нажмите название, чтобы переименовать · выберите цвет · удалите ненужные колонки. Нажмите «✓ Готово», чтобы снова перетаскивать карточки.
+              Перетащите ⋮⋮ для порядка · нажмите название, чтобы переименовать · выберите цвет · удалите ненужные колонки. Нажмите «Готово», чтобы снова перетаскивать карточки.
             </span>
           </div>
           <button
@@ -648,7 +667,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
             autoFocus
           />
           <button type="submit" className="btn-primary" disabled={!draftTitle.trim()}>
-            Добавить в Backlog
+            Добавить
           </button>
           <button
             type="button"
@@ -794,9 +813,6 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
                     >
                     <div className="youjail-card-top">
                       {card.pinned ? <span className="youjail-pin" title="Закреплено">📌</span> : null}
-                      {card.executionStatus === 'running' ? (
-                        <span className="youjail-running-dot" title="Выполняется" />
-                      ) : null}
                       {card.projectName ? (
                         <span className="youjail-card-project">{card.projectName}</span>
                       ) : null}

@@ -4,7 +4,6 @@ import EmployeeCardModal from '../org/EmployeeCardModal'
 import '../org/org.css'
 import { notifyError, notifyProblem, notifySuccess } from '../toast'
 import YouJailAssigneeSelect from './YouJailAssigneeSelect'
-import YouJailCardExecution from './YouJailCardExecution'
 import YouJailMentionTextarea from './YouJailMentionTextarea'
 import { handleMentionPreviewClick } from './mentionPreview'
 import YouJailTagSelect from './YouJailTagSelect'
@@ -55,7 +54,6 @@ export default function YouJailCardDetail({
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [mentionEmployeeId, setMentionEmployeeId] = useState<number | null>(null)
-  const [notesTab, setNotesTab] = useState<'edit' | 'preview'>('edit')
   const [runningAction, setRunningAction] = useState<string | null>(null)
 
   const loadCard = useCallback(async () => {
@@ -71,17 +69,6 @@ export default function YouJailCardDetail({
       setLoading(false)
     }
   }, [cardId])
-
-  const refreshCard = useCallback(async () => {
-    if (cardId === null) return
-    try {
-      const payload = await getJson<YouJailCard>(`/api/youjail/cards/${cardId}`)
-      setCard(payload)
-      onUpdated(payload)
-    } catch {
-      // фоновый опрос во время выполнения
-    }
-  }, [cardId, onUpdated])
 
   useEffect(() => {
     void loadCard()
@@ -127,7 +114,7 @@ export default function YouJailCardDetail({
     setRunningAction(action)
     try {
       if (action === 'delete') {
-        if (!window.confirm('Удалить карточку?')) return
+        if (!window.confirm('Удалить карточку без возможности восстановления?')) return
         await deleteJson(`/api/youjail/cards/${card.id}`)
         notifySuccess('Карточка удалена')
         onDeleted(card.id)
@@ -142,7 +129,7 @@ export default function YouJailCardDetail({
       } else if (action === 'archive') {
         notifySuccess(updated.archived ? 'Карточка в архиве' : 'Карточка возвращена из архива')
       } else if (action === 'close') {
-        notifySuccess(updated.closedAt ? 'Карточка закрыта' : 'Карточка открыта')
+        notifySuccess(updated.closedAt ? 'Карточка закрыта' : 'Карточка снова открыта')
       }
     } catch (err) {
       notifyProblem(err, 'Операция не удалась')
@@ -189,84 +176,68 @@ export default function YouJailCardDetail({
         className="youjail-detail"
         role="dialog"
         aria-modal="true"
-        aria-label="Карточка YouJail"
+        aria-label="Карточка"
         onClick={(event) => event.stopPropagation()}
       >
         <header className="youjail-detail-header">
-          <div>
+          <div className="youjail-detail-header-main">
             <p className="youjail-detail-kicker">
-              {card?.cardKey ?? 'YouJail'}
+              <span>{card?.cardKey ?? '…'}</span>
               {card?.projectName ? <span className="youjail-detail-project">{card.projectName}</span> : null}
+              {card?.pinned ? <span className="youjail-detail-badge is-pinned">Закреплена</span> : null}
+              {card?.archived ? <span className="youjail-detail-badge is-archived">Архив</span> : null}
+              {card?.closedAt ? <span className="youjail-detail-badge is-closed">Закрыта</span> : null}
             </p>
-            <h2>{card?.title ?? 'Загрузка…'}</h2>
+            {card ? (
+              <input
+                type="text"
+                className="youjail-detail-title-input"
+                value={card.title}
+                disabled={saving}
+                aria-label="Название карточки"
+                onChange={(event) => setCard({ ...card, title: event.target.value })}
+                onBlur={() => void saveCard({ title: card.title })}
+              />
+            ) : (
+              <h2>Загрузка…</h2>
+            )}
           </div>
-          <button type="button" className="btn-ghost" onClick={onClose} aria-label="Закрыть">
-            ×
-          </button>
+          <div className="youjail-detail-header-actions">
+            {saving ? <span className="youjail-saving-badge">Сохранение…</span> : null}
+            <button type="button" className="youjail-detail-close" onClick={onClose} aria-label="Закрыть">
+              ×
+            </button>
+          </div>
         </header>
 
         {loading || !card ? <div className="youjail-detail-loading">Загрузка карточки…</div> : null}
 
         {card ? (
-          <div className="youjail-detail-body">
+          <div className="youjail-detail-body youjail-detail-body-single">
             <div className="youjail-detail-main">
-              <label className="youjail-field">
-                <span>Название</span>
-                <input
-                  type="text"
-                  value={card.title}
-                  disabled={saving}
-                  onChange={(event) => setCard({ ...card, title: event.target.value })}
-                  onBlur={() => void saveCard({ title: card.title })}
-                />
-              </label>
-
-              <div className="youjail-notes">
-                <div className="youjail-notes-tabs">
-                  <button
-                    type="button"
-                    className={`youjail-notes-tab${notesTab === 'edit' ? ' is-active' : ''}`}
-                    onClick={() => setNotesTab('edit')}
-                  >
-                    Заметки
-                  </button>
-                  <button
-                    type="button"
-                    className={`youjail-notes-tab${notesTab === 'preview' ? ' is-active' : ''}`}
-                    onClick={() => setNotesTab('preview')}
-                  >
-                    Просмотр
-                  </button>
+              <section className="youjail-notes-card">
+                <div className="youjail-notes-card-head">
+                  <h3>Описание</h3>
+                  <p className="youjail-muted">Пишите ниже — сверху сразу виден результат. Поддерживаются списки, **жирный**, `код`, @сотрудник.</p>
                 </div>
-                {notesTab === 'edit' ? (
-                  <>
-                    <YouJailMentionTextarea
-                      className="youjail-notes-editor"
-                      value={card.descriptionMd}
-                      disabled={saving}
-                      placeholder="Markdown-заметки: списки, **жирный**, `код`, @сотрудник…"
-                      onChange={(descriptionMd) => setCard({ ...card, descriptionMd })}
-                      onBlur={() => void saveCard({ descriptionMd: card.descriptionMd })}
-                    />
-                    {card.descriptionMd.trim() ? (
-                      <div className="youjail-notes-live-preview">
-                        <p className="youjail-notes-live-preview-label">Как видят отметки:</p>
-                        <div
-                          className="youjail-notes-preview youjail-notes-preview-inline"
-                          dangerouslySetInnerHTML={{ __html: previewHtml }}
-                          onClick={handlePreviewClick}
-                        />
-                      </div>
-                    ) : null}
-                  </>
-                ) : (
-                  <div
-                    className="youjail-notes-preview"
-                    dangerouslySetInnerHTML={{ __html: previewHtml }}
-                    onClick={handlePreviewClick}
-                  />
-                )}
-              </div>
+                <div
+                  className="youjail-notes-preview youjail-notes-preview-main"
+                  dangerouslySetInnerHTML={{
+                    __html:
+                      previewHtml ||
+                      '<p class="youjail-notes-empty">Пока пусто. Начните вводить текст в поле ниже.</p>',
+                  }}
+                  onClick={handlePreviewClick}
+                />
+                <YouJailMentionTextarea
+                  className="youjail-notes-editor youjail-notes-editor-pane"
+                  value={card.descriptionMd}
+                  disabled={saving}
+                  placeholder="Текст задачи, детали, чек-лист…"
+                  onChange={(descriptionMd) => setCard({ ...card, descriptionMd })}
+                  onBlur={() => void saveCard({ descriptionMd: card.descriptionMd })}
+                />
+              </section>
 
               <div className="youjail-detail-grid">
                 <label className="youjail-field youjail-field-full">
@@ -319,7 +290,7 @@ export default function YouJailCardDetail({
                 </label>
 
                 <label className="youjail-field">
-                  <span>Запланировано</span>
+                  <span>Срок</span>
                   <input
                     type="datetime-local"
                     value={toLocalInputValue(card.scheduledAt)}
@@ -338,7 +309,7 @@ export default function YouJailCardDetail({
                 <div className="youjail-section-head">
                   <h3>Вложения</h3>
                   <label className="btn-secondary youjail-upload-btn">
-                    + Файл
+                    Прикрепить файл
                     <input
                       type="file"
                       hidden
@@ -351,7 +322,7 @@ export default function YouJailCardDetail({
                   </label>
                 </div>
                 {card.attachments.length === 0 ? (
-                  <p className="youjail-muted">Вложений пока нет</p>
+                  <p className="youjail-muted youjail-empty-hint">Файлы можно прикрепить кнопкой выше</p>
                 ) : (
                   <ul className="youjail-attachment-list">
                     {card.attachments.map((attachment) => (
@@ -369,7 +340,8 @@ export default function YouJailCardDetail({
                         </button>
                         <button
                           type="button"
-                          className="btn-ghost"
+                          className="btn-ghost youjail-attachment-remove"
+                          aria-label={`Удалить ${attachment.filename}`}
                           onClick={() =>
                             void deleteJson(`/api/youjail/attachments/${attachment.id}`)
                               .then(() => {
@@ -379,54 +351,53 @@ export default function YouJailCardDetail({
                               .catch((err) => notifyProblem(err, 'Не удалось удалить вложение'))
                           }
                         >
-                          ✕
+                          Удалить
                         </button>
                       </li>
                     ))}
                   </ul>
                 )}
               </section>
-            </div>
 
-            <div className="youjail-detail-side">
-              <div className="youjail-detail-actions">
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  disabled={runningAction !== null}
-                  onClick={() => void runAction('pin')}
-                >
-                  {card.pinned ? 'Открепить' : 'Закрепить'}
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  disabled={runningAction !== null}
-                  onClick={() => void runAction('archive')}
-                >
-                  {card.archived ? 'Вернуть' : 'В архив'}
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  disabled={runningAction !== null}
-                  onClick={() => void runAction('close')}
-                >
-                  {card.closedAt ? 'Открыть' : 'Закрыть'}
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost youjail-danger"
-                  disabled={runningAction !== null}
-                  onClick={() => void runAction('delete')}
-                >
-                  Удалить
-                </button>
-              </div>
+              <section className="youjail-detail-actions-section">
+                <h3>Действия</h3>
+                <div className="youjail-detail-actions">
+                  <button
+                    type="button"
+                    className="youjail-action-btn"
+                    disabled={runningAction !== null}
+                    onClick={() => void runAction('pin')}
+                  >
+                    {card.pinned ? 'Открепить' : 'Закрепить'}
+                  </button>
+                  <button
+                    type="button"
+                    className="youjail-action-btn"
+                    disabled={runningAction !== null}
+                    onClick={() => void runAction('archive')}
+                  >
+                    {card.archived ? 'Вернуть из архива' : 'В архив'}
+                  </button>
+                  <button
+                    type="button"
+                    className="youjail-action-btn"
+                    disabled={runningAction !== null}
+                    onClick={() => void runAction('close')}
+                  >
+                    {card.closedAt ? 'Открыть снова' : 'Закрыть'}
+                  </button>
+                  <button
+                    type="button"
+                    className="youjail-action-btn youjail-action-btn-danger"
+                    disabled={runningAction !== null}
+                    onClick={() => void runAction('delete')}
+                  >
+                    Удалить
+                  </button>
+                </div>
+              </section>
 
-              <YouJailCardExecution card={card} disabled={saving} onRefreshCard={refreshCard} />
-
-              <div className="youjail-meta">
+              <div className="youjail-meta youjail-meta-footer">
                 {card.assigneeName ? <p>Ответственный: {card.assigneeName}</p> : null}
                 {card.createdBy ? <p>Автор: {card.createdBy}</p> : null}
                 <p>Создана: {new Date(card.createdAt).toLocaleString('ru-RU')}</p>

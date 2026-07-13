@@ -2247,6 +2247,16 @@
   margin-bottom: 12px;
 }
 
+.org-workspace-view-hint {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 10px;
+}
+
 .org-workspace-book-for {
   display: inline-flex;
   align-items: center;
