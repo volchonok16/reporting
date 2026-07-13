@@ -167,13 +167,27 @@ function computeWorkspaceDayCellSize(containerWidth: number): number {
   return Math.min(WORKSPACE_MAX_DAY_CELL, Math.max(WORKSPACE_MIN_DAY_CELL, stretched))
 }
 
+const WORKSPACE_SCROLL_PADDING = 8
+
+function normalizeWorkspaceYear(savedYear: number): number {
+  const nowYear = new Date().getFullYear()
+  if (savedYear === nowYear || savedYear === nowYear + 1) {
+    return savedYear
+  }
+  return nowYear
+}
+
+function workspaceAutoScrollDayKey(year: number, currentYear: number, todayKey: string): string {
+  return year === currentYear ? todayKey : `${year}-01-01`
+}
+
 export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProps) {
   const today = new Date()
   const currentYear = today.getFullYear()
   const currentMonth = today.getMonth()
   const currentDay = today.getDate()
   const savedOrgUi = loadOrgUiState()
-  const [year, setYear] = useState(savedOrgUi.workspaceYear)
+  const [year, setYear] = useState(() => normalizeWorkspaceYear(savedOrgUi.workspaceYear))
   const [data, setData] = useState<WorkspaceBookingScheduleData | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -187,6 +201,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   const [canScrollRight, setCanScrollRight] = useState(false)
   const chartWrapRef = useRef<HTMLDivElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const autoScrolledYearRef = useRef<number | null>(null)
   const dayCellSizeRef = useRef(WORKSPACE_MIN_DAY_CELL)
   const prevDayCellSizeRef = useRef(WORKSPACE_MIN_DAY_CELL)
   const dragStateRef = useRef<{
@@ -267,6 +282,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
   useEffect(() => {
     setDraftChanges(new Map())
     setEditMode(false)
+    autoScrolledYearRef.current = null
   }, [year])
 
   useEffect(() => {

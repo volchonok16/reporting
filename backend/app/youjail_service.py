@@ -573,6 +573,47 @@ def _serialize_attachment(attachment: YouJailAttachment) -> dict:
     }
 
 
+def _sync_comment_attachments_to_card(db: Session, card_id: int) -> bool:
+    """Добавляет в youjail_attachment файлы из комментариев, если их ещё нет."""
+    comment_files = db.execute(
+        select(
+            YouJailCommentAttachment.filename,
+            YouJailCommentAttachment.storage_path,
+            YouJailCommentAttachment.content_type,
+            YouJailCommentAttachment.size_bytes,
+            YouJailCommentAttachment.created_at,
+        )
+        .join(YouJailCardComment, YouJailCardComment.id == YouJailCommentAttachment.comment_id)
+        .where(YouJailCardComment.card_id == card_id)
+    ).all()
+    if not comment_files:
+        return False
+
+    existing_paths = set(
+        db.scalars(
+            select(YouJailAttachment.storage_path).where(YouJailAttachment.card_id == card_id)
+        ).all()
+    )
+    added = False
+    for row in comment_files:
+        if row.storage_path in existing_paths:
+            continue
+        attachment = YouJailAttachment(
+            card_id=card_id,
+            filename=row.filename,
+            storage_path=row.storage_path,
+            content_type=row.content_type,
+            size_bytes=row.size_bytes,
+            created_at=row.created_at,
+        )
+        db.add(attachment)
+        existing_paths.add(row.storage_path)
+        added = True
+    if added:
+        db.flush()
+    return added
+
+
 def _serialize_comment_attachment(db: Session, attachment: YouJailCommentAttachment, *, card_id: int) -> dict:
     card_attachment = db.scalar(
         select(YouJailAttachment).where(
@@ -856,6 +897,8 @@ def _card_context_snapshot(db: Session, card: YouJailCard) -> dict:
 
 def get_card(db: Session, card_id: int, *, meta: dict) -> dict:
     card = assert_card_access(db, meta, card_id)
+    if _sync_comment_attachments_to_card(db, card.id):
+        db.commit()
     viewer_id = actor_employee_id(db, meta)
     payload = _serialize_card(db, card, detailed=True, viewer_employee_id=viewer_id)
     relations = list_card_relations(db, card, meta)
@@ -1645,6 +1688,7 @@ async def create_card_comment(
         )
         log_attachment_event(db, card.id, meta, added=True, filename=file.filename)
 
+    _sync_comment_attachments_to_card(db, card.id)
     preview = text or (files[0].filename if files else "")
     log_card_comment(db, card.id, meta, comment_id=comment.id, preview=preview)
     db.commit()

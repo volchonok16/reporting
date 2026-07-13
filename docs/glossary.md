@@ -866,7 +866,7 @@ API: `comments[]` в `GET /api/youjail/cards/{id}`; создание: `POST /api
 | `content_type` | varchar(128) | MIME-тип |
 | `size_bytes` | bigint | Размер |
 
-Скачивание: `GET /api/youjail/comment-attachments/{id}/download`. Изображения отображаются inline в UI.
+Скачивание: `GET /api/youjail/comment-attachments/{id}/download`. Изображения отображаются inline в UI. При создании комментария с файлом запись также попадает в `youjail_attachment` (общие вложения карточки); при чтении карточки выполняется синхронизация пропущенных файлов.
 
 ### youjail_attachment, youjail_execution, youjail_execution_log
 

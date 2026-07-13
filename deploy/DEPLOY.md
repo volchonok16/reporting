@@ -121,7 +121,7 @@ sudo bash scripts/production.sh
 
 ### Загрузка файлов (YouJail)
 
-Лимит вложений: **10 МБ** на файл (`client_max_body_size` в nginx и `YOUJAIL_MAX_ATTACHMENT_BYTES` в backend).
+Лимит вложений: **50 МБ** на файл (`client_max_body_size` в nginx и `YOUJAIL_MAX_ATTACHMENT_BYTES` в backend).
 
 После обновления конфига nginx на сервере:
 
