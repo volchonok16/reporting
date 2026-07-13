@@ -173,6 +173,8 @@ class YouJailCardOut(BaseModel):
     boardId: int
     columnId: int
     columnKey: str
+    cardNumber: int
+    cardKey: str
     projectId: int | None = None
     projectName: str | None = None
     taskTypeId: int | None = None

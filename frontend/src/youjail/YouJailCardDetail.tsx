@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiFetch, deleteJson, getJson, patchJson, postForm, postJson } from '../api'
+import { notifyError, notifyProblem, notifySuccess } from '../toast'
 import YouJailAssigneeSelect from './YouJailAssigneeSelect'
 import YouJailMentionTextarea from './YouJailMentionTextarea'
 import YouJailTagSelect from './YouJailTagSelect'
@@ -47,19 +48,17 @@ export default function YouJailCardDetail({
   const [card, setCard] = useState<YouJailCard | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [notesTab, setNotesTab] = useState<'edit' | 'preview'>('edit')
   const [runningAction, setRunningAction] = useState<string | null>(null)
 
   const loadCard = useCallback(async () => {
     if (cardId === null) return
     setLoading(true)
-    setError(null)
     try {
       const payload = await getJson<YouJailCard>(`/api/youjail/cards/${cardId}`)
       setCard(payload)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось загрузить карточку')
+      notifyError(err, 'Не удалось загрузить карточку')
       setCard(null)
     } finally {
       setLoading(false)
@@ -87,13 +86,12 @@ export default function YouJailCardDetail({
   const saveCard = async (patch: Record<string, unknown>) => {
     if (!card) return
     setSaving(true)
-    setError(null)
     try {
       const updated = await patchJson<YouJailCard>(`/api/youjail/cards/${card.id}`, patch)
       setCard(updated)
       onUpdated(updated)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось сохранить')
+      notifyProblem(err, 'Не удалось сохранить')
     } finally {
       setSaving(false)
     }
@@ -102,11 +100,11 @@ export default function YouJailCardDetail({
   const runAction = async (action: 'pin' | 'archive' | 'close' | 'delete') => {
     if (!card) return
     setRunningAction(action)
-    setError(null)
     try {
       if (action === 'delete') {
         if (!window.confirm('Удалить карточку?')) return
         await deleteJson(`/api/youjail/cards/${card.id}`)
+        notifySuccess('Карточка удалена')
         onDeleted(card.id)
         onClose()
         return
@@ -114,8 +112,15 @@ export default function YouJailCardDetail({
       const updated = await postJson<YouJailCard>(`/api/youjail/cards/${card.id}/${action}`, {})
       setCard(updated)
       onUpdated(updated)
+      if (action === 'pin') {
+        notifySuccess(updated.pinned ? 'Карточка закреплена' : 'Карточка откреплена')
+      } else if (action === 'archive') {
+        notifySuccess(updated.archived ? 'Карточка в архиве' : 'Карточка возвращена из архива')
+      } else if (action === 'close') {
+        notifySuccess(updated.closedAt ? 'Карточка закрыта' : 'Карточка открыта')
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Операция не удалась')
+      notifyProblem(err, 'Операция не удалась')
     } finally {
       setRunningAction(null)
     }
@@ -140,12 +145,12 @@ export default function YouJailCardDetail({
     const formData = new FormData()
     formData.append('file', file)
     setRunningAction('upload')
-    setError(null)
     try {
       await postForm(`/api/youjail/cards/${card.id}/attachments`, formData)
+      notifySuccess('Файл загружен')
       await loadCard()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось загрузить файл')
+      notifyProblem(err, 'Не удалось загрузить файл')
     } finally {
       setRunningAction(null)
     }
@@ -165,7 +170,7 @@ export default function YouJailCardDetail({
         <header className="youjail-detail-header">
           <div>
             <p className="youjail-detail-kicker">
-              YouJail
+              {card?.cardKey ?? 'YouJail'}
               {card?.projectName ? <span className="youjail-detail-project">{card.projectName}</span> : null}
             </p>
             <h2>{card?.title ?? 'Загрузка…'}</h2>
@@ -175,7 +180,6 @@ export default function YouJailCardDetail({
           </button>
         </header>
 
-        {error ? <div className="youjail-detail-error">{error}</div> : null}
         {loading || !card ? <div className="youjail-detail-loading">Загрузка карточки…</div> : null}
 
         {card ? (
@@ -319,7 +323,7 @@ export default function YouJailCardDetail({
                           className="youjail-attachment-link"
                           onClick={() =>
                             void downloadAttachment(attachment.downloadUrl, attachment.filename).catch(
-                              (err) => setError(err instanceof Error ? err.message : 'Ошибка скачивания'),
+                              (err) => notifyProblem(err, 'Ошибка скачивания'),
                             )
                           }
                         >
@@ -328,7 +332,14 @@ export default function YouJailCardDetail({
                         <button
                           type="button"
                           className="btn-ghost"
-                          onClick={() => void deleteJson(`/api/youjail/attachments/${attachment.id}`).then(loadCard)}
+                          onClick={() =>
+                            void deleteJson(`/api/youjail/attachments/${attachment.id}`)
+                              .then(() => {
+                                notifySuccess('Вложение удалено')
+                                return loadCard()
+                              })
+                              .catch((err) => notifyProblem(err, 'Не удалось удалить вложение'))
+                          }
                         >
                           ✕
                         </button>

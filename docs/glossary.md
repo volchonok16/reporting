@@ -776,6 +776,7 @@
 |------|-----|----------|
 | `board_id` | bigint | FK → `youjail_board` |
 | `column_id` | bigint | FK → `youjail_column` |
+| `card_number` | integer | Порядковый номер карточки внутри доски; ключ `cardKey` = `SLUG-N` (например `MAIN-42`) |
 | `project_id`, `task_type_id` | bigint | Проект и тип |
 | `title` | varchar(1000) | Заголовок |
 | `description_md` | text | Заметки (markdown); упоминания сотрудников: `@[ФИО](employee:ID)` |

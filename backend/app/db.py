@@ -133,6 +133,7 @@ def ensure_startup_schema() -> None:
         "018_youjail_assignee.sql",
         "019_youjail_teams.sql",
         "020_youjail_tags.sql",
+        "021_youjail_card_number.sql",
     )
     org_migrations: list[str] = []
     for migration_name in org_migration_names:

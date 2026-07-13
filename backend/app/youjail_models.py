@@ -61,6 +61,7 @@ class YouJailCard(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     board_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_board.id"), nullable=False)
     column_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_column.id"), nullable=False)
+    card_number: Mapped[int] = mapped_column(Integer, nullable=False)
     project_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("youjail_project.id"))
     task_type_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("youjail_task_type.id"))
     title: Mapped[str] = mapped_column(String(1000), nullable=False)

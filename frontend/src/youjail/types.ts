@@ -100,6 +100,8 @@ export type YouJailCard = {
   boardId: number
   columnId: number
   columnKey: string
+  cardNumber: number
+  cardKey: string
   projectId?: number | null
   projectName?: string | null
   taskTypeId?: number | null

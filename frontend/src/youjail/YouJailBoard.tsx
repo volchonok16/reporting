@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from 'react'
 import { deleteJson, getJson, patchJson, postJson } from '../api'
+import { notifyError, notifyProblem, notifySuccess } from '../toast'
 import OrgPhoto from '../org/OrgPhoto'
 import YouJailCardDetail from './YouJailCardDetail'
 import { mentionPreviewText } from './markdown'
@@ -44,7 +45,6 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
   const [editingColumnId, setEditingColumnId] = useState<number | null>(null)
   const [editingColumnTitle, setEditingColumnTitle] = useState('')
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [archived, setArchived] = useState<ArchivedFilter>('false')
   const [showCreateForm, setShowCreateForm] = useState(false)
@@ -62,7 +62,6 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
 
   const loadBoard = useCallback(async () => {
     setLoading(true)
-    setError(null)
     try {
       const params = new URLSearchParams({ archived })
       if (activeBoardId) params.set('boardId', String(activeBoardId))
@@ -74,7 +73,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
         localStorage.setItem(BOARD_STORAGE_KEY, String(payload.board.id))
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось загрузить доску')
+      notifyError(err, 'Не удалось загрузить доску')
       setBoard(null)
     } finally {
       setLoading(false)
@@ -95,7 +94,6 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
     event.preventDefault()
     const title = draftTitle.trim()
     if (!title) return
-    setError(null)
     try {
       await postJson<YouJailCard>('/api/youjail/cards', {
         title,
@@ -103,9 +101,10 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
       })
       setDraftTitle('')
       setShowCreateForm(false)
+      notifySuccess('Карточка создана')
       await loadBoard()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось создать карточку')
+      notifyProblem(err, 'Не удалось создать карточку')
     }
   }
 
@@ -114,7 +113,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
       await postJson<YouJailCard>(`/api/youjail/cards/${cardId}/move`, { columnId })
       await loadBoard()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось переместить карточку')
+      notifyProblem(err, 'Не удалось переместить карточку')
     }
   }
 
@@ -175,7 +174,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
         ),
       )
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось изменить порядок колонок')
+      notifyProblem(err, 'Не удалось изменить порядок колонок')
       await loadBoard()
     }
   }
@@ -251,16 +250,16 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
     event.preventDefault()
     const name = newBoardName.trim()
     if (!name) return
-    setError(null)
     try {
       const created = await postJson<YouJailBoardMeta>('/api/youjail/boards', { name })
       setNewBoardName('')
       setShowBoardForm(false)
       setActiveBoardId(created.id)
       localStorage.setItem(BOARD_STORAGE_KEY, String(created.id))
+      notifySuccess('Доска создана')
       await loadBoard()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось создать доску')
+      notifyProblem(err, 'Не удалось создать доску')
     }
   }
 
@@ -273,14 +272,14 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
         ? `Удалить доску «${board.board.name}» вместе с ${cardCount} карточками?`
         : `Удалить доску «${board.board.name}»?`
     if (!window.confirm(message)) return
-    setError(null)
     try {
       await deleteJson(`/api/youjail/boards/${boardId}`)
       localStorage.removeItem(BOARD_STORAGE_KEY)
       setActiveBoardId(null)
+      notifySuccess('Доска удалена')
       await loadBoard()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось удалить доску')
+      notifyProblem(err, 'Не удалось удалить доску')
     }
   }
 
@@ -289,33 +288,32 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
     const title = newColumnTitle.trim()
     const boardId = activeBoardId ?? board?.board.id
     if (!title || !boardId) return
-    setError(null)
     try {
       await postJson<YouJailColumn>(`/api/youjail/boards/${boardId}/columns`, { title })
       setNewColumnTitle('')
       setShowColumnForm(false)
+      notifySuccess('Колонка добавлена')
       await loadBoard()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось добавить колонку')
+      notifyProblem(err, 'Не удалось добавить колонку')
     }
   }
 
   const saveColumnTitle = async (columnId: number) => {
     const title = editingColumnTitle.trim()
     if (!title) return
-    setError(null)
     try {
       await patchJson<YouJailColumn>(`/api/youjail/columns/${columnId}`, { title })
       setEditingColumnId(null)
       setEditingColumnTitle('')
+      notifySuccess('Колонка переименована')
       await loadBoard()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось переименовать колонку')
+      notifyProblem(err, 'Не удалось переименовать колонку')
     }
   }
 
   const saveColumnTone = async (columnId: number, tone: string) => {
-    setError(null)
     try {
       const updated = await patchJson<YouJailColumn>(`/api/youjail/columns/${columnId}`, { tone })
       setBoard((current) =>
@@ -327,7 +325,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
           : current,
       )
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось изменить цвет колонки')
+      notifyProblem(err, 'Не удалось изменить цвет колонки')
     }
   }
 
@@ -524,8 +522,6 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
         </form>
       ) : null}
 
-      {error ? <div className="youjail-error">{error}</div> : null}
-
       <div
         className={`youjail-board${draggedCardId !== null ? ' is-card-dragging' : ''}${boardEditMode ? ' is-edit-mode' : ''}`}
         aria-busy={loading}
@@ -639,7 +635,10 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
                         <span className="youjail-card-project">{card.projectName}</span>
                       ) : null}
                     </div>
-                    <h3 className="youjail-card-title">{card.title}</h3>
+                    <h3 className="youjail-card-title">
+                      <span className="youjail-card-key">{card.cardKey}</span>
+                      {card.title}
+                    </h3>
                     {card.descriptionMd ? (
                       <p className="youjail-card-notes-preview">
                         {mentionPreviewText(card.descriptionMd)}

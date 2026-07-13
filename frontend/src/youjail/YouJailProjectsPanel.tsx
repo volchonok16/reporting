@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { postJson } from '../api'
+import { notifyProblem, notifySuccess } from '../toast'
 import type { YouJailProject } from './types'
 
 type YouJailProjectsPanelProps = {
@@ -13,13 +14,11 @@ export default function YouJailProjectsPanel({ onCreated }: YouJailProjectsPanel
   const [repoPath, setRepoPath] = useState('')
   const [contextMd, setContextMd] = useState('')
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     if (!name.trim()) return
     setSaving(true)
-    setError(null)
     try {
       const project = await postJson<YouJailProject>('/api/youjail/projects', {
         name: name.trim(),
@@ -33,8 +32,9 @@ export default function YouJailProjectsPanel({ onCreated }: YouJailProjectsPanel
       setRepoPath('')
       setContextMd('')
       setOpen(false)
+      notifySuccess('Проект создан')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось создать проект')
+      notifyProblem(err, 'Не удалось создать проект')
     } finally {
       setSaving(false)
     }
@@ -47,7 +47,6 @@ export default function YouJailProjectsPanel({ onCreated }: YouJailProjectsPanel
       </button>
       {open ? (
         <form className="youjail-projects-form" onSubmit={(event) => void submit(event)}>
-          {error ? <p className="youjail-error-inline">{error}</p> : null}
           <input
             type="text"
             placeholder="Название проекта"

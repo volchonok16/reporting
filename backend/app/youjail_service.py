@@ -168,6 +168,19 @@ def _next_sort_order(db: Session, column_id: int) -> int:
     return int(current or -1) + 1
 
 
+def _next_card_number(db: Session, board_id: int) -> int:
+    db.scalar(select(YouJailBoard.id).where(YouJailBoard.id == board_id).with_for_update())
+    current = db.scalar(
+        select(func.coalesce(func.max(YouJailCard.card_number), 0)).where(YouJailCard.board_id == board_id)
+    )
+    return int(current or 0) + 1
+
+
+def _card_key(board_slug: str, card_number: int) -> str:
+    prefix = board_slug.upper().replace("-", "")
+    return f"{prefix}-{card_number}"
+
+
 def _attachment_url(attachment_id: int) -> str:
     return f"/api/youjail/attachments/{attachment_id}/download"
 
@@ -328,6 +341,7 @@ def _serialize_card(
     *,
     detailed: bool = False,
     tags_map: dict[int, list[dict]] | None = None,
+    board_slug: str | None = None,
 ) -> dict:
     column = db.get(YouJailColumn, card.column_id)
     project = db.get(YouJailProject, card.project_id) if card.project_id else None
@@ -344,11 +358,16 @@ def _serialize_card(
         .order_by(YouJailExecution.started_at.desc())
         .limit(1)
     )
+    if board_slug is None:
+        board = db.get(YouJailBoard, card.board_id)
+        board_slug = board.slug if board else "board"
     return {
         "id": card.id,
         "boardId": card.board_id,
         "columnId": card.column_id,
         "columnKey": column.column_key if column else "",
+        "cardNumber": card.card_number,
+        "cardKey": _card_key(board_slug, card.card_number),
         "projectId": card.project_id,
         "projectName": project.name if project else None,
         "taskTypeId": card.task_type_id,
@@ -420,7 +439,7 @@ def load_board(
         "board": _serialize_board(db, board),
         "boards": [_serialize_board(db, item) for item in boards],
         "columns": [_serialize_column(column) for column in columns],
-        "cards": [_serialize_card(db, card, tags_map=tags_map) for card in cards],
+        "cards": [_serialize_card(db, card, tags_map=tags_map, board_slug=board.slug) for card in cards],
         "projects": [
             {
                 "id": project.id,
@@ -603,6 +622,7 @@ def create_card(db: Session, data: dict, *, created_by: str | None, meta: dict) 
     card = YouJailCard(
         board_id=board_id,
         column_id=column_id,
+        card_number=_next_card_number(db, board_id),
         project_id=data.get("projectId"),
         task_type_id=data.get("taskTypeId"),
         title=data["title"].strip(),

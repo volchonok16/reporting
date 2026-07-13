@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { apiFetch, getJson, postJson, putJson } from '../api'
+import { notifyError, notifyProblem, notifySuccess } from '../toast'
 import OrgPhoto from '../org/OrgPhoto'
 import type { Employee } from '../org/types'
 import type { YouJailBoardMeta, YouJailTeam } from './types'
@@ -19,7 +20,6 @@ export default function YouJailTeamsPanel({
   const [teams, setTeams] = useState<YouJailTeam[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [newTeamName, setNewTeamName] = useState('')
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null)
   const [memberEmployeeId, setMemberEmployeeId] = useState<number | ''>('')
@@ -27,7 +27,6 @@ export default function YouJailTeamsPanel({
 
   const loadTeams = useCallback(async () => {
     setLoading(true)
-    setError(null)
     try {
       const payload = await getJson<YouJailTeam[]>('/api/youjail/teams?detailed=true')
       setTeams(payload)
@@ -35,7 +34,7 @@ export default function YouJailTeamsPanel({
         setSelectedTeamId(payload[0].id)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось загрузить команды')
+      notifyError(err, 'Не удалось загрузить команды')
     } finally {
       setLoading(false)
     }
@@ -61,34 +60,33 @@ export default function YouJailTeamsPanel({
     event.preventDefault()
     const name = newTeamName.trim()
     if (!name) return
-    setError(null)
     try {
       const created = await postJson<YouJailTeam>('/api/youjail/teams', { name })
       setNewTeamName('')
       setTeams((current) => [...current, created])
       setSelectedTeamId(created.id)
+      notifySuccess('Команда создана')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось создать команду')
+      notifyProblem(err, 'Не удалось создать команду')
     }
   }
 
   const addMember = async () => {
     if (!selectedTeamId || !memberEmployeeId) return
-    setError(null)
     try {
       const updated = await postJson<YouJailTeam>(`/api/youjail/teams/${selectedTeamId}/members`, {
         employeeId: memberEmployeeId,
       })
       setTeams((current) => current.map((team) => (team.id === updated.id ? updated : team)))
       setMemberEmployeeId('')
+      notifySuccess('Участник добавлен')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось добавить участника')
+      notifyProblem(err, 'Не удалось добавить участника')
     }
   }
 
   const removeMember = async (employeeId: number) => {
     if (!selectedTeamId) return
-    setError(null)
     try {
       const response = await apiFetch(`/api/youjail/teams/${selectedTeamId}/members/${employeeId}`, {
         method: 'DELETE',
@@ -96,22 +94,23 @@ export default function YouJailTeamsPanel({
       if (!response.ok) {
         throw new Error('Не удалось удалить участника')
       }
+      notifySuccess('Участник удалён')
       await loadTeams()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось удалить участника')
+      notifyProblem(err, 'Не удалось удалить участника')
     }
   }
 
   const saveBoardTeams = async () => {
     if (!activeBoard) return
-    setError(null)
     try {
       const updated = await putJson<YouJailBoardMeta>(`/api/youjail/boards/${activeBoard.id}/teams`, {
         teamIds: boardTeamIds,
       })
       onBoardTeamsUpdated(updated)
+      notifySuccess('Доступ к доске сохранён')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось сохранить команды доски')
+      notifyProblem(err, 'Не удалось сохранить команды доски')
     }
   }
 
@@ -136,7 +135,6 @@ export default function YouJailTeamsPanel({
               ×
             </button>
           </div>
-          {error ? <div className="youjail-error-inline">{error}</div> : null}
           {loading ? <p className="youjail-muted">Загрузка…</p> : null}
 
           <form className="youjail-teams-create" onSubmit={(event) => void createTeam(event)}>

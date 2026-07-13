@@ -469,6 +469,7 @@ CREATE TABLE youjail_card (
     id              BIGSERIAL PRIMARY KEY,
     board_id        BIGINT NOT NULL REFERENCES youjail_board(id) ON DELETE CASCADE,
     column_id       BIGINT NOT NULL REFERENCES youjail_column(id) ON DELETE RESTRICT,
+    card_number     INTEGER NOT NULL,
     project_id      BIGINT REFERENCES youjail_project(id) ON DELETE SET NULL,
     task_type_id    BIGINT REFERENCES youjail_task_type(id) ON DELETE SET NULL,
     title           VARCHAR(1000) NOT NULL,
@@ -490,6 +491,7 @@ CREATE TABLE youjail_card (
 
 CREATE INDEX ix_youjail_card_column_sort ON youjail_card (column_id, sort_order, id);
 CREATE INDEX ix_youjail_card_board_column ON youjail_card (board_id, column_id, sort_order, id);
+CREATE UNIQUE INDEX ix_youjail_card_board_number ON youjail_card (board_id, card_number);
 CREATE INDEX ix_youjail_card_assignee ON youjail_card (assignee_employee_id);
 
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
