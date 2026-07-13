@@ -419,7 +419,7 @@ CREATE UNIQUE INDEX ux_org_chart_layout_company
 COMMENT ON TABLE org_chart_layout IS 'Сохранённая ручная раскладка оргсхемы';
 
 -- -----------------------------------------------------------------------------
--- YouJail — отдельная kanban-доска (не связана с task / ЗНИ)
+-- YouJail — отдельная kanban-доска; карточки могут ссылаться на ЗНИ из task (youjail_card_zni)
 -- -----------------------------------------------------------------------------
 
 CREATE TABLE youjail_board (
@@ -607,6 +607,20 @@ CREATE INDEX ix_youjail_card_tag_tag ON youjail_card_tag (tag_id);
 
 COMMENT ON TABLE youjail_tag IS 'Теги карточек YouJail (как labels в Jira)';
 COMMENT ON TABLE youjail_card_tag IS 'Связь карточки YouJail с тегами';
+
+CREATE TABLE youjail_card_zni (
+    id              BIGSERIAL PRIMARY KEY,
+    card_id         BIGINT NOT NULL REFERENCES youjail_card(id) ON DELETE CASCADE,
+    task_id         BIGINT NOT NULL REFERENCES task(id) ON DELETE CASCADE,
+    sort_order      INTEGER NOT NULL DEFAULT 0,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (card_id, task_id)
+);
+
+CREATE INDEX ix_youjail_card_zni_card ON youjail_card_zni (card_id, sort_order, id);
+CREATE INDEX ix_youjail_card_zni_task ON youjail_card_zni (task_id);
+
+COMMENT ON TABLE youjail_card_zni IS 'Связь карточки YouJail с ЗНИ из task (change_request)';
 
 CREATE TABLE employee_time_off_day (
     id              BIGSERIAL PRIMARY KEY,

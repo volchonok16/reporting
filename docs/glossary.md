@@ -728,7 +728,7 @@
 
 ## YouJail — отдельная kanban-доска
 
-Самостоятельный модуль на вкладке **«Доска»**. Не связан с `task` / ЗНИ / TFS. Поддерживает **несколько досок**, **fuzzy-поиск** (`pg_trgm`), **PTY-терминал** в браузере (WebSocket + xterm.js) и CLI **`ty`**.
+Самостоятельный модуль на вкладке **«Доска»**. Карточки можно привязать к ЗНИ из синхронизированной таблицы `task` (по номеру, несколько через запятую). Остальное не связано с TFS-синком напрямую. Поддерживает **несколько досок**, **fuzzy-поиск** (`pg_trgm`), **PTY-терминал** в браузере (WebSocket + xterm.js) и CLI **`ty`**.
 
 ### youjail_board
 
@@ -798,6 +798,17 @@
 | `assignee_employee_id` | bigint | FK → `employee` — ответственный сотрудник (назначение карточки) |
 | `worktree_path`, `worktree_branch` | text | Git worktree |
 | `execution_status` | varchar(32) | `idle`, `queued`, `running`, `succeeded`, `failed` |
+| `zniNumbers` | string (API) | Номера ЗНИ через запятую; в БД — `youjail_card_zni` |
+
+### youjail_card_zni
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `card_id` | bigint | FK → `youjail_card` |
+| `task_id` | bigint | FK → `task` (ЗНИ, `task_type = change_request`) |
+| `sort_order` | integer | Порядок как в поле ввода |
+
+Связь M:N. Ввод: `123456, 789012`. API: `zniNumbers`, `znis[]`; lookup: `POST /api/youjail/zni/lookup`. Несуществующий номер при сохранении → HTTP 400.
 
 ### youjail_attachment, youjail_execution, youjail_execution_log
 
@@ -849,7 +860,7 @@
 
 Связь M:N: у карточки может быть несколько тегов. API: `GET/POST /api/youjail/tags`, обновление карточки — поле `tagIds`.
 
-API: префикс `/api/youjail/*`. `DELETE /api/youjail/boards/{id}`, `POST /api/youjail/boards/{id}/columns`, `PATCH /api/youjail/columns/{id}`, `DELETE /api/youjail/columns/{id}?moveToColumnId=…`, `POST/DELETE /api/youjail/boards/{id}/members`, `GET/POST/PATCH/DELETE /api/youjail/teams`, `PUT /api/youjail/teams/{id}/boards`, `PUT /api/youjail/boards/{id}/teams`, `GET/POST /api/youjail/tags`. Доступ к доске: админы организации — все; пользователи — команды, личная доска (`owner_employee_id`), прямой доступ (`youjail_board_member`). Управление колонками: глобальный админ, владелец личной доски или `youjail_board_member.role = admin`. WebSocket PTY: `GET /api/youjail/executions/{id}/terminal?X-Session-Id=…`. Fuzzy-поиск: `GET /api/youjail/board?search=…&boardId=…`. CLI: `python backend/scripts/ty.py`.
+API: префикс `/api/youjail/*`. `DELETE /api/youjail/boards/{id}`, `POST /api/youjail/boards/{id}/columns`, `PATCH /api/youjail/columns/{id}`, `DELETE /api/youjail/columns/{id}?moveToColumnId=…`, `POST/DELETE /api/youjail/boards/{id}/members`, `POST /api/youjail/zni/lookup`, `GET/POST/PATCH/DELETE /api/youjail/teams`, `PUT /api/youjail/teams/{id}/boards`, `PUT /api/youjail/boards/{id}/teams`, `GET/POST /api/youjail/tags`. Доступ к доске: админы организации — все; пользователи — команды, личная доска (`owner_employee_id`), прямой доступ (`youjail_board_member`). Управление колонками: глобальный админ, владелец личной доски или `youjail_board_member.role = admin`. WebSocket PTY: `GET /api/youjail/executions/{id}/terminal?X-Session-Id=…`. Fuzzy-поиск: `GET /api/youjail/board?search=…&boardId=…`. CLI: `python backend/scripts/ty.py`.
 
 ---
 

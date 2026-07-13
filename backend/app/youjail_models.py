@@ -182,3 +182,13 @@ class YouJailCardTag(Base):
     card_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_card.id"), nullable=False)
     tag_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_tag.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class YouJailCardZni(Base):
+    __tablename__ = "youjail_card_zni"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    card_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_card.id"), nullable=False)
+    task_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("task.id"), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -144,6 +144,23 @@ class YouJailTagIn(BaseModel):
     color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
 
 
+class YouJailZniOut(BaseModel):
+    number: str
+    title: str
+    url: str | None = None
+    status: str | None = None
+    boardColumn: str | None = None
+    boardName: str | None = None
+
+
+class YouJailZniLookupIn(BaseModel):
+    numbers: list[str] = Field(default_factory=list)
+
+
+class YouJailZniLookupOut(BaseModel):
+    items: list[YouJailZniOut] = Field(default_factory=list)
+
+
 class YouJailColumnOut(BaseModel):
     id: int
     boardId: int
@@ -223,6 +240,8 @@ class YouJailCardOut(BaseModel):
     assigneeName: str | None = None
     assigneePhotoUrl: str | None = None
     tags: list[YouJailTagOut] = Field(default_factory=list)
+    zniNumbers: str = ""
+    znis: list[YouJailZniOut] = Field(default_factory=list)
     createdBy: str | None = None
     createdAt: datetime
     updatedAt: datetime
@@ -251,6 +270,7 @@ class YouJailCardIn(BaseModel):
     executor: str = "manual"
     assigneeEmployeeId: int | None = None
     tagIds: list[int] | None = None
+    zniNumbers: str | None = None
 
 
 class YouJailCardUpdateIn(BaseModel):
@@ -264,6 +284,7 @@ class YouJailCardUpdateIn(BaseModel):
     assigneeEmployeeId: int | None = None
     tagIds: list[int] | None = None
     sortOrder: int | None = None
+    zniNumbers: str | None = None
 
 
 class YouJailCardMoveIn(BaseModel):

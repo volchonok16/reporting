@@ -83,6 +83,15 @@ export type YouJailTag = {
   color?: string | null
 }
 
+export type YouJailLinkedZni = {
+  number: string
+  title: string
+  url?: string | null
+  status?: string | null
+  boardColumn?: string | null
+  boardName?: string | null
+}
+
 export type YouJailAttachment = {
   id: number
   cardId: number
@@ -140,6 +149,8 @@ export type YouJailCard = {
   assigneeName?: string | null
   assigneePhotoUrl?: string | null
   tags: YouJailTag[]
+  zniNumbers: string
+  znis: YouJailLinkedZni[]
   createdBy?: string | null
   createdAt: string
   updatedAt: string

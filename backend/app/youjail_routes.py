@@ -27,6 +27,8 @@ from app.youjail_schemas import (
     YouJailTaskTypeOut,
     YouJailTagIn,
     YouJailTagOut,
+    YouJailZniLookupIn,
+    YouJailZniLookupOut,
     YouJailTeamBoardsIn,
     YouJailTeamIn,
     YouJailTeamMemberIn,
@@ -58,6 +60,7 @@ from app.youjail_service import (
     list_teams,
     load_attachment_file,
     load_board,
+    lookup_znis,
     move_card,
     remove_board_member,
     remove_team_member,
@@ -256,6 +259,15 @@ def api_load_board(
     meta: dict = Depends(_load_session_meta),
 ) -> dict:
     return load_board(db, meta=meta, board_id=board_id, search=search, archived=archived)
+
+
+@router.post("/zni/lookup", response_model=YouJailZniLookupOut)
+def api_lookup_znis(
+    payload: YouJailZniLookupIn,
+    db: Session = Depends(get_db),
+    meta: dict = Depends(_load_session_meta),
+) -> dict:
+    return {"items": lookup_znis(db, payload.numbers)}
 
 
 @router.get("/cards/{card_id}", response_model=YouJailCardOut)

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.org_models import Employee
 from app.org_photo_service import photo_public_url
+from app.models import Task
 from app.youjail_access import (
     BOARD_MEMBER_ROLES,
     actor_employee_id,
@@ -36,6 +37,7 @@ from app.youjail_models import (
     YouJailBoardTeam,
     YouJailCard,
     YouJailCardTag,
+    YouJailCardZni,
     YouJailColumn,
     YouJailExecution,
     YouJailExecutionLog,
@@ -125,6 +127,112 @@ def _set_card_tags(db: Session, card_id: int, tag_ids: list[int]) -> None:
     db.execute(delete(YouJailCardTag).where(YouJailCardTag.card_id == card_id))
     for tag_id in unique_ids:
         db.add(YouJailCardTag(card_id=card_id, tag_id=tag_id))
+
+
+_ZNI_NUMBER_RE = re.compile(r"\d{4,}")
+
+
+def _parse_zni_numbers(raw: str | None) -> list[str]:
+    if not raw or not str(raw).strip():
+        return []
+    seen: set[str] = set()
+    numbers: list[str] = []
+    for match in _ZNI_NUMBER_RE.findall(str(raw)):
+        if match not in seen:
+            seen.add(match)
+            numbers.append(match)
+    return numbers
+
+
+def _format_zni_numbers(numbers: list[str]) -> str:
+    return ", ".join(numbers)
+
+
+def _serialize_linked_zni(task: Task) -> dict:
+    extra = task.extra_json if isinstance(task.extra_json, dict) else {}
+    return {
+        "number": task.external_id,
+        "title": task.title,
+        "url": task.external_url,
+        "status": task.source_status,
+        "boardColumn": extra.get("board_column") or task.source_status,
+        "boardName": task.source_team,
+    }
+
+
+def _card_zni_map(db: Session, card_ids: list[int]) -> dict[int, dict]:
+    if not card_ids:
+        return {}
+    rows = db.execute(
+        select(YouJailCardZni.card_id, Task, YouJailCardZni.sort_order)
+        .join(Task, YouJailCardZni.task_id == Task.id)
+        .where(YouJailCardZni.card_id.in_(card_ids))
+        .order_by(
+            YouJailCardZni.card_id.asc(),
+            YouJailCardZni.sort_order.asc(),
+            YouJailCardZni.id.asc(),
+        )
+    ).all()
+    result: dict[int, dict] = {}
+    for card_id, task, _sort_order in rows:
+        bucket = result.setdefault(card_id, {"numbers": [], "items": []})
+        bucket["numbers"].append(task.external_id)
+        bucket["items"].append(_serialize_linked_zni(task))
+    for bucket in result.values():
+        bucket["numbers"] = _format_zni_numbers(bucket["numbers"])
+    return result
+
+
+def _resolve_zni_task_ids(db: Session, numbers: list[str]) -> list[int]:
+    if not numbers:
+        return []
+    rows = list(
+        db.scalars(
+            select(Task).where(
+                Task.task_type == "change_request",
+                Task.external_id.in_(numbers),
+            )
+        )
+    )
+    by_external = {row.external_id: row.id for row in rows}
+    missing = [number for number in numbers if number not in by_external]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"ЗНИ не найдены в базе: {', '.join(missing)}",
+        )
+    return [by_external[number] for number in numbers]
+
+
+def _set_card_znis(db: Session, card_id: int, raw_numbers: str | None) -> None:
+    numbers = _parse_zni_numbers(raw_numbers)
+    task_ids = _resolve_zni_task_ids(db, numbers)
+    db.execute(delete(YouJailCardZni).where(YouJailCardZni.card_id == card_id))
+    for index, task_id in enumerate(task_ids):
+        db.add(YouJailCardZni(card_id=card_id, task_id=task_id, sort_order=index + 1))
+
+
+def lookup_znis(db: Session, numbers: list[str]) -> list[dict]:
+    parsed: list[str] = []
+    seen: set[str] = set()
+    for raw in numbers:
+        for number in _parse_zni_numbers(raw):
+            if number not in seen:
+                seen.add(number)
+                parsed.append(number)
+    if not parsed:
+        return []
+
+    rows = list(
+        db.scalars(
+            select(Task).where(
+                Task.task_type == "change_request",
+                Task.external_id.in_(parsed),
+            )
+        )
+    )
+    by_number = {row.external_id: _serialize_linked_zni(row) for row in rows}
+    return [by_number[number] for number in parsed if number in by_number]
 
 
 def _find_tag_by_name(db: Session, name: str) -> YouJailTag | None:
@@ -450,6 +558,7 @@ def _serialize_card(
     *,
     detailed: bool = False,
     tags_map: dict[int, list[dict]] | None = None,
+    zni_map: dict[int, dict] | None = None,
     board_slug: str | None = None,
 ) -> dict:
     column = db.get(YouJailColumn, card.column_id)
@@ -470,6 +579,10 @@ def _serialize_card(
     if board_slug is None:
         board = db.get(YouJailBoard, card.board_id)
         board_slug = board.slug if board else "board"
+    zni_data = zni_map.get(card.id, {"numbers": "", "items": []}) if zni_map is not None else _card_zni_map(db, [card.id]).get(
+        card.id,
+        {"numbers": "", "items": []},
+    )
     return {
         "id": card.id,
         "boardId": card.board_id,
@@ -496,6 +609,8 @@ def _serialize_card(
         "assigneeName": assignee.full_name if assignee else None,
         "assigneePhotoUrl": photo_public_url(assignee.photo_path) if assignee else None,
         "tags": tags_map.get(card.id, []) if tags_map is not None else _card_tags_map(db, [card.id]).get(card.id, []),
+        "zniNumbers": zni_data["numbers"],
+        "znis": zni_data["items"],
         "createdBy": card.created_by,
         "createdAt": card.created_at,
         "updatedAt": card.updated_at,
@@ -544,12 +659,16 @@ def load_board(
     cards = db.scalars(query).all()
     card_ids = [card.id for card in cards]
     tags_map = _card_tags_map(db, card_ids)
+    zni_map = _card_zni_map(db, card_ids)
     all_tags = list_tags(db)
     return {
         "board": _serialize_board(db, board, meta),
         "boards": [_serialize_board(db, item, meta) for item in boards],
         "columns": [_serialize_column(column) for column in columns],
-        "cards": [_serialize_card(db, card, tags_map=tags_map, board_slug=board.slug) for card in cards],
+        "cards": [
+            _serialize_card(db, card, tags_map=tags_map, zni_map=zni_map, board_slug=board.slug)
+            for card in cards
+        ],
         "projects": [
             {
                 "id": project.id,
@@ -884,7 +1003,9 @@ def create_card(db: Session, data: dict, *, created_by: str | None, meta: dict) 
     db.refresh(card)
     if data.get("tagIds") is not None:
         _set_card_tags(db, card.id, data["tagIds"])
-        db.commit()
+    if "zniNumbers" in data:
+        _set_card_znis(db, card.id, data.get("zniNumbers"))
+    db.commit()
     return get_card(db, card.id, meta=meta)
 
 
@@ -920,6 +1041,8 @@ def update_card(db: Session, card_id: int, data: dict, *, meta: dict) -> dict:
         card.sort_order = int(data["sortOrder"])
     if data.get("tagIds") is not None:
         _set_card_tags(db, card.id, data["tagIds"])
+    if "zniNumbers" in data:
+        _set_card_znis(db, card.id, data.get("zniNumbers"))
 
     card.updated_at = _utcnow()
     db.commit()

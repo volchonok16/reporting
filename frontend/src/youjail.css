@@ -2077,6 +2077,91 @@
   font-size: 12px;
 }
 
+.youjail-zni-field {
+  grid-column: 1 / -1;
+  margin-bottom: 4px;
+}
+
+.youjail-zni-hint {
+  margin: 4px 0 10px;
+  font-size: 12px;
+}
+
+.youjail-zni-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.youjail-zni-link {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.youjail-zni-link:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-2));
+}
+
+.youjail-zni-link-number {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.youjail-zni-link-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.youjail-zni-link-board {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.youjail-zni-missing {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.youjail-card-zni-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.youjail-card-zni-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, #2563eb 12%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, #2563eb 28%, var(--border));
+  color: color-mix(in srgb, #2563eb 85%, var(--text-primary));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 @media (max-width: 960px) {
   .youjail-detail-body {
     grid-template-columns: 1fr;

@@ -7,6 +7,7 @@ import YouJailAssigneeSelect from './YouJailAssigneeSelect'
 import YouJailMentionTextarea from './YouJailMentionTextarea'
 import { handleMentionPreviewClick } from './mentionPreview'
 import YouJailTagSelect from './YouJailTagSelect'
+import YouJailZniField from './YouJailZniField'
 import { renderMarkdown } from './markdown'
 import type {
   YouJailCard,
@@ -275,6 +276,14 @@ export default function YouJailCardDetail({
                     onTagsCatalogUpdated={onTagsCatalogUpdated}
                   />
                 </label>
+
+                <YouJailZniField
+                  value={card.zniNumbers ?? ''}
+                  linked={card.znis ?? []}
+                  disabled={saving}
+                  onChange={(zniNumbers) => setCard({ ...card, zniNumbers })}
+                  onBlur={(zniNumbers) => void saveCard({ zniNumbers })}
+                />
 
                 <label className="youjail-field">
                   <span>Ответственный</span>

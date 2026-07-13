@@ -821,6 +821,15 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
                       <span className="youjail-card-key">{card.cardKey}</span>
                       {card.title}
                     </h3>
+                    {(card.znis ?? []).length > 0 ? (
+                      <div className="youjail-card-zni-row">
+                        {(card.znis ?? []).map((zni) => (
+                          <span key={zni.number} className="youjail-card-zni-chip" title={zni.title}>
+                            {zni.number}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                     {card.descriptionMd ? (
                       <p className="youjail-card-notes-preview">
                         {mentionPreviewText(card.descriptionMd)}
