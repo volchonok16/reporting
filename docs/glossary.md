@@ -755,6 +755,16 @@
 
 Прямой доступ к доске (в т.ч. к чужой личной). Владелец личной доски (`owner_employee_id`) — неявный admin. Уникальность: `(board_id, employee_id)`.
 
+### youjail_board_pin
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `employee_id` | bigint | FK → `employee` |
+| `board_id` | bigint | FK → `youjail_board` |
+| `pinned_at` | timestamptz | Время закрепления (порядок в списке) |
+
+Персональная настройка: какие доски показывать вверху переключателя. API: `pinned` в метаданных доски; `POST /api/youjail/boards/{id}/pin` — переключить закрепление.
+
 ### youjail_project
 
 | Поле | Тип | Описание |
@@ -906,7 +916,7 @@ API: `comments[]` в `GET /api/youjail/cards/{id}`; создание: `POST /api
 
 Связь M:N: у карточки может быть несколько тегов. API: `GET/POST /api/youjail/tags`, обновление карточки — поле `tagIds`.
 
-API: префикс `/api/youjail/*`. `DELETE /api/youjail/boards/{id}`, `POST /api/youjail/boards/{id}/columns`, `PATCH /api/youjail/columns/{id}`, `DELETE /api/youjail/columns/{id}?moveToColumnId=…`, `POST/DELETE /api/youjail/boards/{id}/members`, `POST /api/youjail/zni/lookup`, `POST /api/youjail/cards/{id}/comments`, `GET /api/youjail/comment-attachments/{id}/download`, `GET/POST/PATCH/DELETE /api/youjail/teams`, `PUT /api/youjail/teams/{id}/boards`, `PUT /api/youjail/boards/{id}/teams`, `GET/POST /api/youjail/tags`. Доступ к доске: админы организации — все; пользователи — команды, личная доска (`owner_employee_id`), прямой доступ (`youjail_board_member`). Управление колонками: глобальный админ, владелец личной доски или `youjail_board_member.role = admin`. WebSocket PTY: `GET /api/youjail/executions/{id}/terminal?X-Session-Id=…`. Fuzzy-поиск: `GET /api/youjail/board?search=…&boardId=…`. CLI: `python backend/scripts/ty.py`.
+API: префикс `/api/youjail/*`. `DELETE /api/youjail/boards/{id}`, `POST /api/youjail/boards/{id}/pin`, `POST /api/youjail/boards/{id}/columns`, `PATCH /api/youjail/columns/{id}`, `DELETE /api/youjail/columns/{id}?moveToColumnId=…`, `POST/DELETE /api/youjail/boards/{id}/members`, `POST /api/youjail/zni/lookup`, `POST /api/youjail/cards/{id}/comments`, `GET /api/youjail/comment-attachments/{id}/download`, `GET/POST/PATCH/DELETE /api/youjail/teams`, `PUT /api/youjail/teams/{id}/boards`, `PUT /api/youjail/boards/{id}/teams`, `GET/POST /api/youjail/tags`. Доступ к доске: админы организации — все; пользователи — команды, личная доска (`owner_employee_id`), прямой доступ (`youjail_board_member`). Управление колонками: глобальный админ, владелец личной доски или `youjail_board_member.role = admin`. WebSocket PTY: `GET /api/youjail/executions/{id}/terminal?X-Session-Id=…`. Fuzzy-поиск: `GET /api/youjail/board?search=…&boardId=…`. CLI: `python backend/scripts/ty.py`.
 
 ---
 
