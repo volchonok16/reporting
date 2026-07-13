@@ -19,6 +19,7 @@ export default function YouJailAssigneeSelect({
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -43,11 +44,17 @@ export default function YouJailAssigneeSelect({
     const handlePointerDown = (event: MouseEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) {
         setOpen(false)
+        setQuery('')
       }
     }
     document.addEventListener('mousedown', handlePointerDown)
     return () => document.removeEventListener('mousedown', handlePointerDown)
   }, [])
+
+  useEffect(() => {
+    if (!open) return
+    window.requestAnimationFrame(() => searchRef.current?.focus())
+  }, [open])
 
   const selected = useMemo(
     () => employees.find((employee) => employee.id === value) ?? null,
@@ -67,9 +74,22 @@ export default function YouJailAssigneeSelect({
     setOpen(false)
   }
 
+  const openSearch = () => {
+    if (disabled || loading) return
+    setOpen(true)
+    setQuery('')
+  }
+
+  const showSearch = open || !selected
+
   return (
     <div className="youjail-assignee-select" ref={rootRef}>
-      <div className={`youjail-assignee-input${disabled ? ' is-disabled' : ''}`}>
+      <div
+        className={`youjail-assignee-field${disabled ? ' is-disabled' : ''}${selected && !open ? ' has-value' : ''}${open ? ' is-open' : ''}`}
+        onClick={() => {
+          if (!showSearch) openSearch()
+        }}
+      >
         {selected ? (
           <OrgPhoto
             url={selected.photoUrl}
@@ -82,38 +102,59 @@ export default function YouJailAssigneeSelect({
             ?
           </div>
         )}
-        <input
-          type="search"
-          className="youjail-assignee-search"
-          value={open ? query : selected?.fullName ?? ''}
-          disabled={disabled || loading}
-          placeholder={loading ? 'Загрузка…' : 'Найти сотрудника…'}
-          onFocus={() => {
-            setOpen(true)
-            setQuery('')
-          }}
-          onChange={(event) => {
-            setQuery(event.target.value)
-            setOpen(true)
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') {
-              setOpen(false)
-              setQuery('')
-            }
-          }}
-        />
+
+        {showSearch ? (
+          <input
+            ref={searchRef}
+            type="search"
+            className="youjail-assignee-search"
+            value={query}
+            disabled={disabled || loading}
+            placeholder={loading ? 'Загрузка…' : 'Найти сотрудника…'}
+            onFocus={openSearch}
+            onChange={(event) => {
+              setQuery(event.target.value)
+              setOpen(true)
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                setOpen(false)
+                setQuery('')
+              }
+            }}
+          />
+        ) : (
+          <button
+            type="button"
+            className="youjail-assignee-value"
+            disabled={disabled}
+            onClick={(event) => {
+              event.stopPropagation()
+              openSearch()
+            }}
+          >
+            <span className="youjail-assignee-name" title={selected?.fullName}>
+              {selected?.fullName}
+            </span>
+            <span className="youjail-assignee-hint">Изменить</span>
+          </button>
+        )}
+
         {selected && !disabled ? (
           <button
             type="button"
             className="youjail-assignee-clear"
             aria-label="Снять ответственного"
-            onClick={() => pickEmployee(null)}
+            onClick={(event) => {
+              event.stopPropagation()
+              pickEmployee(null)
+            }}
           >
             ×
           </button>
         ) : null}
       </div>
+
       {open && !disabled ? (
         <div className="youjail-assignee-suggestions" role="listbox">
           <button

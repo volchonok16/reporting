@@ -176,6 +176,9 @@ class YouJailCardEventOut(BaseModel):
 class YouJailRelatedCardOut(BaseModel):
     id: int
     cardKey: str
+    cardKeyGlobal: str
+    boardId: int
+    boardName: str | None = None
     title: str
     columnTitle: str | None = None
     linkKind: str

@@ -96,6 +96,9 @@ export type YouJailLinkedZni = {
 export type YouJailRelatedCard = {
   id: number
   cardKey: string
+  cardKeyGlobal: string
+  boardId: number
+  boardName?: string | null
   title: string
   columnTitle?: string | null
   linkKind: 'manual' | 'zni' | string

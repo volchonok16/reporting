@@ -9,8 +9,16 @@ from sqlalchemy.orm import Session
 from app.org_models import Employee
 from app.org_photo_service import photo_public_url
 from app.youjail_access import actor_employee_id
-from app.youjail_card_keys import card_key_for_board, parse_card_keys, resolve_card_number
-from app.youjail_models import YouJailBoard, YouJailCard, YouJailCardEvent, YouJailCardLink, YouJailCardZni, YouJailColumn
+from app.youjail_card_keys import card_key_for_board, find_card_by_key, global_card_key, parse_card_keys
+from app.youjail_models import (
+    YouJailBoard,
+    YouJailCard,
+    YouJailCardEvent,
+    YouJailCardLink,
+    YouJailCardZni,
+    YouJailColumn,
+    YouJailProject,
+)
 
 
 def _actor_info(db: Session, meta: dict) -> tuple[int | None, str]:
@@ -57,6 +65,35 @@ def _employee_name(db: Session, employee_id: int | None) -> str | None:
     return employee.full_name if employee else None
 
 
+def _project_name(db: Session, project_id: int | None) -> str | None:
+    if project_id is None:
+        return None
+    project = db.get(YouJailProject, project_id)
+    return project.name if project else None
+
+
+def _description_preview(text: str | None, *, limit: int = 100) -> str:
+    cleaned = " ".join((text or "").split())
+    if not cleaned:
+        return ""
+    if len(cleaned) <= limit:
+        return cleaned
+    return f"{cleaned[: limit - 1].rstrip()}…"
+
+
+def _format_schedule_label(iso_value: str | None) -> str | None:
+    if not iso_value:
+        return None
+    from datetime import datetime
+
+    try:
+        normalized = iso_value.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(normalized)
+        return dt.strftime("%d.%m.%Y")
+    except ValueError:
+        return iso_value[:10] if len(iso_value) >= 10 else iso_value
+
+
 def card_snapshot(
     db: Session,
     card: YouJailCard,
@@ -70,6 +107,7 @@ def card_snapshot(
         "columnId": card.column_id,
         "columnTitle": _column_title(db, card.column_id),
         "projectId": card.project_id,
+        "projectName": _project_name(db, card.project_id),
         "assigneeEmployeeId": card.assignee_employee_id,
         "assigneeName": _employee_name(db, card.assignee_employee_id),
         "scheduledAt": card.scheduled_at.isoformat() if card.scheduled_at else None,
@@ -97,7 +135,14 @@ def record_card_field_changes(
             payload={"from": before.get("title"), "to": after.get("title")},
         )
     if before.get("descriptionMd") != after.get("descriptionMd"):
-        log_card_event(db, card_id, "description_changed", meta)
+        preview = _description_preview(after.get("descriptionMd"))
+        log_card_event(
+            db,
+            card_id,
+            "description_changed",
+            meta,
+            payload={"preview": preview, "cleared": not preview},
+        )
     if before.get("columnId") != after.get("columnId"):
         log_card_event(
             db,
@@ -112,7 +157,18 @@ def record_card_field_changes(
             },
         )
     if before.get("projectId") != after.get("projectId"):
-        log_card_event(db, card_id, "project_changed", meta)
+        log_card_event(
+            db,
+            card_id,
+            "project_changed",
+            meta,
+            payload={
+                "fromProjectId": before.get("projectId"),
+                "fromProjectName": before.get("projectName"),
+                "toProjectId": after.get("projectId"),
+                "toProjectName": after.get("projectName"),
+            },
+        )
     if before.get("assigneeEmployeeId") != after.get("assigneeEmployeeId"):
         log_card_event(
             db,
@@ -127,7 +183,18 @@ def record_card_field_changes(
             },
         )
     if before.get("scheduledAt") != after.get("scheduledAt"):
-        log_card_event(db, card_id, "scheduled_changed", meta)
+        log_card_event(
+            db,
+            card_id,
+            "scheduled_changed",
+            meta,
+            payload={
+                "from": before.get("scheduledAt"),
+                "to": after.get("scheduledAt"),
+                "fromLabel": _format_schedule_label(before.get("scheduledAt")),
+                "toLabel": _format_schedule_label(after.get("scheduledAt")),
+            },
+        )
     if before.get("zniNumbers") != after.get("zniNumbers"):
         log_card_event(
             db,
@@ -204,13 +271,34 @@ def format_event_summary(event_type: str, payload: dict) -> str:
     if event_type == "title_changed":
         return f"Изменил название: «{payload.get('from') or '—'}» → «{payload.get('to') or '—'}»"
     if event_type == "description_changed":
+        preview = (payload.get("preview") or "").strip()
+        if preview:
+            return f"Обновил описание: {preview}"
+        if payload.get("cleared"):
+            return "Очистил описание"
         return "Обновил описание"
     if event_type == "project_changed":
+        from_name = payload.get("fromProjectName")
+        to_name = payload.get("toProjectName")
+        if from_name and to_name:
+            return f"Изменил проект: «{from_name}» → «{to_name}»"
+        if to_name:
+            return f"Назначил проект: «{to_name}»"
+        if from_name:
+            return f"Убрал проект: «{from_name}»"
         return "Изменил проект"
     if event_type == "assignee_changed":
         to_name = payload.get("toAssigneeName") or "не назначен"
         return f"Назначил ответственного: {to_name}"
     if event_type == "scheduled_changed":
+        from_label = payload.get("fromLabel") or "без срока"
+        to_label = payload.get("toLabel") or "без срока"
+        if to_label == "без срока" and from_label != "без срока":
+            return f"Убрал срок (был {from_label})"
+        if from_label == "без срока":
+            return f"Установил срок: {to_label}"
+        if from_label != "без срока" and to_label != "без срока":
+            return f"Изменил срок: {from_label} → {to_label}"
         return "Изменил срок"
     if event_type == "zni_changed":
         return f"Обновил ЗНИ: {payload.get('to') or '—'}"
@@ -285,19 +373,31 @@ def list_card_history(db: Session, card: YouJailCard, *, limit: int = 100) -> li
     ]
 
 
-def _serialize_related_card(db: Session, card: YouJailCard, *, link_kind: str) -> dict:
+def _serialize_related_card(
+    db: Session,
+    card: YouJailCard,
+    *,
+    link_kind: str,
+    viewer_employee_id: int | None = None,
+) -> dict:
     board = db.get(YouJailBoard, card.board_id)
     column = db.get(YouJailColumn, card.column_id)
     return {
         "id": card.id,
-        "cardKey": card_key_for_board(board, card.card_number) if board else f"CARD-{card.card_number}",
+        "cardKey": card_key_for_board(board, card.card_number, viewer_employee_id=viewer_employee_id)
+        if board
+        else f"CARD-{card.card_number}",
+        "cardKeyGlobal": global_card_key(board, card.card_number) if board else f"CARD-{card.card_number}",
+        "boardId": board.id if board else card.board_id,
+        "boardName": board.name if board else None,
         "title": card.title,
         "columnTitle": column.title if column else None,
         "linkKind": link_kind,
     }
 
 
-def list_card_relations(db: Session, card: YouJailCard) -> dict:
+def list_card_relations(db: Session, card: YouJailCard, meta: dict) -> dict:
+    viewer_employee_id = actor_employee_id(db, meta)
     manual_ids: dict[int, str] = {}
     rows = db.scalars(
         select(YouJailCardLink).where(
@@ -330,15 +430,20 @@ def list_card_relations(db: Session, card: YouJailCard) -> dict:
     for other_id, kind in {**zni_related_ids, **manual_ids}.items():
         other = db.get(YouJailCard, other_id)
         if other is not None:
-            related_cards.append(_serialize_related_card(db, other, link_kind=kind))
-    related_cards.sort(key=lambda item: item["cardKey"])
+            related_cards.append(
+                _serialize_related_card(db, other, link_kind=kind, viewer_employee_id=viewer_employee_id)
+            )
+    related_cards.sort(key=lambda item: (item.get("boardName") or "", item["cardKeyGlobal"]))
 
-    board = db.get(YouJailBoard, card.board_id)
-    manual_keys = [
-        card_key_for_board(board, other.card_number) if board else f"CARD-{other.card_number}"
-        for other_id in manual_ids
-        if (other := db.get(YouJailCard, other_id)) is not None
-    ]
+    manual_keys: list[str] = []
+    for other_id in manual_ids:
+        other = db.get(YouJailCard, other_id)
+        if other is None:
+            continue
+        other_board = db.get(YouJailBoard, other.board_id)
+        if other_board is None:
+            continue
+        manual_keys.append(global_card_key(other_board, other.card_number))
     return {
         "relatedCardKeys": ", ".join(sorted(manual_keys)),
         "relatedCards": related_cards,
@@ -346,26 +451,20 @@ def list_card_relations(db: Session, card: YouJailCard) -> dict:
 
 
 def set_card_links(db: Session, card: YouJailCard, meta: dict, raw_keys: str | None) -> None:
-    board = db.get(YouJailBoard, card.board_id)
-    if board is None:
-        raise HTTPException(status_code=400, detail="Доска не найдена.")
+    from app.youjail_access import assert_card_access
+
     keys = parse_card_keys(raw_keys)
     target_ids: list[int] = []
     target_keys: list[str] = []
     for key in keys:
-        card_number = resolve_card_number(board, key)
-        if card_number is None:
-            raise HTTPException(status_code=400, detail=f"Карточка {key} не найдена на этой доске")
-        related = db.scalar(
-            select(YouJailCard).where(
-                YouJailCard.board_id == card.board_id,
-                YouJailCard.card_number == card_number,
-            )
-        )
-        if related is None or related.id == card.id:
-            raise HTTPException(status_code=400, detail=f"Карточка {key} не найдена")
+        related = find_card_by_key(db, meta, key)
+        assert_card_access(db, meta, related.id)
+        if related.id == card.id:
+            raise HTTPException(status_code=400, detail="Карточку нельзя связать саму с собой")
+        related_board = db.get(YouJailBoard, related.board_id)
+        global_key = global_card_key(related_board, related.card_number) if related_board else key
         target_ids.append(related.id)
-        target_keys.append(key)
+        target_keys.append(global_key)
 
     existing_rows = list(db.scalars(select(YouJailCardLink).where(YouJailCardLink.card_id == card.id)).all())
     existing_ids = {row.related_card_id for row in existing_rows}
@@ -373,7 +472,12 @@ def set_card_links(db: Session, card: YouJailCard, meta: dict, raw_keys: str | N
     for row in existing_rows:
         if row.related_card_id not in set(target_ids):
             related = db.get(YouJailCard, row.related_card_id)
-            related_key = card_key_for_board(board, related.card_number) if related else "?"
+            related_board = db.get(YouJailBoard, related.board_id) if related else None
+            related_key = (
+                global_card_key(related_board, related.card_number)
+                if related is not None and related_board is not None
+                else "?"
+            )
             log_card_event(
                 db,
                 card.id,

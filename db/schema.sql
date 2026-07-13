@@ -659,7 +659,7 @@ CREATE INDEX ix_youjail_card_link_card ON youjail_card_link (card_id);
 CREATE INDEX ix_youjail_card_link_related ON youjail_card_link (related_card_id);
 
 COMMENT ON TABLE youjail_card_event IS 'История изменений карточки YouJail';
-COMMENT ON TABLE youjail_card_link IS 'Связи карточек YouJail на одной доске';
+COMMENT ON TABLE youjail_card_link IS 'Связи карточек YouJail (в т.ч. между досками)';
 
 CREATE TABLE youjail_card_comment (
     id                  BIGSERIAL PRIMARY KEY,

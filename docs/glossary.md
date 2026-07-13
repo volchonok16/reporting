@@ -799,7 +799,8 @@
 | `board_id` | bigint | FK → `youjail_board` |
 | `column_id` | bigint | FK → `youjail_column` |
 | `card_number` | integer | Порядковый номер на доске |
-| `cardKey` | string (API) | `SLUG-N` для командных досок; для **личной** — `MY-N` (без employee_id в ключе) |
+| `cardKey` | string (API) | Отображение: `MAIN-N` / `SMS-N` на командных; на **своей** личной — `MY-N` |
+| `cardKeyGlobal` | string (API) | Глобальный ключ для связей: `{SLUG_UPPER}-N`, напр. `MAIN-1`, `PERSONAL134-2` |
 | `project_id`, `task_type_id` | bigint | Проект и тип |
 | `title` | varchar(1000) | Заголовок |
 | `description_md` | text | Заметки (markdown); упоминания сотрудников: `@[ФИО](employee:ID)` |
@@ -838,9 +839,9 @@ API: `history[]` в `GET /api/youjail/cards/{id}`.
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `card_id` | bigint | FK → `youjail_card` |
-| `related_card_id` | bigint | FK → `youjail_card` |
+| `related_card_id` | bigint | FK → `youjail_card` (любая доступная доска) |
 
-API: `relatedCardKeys`, `relatedCards` (в т.ч. по общей ЗНИ).
+Связи вручную: поле `relatedCardKeys` — глобальные ключи через запятую (`MAIN-1`, `PERSONAL134-2`). Поиск по всем доступным доскам; `MY-N` допустим только если карточка одна среди личных досок. API: `relatedCardKeys`, `relatedCards` (в т.ч. по общей ЗНИ на той же доске).
 
 ### youjail_card_comment
 

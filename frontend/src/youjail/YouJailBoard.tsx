@@ -408,6 +408,17 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
     return new Map(board.columns.map((column) => [column.id, cardsForColumn(board.cards, column.id)]))
   }, [board])
 
+  const handleOpenCard = useCallback(
+    (cardId: number, boardId?: number) => {
+      if (boardId != null && boardId !== activeBoardId) {
+        setActiveBoardId(boardId)
+        localStorage.setItem(BOARD_STORAGE_KEY, String(boardId))
+      }
+      setSelectedCardId(cardId)
+    },
+    [activeBoardId],
+  )
+
   const boardTeams = board?.board.teams ?? []
   const isPersonalBoard = Boolean(board?.board.isPersonal)
 
@@ -983,7 +994,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
         allTags={board?.tags ?? []}
         canManageOrg={canManageOrg}
         onClose={() => setSelectedCardId(null)}
-        onOpenCard={setSelectedCardId}
+        onOpenCard={handleOpenCard}
         onUpdated={handleCardUpdated}
         onDeleted={handleCardDeleted}
         onTagsCatalogUpdated={(tags) =>

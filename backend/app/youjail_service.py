@@ -674,6 +674,7 @@ def _serialize_card(
     tags_map: dict[int, list[dict]] | None = None,
     zni_map: dict[int, dict] | None = None,
     board_slug: str | None = None,
+    viewer_employee_id: int | None = None,
 ) -> dict:
     column = db.get(YouJailColumn, card.column_id)
     project = db.get(YouJailProject, card.project_id) if card.project_id else None
@@ -691,7 +692,11 @@ def _serialize_card(
         .limit(1)
     )
     board = db.get(YouJailBoard, card.board_id)
-    card_key = card_key_for_board(board, card.card_number) if board else f"CARD-{card.card_number}"
+    card_key = (
+        card_key_for_board(board, card.card_number, viewer_employee_id=viewer_employee_id)
+        if board
+        else f"CARD-{card.card_number}"
+    )
     zni_data = zni_map.get(card.id, {"numbers": "", "items": []}) if zni_map is not None else _card_zni_map(db, [card.id]).get(
         card.id,
         {"numbers": "", "items": []},
@@ -776,12 +781,20 @@ def load_board(
     tags_map = _card_tags_map(db, card_ids)
     zni_map = _card_zni_map(db, card_ids)
     all_tags = list_tags(db)
+    viewer_id = actor_employee_id(db, meta)
     return {
         "board": _serialize_board(db, board, meta, pin_state=pin_state),
         "boards": [_serialize_board(db, item, meta, pin_state=pin_state) for item in boards],
         "columns": [_serialize_column(column) for column in columns],
         "cards": [
-            _serialize_card(db, card, tags_map=tags_map, zni_map=zni_map, board_slug=board.slug)
+            _serialize_card(
+                db,
+                card,
+                tags_map=tags_map,
+                zni_map=zni_map,
+                board_slug=board.slug,
+                viewer_employee_id=viewer_id,
+            )
             for card in cards
         ],
         "projects": [
@@ -820,8 +833,9 @@ def _card_context_snapshot(db: Session, card: YouJailCard) -> dict:
 
 def get_card(db: Session, card_id: int, *, meta: dict) -> dict:
     card = assert_card_access(db, meta, card_id)
-    payload = _serialize_card(db, card, detailed=True)
-    relations = list_card_relations(db, card)
+    viewer_id = actor_employee_id(db, meta)
+    payload = _serialize_card(db, card, detailed=True, viewer_employee_id=viewer_id)
+    relations = list_card_relations(db, card, meta)
     payload["history"] = list_card_history(db, card)
     payload["relatedCardKeys"] = relations["relatedCardKeys"]
     payload["relatedCards"] = relations["relatedCards"]

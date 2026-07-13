@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { apiFetch, postForm } from '../api'
 import OrgPhoto from '../org/OrgPhoto'
 import { notifyProblem, notifySuccess, notifyWarning } from '../toast'
+import { validateYouJailAttachment } from './limits'
 import YouJailMentionTextarea from './YouJailMentionTextarea'
 import { renderMarkdown } from './markdown'
 import type { YouJailCardComment } from './types'
@@ -85,6 +86,14 @@ export default function YouJailCardComments({
   const handleFilesChange = (event: ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(event.target.files ?? [])
     if (selected.length === 0) return
+    for (const file of selected) {
+      const validationError = validateYouJailAttachment(file)
+      if (validationError) {
+        notifyWarning(`${file.name}: ${validationError}`)
+        event.target.value = ''
+        return
+      }
+    }
     setFiles((current) => [...current, ...selected])
     event.target.value = ''
   }
@@ -135,6 +144,56 @@ export default function YouJailCardComments({
       <div className="youjail-comments-head">
         <h3>Комментарии</h3>
         <p className="youjail-muted">Обсуждение задачи — можно прикреплять файлы и изображения.</p>
+      </div>
+
+      <div className="youjail-comment-compose">
+        <YouJailMentionTextarea
+          className="youjail-comment-editor"
+          value={bodyMd}
+          disabled={disabled || submitting}
+          placeholder="Написать комментарий…"
+          onChange={setBodyMd}
+        />
+        {filePreview.length > 0 ? (
+          <ul className="youjail-comment-draft-files">
+            {filePreview.map((item, index) => (
+              <li key={`${item.file.name}-${index}`}>
+                {item.isImage && item.url ? (
+                  <img src={item.url} alt={item.file.name} className="youjail-comment-draft-thumb" />
+                ) : (
+                  <span className="youjail-comment-draft-name">{item.file.name}</span>
+                )}
+                <button
+                  type="button"
+                  className="btn-ghost youjail-comment-draft-remove"
+                  aria-label={`Убрать ${item.file.name}`}
+                  onClick={() => removeFile(index)}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <div className="youjail-comment-compose-actions">
+          <label className="youjail-comment-attach-btn">
+            <input
+              type="file"
+              multiple
+              disabled={disabled || submitting}
+              onChange={handleFilesChange}
+            />
+            Прикрепить
+          </label>
+          <button
+            type="button"
+            className="youjail-comment-submit"
+            disabled={disabled || submitting || (!bodyMd.trim() && files.length === 0)}
+            onClick={() => void submitComment()}
+          >
+            {submitting ? 'Отправка…' : 'Отправить'}
+          </button>
+        </div>
       </div>
 
       {comments.length === 0 ? (
@@ -204,56 +263,6 @@ export default function YouJailCardComments({
           ))}
         </ul>
       )}
-
-      <div className="youjail-comment-compose">
-        <YouJailMentionTextarea
-          className="youjail-comment-editor"
-          value={bodyMd}
-          disabled={disabled || submitting}
-          placeholder="Написать комментарий…"
-          onChange={setBodyMd}
-        />
-        {filePreview.length > 0 ? (
-          <ul className="youjail-comment-draft-files">
-            {filePreview.map((item, index) => (
-              <li key={`${item.file.name}-${index}`}>
-                {item.isImage && item.url ? (
-                  <img src={item.url} alt={item.file.name} className="youjail-comment-draft-thumb" />
-                ) : (
-                  <span className="youjail-comment-draft-name">{item.file.name}</span>
-                )}
-                <button
-                  type="button"
-                  className="btn-ghost youjail-comment-draft-remove"
-                  aria-label={`Убрать ${item.file.name}`}
-                  onClick={() => removeFile(index)}
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <div className="youjail-comment-compose-actions">
-          <label className="youjail-comment-attach-btn">
-            <input
-              type="file"
-              multiple
-              disabled={disabled || submitting}
-              onChange={handleFilesChange}
-            />
-            Прикрепить
-          </label>
-          <button
-            type="button"
-            className="youjail-comment-submit"
-            disabled={disabled || submitting || (!bodyMd.trim() && files.length === 0)}
-            onClick={() => void submitComment()}
-          >
-            {submitting ? 'Отправка…' : 'Отправить'}
-          </button>
-        </div>
-      </div>
     </section>
   )
 }

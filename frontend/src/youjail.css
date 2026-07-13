@@ -979,8 +979,145 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: 16px 18px;
+  padding: 16px 18px 12px;
+  border-bottom: none;
+}
+
+.youjail-detail-quick-bar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) minmax(150px, 0.75fr) minmax(200px, 1fr);
+  gap: 12px;
+  padding: 0 18px 14px;
   border-bottom: 1px solid var(--border);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 5%, var(--surface-1)), var(--surface-1)),
+    var(--surface-1);
+}
+
+.youjail-quick-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.youjail-quick-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.youjail-quick-date {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  border-radius: 14px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.youjail-quick-date:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.youjail-quick-attachments-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.youjail-quick-attach-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-1));
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.youjail-quick-attach-btn input {
+  display: none;
+}
+
+.youjail-quick-attachments-empty {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.youjail-quick-attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 88px;
+  overflow: auto;
+}
+
+.youjail-quick-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 4px 6px 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  border-radius: var(--radius-full);
+  background: var(--surface-1);
+}
+
+.youjail-quick-attachment-link {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0;
+}
+
+.youjail-quick-attachment-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.youjail-quick-attachment-remove:hover {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
+@media (max-width: 960px) {
+  .youjail-detail-quick-bar {
+    grid-template-columns: 1fr;
+  }
 }
 
 .youjail-detail-header-main {
@@ -1475,7 +1612,7 @@
 
 .youjail-comment-list {
   list-style: none;
-  margin: 0 0 14px;
+  margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -1563,8 +1700,9 @@
 }
 
 .youjail-comment-compose {
-  padding-top: 12px;
-  border-top: 1px dashed var(--border);
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px dashed var(--border);
 }
 
 .youjail-comment-editor {
@@ -2031,6 +2169,67 @@
   position: relative;
 }
 
+.youjail-assignee-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 5%, var(--surface-1)), var(--surface-1)),
+    var(--surface-1);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 24%, transparent);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.youjail-assignee-field.has-value {
+  cursor: pointer;
+}
+
+.youjail-assignee-field.is-open,
+.youjail-assignee-field:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.youjail-assignee-field.is-disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.youjail-assignee-value {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.youjail-assignee-name {
+  width: 100%;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.youjail-assignee-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 .youjail-assignee-input {
   display: flex;
   align-items: center;
@@ -2061,13 +2260,25 @@
 }
 
 .youjail-assignee-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   border: 0;
-  background: transparent;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--border) 45%, transparent);
   color: var(--text-muted);
   cursor: pointer;
   font-size: 18px;
   line-height: 1;
-  padding: 0 4px;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.youjail-assignee-clear:hover {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
 }
 
 .youjail-assignee-suggestions {
@@ -2115,11 +2326,12 @@
 
 .youjail-assignee-photo,
 .youjail-assignee-photo--placeholder {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
 .youjail-assignee-photo--placeholder {

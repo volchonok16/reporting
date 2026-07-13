@@ -1,4 +1,3 @@
-import { formatZniNumbers, parseZniNumbers } from '../productStatusZni'
 import type { YouJailRelatedCard } from './types'
 
 type YouJailCardLinksFieldProps = {
@@ -8,10 +7,10 @@ type YouJailCardLinksFieldProps = {
   disabled?: boolean
   onChange: (value: string) => void
   onBlur: (value: string) => void
-  onOpenCard?: (cardId: number) => void
+  onOpenCard?: (cardId: number, boardId?: number) => void
 }
 
-const CARD_KEYS_PLACEHOLDER = 'MAIN-12, MAIN-34'
+const CARD_KEYS_PLACEHOLDER = 'MAIN-1, PERSONAL134-2'
 
 function parseCardKeys(value: string): string[] {
   const text = value.trim()
@@ -29,6 +28,11 @@ function parseCardKeys(value: string): string[] {
 
 function formatCardKeys(keys: string[]): string {
   return keys.join(', ')
+}
+
+function relatedCardLabel(card: YouJailRelatedCard): string {
+  const key = card.cardKeyGlobal || card.cardKey
+  return card.boardName ? `${key} · ${card.boardName}` : key
 }
 
 export default function YouJailCardLinksField({
@@ -51,7 +55,7 @@ export default function YouJailCardLinksField({
           type="text"
           value={value}
           disabled={disabled}
-          placeholder={currentCardKey ? `${currentCardKey}, MAIN-5` : CARD_KEYS_PLACEHOLDER}
+          placeholder={currentCardKey ? `MAIN-1, ${currentCardKey}` : CARD_KEYS_PLACEHOLDER}
           onChange={(event) => onChange(event.target.value)}
           onBlur={() => {
             const normalized = formatCardKeys(parseCardKeys(value))
@@ -61,7 +65,9 @@ export default function YouJailCardLinksField({
         />
       </label>
       <p className="youjail-muted youjail-links-hint">
-        Ключи карточек этой доски через запятую ({currentCardKey ?? 'SLUG-N'}).
+        Ключи с любых доступных досок через запятую. Командные: <code>MAIN-1</code>, <code>SMS-5</code>.
+        Личные: <code>PERSONAL134-2</code> (slug доски + номер). Сокращение <code>MY-2</code> — только если
+        карточка одна среди доступных личных досок.
       </p>
 
       {manualCards.length > 0 || zniCards.length > 0 ? (
@@ -74,9 +80,9 @@ export default function YouJailCardLinksField({
                   key={`manual-${card.id}`}
                   type="button"
                   className="youjail-related-card-btn"
-                  onClick={() => onOpenCard?.(card.id)}
+                  onClick={() => onOpenCard?.(card.id, card.boardId)}
                 >
-                  <span className="youjail-related-card-key">{card.cardKey}</span>
+                  <span className="youjail-related-card-key">{relatedCardLabel(card)}</span>
                   <span className="youjail-related-card-title">{card.title}</span>
                   {card.columnTitle ? (
                     <span className="youjail-related-card-column">{card.columnTitle}</span>
@@ -93,9 +99,9 @@ export default function YouJailCardLinksField({
                   key={`zni-${card.id}`}
                   type="button"
                   className="youjail-related-card-btn is-zni"
-                  onClick={() => onOpenCard?.(card.id)}
+                  onClick={() => onOpenCard?.(card.id, card.boardId)}
                 >
-                  <span className="youjail-related-card-key">{card.cardKey}</span>
+                  <span className="youjail-related-card-key">{relatedCardLabel(card)}</span>
                   <span className="youjail-related-card-title">{card.title}</span>
                   {card.columnTitle ? (
                     <span className="youjail-related-card-column">{card.columnTitle}</span>

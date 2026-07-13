@@ -119,6 +119,20 @@ sudo bash scripts/production.sh
 
 Если nginx работает, а сайт 502 — контейнеры не поднялись: `docker-compose ... logs backend`.
 
+### Загрузка файлов (YouJail)
+
+Лимит вложений: **50 МБ** на файл (`client_max_body_size` в nginx и `YOUJAIL_MAX_ATTACHMENT_BYTES` в backend).
+
+После обновления конфига nginx на сервере:
+
+```bash
+sudo cp deploy/nginx/pallink.conf /etc/nginx/sites-available/pallink.conf
+sudo cp deploy/nginx/snippets/proxy-common.conf /etc/nginx/snippets/proxy-common.conf
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Ошибка **413 Request Entity Too Large** — файл больше лимита nginx или нужно перезагрузить nginx после деплоя конфига.
+
 ## Один скрипт
 
 ```bash

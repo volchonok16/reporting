@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { apiFetch, deleteJson, getJson, patchJson, postForm, postJson } from '../api'
 import EmployeeCardModal from '../org/EmployeeCardModal'
 import '../org/org.css'
-import { notifyError, notifyProblem, notifySuccess } from '../toast'
+import { notifyError, notifyProblem, notifySuccess, notifyWarning } from '../toast'
+import { validateYouJailAttachment } from './limits'
 import YouJailAssigneeSelect from './YouJailAssigneeSelect'
 import YouJailCardComments from './YouJailCardComments'
 import YouJailCardHistory from './YouJailCardHistory'
@@ -20,21 +21,26 @@ type YouJailCardDetailProps = {
   onClose: () => void
   onUpdated: (card: YouJailCard) => void
   onDeleted: (cardId: number) => void
-  onOpenCard?: (cardId: number) => void
+  onOpenCard?: (cardId: number, boardId?: number) => void
   onTagsCatalogUpdated?: (tags: YouJailTag[]) => void
 }
 
-function toLocalInputValue(iso: string | null | undefined): string {
+function toLocalDateValue(iso: string | null | undefined): string {
   if (!iso) return ''
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return ''
   const pad = (value: number) => String(value).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
-function fromLocalInputValue(value: string): string | null {
+function fromLocalDateValue(value: string): string | null {
   if (!value.trim()) return null
-  const date = new Date(value)
+  const [yearRaw, monthRaw, dayRaw] = value.split('-')
+  const year = Number(yearRaw)
+  const month = Number(monthRaw)
+  const day = Number(dayRaw)
+  if (!year || !month || !day) return null
+  const date = new Date(year, month - 1, day, 12, 0, 0, 0)
   if (Number.isNaN(date.getTime())) return null
   return date.toISOString()
 }
@@ -143,6 +149,11 @@ export default function YouJailCardDetail({
 
   const uploadAttachment = async (file: File) => {
     if (!card) return
+    const validationError = validateYouJailAttachment(file)
+    if (validationError) {
+      notifyWarning(validationError)
+      return
+    }
     const formData = new FormData()
     formData.append('file', file)
     setRunningAction('upload')
@@ -235,6 +246,95 @@ export default function YouJailCardDetail({
           </div>
         </header>
 
+        {card ? (
+          <section className="youjail-detail-quick-bar">
+            <label className="youjail-quick-field youjail-quick-field-assignee">
+              <span className="youjail-quick-label">Ответственный</span>
+              <YouJailAssigneeSelect
+                value={card.assigneeEmployeeId}
+                disabled={saving}
+                onChange={(assigneeEmployeeId) => {
+                  const next = { ...card, assigneeEmployeeId }
+                  setCard(next)
+                  void saveCard({ assigneeEmployeeId })
+                }}
+              />
+            </label>
+
+            <label className="youjail-quick-field youjail-quick-field-date">
+              <span className="youjail-quick-label">Срок</span>
+              <input
+                type="date"
+                className="youjail-quick-date"
+                value={toLocalDateValue(card.scheduledAt)}
+                disabled={saving}
+                onChange={(event) => {
+                  const scheduledAt = fromLocalDateValue(event.target.value)
+                  const next = { ...card, scheduledAt }
+                  setCard(next)
+                  void saveCard({ scheduledAt })
+                }}
+              />
+            </label>
+
+            <div className="youjail-quick-field youjail-quick-field-attachments">
+              <div className="youjail-quick-attachments-head">
+                <span className="youjail-quick-label">Вложения</span>
+                <label className="youjail-quick-attach-btn">
+                  + Файл
+                  <input
+                    type="file"
+                    hidden
+                    disabled={runningAction === 'upload'}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0]
+                      if (file) void uploadAttachment(file)
+                      event.currentTarget.value = ''
+                    }}
+                  />
+                </label>
+              </div>
+              {card.attachments.length === 0 ? (
+                <p className="youjail-quick-attachments-empty">Пока нет файлов</p>
+              ) : (
+                <ul className="youjail-quick-attachment-list">
+                  {card.attachments.map((attachment) => (
+                    <li key={attachment.id} className="youjail-quick-attachment-chip">
+                      <button
+                        type="button"
+                        className="youjail-quick-attachment-link"
+                        title={attachment.filename}
+                        onClick={() =>
+                          void downloadAttachment(attachment.downloadUrl, attachment.filename).catch(
+                            (err) => notifyProblem(err, 'Ошибка скачивания'),
+                          )
+                        }
+                      >
+                        {attachment.filename}
+                      </button>
+                      <button
+                        type="button"
+                        className="youjail-quick-attachment-remove"
+                        aria-label={`Удалить ${attachment.filename}`}
+                        onClick={() =>
+                          void deleteJson(`/api/youjail/attachments/${attachment.id}`)
+                            .then(() => {
+                              notifySuccess('Вложение удалено')
+                              return loadCard()
+                            })
+                            .catch((err) => notifyProblem(err, 'Не удалось удалить вложение'))
+                        }
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+        ) : null}
+
         {loading || !card ? <div className="youjail-detail-loading">Загрузка карточки…</div> : null}
 
         {card ? (
@@ -300,89 +400,7 @@ export default function YouJailCardDetail({
                     onTagsCatalogUpdated={onTagsCatalogUpdated}
                   />
                 </label>
-
-                <label className="youjail-field">
-                  <span>Ответственный</span>
-                  <YouJailAssigneeSelect
-                    value={card.assigneeEmployeeId}
-                    disabled={saving}
-                    onChange={(assigneeEmployeeId) => {
-                      const next = { ...card, assigneeEmployeeId }
-                      setCard(next)
-                      void saveCard({ assigneeEmployeeId })
-                    }}
-                  />
-                </label>
-
-                <label className="youjail-field">
-                  <span>Срок</span>
-                  <input
-                    type="datetime-local"
-                    value={toLocalInputValue(card.scheduledAt)}
-                    disabled={saving}
-                    onChange={(event) => {
-                      const scheduledAt = fromLocalInputValue(event.target.value)
-                      const next = { ...card, scheduledAt }
-                      setCard(next)
-                      void saveCard({ scheduledAt })
-                    }}
-                  />
-                </label>
               </div>
-
-              <section className="youjail-attachments">
-                <div className="youjail-section-head">
-                  <h3>Вложения</h3>
-                  <label className="btn-secondary youjail-upload-btn">
-                    Прикрепить файл
-                    <input
-                      type="file"
-                      hidden
-                      onChange={(event) => {
-                        const file = event.target.files?.[0]
-                        if (file) void uploadAttachment(file)
-                        event.currentTarget.value = ''
-                      }}
-                    />
-                  </label>
-                </div>
-                {card.attachments.length === 0 ? (
-                  <p className="youjail-muted youjail-empty-hint">Файлы можно прикрепить кнопкой выше</p>
-                ) : (
-                  <ul className="youjail-attachment-list">
-                    {card.attachments.map((attachment) => (
-                      <li key={attachment.id}>
-                        <button
-                          type="button"
-                          className="youjail-attachment-link"
-                          onClick={() =>
-                            void downloadAttachment(attachment.downloadUrl, attachment.filename).catch(
-                              (err) => notifyProblem(err, 'Ошибка скачивания'),
-                            )
-                          }
-                        >
-                          {attachment.filename}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-ghost youjail-attachment-remove"
-                          aria-label={`Удалить ${attachment.filename}`}
-                          onClick={() =>
-                            void deleteJson(`/api/youjail/attachments/${attachment.id}`)
-                              .then(() => {
-                                notifySuccess('Вложение удалено')
-                                return loadCard()
-                              })
-                              .catch((err) => notifyProblem(err, 'Не удалось удалить вложение'))
-                          }
-                        >
-                          Удалить
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
             </div>
 
             <aside className="youjail-detail-side">
