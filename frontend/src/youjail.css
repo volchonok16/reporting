@@ -449,6 +449,8 @@
   overflow-x: auto;
   flex: 1;
   min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .youjail-loading {
@@ -457,8 +459,10 @@
 }
 
 .youjail-column {
-  flex: 0 0 280px;
-  width: 280px;
+  flex: 1 1 0;
+  min-width: min(220px, 100%);
+  width: auto;
+  max-width: none;
   display: flex;
   flex-direction: column;
   min-height: 100%;
@@ -701,6 +705,8 @@
 }
 
 .youjail-column-add {
+  flex: 0 0 240px;
+  min-width: 200px;
   border-style: dashed;
   background: color-mix(in srgb, var(--surface-2) 70%, transparent);
   box-shadow: none;
