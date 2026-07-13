@@ -231,10 +231,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     [draftChanges, serverBookingMap],
   )
   const canEditAny = Boolean(data?.isAdmin || data?.actorEmployeeId != null)
-  const visiblePlaces = useMemo(
-    () => (data?.places ?? []).filter((place) => place.isActive),
-    [data?.places],
-  )
+  const visiblePlaces = data?.places ?? []
 
 
   useEffect(() => {

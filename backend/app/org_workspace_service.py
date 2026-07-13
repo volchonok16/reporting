@@ -84,6 +84,22 @@ def _delete_vacation_conflicting_bookings(
     return len(rows)
 
 
+def _delete_inactive_place_bookings(db: Session) -> int:
+    inactive_place_ids = db.scalars(
+        select(WorkspacePlace.id).where(WorkspacePlace.is_active.is_(False))
+    ).all()
+    if not inactive_place_ids:
+        return 0
+    rows = db.scalars(
+        select(WorkspaceBooking).where(WorkspaceBooking.place_id.in_(inactive_place_ids))
+    ).all()
+    for row in rows:
+        db.delete(row)
+    if rows:
+        db.commit()
+    return len(rows)
+
+
 def _iter_days(day_from: date, day_to: date) -> list[date]:
     days: list[date] = []
     cursor = day_from
@@ -181,6 +197,7 @@ def get_workspace_booking_schedule(
     is_admin = _is_org_admin(meta)
     places = _load_active_places(db)
     active_place_ids = {place.id for place in places}
+    _delete_inactive_place_bookings(db)
     _delete_vacation_conflicting_bookings(db, day_from, day_to)
 
     bookings_out: list[WorkspaceBookingCellOut] = []
@@ -578,7 +595,7 @@ def toggle_workspace_booking(db: Session, data: WorkspaceBookingToggleIn, meta: 
 
 
 def list_workspace_places(db: Session) -> list[WorkspacePlaceOut]:
-    places = db.scalars(select(WorkspacePlace).order_by(WorkspacePlace.sort_order, WorkspacePlace.name)).all()
+    places = _load_active_places(db)
     return [
         WorkspacePlaceOut(id=p.id, name=p.name, sortOrder=p.sort_order, isActive=p.is_active) for p in places
     ]
@@ -601,7 +618,10 @@ def update_workspace_place(db: Session, place_id: int, data: WorkspacePlaceUpdat
     if data.sortOrder is not None:
         place.sort_order = data.sortOrder
     if data.isActive is not None:
+        was_active = place.is_active
         place.is_active = data.isActive
+        if was_active and not place.is_active:
+            db.execute(delete(WorkspaceBooking).where(WorkspaceBooking.place_id == place_id))
     db.commit()
     db.refresh(place)
     return WorkspacePlaceOut(id=place.id, name=place.name, sortOrder=place.sort_order, isActive=place.is_active)
