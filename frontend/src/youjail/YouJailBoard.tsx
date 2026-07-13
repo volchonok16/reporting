@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type DragEvent, type FormEvent, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from 'react'
 import { deleteJson, getJson, patchJson, postJson } from '../api'
 import OrgPhoto from '../org/OrgPhoto'
 import YouJailCardDetail from './YouJailCardDetail'
@@ -10,7 +10,16 @@ import '../youjail.css'
 
 const BOARD_STORAGE_KEY = 'youjail.activeBoardId'
 
+const COLUMN_TONES = [
+  { value: 'backlog', label: 'Backlog' },
+  { value: 'progress', label: 'In Progress' },
+  { value: 'blocked', label: 'Blocked' },
+  { value: 'done', label: 'Done' },
+  { value: 'custom', label: 'Своя' },
+] as const
+
 type ArchivedFilter = 'false' | 'true' | 'all'
+type ColumnDropPosition = 'before' | 'after'
 
 function cardsForColumn(cards: YouJailCard[], columnId: number): YouJailCard[] {
   return cards
@@ -43,6 +52,13 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
   const [selectedCardId, setSelectedCardId] = useState<number | null>(null)
   const [draggedCardId, setDraggedCardId] = useState<number | null>(null)
   const [dropTargetColumnId, setDropTargetColumnId] = useState<number | null>(null)
+  const [boardEditMode, setBoardEditMode] = useState(false)
+  const [draggedColumnId, setDraggedColumnId] = useState<number | null>(null)
+  const [columnDropTarget, setColumnDropTarget] = useState<{
+    columnId: number
+    position: ColumnDropPosition
+  } | null>(null)
+  const cardWasDraggedRef = useRef(false)
 
   const loadBoard = useCallback(async () => {
     setLoading(true)
@@ -130,22 +146,105 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
     setDropTargetColumnId(null)
   }
 
+  const clearColumnDragState = () => {
+    setDraggedColumnId(null)
+    setColumnDropTarget(null)
+  }
+
+  const reorderColumns = (draggedId: number, targetId: number, position: ColumnDropPosition) => {
+    if (!board || draggedId === targetId) return null
+    const current = [...board.columns]
+    const fromIndex = current.findIndex((column) => column.id === draggedId)
+    const targetIndex = current.findIndex((column) => column.id === targetId)
+    if (fromIndex < 0 || targetIndex < 0) return null
+
+    const [moved] = current.splice(fromIndex, 1)
+    let insertIndex = targetIndex
+    if (fromIndex < targetIndex) insertIndex -= 1
+    if (position === 'after') insertIndex += 1
+    current.splice(insertIndex, 0, moved)
+    return current.map((column, index) => ({ ...column, sortOrder: index + 1 }))
+  }
+
+  const persistColumnOrder = async (nextColumns: YouJailColumn[]) => {
+    setBoard((current) => (current ? { ...current, columns: nextColumns } : current))
+    try {
+      await Promise.all(
+        nextColumns.map((column) =>
+          patchJson<YouJailColumn>(`/api/youjail/columns/${column.id}`, { sortOrder: column.sortOrder }),
+        ),
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось изменить порядок колонок')
+      await loadBoard()
+    }
+  }
+
   const handleCardDragStart = (event: DragEvent<HTMLElement>, cardId: number) => {
+    if (boardEditMode) {
+      event.preventDefault()
+      return
+    }
+    cardWasDraggedRef.current = false
     event.dataTransfer.setData('text/plain', String(cardId))
     event.dataTransfer.effectAllowed = 'move'
     setDraggedCardId(cardId)
+    window.requestAnimationFrame(() => {
+      cardWasDraggedRef.current = true
+    })
   }
 
-  const handleColumnDragOver = (event: DragEvent<HTMLDivElement>) => {
+  const handleColumnDragOver = (event: DragEvent<HTMLElement>, column: YouJailColumn) => {
     event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
+    if (boardEditMode && draggedColumnId !== null) {
+      event.dataTransfer.dropEffect = 'move'
+      if (draggedColumnId === column.id) {
+        setColumnDropTarget(null)
+        return
+      }
+      const rect = event.currentTarget.getBoundingClientRect()
+      const position: ColumnDropPosition =
+        event.clientX < rect.left + rect.width / 2 ? 'before' : 'after'
+      setColumnDropTarget({ columnId: column.id, position })
+      return
+    }
+    if (!boardEditMode && draggedCardId !== null) {
+      event.dataTransfer.dropEffect = 'move'
+      setDropTargetColumnId(column.id)
+    }
   }
 
-  const handleColumnDrop = (event: DragEvent<HTMLDivElement>, column: YouJailColumn) => {
+  const handleColumnDragLeave = (event: DragEvent<HTMLElement>, columnId: number) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+      setDropTargetColumnId((current) => (current === columnId ? null : current))
+      setColumnDropTarget((current) => (current?.columnId === columnId ? null : current))
+    }
+  }
+
+  const handleColumnDrop = (event: DragEvent<HTMLElement>, column: YouJailColumn) => {
     event.preventDefault()
+    if (boardEditMode && draggedColumnId !== null) {
+      const position = columnDropTarget?.columnId === column.id ? columnDropTarget.position : 'after'
+      const nextColumns = reorderColumns(draggedColumnId, column.id, position)
+      if (nextColumns) void persistColumnOrder(nextColumns)
+      clearColumnDragState()
+      return
+    }
+
     const cardId = Number(event.dataTransfer.getData('text/plain'))
     if (cardId) void moveCardToColumn(cardId, column.id)
     clearDragState()
+  }
+
+  const handleColumnDragStart = (event: DragEvent<HTMLButtonElement>, columnId: number) => {
+    event.stopPropagation()
+    event.dataTransfer.setData('application/x-youjail-column', String(columnId))
+    event.dataTransfer.effectAllowed = 'move'
+    setDraggedColumnId(columnId)
+  }
+
+  const handleColumnDragEnd = () => {
+    clearColumnDragState()
   }
 
   const createBoard = async (event: FormEvent) => {
@@ -215,6 +314,23 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
     }
   }
 
+  const saveColumnTone = async (columnId: number, tone: string) => {
+    setError(null)
+    try {
+      const updated = await patchJson<YouJailColumn>(`/api/youjail/columns/${columnId}`, { tone })
+      setBoard((current) =>
+        current
+          ? {
+              ...current,
+              columns: current.columns.map((column) => (column.id === columnId ? updated : column)),
+            }
+          : current,
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось изменить цвет колонки')
+    }
+  }
+
   const startColumnEdit = (column: YouJailColumn) => {
     setEditingColumnId(column.id)
     setEditingColumnTitle(column.title)
@@ -259,25 +375,24 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
               </option>
             ))}
           </select>
-          <YouJailTeamsPanel
-            canManageOrg={canManageOrg}
-            activeBoard={board?.board ?? null}
-            onBoardTeamsUpdated={(updatedBoard) =>
-              setBoard((current) =>
-                current
-                  ? {
-                      ...current,
-                      board: updatedBoard,
-                      boards: current.boards.map((item) =>
-                        item.id === updatedBoard.id ? updatedBoard : item,
-                      ),
-                    }
-                  : current,
-              )
-            }
-          />
           {canManageOrg ? (
             <>
+              <button
+                type="button"
+                className={boardEditMode ? 'btn-primary' : 'btn-secondary'}
+                onClick={() => {
+                  setBoardEditMode((current) => {
+                    if (current) {
+                      setEditingColumnId(null)
+                      setEditingColumnTitle('')
+                      clearColumnDragState()
+                    }
+                    return !current
+                  })
+                }}
+              >
+                {boardEditMode ? 'Готово' : 'Редактировать колонки'}
+              </button>
               <button type="button" className="btn-secondary" onClick={() => setShowBoardForm((current) => !current)}>
                 + Доска
               </button>
@@ -315,6 +430,23 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
             onCreated={(project: YouJailProject) =>
               setBoard((current) =>
                 current ? { ...current, projects: [...current.projects, project] } : current,
+              )
+            }
+          />
+          <YouJailTeamsPanel
+            canManageOrg={canManageOrg}
+            activeBoard={board?.board ?? null}
+            onBoardTeamsUpdated={(updatedBoard) =>
+              setBoard((current) =>
+                current
+                  ? {
+                      ...current,
+                      board: updatedBoard,
+                      boards: current.boards.map((item) =>
+                        item.id === updatedBoard.id ? updatedBoard : item,
+                      ),
+                    }
+                  : current,
               )
             }
           />
@@ -394,69 +526,117 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
 
       {error ? <div className="youjail-error">{error}</div> : null}
 
-      <div className="youjail-board" aria-busy={loading}>
+      <div
+        className={`youjail-board${draggedCardId !== null ? ' is-card-dragging' : ''}${boardEditMode ? ' is-edit-mode' : ''}`}
+        aria-busy={loading}
+      >
         {loading && !board ? <div className="youjail-loading">Загрузка доски…</div> : null}
         {columns.map((column) => {
           const cards = columnCards.get(column.id) ?? []
-          const isDropTarget = dropTargetColumnId === column.id
+          const isDropTarget = !boardEditMode && dropTargetColumnId === column.id
+          const isColumnDragging = boardEditMode && draggedColumnId === column.id
+          const isColumnDropBefore =
+            boardEditMode &&
+            columnDropTarget?.columnId === column.id &&
+            columnDropTarget.position === 'before'
+          const isColumnDropAfter =
+            boardEditMode &&
+            columnDropTarget?.columnId === column.id &&
+            columnDropTarget.position === 'after'
 
           return (
             <section
               key={column.id}
-              className={`youjail-column is-${column.tone}${isDropTarget ? ' is-drop-target' : ''}`}
+              className={`youjail-column is-${column.tone}${isDropTarget ? ' is-drop-target' : ''}${isColumnDragging ? ' is-column-dragging' : ''}${isColumnDropBefore ? ' is-column-drop-before' : ''}${isColumnDropAfter ? ' is-column-drop-after' : ''}`}
               aria-label={`${column.title}, ${cards.length}`}
+              onDragOver={(event) => handleColumnDragOver(event, column)}
+              onDragLeave={(event) => handleColumnDragLeave(event, column.id)}
+              onDrop={(event) => handleColumnDrop(event, column)}
             >
-              <header className="youjail-column-header">
-                {canManageOrg && editingColumnId === column.id ? (
-                  <input
-                    className="youjail-column-title-input"
-                    value={editingColumnTitle}
-                    autoFocus
-                    onChange={(event) => setEditingColumnTitle(event.target.value)}
-                    onBlur={() => void saveColumnTitle(column.id)}
-                    onKeyDown={(event) => handleColumnTitleKeyDown(event, column.id)}
-                  />
-                ) : canManageOrg ? (
-                  <button
-                    type="button"
-                    className="youjail-column-title-btn"
-                    title="Переименовать колонку"
-                    onClick={() => startColumnEdit(column)}
-                  >
-                    <h2>{column.title}</h2>
-                  </button>
-                ) : (
-                  <h2>{column.title}</h2>
-                )}
-                <span className="youjail-column-count">{cards.length}</span>
-              </header>
-              <div
-                className={`youjail-column-cards${isDropTarget ? ' is-drop-target' : ''}`}
-                onDragOver={handleColumnDragOver}
-                onDragEnter={() => setDropTargetColumnId(column.id)}
-                onDragLeave={(event) => {
-                  if (!event.currentTarget.contains(event.relatedTarget as Node)) {
-                    setDropTargetColumnId((current) => (current === column.id ? null : current))
-                  }
-                }}
-                onDrop={(event) => handleColumnDrop(event, column)}
+              <header
+                className={`youjail-column-header${boardEditMode ? ' youjail-column-header-edit' : ''}`}
               >
+                <div className="youjail-column-header-row">
+                  {boardEditMode ? (
+                    <button
+                      type="button"
+                      className="youjail-column-drag-handle"
+                      draggable
+                      title="Перетащите колонку"
+                      aria-label={`Переместить колонку ${column.title}`}
+                      onDragStart={(event) => handleColumnDragStart(event, column.id)}
+                      onDragEnd={handleColumnDragEnd}
+                    >
+                      ⋮⋮
+                    </button>
+                  ) : null}
+                  {canManageOrg && boardEditMode && editingColumnId === column.id ? (
+                    <input
+                      className="youjail-column-title-input"
+                      value={editingColumnTitle}
+                      autoFocus
+                      onChange={(event) => setEditingColumnTitle(event.target.value)}
+                      onBlur={() => void saveColumnTitle(column.id)}
+                      onKeyDown={(event) => handleColumnTitleKeyDown(event, column.id)}
+                    />
+                  ) : canManageOrg && boardEditMode ? (
+                    <button
+                      type="button"
+                      className="youjail-column-title-btn"
+                      title="Переименовать колонку"
+                      onClick={() => startColumnEdit(column)}
+                    >
+                      <h2>{column.title}</h2>
+                    </button>
+                  ) : (
+                    <h2>{column.title}</h2>
+                  )}
+                  <span className="youjail-column-count">{cards.length}</span>
+                </div>
+                {canManageOrg && boardEditMode ? (
+                  <select
+                    className="youjail-column-tone-select"
+                    value={column.tone}
+                    aria-label={`Цвет колонки ${column.title}`}
+                    onChange={(event) => void saveColumnTone(column.id, event.target.value)}
+                  >
+                    {COLUMN_TONES.map((tone) => (
+                      <option key={tone.value} value={tone.value}>
+                        {tone.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+              </header>
+              <div className={`youjail-column-cards${isDropTarget ? ' is-drop-target' : ''}`}>
                 {cards.length === 0 && !isDropTarget ? (
                   <div className="youjail-column-empty">Перетащите карточку сюда</div>
                 ) : null}
                 {cards.map((card) => (
-                  <article
-                    key={card.id}
-                    className={`youjail-card${draggedCardId === card.id ? ' is-dragging' : ''}${card.pinned ? ' is-pinned' : ''}`}
-                    draggable
-                    onDragStart={(event) => handleCardDragStart(event, card.id)}
-                    onDragEnd={clearDragState}
-                    onClick={() => setSelectedCardId(card.id)}
-                  >
+                  <div key={card.id} className="youjail-card-slot">
+                    {draggedCardId === card.id ? <div className="youjail-card-placeholder" aria-hidden /> : null}
+                    <article
+                      className={`youjail-card${draggedCardId === card.id ? ' is-dragging' : ''}${card.pinned ? ' is-pinned' : ''}`}
+                      draggable={!boardEditMode}
+                      onDragStart={(event) => handleCardDragStart(event, card.id)}
+                      onDragEnd={() => {
+                        clearDragState()
+                        window.setTimeout(() => {
+                          cardWasDraggedRef.current = false
+                        }, 0)
+                      }}
+                      onClick={() => {
+                        if (cardWasDraggedRef.current) return
+                        setSelectedCardId(card.id)
+                      }}
+                    >
                     <div className="youjail-card-top">
                       {card.pinned ? <span className="youjail-pin" title="Закреплено">📌</span> : null}
                       {card.executionStatus === 'running' ? (
                         <span className="youjail-running-dot" title="Выполняется" />
+                      ) : null}
+                      {card.projectName ? (
+                        <span className="youjail-card-project">{card.projectName}</span>
                       ) : null}
                     </div>
                     <h3 className="youjail-card-title">{card.title}</h3>
@@ -466,6 +646,27 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
                       </p>
                     ) : null}
                     <div className="youjail-card-meta-row">
+                      {card.tags.length > 0 ? (
+                        <div className="youjail-card-tags">
+                          {card.tags.map((tag) => (
+                            <span
+                              key={tag.id}
+                              className="youjail-card-tag"
+                              style={
+                                tag.color
+                                  ? {
+                                      backgroundColor: `${tag.color}22`,
+                                      color: tag.color,
+                                      borderColor: `${tag.color}55`,
+                                    }
+                                  : undefined
+                              }
+                            >
+                              {tag.name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                       {card.assigneeName ? (
                         <span className="youjail-card-assignee">
                           <OrgPhoto
@@ -477,11 +678,9 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
                           {card.assigneeName}
                         </span>
                       ) : null}
-                      {card.projectName ? <span>{card.projectName}</span> : null}
-                      {card.taskTypeName ? <span>{card.taskTypeName}</span> : null}
-                      {card.executor ? <span className="youjail-card-agent">{card.executor}</span> : null}
                     </div>
-                  </article>
+                    </article>
+                  </div>
                 ))}
               </div>
             </section>
@@ -492,10 +691,13 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
       <YouJailCardDetail
         cardId={selectedCardId}
         projects={board?.projects ?? []}
-        taskTypes={board?.taskTypes ?? []}
+        allTags={board?.tags ?? []}
         onClose={() => setSelectedCardId(null)}
         onUpdated={handleCardUpdated}
         onDeleted={handleCardDeleted}
+        onTagsCatalogUpdated={(tags) =>
+          setBoard((current) => (current ? { ...current, tags } : current))
+        }
       />
     </div>
   )

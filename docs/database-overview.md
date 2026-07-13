@@ -110,6 +110,8 @@
 | `youjail_task_type` | Типы карточек YouJail |
 | `youjail_column` | Колонки kanban (Backlog … Done) |
 | `youjail_card` | Карточки YouJail с заметками markdown |
+| `youjail_tag` | Теги карточек YouJail (labels) |
+| `youjail_card_tag` | Связь карточки и тегов |
 | `youjail_attachment` | Вложения карточек |
 | `youjail_execution` | Запуски исполнителя |
 | `youjail_execution_log` | Лог stdout/stderr/system |

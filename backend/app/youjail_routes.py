@@ -24,6 +24,8 @@ from app.youjail_schemas import (
     YouJailProjectUpdateIn,
     YouJailTaskTypeIn,
     YouJailTaskTypeOut,
+    YouJailTagIn,
+    YouJailTagOut,
     YouJailTeamIn,
     YouJailTeamMemberIn,
     YouJailTeamOut,
@@ -35,6 +37,7 @@ from app.youjail_service import (
     create_card,
     create_column,
     create_project,
+    create_tag,
     create_task_type,
     create_team,
     delete_attachment,
@@ -46,6 +49,7 @@ from app.youjail_service import (
     list_boards,
     list_card_executions,
     list_projects,
+    list_tags,
     list_task_types,
     list_teams,
     load_attachment_file,
@@ -368,6 +372,23 @@ async def api_execution_terminal(
         pass
     finally:
         terminal_broker.unsubscribe(execution_id, websocket)
+
+
+@router.get("/tags", response_model=list[YouJailTagOut])
+def api_list_tags(
+    db: Session = Depends(get_db),
+    _: dict = Depends(_load_session_meta),
+) -> list[dict]:
+    return list_tags(db)
+
+
+@router.post("/tags", response_model=YouJailTagOut)
+def api_create_tag(
+    payload: YouJailTagIn,
+    db: Session = Depends(get_db),
+    _: dict = Depends(_load_session_meta),
+) -> dict:
+    return create_tag(db, payload.model_dump())
 
 
 @router.get("/projects", response_model=list[YouJailProjectOut])

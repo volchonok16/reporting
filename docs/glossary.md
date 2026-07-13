@@ -817,7 +817,25 @@
 
 Связь M:N: доска видна участникам любой из привязанных команд. Без привязанных команд доска доступна только админам.
 
-API: префикс `/api/youjail/*`. `DELETE /api/youjail/boards/{id}`, `POST /api/youjail/boards/{id}/columns`, `PATCH /api/youjail/columns/{id}`, `GET/POST/PATCH/DELETE /api/youjail/teams`, `PUT /api/youjail/boards/{id}/teams`. Доступ: админы (`can_manage_org`) видят все доски; пользователи — только доски, привязанные к командам, в которых они состоят (`youjail_board_team` + `youjail_team_member`). WebSocket PTY: `GET /api/youjail/executions/{id}/terminal?X-Session-Id=…`. Fuzzy-поиск: `GET /api/youjail/board?search=…&boardId=…`. CLI: `python backend/scripts/ty.py` (команды `boards`, `cards`, `exec`, `search`). Файлы: `YOUJAIL_WORKSPACE_DIR`, `YOUJAIL_EXECUTOR_COMMAND`.
+### youjail_tag
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `name` | varchar(128) | Отображаемое имя тега (уникально без учёта регистра) |
+| `slug` | varchar(64) | Уникальный slug |
+| `color` | varchar(7) | Цвет в формате `#RRGGBB` (как label в Jira) |
+
+### youjail_card_tag
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `card_id` | bigint | FK → `youjail_card` |
+| `tag_id` | bigint | FK → `youjail_tag` |
+
+Связь M:N: у карточки может быть несколько тегов. API: `GET/POST /api/youjail/tags`, обновление карточки — поле `tagIds`.
+
+API: префикс `/api/youjail/*`. `DELETE /api/youjail/boards/{id}`, `POST /api/youjail/boards/{id}/columns`, `PATCH /api/youjail/columns/{id}`, `GET/POST/PATCH/DELETE /api/youjail/teams`, `PUT /api/youjail/boards/{id}/teams`, `GET/POST /api/youjail/tags`. Доступ: админы (`can_manage_org`) видят все доски; пользователи — только доски, привязанные к командам, в которых они состоят (`youjail_board_team` + `youjail_team_member`). WebSocket PTY: `GET /api/youjail/executions/{id}/terminal?X-Session-Id=…`. Fuzzy-поиск: `GET /api/youjail/board?search=…&boardId=…`. CLI: `python backend/scripts/ty.py` (команды `boards`, `cards`, `exec`, `search`). Файлы: `YOUJAIL_WORKSPACE_DIR`, `YOUJAIL_EXECUTOR_COMMAND`.
 
 ---
 

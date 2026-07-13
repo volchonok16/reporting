@@ -2,22 +2,22 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiFetch, deleteJson, getJson, patchJson, postForm, postJson } from '../api'
 import YouJailAssigneeSelect from './YouJailAssigneeSelect'
 import YouJailMentionTextarea from './YouJailMentionTextarea'
+import YouJailTagSelect from './YouJailTagSelect'
 import { renderMarkdown } from './markdown'
 import type {
   YouJailCard,
-  YouJailExecutor,
   YouJailProject,
-  YouJailTaskType,
+  YouJailTag,
 } from './types'
-import { YOUJAIL_EXECUTORS } from './types'
 
 type YouJailCardDetailProps = {
   cardId: number | null
   projects: YouJailProject[]
-  taskTypes: YouJailTaskType[]
+  allTags: YouJailTag[]
   onClose: () => void
   onUpdated: (card: YouJailCard) => void
   onDeleted: (cardId: number) => void
+  onTagsCatalogUpdated?: (tags: YouJailTag[]) => void
 }
 
 function toLocalInputValue(iso: string | null | undefined): string {
@@ -38,10 +38,11 @@ function fromLocalInputValue(value: string): string | null {
 export default function YouJailCardDetail({
   cardId,
   projects,
-  taskTypes,
+  allTags,
   onClose,
   onUpdated,
   onDeleted,
+  onTagsCatalogUpdated,
 }: YouJailCardDetailProps) {
   const [card, setCard] = useState<YouJailCard | null>(null)
   const [loading, setLoading] = useState(false)
@@ -163,7 +164,10 @@ export default function YouJailCardDetail({
       >
         <header className="youjail-detail-header">
           <div>
-            <p className="youjail-detail-kicker">YouJail</p>
+            <p className="youjail-detail-kicker">
+              YouJail
+              {card?.projectName ? <span className="youjail-detail-project">{card.projectName}</span> : null}
+            </p>
             <h2>{card?.title ?? 'Загрузка…'}</h2>
           </div>
           <button type="button" className="btn-ghost" onClick={onClose} aria-label="Закрыть">
@@ -223,7 +227,7 @@ export default function YouJailCardDetail({
               </div>
 
               <div className="youjail-detail-grid">
-                <label className="youjail-field">
+                <label className="youjail-field youjail-field-full">
                   <span>Проект</span>
                   <select
                     value={card.projectId ?? ''}
@@ -244,25 +248,19 @@ export default function YouJailCardDetail({
                   </select>
                 </label>
 
-                <label className="youjail-field">
-                  <span>Тип</span>
-                  <select
-                    value={card.taskTypeId ?? ''}
+                <label className="youjail-field youjail-field-full">
+                  <span>Теги</span>
+                  <YouJailTagSelect
+                    value={card.tags}
+                    allTags={allTags}
                     disabled={saving}
-                    onChange={(event) => {
-                      const taskTypeId = event.target.value ? Number(event.target.value) : null
-                      const next = { ...card, taskTypeId }
+                    onChange={(tags) => {
+                      const next = { ...card, tags }
                       setCard(next)
-                      void saveCard({ taskTypeId })
+                      void saveCard({ tagIds: tags.map((tag) => tag.id) })
                     }}
-                  >
-                    <option value="">Без типа</option>
-                    {taskTypes.map((taskType) => (
-                      <option key={taskType.id} value={taskType.id}>
-                        {taskType.name}
-                      </option>
-                    ))}
-                  </select>
+                    onTagsCatalogUpdated={onTagsCatalogUpdated}
+                  />
                 </label>
 
                 <label className="youjail-field">
@@ -276,26 +274,6 @@ export default function YouJailCardDetail({
                       void saveCard({ assigneeEmployeeId })
                     }}
                   />
-                </label>
-
-                <label className="youjail-field">
-                  <span>Агент (AI)</span>
-                  <select
-                    value={card.executor}
-                    disabled={saving}
-                    onChange={(event) => {
-                      const executor = event.target.value as YouJailExecutor
-                      const next = { ...card, executor }
-                      setCard(next)
-                      void saveCard({ executor })
-                    }}
-                  >
-                    {YOUJAIL_EXECUTORS.map((executor) => (
-                      <option key={executor} value={executor}>
-                        {executor}
-                      </option>
-                    ))}
-                  </select>
                 </label>
 
                 <label className="youjail-field">

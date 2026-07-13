@@ -57,6 +57,13 @@ export type YouJailTaskType = {
   isActive: boolean
 }
 
+export type YouJailTag = {
+  id: number
+  name: string
+  slug: string
+  color?: string | null
+}
+
 export type YouJailAttachment = {
   id: number
   cardId: number
@@ -111,6 +118,7 @@ export type YouJailCard = {
   assigneeEmployeeId?: number | null
   assigneeName?: string | null
   assigneePhotoUrl?: string | null
+  tags: YouJailTag[]
   createdBy?: string | null
   createdAt: string
   updatedAt: string
@@ -125,6 +133,7 @@ export type YouJailBoard = {
   cards: YouJailCard[]
   projects: YouJailProject[]
   taskTypes: YouJailTaskType[]
+  tags: YouJailTag[]
 }
 
 export const YOUJAIL_EXECUTORS = [

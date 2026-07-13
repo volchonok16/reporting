@@ -104,6 +104,18 @@ class YouJailTaskTypeIn(BaseModel):
     sortOrder: int = 0
 
 
+class YouJailTagOut(BaseModel):
+    id: int
+    name: str
+    slug: str
+    color: str | None = None
+
+
+class YouJailTagIn(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+
+
 class YouJailColumnOut(BaseModel):
     id: int
     boardId: int
@@ -121,6 +133,7 @@ class YouJailColumnIn(BaseModel):
 
 class YouJailColumnUpdateIn(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=128)
+    tone: str | None = Field(default=None, min_length=1, max_length=32)
     sortOrder: int | None = None
 
 
@@ -176,8 +189,10 @@ class YouJailCardOut(BaseModel):
     worktreeBranch: str | None = None
     executionStatus: str = "idle"
     assigneeEmployeeId: int | None = None
+    tagIds: list[int] | None = None
     assigneeName: str | None = None
     assigneePhotoUrl: str | None = None
+    tags: list[YouJailTagOut] = Field(default_factory=list)
     createdBy: str | None = None
     createdAt: datetime
     updatedAt: datetime
@@ -192,6 +207,7 @@ class YouJailBoardOut(BaseModel):
     cards: list[YouJailCardOut]
     projects: list[YouJailProjectOut]
     taskTypes: list[YouJailTaskTypeOut]
+    tags: list[YouJailTagOut] = Field(default_factory=list)
 
 
 class YouJailCardIn(BaseModel):
@@ -204,6 +220,7 @@ class YouJailCardIn(BaseModel):
     scheduledAt: datetime | None = None
     executor: str = "manual"
     assigneeEmployeeId: int | None = None
+    tagIds: list[int] | None = None
 
 
 class YouJailCardUpdateIn(BaseModel):
@@ -215,6 +232,7 @@ class YouJailCardUpdateIn(BaseModel):
     scheduledAt: datetime | None = None
     executor: str | None = None
     assigneeEmployeeId: int | None = None
+    tagIds: list[int] | None = None
     sortOrder: int | None = None
 
 

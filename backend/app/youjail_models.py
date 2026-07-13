@@ -147,3 +147,22 @@ class YouJailBoardTeam(Base):
     board_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_board.id"), nullable=False)
     team_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_team.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class YouJailTag(Base):
+    __tablename__ = "youjail_tag"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    slug: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    color: Mapped[str | None] = mapped_column(String(7))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class YouJailCardTag(Base):
+    __tablename__ = "youjail_card_tag"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    card_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_card.id"), nullable=False)
+    tag_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("youjail_tag.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

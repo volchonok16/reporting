@@ -31,10 +31,12 @@ from app.youjail_models import (
     YouJailBoard,
     YouJailBoardTeam,
     YouJailCard,
+    YouJailCardTag,
     YouJailColumn,
     YouJailExecution,
     YouJailExecutionLog,
     YouJailProject,
+    YouJailTag,
     YouJailTaskType,
     YouJailTeam,
     YouJailTeamMember,
@@ -45,6 +47,7 @@ logger = logging.getLogger(__name__)
 
 EXECUTORS = ("manual", "claude", "codex", "gemini", "pi", "openclaw", "opencode")
 EXECUTION_STATUSES = ("idle", "queued", "running", "succeeded", "failed")
+TAG_COLORS = ("#0052CC", "#FF5630", "#36B37E", "#6554C0", "#00B8D9", "#FF991F", "#8993A4")
 DEFAULT_COLUMNS = (
     ("backlog", "Backlog", "backlog", 1),
     ("in_progress", "In Progress", "progress", 2),
@@ -78,6 +81,84 @@ def worktrees_dir() -> Path:
 def _slugify(value: str) -> str:
     normalized = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
     return normalized or "project"
+
+
+def _tag_color(name: str) -> str:
+    total = sum(ord(char) for char in name.lower())
+    return TAG_COLORS[total % len(TAG_COLORS)]
+
+
+def _serialize_tag(tag: YouJailTag) -> dict:
+    return {
+        "id": tag.id,
+        "name": tag.name,
+        "slug": tag.slug,
+        "color": tag.color,
+    }
+
+
+def _card_tags_map(db: Session, card_ids: list[int]) -> dict[int, list[dict]]:
+    if not card_ids:
+        return {}
+    rows = db.execute(
+        select(YouJailCardTag.card_id, YouJailTag)
+        .join(YouJailTag, YouJailCardTag.tag_id == YouJailTag.id)
+        .where(YouJailCardTag.card_id.in_(card_ids))
+        .order_by(YouJailTag.name.asc())
+    ).all()
+    result: dict[int, list[dict]] = {}
+    for card_id, tag in rows:
+        result.setdefault(card_id, []).append(_serialize_tag(tag))
+    return result
+
+
+def _set_card_tags(db: Session, card_id: int, tag_ids: list[int]) -> None:
+    unique_ids = sorted({int(tag_id) for tag_id in tag_ids})
+    for tag_id in unique_ids:
+        tag = db.get(YouJailTag, tag_id)
+        if tag is None:
+            raise HTTPException(status_code=400, detail=f"Тег {tag_id} не найден.")
+    db.execute(delete(YouJailCardTag).where(YouJailCardTag.card_id == card_id))
+    for tag_id in unique_ids:
+        db.add(YouJailCardTag(card_id=card_id, tag_id=tag_id))
+
+
+def _find_tag_by_name(db: Session, name: str) -> YouJailTag | None:
+    normalized = name.strip()
+    if not normalized:
+        return None
+    return db.scalar(select(YouJailTag).where(func.lower(YouJailTag.name) == normalized.lower()))
+
+
+def list_tags(db: Session) -> list[dict]:
+    tags = db.scalars(select(YouJailTag).order_by(YouJailTag.name.asc())).all()
+    return [_serialize_tag(tag) for tag in tags]
+
+
+def create_tag(db: Session, data: dict) -> dict:
+    name = data["name"].strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Название тега обязательно.")
+    existing = _find_tag_by_name(db, name)
+    if existing is not None:
+        return _serialize_tag(existing)
+
+    slug_base = _slugify(name)
+    slug = slug_base
+    suffix = 2
+    while db.scalar(select(YouJailTag.id).where(YouJailTag.slug == slug)) is not None:
+        slug = f"{slug_base}-{suffix}"
+        suffix += 1
+
+    tag = YouJailTag(
+        name=name,
+        slug=slug,
+        color=data.get("color") or _tag_color(name),
+    )
+    db.add(tag)
+    db.commit()
+    db.refresh(tag)
+    return _serialize_tag(tag)
 
 
 def _next_sort_order(db: Session, column_id: int) -> int:
@@ -241,7 +322,13 @@ def _resolve_assignee(db: Session, employee_id: int | None) -> Employee | None:
     return employee
 
 
-def _serialize_card(db: Session, card: YouJailCard, *, detailed: bool = False) -> dict:
+def _serialize_card(
+    db: Session,
+    card: YouJailCard,
+    *,
+    detailed: bool = False,
+    tags_map: dict[int, list[dict]] | None = None,
+) -> dict:
     column = db.get(YouJailColumn, card.column_id)
     project = db.get(YouJailProject, card.project_id) if card.project_id else None
     task_type = db.get(YouJailTaskType, card.task_type_id) if card.task_type_id else None
@@ -280,6 +367,7 @@ def _serialize_card(db: Session, card: YouJailCard, *, detailed: bool = False) -
         "assigneeEmployeeId": card.assignee_employee_id,
         "assigneeName": assignee.full_name if assignee else None,
         "assigneePhotoUrl": photo_public_url(assignee.photo_path) if assignee else None,
+        "tags": tags_map.get(card.id, []) if tags_map is not None else _card_tags_map(db, [card.id]).get(card.id, []),
         "createdBy": card.created_by,
         "createdAt": card.created_at,
         "updatedAt": card.updated_at,
@@ -325,11 +413,14 @@ def load_board(
         query = query.where(YouJailCard.archived.is_(False))
 
     cards = db.scalars(query).all()
+    card_ids = [card.id for card in cards]
+    tags_map = _card_tags_map(db, card_ids)
+    all_tags = list_tags(db)
     return {
         "board": _serialize_board(db, board),
         "boards": [_serialize_board(db, item) for item in boards],
         "columns": [_serialize_column(column) for column in columns],
-        "cards": [_serialize_card(db, card) for card in cards],
+        "cards": [_serialize_card(db, card, tags_map=tags_map) for card in cards],
         "projects": [
             {
                 "id": project.id,
@@ -352,6 +443,7 @@ def load_board(
             }
             for task_type in task_types
         ],
+        "tags": all_tags,
     }
 
 
@@ -483,6 +575,8 @@ def update_column(db: Session, column_id: int, data: dict, *, meta: dict) -> dic
 
     if data.get("title") is not None:
         column.title = data["title"].strip()
+    if data.get("tone") is not None:
+        column.tone = data["tone"].strip().lower()[:32]
     if data.get("sortOrder") is not None:
         column.sort_order = int(data["sortOrder"])
 
@@ -523,6 +617,9 @@ def create_card(db: Session, data: dict, *, created_by: str | None, meta: dict) 
     db.add(card)
     db.commit()
     db.refresh(card)
+    if data.get("tagIds") is not None:
+        _set_card_tags(db, card.id, data["tagIds"])
+        db.commit()
     return get_card(db, card.id, meta=meta)
 
 
@@ -556,6 +653,8 @@ def update_card(db: Session, card_id: int, data: dict, *, meta: dict) -> dict:
         card.column_id = column.id
     if data.get("sortOrder") is not None:
         card.sort_order = int(data["sortOrder"])
+    if data.get("tagIds") is not None:
+        _set_card_tags(db, card.id, data["tagIds"])
 
     card.updated_at = _utcnow()
     db.commit()
