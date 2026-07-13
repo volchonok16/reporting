@@ -110,7 +110,8 @@
 }
 
 .youjail-column {
-  flex: 0 0 300px;
+  flex: 1 1 0;
+  min-width: 220px;
   display: flex;
   flex-direction: column;
   min-height: 100%;
@@ -133,6 +134,29 @@
 .youjail-column-header h2 {
   margin: 0;
   font-size: 14px;
+  font-weight: 700;
+}
+
+.youjail-column-title-btn {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: text;
+  text-align: left;
+}
+
+.youjail-column-title-input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-1) 75%, transparent);
+  color: inherit;
+  font: inherit;
   font-weight: 700;
 }
 
@@ -243,6 +267,40 @@
   border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--border) 55%, transparent);
   color: var(--text-secondary);
+}
+
+.youjail-card-assignee {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.youjail-card-assignee-photo,
+.youjail-card-assignee-photo--placeholder {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.youjail-card-assignee-photo--placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface-2));
+  color: var(--text-secondary);
+}
+
+.youjail-card-agent {
+  opacity: 0.8;
+}
+
+.youjail-column.is-custom .youjail-column-header {
+  background: color-mix(in srgb, var(--surface-2) 80%, var(--accent) 20%);
+  color: var(--text-primary);
 }
 
 .youjail-column.is-backlog .youjail-column-header {
@@ -569,6 +627,113 @@
 
 .youjail-board-select {
   min-width: 160px;
+}
+
+.youjail-danger {
+  color: var(--danger);
+}
+
+.youjail-assignee-select {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.youjail-assignee-photo,
+.youjail-assignee-photo--placeholder {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.youjail-assignee-photo--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface-2));
+  color: var(--text-secondary);
+}
+
+.youjail-assignee-picker {
+  flex: 1;
+  min-width: 0;
+}
+
+.youjail-mention-editor {
+  position: relative;
+}
+
+.youjail-mention-suggestions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-md);
+}
+
+.youjail-mention-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.youjail-mention-option.is-active,
+.youjail-mention-option:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.youjail-mention-photo,
+.youjail-mention-photo--placeholder {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.youjail-mention-photo--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface-2));
+}
+
+.youjail-mention-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.youjail-mention-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .youjail-error-inline {

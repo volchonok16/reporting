@@ -74,6 +74,7 @@ class YouJailCard(Base):
     worktree_path: Mapped[str | None] = mapped_column(Text)
     worktree_branch: Mapped[str | None] = mapped_column(String(255))
     execution_status: Mapped[str] = mapped_column(String(32), default="idle")
+    assignee_employee_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("employee.id", ondelete="SET NULL"))
     created_by: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

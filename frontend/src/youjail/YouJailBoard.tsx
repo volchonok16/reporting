@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type DragEvent, type FormEvent } from 'react'
-import { getJson, postJson } from '../api'
+import { useCallback, useEffect, useMemo, useState, type DragEvent, type FormEvent, type KeyboardEvent } from 'react'
+import { deleteJson, getJson, patchJson, postJson } from '../api'
+import OrgPhoto from '../org/OrgPhoto'
 import YouJailCardDetail from './YouJailCardDetail'
+import { mentionPreviewText } from './markdown'
 import YouJailProjectsPanel from './YouJailProjectsPanel'
 import type { YouJailBoard, YouJailBoardMeta, YouJailCard, YouJailColumn, YouJailProject } from './types'
 import '../youjail.css'
@@ -23,6 +25,10 @@ export default function YouJailBoard() {
   })
   const [newBoardName, setNewBoardName] = useState('')
   const [showBoardForm, setShowBoardForm] = useState(false)
+  const [newColumnTitle, setNewColumnTitle] = useState('')
+  const [showColumnForm, setShowColumnForm] = useState(false)
+  const [editingColumnId, setEditingColumnId] = useState<number | null>(null)
+  const [editingColumnTitle, setEditingColumnTitle] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -154,6 +160,72 @@ export default function YouJailBoard() {
     }
   }
 
+  const deleteBoard = async () => {
+    const boardId = activeBoardId ?? board?.board.id
+    if (!boardId || !board) return
+    const cardCount = board.cards.length
+    const message =
+      cardCount > 0
+        ? `Удалить доску «${board.board.name}» вместе с ${cardCount} карточками?`
+        : `Удалить доску «${board.board.name}»?`
+    if (!window.confirm(message)) return
+    setError(null)
+    try {
+      await deleteJson(`/api/youjail/boards/${boardId}`)
+      localStorage.removeItem(BOARD_STORAGE_KEY)
+      setActiveBoardId(null)
+      await loadBoard()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось удалить доску')
+    }
+  }
+
+  const createColumn = async (event: FormEvent) => {
+    event.preventDefault()
+    const title = newColumnTitle.trim()
+    const boardId = activeBoardId ?? board?.board.id
+    if (!title || !boardId) return
+    setError(null)
+    try {
+      await postJson<YouJailColumn>(`/api/youjail/boards/${boardId}/columns`, { title })
+      setNewColumnTitle('')
+      setShowColumnForm(false)
+      await loadBoard()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось добавить колонку')
+    }
+  }
+
+  const saveColumnTitle = async (columnId: number) => {
+    const title = editingColumnTitle.trim()
+    if (!title) return
+    setError(null)
+    try {
+      await patchJson<YouJailColumn>(`/api/youjail/columns/${columnId}`, { title })
+      setEditingColumnId(null)
+      setEditingColumnTitle('')
+      await loadBoard()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось переименовать колонку')
+    }
+  }
+
+  const startColumnEdit = (column: YouJailColumn) => {
+    setEditingColumnId(column.id)
+    setEditingColumnTitle(column.title)
+  }
+
+  const handleColumnTitleKeyDown = (event: KeyboardEvent<HTMLInputElement>, columnId: number) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      void saveColumnTitle(columnId)
+    }
+    if (event.key === 'Escape') {
+      setEditingColumnId(null)
+      setEditingColumnTitle('')
+    }
+  }
+
   const columnCards = useMemo(() => {
     if (!board) return new Map<number, YouJailCard[]>()
     return new Map(board.columns.map((column) => [column.id, cardsForColumn(board.cards, column.id)]))
@@ -184,6 +256,17 @@ export default function YouJailBoard() {
           </select>
           <button type="button" className="btn-secondary" onClick={() => setShowBoardForm((current) => !current)}>
             + Доска
+          </button>
+          <button
+            type="button"
+            className="btn-ghost youjail-danger"
+            disabled={!board || (board.boards?.length ?? 0) <= 1}
+            onClick={() => void deleteBoard()}
+          >
+            Удалить доску
+          </button>
+          <button type="button" className="btn-secondary" onClick={() => setShowColumnForm((current) => !current)}>
+            + Колонка
           </button>
           <input
             type="search"
@@ -238,6 +321,25 @@ export default function YouJailBoard() {
         </form>
       ) : null}
 
+      {showColumnForm ? (
+        <form className="youjail-create-form" onSubmit={(event) => void createColumn(event)}>
+          <input
+            type="text"
+            className="youjail-create-input"
+            value={newColumnTitle}
+            onChange={(event) => setNewColumnTitle(event.target.value)}
+            placeholder="Название новой колонки"
+            autoFocus
+          />
+          <button type="submit" className="btn-primary" disabled={!newColumnTitle.trim()}>
+            Добавить колонку
+          </button>
+          <button type="button" className="btn-ghost" onClick={() => setShowColumnForm(false)}>
+            Отмена
+          </button>
+        </form>
+      ) : null}
+
       {showCreateForm ? (
         <form className="youjail-create-form" onSubmit={(event) => void addCard(event)}>
           <input
@@ -279,7 +381,25 @@ export default function YouJailBoard() {
               aria-label={`${column.title}, ${cards.length}`}
             >
               <header className="youjail-column-header">
-                <h2>{column.title}</h2>
+                {editingColumnId === column.id ? (
+                  <input
+                    className="youjail-column-title-input"
+                    value={editingColumnTitle}
+                    autoFocus
+                    onChange={(event) => setEditingColumnTitle(event.target.value)}
+                    onBlur={() => void saveColumnTitle(column.id)}
+                    onKeyDown={(event) => handleColumnTitleKeyDown(event, column.id)}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    className="youjail-column-title-btn"
+                    title="Переименовать колонку"
+                    onClick={() => startColumnEdit(column)}
+                  >
+                    <h2>{column.title}</h2>
+                  </button>
+                )}
                 <span className="youjail-column-count">{cards.length}</span>
               </header>
               <div
@@ -314,13 +434,24 @@ export default function YouJailBoard() {
                     <h3 className="youjail-card-title">{card.title}</h3>
                     {card.descriptionMd ? (
                       <p className="youjail-card-notes-preview">
-                        {card.descriptionMd.split('\n').find((line) => line.trim()) ?? ''}
+                        {mentionPreviewText(card.descriptionMd)}
                       </p>
                     ) : null}
                     <div className="youjail-card-meta-row">
+                      {card.assigneeName ? (
+                        <span className="youjail-card-assignee">
+                          <OrgPhoto
+                            url={card.assigneePhotoUrl}
+                            name={card.assigneeName}
+                            className="youjail-card-assignee-photo"
+                            placeholderClassName="youjail-card-assignee-photo youjail-card-assignee-photo--placeholder"
+                          />
+                          {card.assigneeName}
+                        </span>
+                      ) : null}
                       {card.projectName ? <span>{card.projectName}</span> : null}
                       {card.taskTypeName ? <span>{card.taskTypeName}</span> : null}
-                      {card.executor ? <span>{card.executor}</span> : null}
+                      {card.executor ? <span className="youjail-card-agent">{card.executor}</span> : null}
                     </div>
                   </article>
                 ))}

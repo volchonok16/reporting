@@ -68,6 +68,17 @@ class YouJailColumnOut(BaseModel):
     sortOrder: int
 
 
+class YouJailColumnIn(BaseModel):
+    title: str = Field(min_length=1, max_length=128)
+    columnKey: str | None = Field(default=None, min_length=1, max_length=32)
+    tone: str = Field(default="custom", min_length=1, max_length=32)
+
+
+class YouJailColumnUpdateIn(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=128)
+    sortOrder: int | None = None
+
+
 class YouJailAttachmentOut(BaseModel):
     id: int
     cardId: int
@@ -119,6 +130,9 @@ class YouJailCardOut(BaseModel):
     worktreePath: str | None = None
     worktreeBranch: str | None = None
     executionStatus: str = "idle"
+    assigneeEmployeeId: int | None = None
+    assigneeName: str | None = None
+    assigneePhotoUrl: str | None = None
     createdBy: str | None = None
     createdAt: datetime
     updatedAt: datetime
@@ -144,6 +158,7 @@ class YouJailCardIn(BaseModel):
     taskTypeId: int | None = None
     scheduledAt: datetime | None = None
     executor: str = "manual"
+    assigneeEmployeeId: int | None = None
 
 
 class YouJailCardUpdateIn(BaseModel):
@@ -154,6 +169,7 @@ class YouJailCardUpdateIn(BaseModel):
     taskTypeId: int | None = None
     scheduledAt: datetime | None = None
     executor: str | None = None
+    assigneeEmployeeId: int | None = None
     sortOrder: int | None = None
 
 

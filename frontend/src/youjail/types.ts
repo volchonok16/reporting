@@ -7,7 +7,7 @@ export type YouJailBoardMeta = {
   isActive: boolean
 }
 
-export type YouJailColumnTone = 'backlog' | 'progress' | 'blocked' | 'done'
+export type YouJailColumnTone = 'backlog' | 'progress' | 'blocked' | 'done' | 'custom' | string
 
 export type YouJailColumn = {
   id: number
@@ -87,6 +87,9 @@ export type YouJailCard = {
   worktreePath?: string | null
   worktreeBranch?: string | null
   executionStatus: string
+  assigneeEmployeeId?: number | null
+  assigneeName?: string | null
+  assigneePhotoUrl?: string | null
   createdBy?: string | null
   createdAt: string
   updatedAt: string

@@ -12,6 +12,9 @@ from app.youjail_schemas import (
     YouJailCardMoveIn,
     YouJailCardOut,
     YouJailCardUpdateIn,
+    YouJailColumnIn,
+    YouJailColumnOut,
+    YouJailColumnUpdateIn,
     YouJailExecuteIn,
     YouJailExecutionOut,
     YouJailProjectIn,
@@ -24,9 +27,11 @@ from app.youjail_schemas import (
 from app.youjail_service import (
     create_board,
     create_card,
+    create_column,
     create_project,
     create_task_type,
     delete_attachment,
+    delete_board,
     delete_card,
     get_card,
     get_execution,
@@ -41,6 +46,7 @@ from app.youjail_service import (
     set_card_flag,
     start_execution,
     update_card,
+    update_column,
     update_project,
 )
 from app.youjail_terminal import (
@@ -78,6 +84,36 @@ def api_create_board(
     _: dict = Depends(_load_session_meta),
 ) -> dict:
     return create_board(db, payload.model_dump())
+
+
+@router.delete("/boards/{board_id}")
+def api_delete_board(
+    board_id: int,
+    db: Session = Depends(get_db),
+    _: dict = Depends(_load_session_meta),
+) -> dict[str, bool]:
+    delete_board(db, board_id)
+    return {"ok": True}
+
+
+@router.post("/boards/{board_id}/columns", response_model=YouJailColumnOut)
+def api_create_column(
+    board_id: int,
+    payload: YouJailColumnIn,
+    db: Session = Depends(get_db),
+    _: dict = Depends(_load_session_meta),
+) -> dict:
+    return create_column(db, board_id, payload.model_dump())
+
+
+@router.patch("/columns/{column_id}", response_model=YouJailColumnOut)
+def api_update_column(
+    column_id: int,
+    payload: YouJailColumnUpdateIn,
+    db: Session = Depends(get_db),
+    _: dict = Depends(_load_session_meta),
+) -> dict:
+    return update_column(db, column_id, payload.model_dump(exclude_unset=True))
 
 
 @router.get("/board", response_model=YouJailBoardOut)

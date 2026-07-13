@@ -15,6 +15,8 @@ from sqlalchemy import Select, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.org_models import Employee
+from app.org_photo_service import photo_public_url
 from app.youjail_models import (
     YouJailAttachment,
     YouJailBoard,
@@ -179,10 +181,31 @@ def _serialize_execution(db: Session, execution: YouJailExecution, *, with_logs:
     return payload
 
 
+def _serialize_column(column: YouJailColumn) -> dict:
+    return {
+        "id": column.id,
+        "boardId": column.board_id,
+        "columnKey": column.column_key,
+        "title": column.title,
+        "tone": column.tone,
+        "sortOrder": column.sort_order,
+    }
+
+
+def _resolve_assignee(db: Session, employee_id: int | None) -> Employee | None:
+    if employee_id is None:
+        return None
+    employee = db.get(Employee, employee_id)
+    if employee is None or not employee.is_active:
+        raise HTTPException(status_code=400, detail="Сотрудник не найден.")
+    return employee
+
+
 def _serialize_card(db: Session, card: YouJailCard, *, detailed: bool = False) -> dict:
     column = db.get(YouJailColumn, card.column_id)
     project = db.get(YouJailProject, card.project_id) if card.project_id else None
     task_type = db.get(YouJailTaskType, card.task_type_id) if card.task_type_id else None
+    assignee = db.get(Employee, card.assignee_employee_id) if card.assignee_employee_id else None
     attachments = db.scalars(
         select(YouJailAttachment)
         .where(YouJailAttachment.card_id == card.id)
@@ -214,6 +237,9 @@ def _serialize_card(db: Session, card: YouJailCard, *, detailed: bool = False) -
         "worktreePath": card.worktree_path,
         "worktreeBranch": card.worktree_branch,
         "executionStatus": card.execution_status,
+        "assigneeEmployeeId": card.assignee_employee_id,
+        "assigneeName": assignee.full_name if assignee else None,
+        "assigneePhotoUrl": photo_public_url(assignee.photo_path) if assignee else None,
         "createdBy": card.created_by,
         "createdAt": card.created_at,
         "updatedAt": card.updated_at,
@@ -262,17 +288,7 @@ def load_board(
     return {
         "board": _serialize_board(board),
         "boards": [_serialize_board(item) for item in boards],
-        "columns": [
-            {
-                "id": column.id,
-                "boardId": column.board_id,
-                "columnKey": column.column_key,
-                "title": column.title,
-                "tone": column.tone,
-                "sortOrder": column.sort_order,
-            }
-            for column in columns
-        ],
+        "columns": [_serialize_column(column) for column in columns],
         "cards": [_serialize_card(db, card) for card in cards],
         "projects": [
             {
@@ -353,6 +369,72 @@ def create_board(db: Session, data: dict) -> dict:
     return _serialize_board(board)
 
 
+def delete_board(db: Session, board_id: int) -> None:
+    board = db.get(YouJailBoard, board_id)
+    if board is None:
+        raise HTTPException(status_code=404, detail="Доска не найдена.")
+
+    active_count = db.scalar(
+        select(func.count()).select_from(YouJailBoard).where(YouJailBoard.is_active.is_(True))
+    )
+    if int(active_count or 0) <= 1:
+        raise HTTPException(status_code=400, detail="Нельзя удалить последнюю доску.")
+
+    db.delete(board)
+    db.commit()
+
+
+def create_column(db: Session, board_id: int, data: dict) -> dict:
+    board = db.get(YouJailBoard, board_id)
+    if board is None:
+        raise HTTPException(status_code=404, detail="Доска не найдена.")
+
+    title = data["title"].strip()
+    base_key = _slugify(data.get("columnKey") or title).replace("-", "_")[:28] or "column"
+    column_key = base_key
+    suffix = 1
+    while db.scalar(
+        select(YouJailColumn.id).where(
+            YouJailColumn.board_id == board_id,
+            YouJailColumn.column_key == column_key,
+        )
+    ):
+        column_key = f"{base_key[:24]}_{suffix}"
+        suffix += 1
+
+    max_order = db.scalar(
+        select(func.coalesce(func.max(YouJailColumn.sort_order), 0)).where(YouJailColumn.board_id == board_id)
+    )
+    tone = (data.get("tone") or "custom").strip().lower()[:32]
+
+    column = YouJailColumn(
+        board_id=board_id,
+        column_key=column_key,
+        title=title,
+        tone=tone,
+        sort_order=int(max_order or 0) + 1,
+    )
+    db.add(column)
+    db.commit()
+    db.refresh(column)
+    return _serialize_column(column)
+
+
+def update_column(db: Session, column_id: int, data: dict) -> dict:
+    column = db.get(YouJailColumn, column_id)
+    if column is None:
+        raise HTTPException(status_code=404, detail="Колонка не найдена.")
+
+    if data.get("title") is not None:
+        column.title = data["title"].strip()
+    if data.get("sortOrder") is not None:
+        column.sort_order = int(data["sortOrder"])
+
+    db.commit()
+    db.refresh(column)
+    return _serialize_column(column)
+
+
 def create_card(db: Session, data: dict, *, created_by: str | None) -> dict:
     board_id = _resolve_board_id(db, data.get("boardId"))
     column_id = data.get("columnId") or _default_backlog_column_id(db, board_id)
@@ -364,6 +446,10 @@ def create_card(db: Session, data: dict, *, created_by: str | None) -> dict:
     if executor not in EXECUTORS:
         raise HTTPException(status_code=400, detail="Неизвестный исполнитель.")
 
+    assignee_id = data.get("assigneeEmployeeId")
+    if assignee_id is not None:
+        _resolve_assignee(db, assignee_id)
+
     card = YouJailCard(
         board_id=board_id,
         column_id=column_id,
@@ -373,6 +459,7 @@ def create_card(db: Session, data: dict, *, created_by: str | None) -> dict:
         description_md=(data.get("descriptionMd") or "").strip(),
         scheduled_at=data.get("scheduledAt"),
         executor=executor,
+        assignee_employee_id=assignee_id,
         sort_order=_next_sort_order(db, column_id),
         created_by=created_by,
         updated_at=_utcnow(),
@@ -403,6 +490,11 @@ def update_card(db: Session, card_id: int, data: dict) -> dict:
         if executor not in EXECUTORS:
             raise HTTPException(status_code=400, detail="Неизвестный исполнитель.")
         card.executor = executor
+    if "assigneeEmployeeId" in data:
+        assignee_id = data.get("assigneeEmployeeId")
+        if assignee_id is not None:
+            _resolve_assignee(db, assignee_id)
+        card.assignee_employee_id = assignee_id
     if data.get("columnId") is not None:
         column = db.get(YouJailColumn, data["columnId"])
         if column is None:

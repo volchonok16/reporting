@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiFetch, deleteJson, getJson, patchJson, postForm, postJson } from '../api'
+import YouJailAssigneeSelect from './YouJailAssigneeSelect'
+import YouJailMentionTextarea from './YouJailMentionTextarea'
 import { renderMarkdown } from './markdown'
 import type {
   YouJailCard,
@@ -246,12 +248,12 @@ export default function YouJailCardDetail({
                   </button>
                 </div>
                 {notesTab === 'edit' ? (
-                  <textarea
+                  <YouJailMentionTextarea
                     className="youjail-notes-editor"
                     value={card.descriptionMd}
                     disabled={saving}
-                    placeholder="Markdown-заметки: списки, **жирный**, `код`, ссылки…"
-                    onChange={(event) => setCard({ ...card, descriptionMd: event.target.value })}
+                    placeholder="Markdown-заметки: списки, **жирный**, `код`, @сотрудник…"
+                    onChange={(descriptionMd) => setCard({ ...card, descriptionMd })}
                     onBlur={() => void saveCard({ descriptionMd: card.descriptionMd })}
                   />
                 ) : (
@@ -306,7 +308,20 @@ export default function YouJailCardDetail({
                 </label>
 
                 <label className="youjail-field">
-                  <span>Исполнитель</span>
+                  <span>Ответственный</span>
+                  <YouJailAssigneeSelect
+                    value={card.assigneeEmployeeId}
+                    disabled={saving}
+                    onChange={(assigneeEmployeeId) => {
+                      const next = { ...card, assigneeEmployeeId }
+                      setCard(next)
+                      void saveCard({ assigneeEmployeeId })
+                    }}
+                  />
+                </label>
+
+                <label className="youjail-field">
+                  <span>Агент (AI)</span>
                   <select
                     value={card.executor}
                     disabled={saving}

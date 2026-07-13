@@ -482,6 +482,7 @@ CREATE TABLE youjail_card (
     worktree_path   TEXT,
     worktree_branch VARCHAR(255),
     execution_status VARCHAR(32) NOT NULL DEFAULT 'idle',
+    assignee_employee_id BIGINT REFERENCES employee(id) ON DELETE SET NULL,
     created_by      VARCHAR(255),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -489,6 +490,7 @@ CREATE TABLE youjail_card (
 
 CREATE INDEX ix_youjail_card_column_sort ON youjail_card (column_id, sort_order, id);
 CREATE INDEX ix_youjail_card_board_column ON youjail_card (board_id, column_id, sort_order, id);
+CREATE INDEX ix_youjail_card_assignee ON youjail_card (assignee_employee_id);
 
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE INDEX ix_youjail_card_title_trgm ON youjail_card USING gin (title gin_trgm_ops);

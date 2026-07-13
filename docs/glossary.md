@@ -767,7 +767,7 @@
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `board_id` | bigint | FK → `youjail_board` |
-| `column_key` | varchar(32) | `backlog`, `in_progress`, `blocked`, `done` (уникально в рамках доски) |
+| `column_key` | varchar(32) | Стабильный ключ (`backlog`, `in_progress`, … или пользовательский) |
 | `title`, `tone`, `sort_order` | | Отображение колонки на доске |
 
 ### youjail_card
@@ -778,10 +778,11 @@
 | `column_id` | bigint | FK → `youjail_column` |
 | `project_id`, `task_type_id` | bigint | Проект и тип |
 | `title` | varchar(1000) | Заголовок |
-| `description_md` | text | Заметки (markdown) |
+| `description_md` | text | Заметки (markdown); упоминания сотрудников: `@[ФИО](employee:ID)` |
 | `pinned`, `archived` | boolean | Закрепление / архив |
 | `closed_at`, `scheduled_at` | timestamptz | Закрытие / план |
-| `executor` | varchar(64) | `manual`, `claude`, `codex`, … |
+| `executor` | varchar(64) | AI-агент: `manual`, `claude`, `codex`, … |
+| `assignee_employee_id` | bigint | FK → `employee` — ответственный сотрудник (назначение карточки) |
 | `worktree_path`, `worktree_branch` | text | Git worktree |
 | `execution_status` | varchar(32) | `idle`, `queued`, `running`, `succeeded`, `failed` |
 
@@ -789,7 +790,7 @@
 
 Вложения к карточке; запуски исполнителя и построчный лог (`stdout` / `stderr` / `system` / `pty`).
 
-API: префикс `/api/youjail/*`. WebSocket PTY: `GET /api/youjail/executions/{id}/terminal?X-Session-Id=…`. Fuzzy-поиск: `GET /api/youjail/board?search=…&boardId=…`. CLI: `python backend/scripts/ty.py` (команды `boards`, `cards`, `exec`, `search`). Файлы: `YOUJAIL_WORKSPACE_DIR`, `YOUJAIL_EXECUTOR_COMMAND`.
+API: префикс `/api/youjail/*`. Управление: `DELETE /api/youjail/boards/{id}`, `POST /api/youjail/boards/{id}/columns`, `PATCH /api/youjail/columns/{id}`. WebSocket PTY: `GET /api/youjail/executions/{id}/terminal?X-Session-Id=…`. Fuzzy-поиск: `GET /api/youjail/board?search=…&boardId=…`. CLI: `python backend/scripts/ty.py` (команды `boards`, `cards`, `exec`, `search`). Файлы: `YOUJAIL_WORKSPACE_DIR`, `YOUJAIL_EXECUTOR_COMMAND`.
 
 ---
 

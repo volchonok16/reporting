@@ -8,10 +8,18 @@ function escapeHtml(value: string): string {
 
 function inlineMarkdown(text: string): string {
   return escapeHtml(text)
+    .replace(/@\[([^\]]+)\]\(employee:\d+\)/g, '<span class="youjail-mention-chip">@$1</span>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+}
+
+export function mentionPreviewText(markdown: string): string {
+  return markdown
+    .replace(/@\[([^\]]+)\]\(employee:\d+\)/g, '@$1')
+    .split('\n')
+    .find((line) => line.trim()) ?? ''
 }
 
 export function renderMarkdown(markdown: string): string {
