@@ -776,7 +776,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   }
 
   return (
-    <div className="org-page">
+    <div className={`org-page${panel === 'pyramid' ? ' org-page-pyramid' : ''}`}>
       <nav className="org-subtabs" aria-label="Разделы отделов">
         {(
           [

@@ -581,12 +581,47 @@
 }
 
 /* Интерактивный лист пирамиды: pan + zoom */
+.org-page-pyramid {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.org-page-pyramid .org-subtabs {
+  flex-shrink: 0;
+  margin-bottom: 8px;
+}
+
+.org-page-pyramid .org-dept-filter {
+  flex-shrink: 0;
+  margin: 0 0 8px;
+}
+
 .org-panel-pyramid {
   padding: 0;
   overflow: hidden;
   border: none;
   background: transparent;
   box-shadow: none;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.org-page-pyramid .org-chart-canvas {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.org-page-pyramid .org-chart-canvas-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  border-radius: 14px;
 }
 
 .org-chart-canvas {
@@ -2960,6 +2995,13 @@
   .org-vacation-scroll,
   .org-schedule-chart {
     max-height: calc(100vh - 180px);
+  }
+
+  .org-page-pyramid .org-chart-canvas-stage {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+    border-radius: 12px;
   }
 
   .org-chart-canvas-stage {

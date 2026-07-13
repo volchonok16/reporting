@@ -845,23 +845,58 @@ export default function YouJailBoard({ canManageOrg = false, orgEmployeeId = nul
                         setSelectedCardId(card.id)
                       }}
                     >
-                    <div className="youjail-card-top">
-                      {card.pinned ? <span className="youjail-pin" title="Закреплено">📌</span> : null}
-                      {card.projectName ? (
-                        <span className="youjail-card-project">{card.projectName}</span>
-                      ) : null}
-                    </div>
+                    {card.assigneeName ? (
+                      <div className="youjail-card-assignee-head">
+                        <OrgPhoto
+                          url={card.assigneePhotoUrl}
+                          name={card.assigneeName}
+                          className="youjail-card-assignee-photo"
+                          placeholderClassName="youjail-card-assignee-photo youjail-card-assignee-photo--placeholder"
+                        />
+                        <span className="youjail-card-assignee-name">{card.assigneeName}</span>
+                      </div>
+                    ) : null}
+                    {card.pinned || card.projectName ? (
+                      <div className="youjail-card-top">
+                        {card.pinned ? <span className="youjail-pin" title="Закреплено">📌</span> : null}
+                        {card.projectName ? (
+                          <span className="youjail-card-project">{card.projectName}</span>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <h3 className="youjail-card-title">
                       <span className="youjail-card-key">{card.cardKey}</span>
                       {card.title}
                     </h3>
-                    {(card.znis ?? []).length > 0 ? (
-                      <div className="youjail-card-zni-row">
+                    {(card.znis ?? []).length > 0 || (card.relatedCards ?? []).length > 0 ? (
+                      <div className="youjail-card-badges-row">
                         {(card.znis ?? []).map((zni) => (
                           <span key={zni.number} className="youjail-card-zni-chip" title={zni.title}>
                             {zni.number}
                           </span>
                         ))}
+                        {(card.relatedCards ?? []).map((related) => {
+                          const key = related.cardKeyGlobal || related.cardKey
+                          const titleParts = [related.title]
+                          if (related.columnTitle) titleParts.push(related.columnTitle)
+                          if (related.boardName) titleParts.push(related.boardName)
+                          if (related.linkKind === 'zni') titleParts.push('по ЗНИ')
+                          return (
+                            <button
+                              key={`${related.linkKind}-${related.id}`}
+                              type="button"
+                              className={`youjail-card-link-chip${related.linkKind === 'zni' ? ' is-zni' : ''}`}
+                              title={titleParts.join(' · ')}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                handleOpenCard(related.id, related.boardId)
+                              }}
+                            >
+                              ↗ {key}
+                            </button>
+                          )
+                        })}
                       </div>
                     ) : null}
                     {card.descriptionMd ? (
@@ -890,17 +925,6 @@ export default function YouJailBoard({ canManageOrg = false, orgEmployeeId = nul
                             </span>
                           ))}
                         </div>
-                      ) : null}
-                      {card.assigneeName ? (
-                        <span className="youjail-card-assignee">
-                          <OrgPhoto
-                            url={card.assigneePhotoUrl}
-                            name={card.assigneeName}
-                            className="youjail-card-assignee-photo"
-                            placeholderClassName="youjail-card-assignee-photo youjail-card-assignee-photo--placeholder"
-                          />
-                          {card.assigneeName}
-                        </span>
                       ) : null}
                     </div>
                     </article>

@@ -343,16 +343,30 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     dayCellSizeRef.current = dayCellSize
   }, [dayCellSize])
 
+  const scrollToDayKey = useCallback((dayKey: string, behavior: ScrollBehavior = 'auto') => {
+    const scrollEl = scrollRef.current
+    if (!scrollEl) return false
+    const cell = scrollEl.querySelector<HTMLElement>(`th[data-day-key="${dayKey}"]`)
+    if (!cell) return false
+    scrollEl.scrollTo({
+      left: Math.max(0, cell.offsetLeft - WORKSPACE_NAME_COL_WIDTH - WORKSPACE_SCROLL_PADDING),
+      behavior,
+    })
+    return true
+  }, [])
+
   useEffect(() => {
     const scrollEl = scrollRef.current
     if (!scrollEl) return
     const prev = prevDayCellSizeRef.current
-    if (prev !== dayCellSize && prev > 0) {
+    if (autoScrolledYearRef.current === year && data) {
+      scrollToDayKey(workspaceAutoScrollDayKey(year, currentYear, todayKey))
+    } else if (prev !== dayCellSize && prev > 0) {
       scrollEl.scrollLeft = (scrollEl.scrollLeft / prev) * dayCellSize
     }
     prevDayCellSizeRef.current = dayCellSize
     updateScrollState()
-  }, [dayCellSize, updateScrollState])
+  }, [dayCellSize, data, year, currentYear, todayKey, scrollToDayKey, updateScrollState])
 
   useEffect(() => {
     const wrap = chartWrapRef.current
@@ -373,40 +387,38 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     }
   }, [data, updateChartLayout, updateScrollState])
 
-  const scrollToMonthStart = useCallback(
+  const scrollToToday = useCallback(
     (behavior: ScrollBehavior = 'smooth') => {
-      const scrollEl = scrollRef.current
-      if (!scrollEl || year !== currentYear) return
-      const monthStartKey = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`
-      const monthStartIndex = yearDays.findIndex((day) => toDayKey(day) === monthStartKey)
-      if (monthStartIndex < 0) return
-      scrollEl.scrollTo({
-        left: Math.max(0, monthStartIndex * dayCellSizeRef.current),
-        behavior,
-      })
+      if (year !== currentYear) return
+      if (scrollToDayKey(todayKey, behavior)) {
+        autoScrolledYearRef.current = year
+        updateScrollState()
+      }
     },
-    [year, currentYear, currentMonth, yearDays],
+    [year, currentYear, todayKey, scrollToDayKey, updateScrollState],
   )
 
   useEffect(() => {
-    if (!scrollRef.current || !data || year !== currentYear) return
-    const monthStartKey = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`
-    const monthStartIndex = yearDays.findIndex((day) => toDayKey(day) === monthStartKey)
-    if (monthStartIndex < 0) return
-    const alignToCurrentMonth = () => {
+    if (!scrollRef.current || !data) return
+    if (autoScrolledYearRef.current === year) return
+    const targetDayKey = workspaceAutoScrollDayKey(year, currentYear, todayKey)
+    const alignToTargetDay = () => {
       if (!scrollRef.current) return
-      scrollRef.current.scrollLeft = Math.max(0, monthStartIndex * dayCellSizeRef.current)
-      updateScrollState()
+      if (scrollToDayKey(targetDayKey)) {
+        autoScrolledYearRef.current = year
+        updateScrollState()
+      }
     }
-    alignToCurrentMonth()
-    const rafId = window.requestAnimationFrame(alignToCurrentMonth)
+    alignToTargetDay()
+    const rafId = window.requestAnimationFrame(alignToTargetDay)
     return () => window.cancelAnimationFrame(rafId)
-  }, [year, data, currentYear, currentMonth, yearDays, updateScrollState])
+  }, [year, data, currentYear, todayKey, scrollToDayKey, updateScrollState])
 
   const scrollChart = useCallback(
     (direction: -1 | 1) => {
       const scrollEl = scrollRef.current
       if (!scrollEl) return
+      autoScrolledYearRef.current = null
       const step = Math.max(scrollEl.clientWidth - WORKSPACE_NAME_COL_WIDTH, dayCellSize * 7)
       scrollEl.scrollBy({ left: direction * step, behavior: 'smooth' })
     },
@@ -563,6 +575,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     if (target?.closest('.org-vacation-day-head')) {
       return
     }
+    autoScrolledYearRef.current = null
     dragStateRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -771,10 +784,10 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
             <button
               type="button"
               className="org-workspace-scroll-btn"
-              onClick={() => scrollToMonthStart()}
+              onClick={() => scrollToToday()}
               disabled={year !== currentYear}
             >
-              Текущий месяц
+              Сегодня
             </button>
             <button
               type="button"

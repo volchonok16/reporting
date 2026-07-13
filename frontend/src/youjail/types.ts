@@ -196,12 +196,12 @@ export type YouJailCard = {
   assigneeName?: string | null
   assigneePhotoUrl?: string | null
   tags: YouJailTag[]
-  zniNumbers: string
-  znis: YouJailLinkedZni[]
-  relatedCardKeys: string
-  relatedCards: YouJailRelatedCard[]
-  history: YouJailCardEvent[]
-  comments: YouJailCardComment[]
+  zniNumbers?: string
+  znis?: YouJailLinkedZni[]
+  relatedCardKeys?: string
+  relatedCards?: YouJailRelatedCard[]
+  history?: YouJailCardEvent[]
+  comments?: YouJailCardComment[]
   createdBy?: string | null
   createdAt: string
   updatedAt: string

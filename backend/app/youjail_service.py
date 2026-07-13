@@ -31,6 +31,7 @@ from app.youjail_access import (
     team_member_count,
 )
 from app.youjail_activity import (
+    card_related_cards_map,
     card_snapshot,
     list_card_history,
     list_card_relations,
@@ -737,6 +738,7 @@ def _serialize_card(
     detailed: bool = False,
     tags_map: dict[int, list[dict]] | None = None,
     zni_map: dict[int, dict] | None = None,
+    related_map: dict[int, list[dict]] | None = None,
     board_slug: str | None = None,
     viewer_employee_id: int | None = None,
 ) -> dict:
@@ -793,6 +795,7 @@ def _serialize_card(
         "tags": tags_map.get(card.id, []) if tags_map is not None else _card_tags_map(db, [card.id]).get(card.id, []),
         "zniNumbers": zni_data["numbers"],
         "znis": zni_data["items"],
+        "relatedCards": related_map.get(card.id, []) if related_map is not None else [],
         "createdBy": card.created_by,
         "createdAt": card.created_at,
         "updatedAt": card.updated_at,
@@ -844,6 +847,7 @@ def load_board(
     card_ids = [card.id for card in cards]
     tags_map = _card_tags_map(db, card_ids)
     zni_map = _card_zni_map(db, card_ids)
+    related_map = card_related_cards_map(db, card_ids, viewer_employee_id=viewer_id)
     all_tags = list_tags(db)
     viewer_id = actor_employee_id(db, meta)
     return {
@@ -856,6 +860,7 @@ def load_board(
                 card,
                 tags_map=tags_map,
                 zni_map=zni_map,
+                related_map=related_map,
                 board_slug=board.slug,
                 viewer_employee_id=viewer_id,
             )

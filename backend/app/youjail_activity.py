@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import Any
 
 from fastapi import HTTPException
@@ -463,6 +464,94 @@ def list_card_relations(db: Session, card: YouJailCard, meta: dict) -> dict:
         "relatedCardKeys": ", ".join(sorted(manual_keys)),
         "relatedCards": related_cards,
     }
+
+
+def card_related_cards_map(
+    db: Session,
+    card_ids: list[int],
+    *,
+    viewer_employee_id: int | None = None,
+) -> dict[int, list[dict]]:
+    if not card_ids:
+        return {}
+
+    card_id_set = set(card_ids)
+    manual_by_card: dict[int, dict[int, str]] = {card_id: {} for card_id in card_ids}
+    link_rows = db.scalars(
+        select(YouJailCardLink).where(
+            or_(
+                YouJailCardLink.card_id.in_(card_ids),
+                YouJailCardLink.related_card_id.in_(card_ids),
+            )
+        )
+    ).all()
+    for row in link_rows:
+        if row.card_id in card_id_set:
+            manual_by_card[row.card_id][row.related_card_id] = "manual"
+        if row.related_card_id in card_id_set:
+            manual_by_card[row.related_card_id][row.card_id] = "manual"
+
+    source_cards = {
+        row.id: row for row in db.scalars(select(YouJailCard).where(YouJailCard.id.in_(card_ids))).all()
+    }
+
+    zni_rows = db.execute(
+        select(YouJailCardZni.card_id, YouJailCardZni.task_id).where(YouJailCardZni.card_id.in_(card_ids))
+    ).all()
+    card_tasks: dict[int, set[int]] = {card_id: set() for card_id in card_ids}
+    all_task_ids: set[int] = set()
+    for card_id, task_id in zni_rows:
+        if card_id in card_id_set:
+            card_tasks[card_id].add(task_id)
+            all_task_ids.add(task_id)
+
+    zni_related_by_card: dict[int, dict[int, str]] = {card_id: {} for card_id in card_ids}
+    if all_task_ids:
+        task_to_card_ids: dict[int, set[int]] = defaultdict(set)
+        for other_card_id, task_id in db.execute(
+            select(YouJailCardZni.card_id, YouJailCardZni.task_id).where(YouJailCardZni.task_id.in_(all_task_ids))
+        ).all():
+            task_to_card_ids[task_id].add(other_card_id)
+
+        for card_id in card_ids:
+            manual_ids = manual_by_card[card_id]
+            for task_id in card_tasks.get(card_id, set()):
+                for other_id in task_to_card_ids.get(task_id, set()):
+                    if other_id == card_id or other_id in manual_ids:
+                        continue
+                    zni_related_by_card[card_id][other_id] = "zni"
+
+    all_other_ids: set[int] = set()
+    for card_id in card_ids:
+        merged = {**zni_related_by_card[card_id], **manual_by_card[card_id]}
+        all_other_ids.update(merged.keys())
+
+    other_cards = (
+        {
+            row.id: row
+            for row in db.scalars(select(YouJailCard).where(YouJailCard.id.in_(all_other_ids))).all()
+        }
+        if all_other_ids
+        else {}
+    )
+
+    result: dict[int, list[dict]] = {}
+    for card_id in card_ids:
+        source = source_cards.get(card_id)
+        merged = {**zni_related_by_card[card_id], **manual_by_card[card_id]}
+        items: list[dict] = []
+        for other_id, kind in merged.items():
+            other = other_cards.get(other_id)
+            if other is None:
+                continue
+            if kind == "zni" and source is not None and other.board_id != source.board_id:
+                continue
+            items.append(
+                _serialize_related_card(db, other, link_kind=kind, viewer_employee_id=viewer_employee_id)
+            )
+        items.sort(key=lambda item: (item.get("boardName") or "", item["cardKeyGlobal"]))
+        result[card_id] = items
+    return result
 
 
 def set_card_links(db: Session, card: YouJailCard, meta: dict, raw_keys: str | None) -> None:

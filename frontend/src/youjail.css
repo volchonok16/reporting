@@ -822,6 +822,34 @@
   gap: 8px;
 }
 
+.youjail-card-assignee-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  min-width: 0;
+}
+
+.youjail-card-assignee-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.youjail-card-assignee-head .youjail-card-assignee-photo,
+.youjail-card-assignee-head .youjail-card-assignee-photo--placeholder {
+  width: 22px;
+  height: 22px;
+}
+
+.youjail-card-assignee-head .youjail-card-assignee-photo--placeholder {
+  font-size: 10px;
+}
+
 .youjail-card-top {
   display: flex;
   align-items: center;
@@ -3344,11 +3372,41 @@
   color: var(--danger);
 }
 
+.youjail-card-badges-row,
 .youjail-card-zni-row {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   margin-top: 6px;
+}
+
+.youjail-card-link-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  color: color-mix(in srgb, var(--accent) 85%, var(--text-primary));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.youjail-card-link-chip.is-zni {
+  background: color-mix(in srgb, #0d9488 12%, var(--surface-2));
+  border-color: color-mix(in srgb, #0d9488 28%, var(--border));
+  color: color-mix(in srgb, #0d9488 85%, var(--text-primary));
+}
+
+.youjail-card-link-chip:hover {
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface-2));
+}
+
+.youjail-card-link-chip.is-zni:hover {
+  background: color-mix(in srgb, #0d9488 18%, var(--surface-2));
 }
 
 .youjail-card-zni-chip {
