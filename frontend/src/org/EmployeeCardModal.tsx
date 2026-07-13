@@ -1,19 +1,20 @@
 import { useEffect, useState } from 'react'
 import { getJson } from '../api'
+import { employeeApiRef } from './employeeMentions'
 import { notifyProblem } from '../toast'
 import type { EmployeeDetail } from './types'
 import OrgPhoto from './OrgPhoto'
 
 type EmployeeCardModalProps = {
-  employeeId: number
+  employeeRef: string
   canManage: boolean
   onClose: () => void
   onEdit?: (employee: EmployeeDetail) => void
-  onOpenEmployee: (employeeId: number) => void
+  onOpenEmployee: (employeeRef: string) => void
 }
 
 export default function EmployeeCardModal({
-  employeeId,
+  employeeRef,
   canManage,
   onClose,
   onEdit,
@@ -25,7 +26,7 @@ export default function EmployeeCardModal({
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    void getJson<EmployeeDetail>(`/api/org/employees/${employeeId}`)
+    void getJson<EmployeeDetail>(`/api/org/employees/${employeeRef}`)
       .then((data) => {
         if (!cancelled) setEmployee(data)
       })
@@ -38,7 +39,7 @@ export default function EmployeeCardModal({
     return () => {
       cancelled = true
     }
-  }, [employeeId])
+  }, [employeeRef])
 
   return (
     <div className="org-modal-backdrop" onClick={onClose}>
@@ -88,7 +89,12 @@ export default function EmployeeCardModal({
                   <button
                     type="button"
                     className="org-employee-link"
-                    onClick={() => onOpenEmployee(employee.managerId!)}
+                    onClick={() =>
+                      onOpenEmployee(
+                        employee.managerPublicId ??
+                          employeeApiRef({ id: employee.managerId!, publicId: undefined }),
+                      )
+                    }
                   >
                     {employee.managerName}
                   </button>
@@ -170,7 +176,7 @@ export default function EmployeeCardModal({
                       <button
                         type="button"
                         className="org-employee-link"
-                        onClick={() => onOpenEmployee(subordinate.id)}
+                        onClick={() => onOpenEmployee(employeeApiRef(subordinate))}
                       >
                         {subordinate.fullName}
                       </button>

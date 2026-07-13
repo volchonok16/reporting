@@ -669,6 +669,7 @@
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `id` | bigserial | PK |
+| `public_id` | uuid | Публичный идентификатор для ссылок и @упоминаний (не раскрывает порядковый `id`) |
 | `user_id` | bigint | FK → `org_user` (учётная запись) |
 | `full_name` | varchar(255) | ФИО |
 | `email` | varchar(255) | Рабочий email |
@@ -803,7 +804,7 @@
 | `cardKeyGlobal` | string (API) | То же, что `cardKey` — глобально уникальный ключ для связей между досками |
 | `project_id`, `task_type_id` | bigint | Проект и тип |
 | `title` | varchar(1000) | Заголовок |
-| `description_md` | text | Заметки (markdown); упоминания сотрудников: `@[ФИО](employee:ID)` |
+| `description_md` | text | Заметки (markdown); упоминания: `@[ФИО](employee:uuid)` (`employee.public_id`); старый формат `employee:123` читается для совместимости |
 | `pinned`, `archived` | boolean | Закрепление / архив |
 | `closed_at`, `scheduled_at` | timestamptz | Закрытие / план |
 | `executor` | varchar(64) | AI-агент: `manual`, `claude`, `codex`, … |
@@ -853,7 +854,7 @@ API: `history[]` в `GET /api/youjail/cards/{id}`.
 | `author_label` | varchar(255) | Имя, если сотрудник не привязан |
 | `created_at`, `updated_at` | timestamptz | Время создания и обновления |
 
-API: `comments[]` в `GET /api/youjail/cards/{id}`; создание: `POST /api/youjail/cards/{id}/comments` (multipart: `body_md`, `files[]`). Событие `comment_added` в `youjail_card_event`.
+API: `comments[]` в `GET /api/youjail/cards/{id}`; создание: `POST /api/youjail/cards/{id}/comments` (multipart: `body_md`, `files[]`); редактирование: `PATCH /api/youjail/comments/{id}` (`bodyMd`, только автор или админ организации). События `comment_added`, `comment_edited` в `youjail_card_event`. В ответе комментария: `canEdit`.
 
 ### youjail_comment_attachment
 
@@ -917,7 +918,7 @@ API: `comments[]` в `GET /api/youjail/cards/{id}`; создание: `POST /api
 
 Связь M:N: у карточки может быть несколько тегов. API: `GET/POST /api/youjail/tags`, обновление карточки — поле `tagIds`.
 
-API: префикс `/api/youjail/*`. `DELETE /api/youjail/boards/{id}`, `POST /api/youjail/boards/{id}/pin`, `POST /api/youjail/boards/{id}/columns`, `PATCH /api/youjail/columns/{id}`, `DELETE /api/youjail/columns/{id}?moveToColumnId=…`, `POST/DELETE /api/youjail/boards/{id}/members`, `POST /api/youjail/zni/lookup`, `POST /api/youjail/cards/{id}/comments`, `GET /api/youjail/comment-attachments/{id}/download`, `GET/POST/PATCH/DELETE /api/youjail/teams`, `PUT /api/youjail/teams/{id}/boards`, `PUT /api/youjail/boards/{id}/teams`, `GET/POST /api/youjail/tags`. Доступ к доске: админы организации — все; пользователи — команды, личная доска (`owner_employee_id`), прямой доступ (`youjail_board_member`). Управление колонками: глобальный админ, владелец личной доски или `youjail_board_member.role = admin`. WebSocket PTY: `GET /api/youjail/executions/{id}/terminal?X-Session-Id=…`. Fuzzy-поиск: `GET /api/youjail/board?search=…&boardId=…`. CLI: `python backend/scripts/ty.py`.
+API: префикс `/api/youjail/*`. `DELETE /api/youjail/boards/{id}`, `POST /api/youjail/boards/{id}/pin`, `POST /api/youjail/boards/{id}/columns`, `PATCH /api/youjail/columns/{id}`, `DELETE /api/youjail/columns/{id}?moveToColumnId=…`, `POST/DELETE /api/youjail/boards/{id}/members`, `POST /api/youjail/zni/lookup`, `POST /api/youjail/cards/{id}/comments`, `PATCH /api/youjail/comments/{id}`, `GET /api/youjail/comment-attachments/{id}/download`, `GET/POST/PATCH/DELETE /api/youjail/teams`, `PUT /api/youjail/teams/{id}/boards`, `PUT /api/youjail/boards/{id}/teams`, `GET/POST /api/youjail/tags`. Доступ к доске: админы организации — все; пользователи — команды, личная доска (`owner_employee_id`), прямой доступ (`youjail_board_member`). Управление колонками: глобальный админ, владелец личной доски или `youjail_board_member.role = admin`. WebSocket PTY: `GET /api/youjail/executions/{id}/terminal?X-Session-Id=…`. Fuzzy-поиск: `GET /api/youjail/board?search=…&boardId=…`. CLI: `python backend/scripts/ty.py`.
 
 ---
 
@@ -1096,7 +1097,7 @@ API: `GET /api/b2b-news`, `POST /api/b2b-news/save`, `GET /api/b2b-news/history?
 |--------|-----|
 | Состав | `GET /api/org/departments/{id}/members` |
 | Пирамида | `GET /api/org/org-chart?department_id=` — данные сотрудников/отделов; `GET/PUT /api/org/org-chart-layout?scope=company&department_id=` — сохранённая ручная раскладка (PUT только админ); для одного отдела — дерево по составу |
-| Сотрудники | `GET/POST/PATCH /api/org/employees` |
+| Сотрудники | `GET/POST/PATCH /api/org/employees`; в пути и @упоминаниях — `public_id` (UUID), числовой `id` в API пока тоже принимается |
 | График отпусков | `GET /api/org/vacations?year=&department_id=`, `PUT /api/org/vacations/range` |
 | Бронь мест | вкладка «Бронь мест»; `GET /api/org/workspace/bookings?year=&month=`, `PUT /api/org/workspace/bookings/toggle`; справочник: `GET/POST/PATCH/DELETE /api/org/workspace/places` (изменение — админ) |
 | Сотрудники в офисе | `GET /api/org/workspace/presence?year=&month=`; учитывает `workspace_booking`, `employee_office_day` и `employee_time_off_day` |

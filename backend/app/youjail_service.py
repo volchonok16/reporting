@@ -37,6 +37,7 @@ from app.youjail_activity import (
     log_attachment_event,
     log_card_created,
     log_card_comment,
+    log_card_comment_edited,
     log_card_flag,
     log_card_moved,
     record_card_field_changes,
@@ -572,20 +573,39 @@ def _serialize_attachment(attachment: YouJailAttachment) -> dict:
     }
 
 
-def _serialize_comment_attachment(attachment: YouJailCommentAttachment) -> dict:
+def _serialize_comment_attachment(db: Session, attachment: YouJailCommentAttachment, *, card_id: int) -> dict:
+    card_attachment = db.scalar(
+        select(YouJailAttachment).where(
+            YouJailAttachment.card_id == card_id,
+            YouJailAttachment.storage_path == attachment.storage_path,
+        )
+    )
+    download_url = (
+        _attachment_url(card_attachment.id) if card_attachment is not None else _comment_attachment_url(attachment.id)
+    )
     return {
         "id": attachment.id,
         "commentId": attachment.comment_id,
+        "cardAttachmentId": card_attachment.id if card_attachment is not None else None,
         "filename": attachment.filename,
         "contentType": attachment.content_type,
         "sizeBytes": attachment.size_bytes,
-        "downloadUrl": _comment_attachment_url(attachment.id),
+        "downloadUrl": download_url,
         "isImage": _is_image_content_type(attachment.content_type),
         "createdAt": attachment.created_at,
     }
 
 
-def _serialize_comment(db: Session, comment: YouJailCardComment) -> dict:
+def _can_edit_comment(db: Session, comment: YouJailCardComment, meta: dict) -> bool:
+    if is_youjail_admin(meta):
+        return True
+    actor_id = actor_employee_id(db, meta)
+    if actor_id is None or comment.author_employee_id is None:
+        return False
+    return comment.author_employee_id == actor_id
+
+
+def _serialize_comment(db: Session, comment: YouJailCardComment, *, meta: dict | None = None) -> dict:
     employee = db.get(Employee, comment.author_employee_id) if comment.author_employee_id else None
     attachments = db.scalars(
         select(YouJailCommentAttachment)
@@ -601,17 +621,20 @@ def _serialize_comment(db: Session, comment: YouJailCardComment) -> dict:
         "authorPhotoUrl": photo_public_url(employee.photo_path) if employee else None,
         "createdAt": comment.created_at,
         "updatedAt": comment.updated_at,
-        "attachments": [_serialize_comment_attachment(item) for item in attachments],
+        "canEdit": _can_edit_comment(db, comment, meta) if meta is not None else False,
+        "attachments": [
+            _serialize_comment_attachment(db, item, card_id=comment.card_id) for item in attachments
+        ],
     }
 
 
-def list_card_comments(db: Session, card_id: int) -> list[dict]:
+def list_card_comments(db: Session, card_id: int, *, meta: dict | None = None) -> list[dict]:
     comments = db.scalars(
         select(YouJailCardComment)
         .where(YouJailCardComment.card_id == card_id)
-        .order_by(YouJailCardComment.created_at.asc(), YouJailCardComment.id.asc())
+        .order_by(YouJailCardComment.created_at.desc(), YouJailCardComment.id.desc())
     ).all()
-    return [_serialize_comment(db, comment) for comment in comments]
+    return [_serialize_comment(db, comment, meta=meta) for comment in comments]
 
 
 def _serialize_execution(db: Session, execution: YouJailExecution, *, with_logs: bool = False) -> dict:
@@ -839,7 +862,7 @@ def get_card(db: Session, card_id: int, *, meta: dict) -> dict:
     payload["history"] = list_card_history(db, card)
     payload["relatedCardKeys"] = relations["relatedCardKeys"]
     payload["relatedCards"] = relations["relatedCards"]
-    payload["comments"] = list_card_comments(db, card.id)
+    payload["comments"] = list_card_comments(db, card.id, meta=meta)
     return payload
 
 
@@ -1550,6 +1573,10 @@ def delete_attachment(db: Session, attachment_id: int, *, meta: dict) -> None:
         raise HTTPException(status_code=404, detail="Вложение не найдено.")
     assert_card_access(db, meta, attachment.card_id)
     path = Path(attachment.storage_path)
+    for comment_attachment in db.scalars(
+        select(YouJailCommentAttachment).where(YouJailCommentAttachment.storage_path == attachment.storage_path)
+    ).all():
+        db.delete(comment_attachment)
     if path.is_file():
         path.unlink(missing_ok=True)
     log_attachment_event(db, attachment.card_id, meta, added=False, filename=attachment.filename)
@@ -1593,25 +1620,64 @@ async def create_card_comment(
         if len(content) > settings.youjail_max_attachment_bytes:
             raise HTTPException(status_code=400, detail=f"Файл «{file.filename}» слишком большой.")
         ext = Path(file.filename).suffix
-        storage_name = f"comment_{comment.id}_{uuid4().hex}{ext}"
+        storage_name = f"{card.id}_{uuid4().hex}{ext}"
         storage_path = attachments_dir() / storage_name
         storage_path.write_bytes(content)
         content_type, _ = mimetypes.guess_type(file.filename)
+        size_bytes = len(content)
+        db.add(
+            YouJailAttachment(
+                card_id=card.id,
+                filename=file.filename,
+                storage_path=str(storage_path),
+                content_type=content_type,
+                size_bytes=size_bytes,
+            )
+        )
         db.add(
             YouJailCommentAttachment(
                 comment_id=comment.id,
                 filename=file.filename,
                 storage_path=str(storage_path),
                 content_type=content_type,
-                size_bytes=len(content),
+                size_bytes=size_bytes,
             )
         )
+        log_attachment_event(db, card.id, meta, added=True, filename=file.filename)
 
     preview = text or (files[0].filename if files else "")
     log_card_comment(db, card.id, meta, comment_id=comment.id, preview=preview)
     db.commit()
     db.refresh(comment)
-    return _serialize_comment(db, comment)
+    return _serialize_comment(db, comment, meta=meta)
+
+
+def update_card_comment(db: Session, comment_id: int, *, body_md: str, meta: dict) -> dict:
+    comment = db.get(YouJailCardComment, comment_id)
+    if comment is None:
+        raise HTTPException(status_code=404, detail="Комментарий не найден.")
+    assert_card_access(db, meta, comment.card_id)
+    if not _can_edit_comment(db, comment, meta):
+        raise HTTPException(status_code=403, detail="Недостаточно прав для редактирования комментария.")
+    text = body_md.strip()
+    has_attachments = (
+        db.scalar(
+            select(func.count())
+            .select_from(YouJailCommentAttachment)
+            .where(YouJailCommentAttachment.comment_id == comment.id)
+        )
+        or 0
+    ) > 0
+    if not text and not has_attachments:
+        raise HTTPException(status_code=400, detail="Комментарий не может быть пустым.")
+    if comment.body_md != text:
+        comment.body_md = text
+        comment.updated_at = _utcnow()
+        preview = text or "…"
+        log_card_comment_edited(db, comment.card_id, meta, comment_id=comment.id, preview=preview)
+    db.commit()
+    db.refresh(comment)
+    return _serialize_comment(db, comment, meta=meta)
 
 
 def load_comment_attachment_file(

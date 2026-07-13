@@ -248,6 +248,7 @@ def get_workspace_booking_schedule(
     employee_out = [
         VacationEmployeeOut(
             id=emp.id,
+            publicId=str(emp.public_id),
             fullName=emp.full_name,
             departmentName=department_names.get(emp.id),
             position=emp.position,
@@ -295,6 +296,7 @@ def get_workspace_office_presence(
     employee_out = [
         VacationEmployeeOut(
             id=emp.id,
+            publicId=str(emp.public_id),
             fullName=emp.full_name,
             departmentName=department_names.get(emp.id),
             position=emp.position,
@@ -519,10 +521,12 @@ def toggle_workspace_booking(db: Session, data: WorkspaceBookingToggleIn, meta: 
         db.commit()
         return WorkspaceBookingToggleOut(action="release", booked=False)
 
-    target_employee_id = data.employeeId
-    if target_employee_id is None:
-        target_employee_id = actor_employee_id
-    if target_employee_id is None:
+    target_employee_id = actor_employee_id
+    if data.employeeRef:
+        from app.org_service import resolve_employee
+
+        target_employee_id = resolve_employee(db, data.employeeRef).id
+    elif target_employee_id is None:
         raise HTTPException(status_code=400, detail="Укажите сотрудника или привяжите учётную запись.")
 
     if not can_edit_employee_vacation(meta, actor_employee_id, target_employee_id):

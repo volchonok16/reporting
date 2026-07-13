@@ -147,7 +147,7 @@ export default function WorkbookApp({
           </div>
         ) : activeSheet === 'youjail-board' ? (
           <div className="app">
-            <YouJailBoard canManageOrg={canManageOrg} />
+            <YouJailBoard canManageOrg={canManageOrg} orgEmployeeId={orgEmployeeId} />
           </div>
         ) : activeSheet === 'departments' ? (
           <div className="app">

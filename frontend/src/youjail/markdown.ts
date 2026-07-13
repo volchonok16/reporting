@@ -1,3 +1,5 @@
+import { replaceEmployeeMentionsInText, stripEmployeeMentions } from '../org/employeeMentions'
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -6,19 +8,10 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;')
 }
 
-export const EMPLOYEE_MENTION_PATTERN = /@\[([^\]]+)\]\(employee:(\d+)\)/
-
-function renderEmployeeMention(_match: string, name: string, employeeId: string): string {
-  const safeName = escapeHtml(name)
-  return `<button type="button" class="youjail-mention-chip" data-employee-id="${employeeId}">${safeName}</button>`
-}
-
-function replaceEmployeeMentions(text: string): string {
-  return text.replace(EMPLOYEE_MENTION_PATTERN, renderEmployeeMention)
-}
+export { EMPLOYEE_MENTION_PATTERN } from '../org/employeeMentions'
 
 function inlineMarkdown(text: string): string {
-  return replaceEmployeeMentions(escapeHtml(text))
+  return replaceEmployeeMentionsInText(escapeHtml(text))
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
@@ -26,8 +19,7 @@ function inlineMarkdown(text: string): string {
 }
 
 export function mentionPreviewText(markdown: string): string {
-  return markdown
-    .replace(EMPLOYEE_MENTION_PATTERN, '$1')
+  return stripEmployeeMentions(markdown)
     .split('\n')
     .find((line) => line.trim()) ?? ''
 }

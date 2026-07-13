@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react'
 import YouJailMentionTextarea from './YouJailMentionTextarea'
-import { handleMentionPreviewClick } from './mentionPreview'
+import { handleEmployeeMentionClick } from '../org/employeeMentionClick'
 import { renderMarkdown } from './markdown'
 
 type YouJailUnifiedNotesEditorProps = {
@@ -9,7 +9,7 @@ type YouJailUnifiedNotesEditorProps = {
   placeholder?: string
   onChange: (value: string) => void
   onBlur?: () => void
-  onMentionClick?: (employeeId: number) => void
+  onMentionClick?: (employeeRef: string) => void
 }
 
 export default function YouJailUnifiedNotesEditor({
@@ -37,8 +37,8 @@ export default function YouJailUnifiedNotesEditor({
 
   const handlePreviewClick = (event: MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement
-    if (target.closest('[data-employee-id]')) {
-      if (onMentionClick) handleMentionPreviewClick(event, onMentionClick)
+    if (target.closest('[data-employee-ref]')) {
+      if (onMentionClick) handleEmployeeMentionClick(event, onMentionClick)
       return
     }
     startEditing()

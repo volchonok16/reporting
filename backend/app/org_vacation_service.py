@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.org_models import Department, DepartmentMember, Employee, EmployeeTimeOffDay, WorkspaceBooking
 from app.org_photo_service import photo_public_url
-from app.org_service import get_employee_for_org_user
+from app.org_service import get_employee_for_org_user, resolve_employee
 from app.org_schemas import (
     VacationEmployeeOut,
     VacationRangeIn,
@@ -136,6 +136,7 @@ def get_vacation_schedule(
     employee_out = [
         VacationEmployeeOut(
             id=emp.id,
+            publicId=str(emp.public_id),
             fullName=emp.full_name,
             departmentName=department_names.get(emp.id),
             position=emp.position,
@@ -157,12 +158,13 @@ def get_vacation_schedule(
 
 
 def upsert_vacation_range(db: Session, data: VacationRangeIn, meta: dict) -> VacationRangeOut:
-    employee = db.get(Employee, data.employeeId)
-    if employee is None or not employee.is_active:
+    employee = resolve_employee(db, data.employeeRef)
+    if not employee.is_active:
         raise HTTPException(status_code=404, detail="Сотрудник не найден.")
+    employee_id = employee.id
 
     actor_employee_id = _actor_employee_id(db, meta)
-    if not can_edit_employee_vacation(meta, actor_employee_id, data.employeeId):
+    if not can_edit_employee_vacation(meta, actor_employee_id, employee_id):
         raise HTTPException(status_code=403, detail="Недостаточно прав для редактирования графика.")
 
     start = _parse_day(data.fromDay)
@@ -177,7 +179,7 @@ def upsert_vacation_range(db: Session, data: VacationRangeIn, meta: dict) -> Vac
     if data.kind == "erase":
         result = db.execute(
             delete(EmployeeTimeOffDay).where(
-                EmployeeTimeOffDay.employee_id == data.employeeId,
+                EmployeeTimeOffDay.employee_id == employee_id,
                 EmployeeTimeOffDay.day >= start,
                 EmployeeTimeOffDay.day <= end,
                 EmployeeTimeOffDay.kind.in_(tuple(EDITABLE_KINDS)),
@@ -189,14 +191,14 @@ def upsert_vacation_range(db: Session, data: VacationRangeIn, meta: dict) -> Vac
         while cursor <= end:
             existing = db.scalar(
                 select(EmployeeTimeOffDay).where(
-                    EmployeeTimeOffDay.employee_id == data.employeeId,
+                    EmployeeTimeOffDay.employee_id == employee_id,
                     EmployeeTimeOffDay.day == cursor,
                 )
             )
             if existing is None:
                 db.add(
                     EmployeeTimeOffDay(
-                        employee_id=data.employeeId,
+                        employee_id=employee_id,
                         day=cursor,
                         kind=data.kind,
                     )
@@ -211,7 +213,7 @@ def upsert_vacation_range(db: Session, data: VacationRangeIn, meta: dict) -> Vac
         if data.kind in ABSENCE_KINDS:
             db.execute(
                 delete(WorkspaceBooking).where(
-                    WorkspaceBooking.employee_id == data.employeeId,
+                    WorkspaceBooking.employee_id == employee_id,
                     WorkspaceBooking.day >= start,
                     WorkspaceBooking.day <= end,
                 )

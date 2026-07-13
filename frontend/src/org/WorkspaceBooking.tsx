@@ -23,7 +23,7 @@ type SaveOperation = {
   placeId: number
   day: string
   action: 'book' | 'release'
-  employeeId?: number
+  employeeRef?: string
 }
 
 const TIME_OFF_META: Record<TimeOffKind, { label: string; className: string }> = {
@@ -100,6 +100,7 @@ function isDraftCell(
 function collectSaveOperations(
   draft: Map<string, DraftBooking>,
   serverMap: Map<string, WorkspaceBookingCell>,
+  employeePublicIdById: Map<number, string>,
 ): SaveOperation[] {
   const releases: SaveOperation[] = []
   const books: SaveOperation[] = []
@@ -117,7 +118,7 @@ function collectSaveOperations(
         action: 'book',
         placeId: draftValue.placeId,
         day: draftValue.day,
-        employeeId: draftValue.employeeId,
+        employeeRef: employeePublicIdById.get(draftValue.employeeId) ?? String(draftValue.employeeId),
       })
     }
   }
@@ -208,6 +209,14 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
     }
     return map
   }, [data])
+
+  const employeePublicIdById = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const employee of data?.employees ?? []) {
+      map.set(employee.id, employee.publicId)
+    }
+    return map
+  }, [data?.employees])
 
   const timeOffByEmployeeDay = useMemo(() => {
     const map = new Map<string, TimeOffKind>()
@@ -577,7 +586,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
 
     setSaving(true)
     try {
-      let operations = collectSaveOperations(draftChanges, serverBookingMap)
+      let operations = collectSaveOperations(draftChanges, serverBookingMap, employeePublicIdById)
       if (operations.length === 0) {
         cancelEdit()
         return
@@ -603,7 +612,7 @@ export default function WorkspaceBooking({ orgEmployeeId }: WorkspaceBookingProp
             for (const booking of refreshed.bookings) {
               refreshedMap.set(cellKey(booking.placeId, booking.day), booking)
             }
-            operations = collectSaveOperations(draftChanges, refreshedMap)
+            operations = collectSaveOperations(draftChanges, refreshedMap, employeePublicIdById)
             continue
           }
           throw err

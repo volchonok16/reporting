@@ -344,6 +344,7 @@ CREATE TABLE expertise_direction (
 
 CREATE TABLE employee (
     id                      BIGSERIAL PRIMARY KEY,
+    public_id               UUID         NOT NULL DEFAULT gen_random_uuid(),
     user_id                 BIGINT       REFERENCES org_user(id) ON DELETE SET NULL,
     full_name               VARCHAR(255) NOT NULL,
     email                   VARCHAR(255),
@@ -357,6 +358,8 @@ CREATE TABLE employee (
     created_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
+
+CREATE UNIQUE INDEX employee_public_id_uq ON employee (public_id);
 
 CREATE TABLE employee_expertise (
     id                      BIGSERIAL PRIMARY KEY,

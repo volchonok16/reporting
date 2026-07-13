@@ -8,6 +8,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { getJson, putJson } from '../api'
+import { employeeApiRef } from './employeeMentions'
 import { notifyLoading, notifyProblem, notifySuccess } from '../toast'
 import type {
   DepartmentBlock,
@@ -24,7 +25,7 @@ type ManualOrgChartViewProps = {
   departments: DepartmentBlock[]
   standaloneRoots?: OrgChartNode[]
   canManage: boolean
-  onEmployeeClick?: (employeeId: number) => void
+  onEmployeeClick?: (employeeRef: string) => void
   onDepartmentClick?: (departmentId: number) => void
 }
 
@@ -62,12 +63,12 @@ const MIN_DEPARTMENT_HEIGHT = DEPARTMENT_TITLE_HEIGHT + DEPARTMENT_PADDING * 2 +
 type Point = { x: number; y: number }
 type EdgeAnchor = 'top' | 'bottom'
 
-function employeeNodeId(employeeId: number): string {
-  return `employee:${employeeId}`
+function employeeNodeId(publicId: string): string {
+  return `employee:${publicId}`
 }
 
-function departmentEmployeeNodeId(departmentId: number, employeeId: number): string {
-  return `department:${departmentId}:employee:${employeeId}`
+function departmentEmployeeNodeId(departmentId: number, publicId: string): string {
+  return `department:${departmentId}:employee:${publicId}`
 }
 
 function departmentNodeId(departmentId: number): string {
@@ -120,7 +121,7 @@ function flattenDepartments(
       parentId,
     }
     const employeeItems: ChartItem[] = uniqueEmployees(block.roots).map((node) => ({
-      id: departmentEmployeeNodeId(block.departmentId, node.person.employeeId),
+      id: departmentEmployeeNodeId(block.departmentId, node.person.publicId),
       kind: 'employee',
       refId: node.person.employeeId,
       node,
@@ -139,7 +140,7 @@ function buildStandaloneItems(
   organizationHead?: OrgChartNode | null,
 ): ChartItem[] {
   const build = (node: OrgChartNode, parentId: string | null): ChartItem[] => {
-    const id = employeeNodeId(node.person.employeeId)
+    const id = employeeNodeId(node.person.publicId)
     return [
       {
         id,
@@ -151,7 +152,7 @@ function buildStandaloneItems(
       ...node.children.flatMap((child) => build(child, id)),
     ]
   }
-  const rootParent = organizationHead ? employeeNodeId(organizationHead.person.employeeId) : null
+  const rootParent = organizationHead ? employeeNodeId(organizationHead.person.publicId) : null
   return roots.flatMap((root) => build(root, rootParent))
 }
 
@@ -162,14 +163,14 @@ function buildChartItems(
 ): ChartItem[] {
   const headItem: ChartItem[] = organizationHead
     ? [{
-        id: employeeNodeId(organizationHead.person.employeeId),
+        id: employeeNodeId(organizationHead.person.publicId),
         kind: 'employee',
         refId: organizationHead.person.employeeId,
         node: organizationHead,
         parentId: null,
       }]
     : []
-  const topParent = organizationHead ? employeeNodeId(organizationHead.person.employeeId) : null
+  const topParent = organizationHead ? employeeNodeId(organizationHead.person.publicId) : null
   return [
     ...headItem,
     ...flattenDepartments(departments, topParent),
@@ -306,7 +307,7 @@ function PersonCard({
   onEmployeeClick,
 }: {
   node: OrgChartNode
-  onEmployeeClick?: (employeeId: number) => void
+  onEmployeeClick?: (employeeRef: string) => void
 }) {
   const body = (
     <>
@@ -331,7 +332,7 @@ function PersonCard({
         <button
           type="button"
           className="org-person-card-button"
-          onClick={() => onEmployeeClick(node.person.employeeId)}
+          onClick={() => onEmployeeClick(employeeApiRef(node.person))}
         >
           {body}
         </button>

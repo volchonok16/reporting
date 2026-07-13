@@ -15,6 +15,7 @@ from app.org_schemas import (
     EmployeeExpertiseIn,
     EmployeeDetailOut,
     EmployeeIn,
+    EmployeeOptionOut,
     EmployeeOut,
     EmployeeUpdateIn,
     ExpertiseDirectionIn,
@@ -172,11 +173,11 @@ def api_create_expertise_direction(
     return create_expertise_direction(db, data)
 
 
-@router.get("/employee-options", response_model=list[SelectOptionOut])
+@router.get("/employee-options", response_model=list[EmployeeOptionOut])
 def api_employee_options(
     db: Session = Depends(get_db),
     _: dict = Depends(_load_session_meta),
-) -> list[SelectOptionOut]:
+) -> list[EmployeeOptionOut]:
     return list_employee_options(db)
 
 
@@ -188,13 +189,13 @@ def api_list_employees(
     return list_employees(db)
 
 
-@router.get("/employees/{employee_id}", response_model=EmployeeDetailOut)
+@router.get("/employees/{employee_ref}", response_model=EmployeeDetailOut)
 def api_get_employee(
-    employee_id: int,
+    employee_ref: str,
     db: Session = Depends(get_db),
     _: dict = Depends(_load_session_meta),
 ) -> EmployeeDetailOut:
-    return get_employee(db, employee_id)
+    return get_employee(db, employee_ref)
 
 
 @router.post("/employees", response_model=EmployeeOut)
@@ -206,75 +207,81 @@ def api_create_employee(
     return create_employee(db, data)
 
 
-@router.patch("/employees/{employee_id}", response_model=EmployeeOut)
+@router.patch("/employees/{employee_ref}", response_model=EmployeeOut)
 def api_update_employee(
-    employee_id: int,
+    employee_ref: str,
     data: EmployeeUpdateIn,
     db: Session = Depends(get_db),
     _: dict = Depends(require_org_admin),
 ) -> EmployeeOut:
-    return update_employee(db, employee_id, data)
+    return update_employee(db, employee_ref, data)
 
 
-@router.delete("/employees/{employee_id}")
+@router.delete("/employees/{employee_ref}")
 def api_delete_employee(
-    employee_id: int,
+    employee_ref: str,
     db: Session = Depends(get_db),
     _: dict = Depends(require_org_admin),
 ) -> dict[str, bool]:
-    delete_employee(db, employee_id)
+    delete_employee(db, employee_ref)
     return {"ok": True}
 
 
-@router.get("/employees/{employee_id}/office-days", response_model=list[OfficeDayOut])
+@router.get("/employees/{employee_ref}/office-days", response_model=list[OfficeDayOut])
 def api_employee_office_days(
-    employee_id: int,
+    employee_ref: str,
     year: int = Query(default=date.today().year),
     month: int = Query(default=date.today().month, ge=1, le=12),
     db: Session = Depends(get_db),
     _: dict = Depends(require_org_admin),
 ) -> list[OfficeDayOut]:
+    from app.org_service import resolve_employee
+
+    employee_id = resolve_employee(db, employee_ref).id
     return get_employee_office_days(db, employee_id=employee_id, year=year, month=month)
 
 
-@router.put("/employees/{employee_id}/office-days/range", response_model=OfficeDayRangeOut)
+@router.put("/employees/{employee_ref}/office-days/range", response_model=OfficeDayRangeOut)
 def api_employee_office_days_range(
-    employee_id: int,
+    employee_ref: str,
     data: OfficeDayRangeIn,
     db: Session = Depends(get_db),
     _: dict = Depends(require_org_admin),
 ) -> OfficeDayRangeOut:
+    from app.org_service import resolve_employee
+
+    employee_id = resolve_employee(db, employee_ref).id
     return upsert_employee_office_days(db, employee_id=employee_id, data=data)
 
 
-@router.post("/employees/{employee_id}/photo", response_model=EmployeeOut)
+@router.post("/employees/{employee_ref}/photo", response_model=EmployeeOut)
 async def api_upload_employee_photo(
-    employee_id: int,
+    employee_ref: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     _: dict = Depends(require_org_admin),
 ) -> EmployeeOut:
-    return await upload_employee_photo(db, employee_id, file)
+    return await upload_employee_photo(db, employee_ref, file)
 
 
-@router.post("/employees/{employee_id}/expertise", response_model=EmployeeOut)
+@router.post("/employees/{employee_ref}/expertise", response_model=EmployeeOut)
 def api_add_expertise(
-    employee_id: int,
+    employee_ref: str,
     data: EmployeeExpertiseIn,
     db: Session = Depends(get_db),
     _: dict = Depends(require_org_admin),
 ) -> EmployeeOut:
-    return add_employee_expertise(db, employee_id, data)
+    return add_employee_expertise(db, employee_ref, data)
 
 
-@router.delete("/employees/{employee_id}/expertise/{expertise_id}", response_model=EmployeeOut)
+@router.delete("/employees/{employee_ref}/expertise/{expertise_id}", response_model=EmployeeOut)
 def api_delete_expertise(
-    employee_id: int,
+    employee_ref: str,
     expertise_id: int,
     db: Session = Depends(get_db),
     _: dict = Depends(require_org_admin),
 ) -> EmployeeOut:
-    return delete_employee_expertise(db, employee_id, expertise_id)
+    return delete_employee_expertise(db, employee_ref, expertise_id)
 
 
 @router.get("/departments", response_model=list[DepartmentOut])

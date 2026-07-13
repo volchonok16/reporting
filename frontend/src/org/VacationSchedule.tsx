@@ -5,6 +5,7 @@ import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgPhoto from './OrgPhoto'
 import { buildHolidayKeySet } from './ruPublicHolidays'
 import { getMonthGroups, getYearDays, isDayOff, MONTH_NAMES_FULL, toDayKey } from './scheduleUtils'
+import { employeeApiRefFromId } from './employeeMentions'
 import type { EditableTimeOffKind, TimeOffKind, VacationEmployee, VacationScheduleData } from './types'
 
 type VacationScheduleProps = {
@@ -204,6 +205,14 @@ export default function VacationSchedule({
     return map
   }, [data])
 
+  const employeeById = useMemo(() => {
+    const map = new Map<number, VacationEmployee>()
+    for (const employee of data?.employees ?? []) {
+      map.set(employee.id, employee)
+    }
+    return map
+  }, [data?.employees])
+
   useEffect(() => {
     if (yearProp == null) {
       saveOrgUiState({ vacationYear: year })
@@ -264,7 +273,7 @@ export default function VacationSchedule({
     setSaving(true)
     try {
       await putJson<{ affectedDays: number }>('/api/org/vacations/range', {
-        employeeId,
+        employeeRef: employeeApiRefFromId(employeeById, employeeId),
         fromDay,
         toDay,
         kind: brush,

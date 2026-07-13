@@ -145,6 +145,7 @@ export type YouJailCardComment = {
   authorPhotoUrl?: string | null
   createdAt: string
   updatedAt: string
+  canEdit?: boolean
   attachments: YouJailCommentAttachment[]
 }
 

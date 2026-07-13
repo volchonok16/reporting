@@ -140,9 +140,11 @@ export default function YouJailZniField({
                 className="youjail-zni-link"
                 onClick={() => setModalItem(toChangeRequest(item))}
               >
-                <span className="youjail-zni-link-number">{item.number}</span>
-                <span className="youjail-zni-link-title">{item.title}</span>
-                {item.boardName ? <span className="youjail-zni-link-board">{item.boardName}</span> : null}
+                <div className="youjail-zni-link-head">
+                  <span className="youjail-zni-link-number">{item.number}</span>
+                  {item.boardName ? <span className="youjail-zni-link-board">{item.boardName}</span> : null}
+                </div>
+                <p className="youjail-zni-link-title">{item.title}</p>
               </button>
               {!disabled ? (
                 <button

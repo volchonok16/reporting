@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import { getJson } from '../api'
 import OrgPhoto from '../org/OrgPhoto'
+import { buildEmployeeMentionToken } from '../org/employeeMentions'
 import type { Employee } from '../org/types'
 
 type YouJailMentionTextareaProps = {
@@ -9,6 +10,8 @@ type YouJailMentionTextareaProps = {
   placeholder?: string
   className?: string
   autoFocus?: boolean
+  autoResize?: boolean
+  maxAutoHeight?: number
   onChange: (value: string) => void
   onBlur?: () => void
 }
@@ -23,7 +26,7 @@ function mentionQueryAt(value: string, cursor: number): { start: number; query: 
 }
 
 function insertMention(value: string, start: number, cursor: number, employee: Employee): string {
-  const token = `@[${employee.fullName}](employee:${employee.id})`
+  const token = buildEmployeeMentionToken(employee)
   return `${value.slice(0, start)}${token} ${value.slice(cursor)}`
 }
 
@@ -33,6 +36,8 @@ export default function YouJailMentionTextarea({
   placeholder,
   className,
   autoFocus = false,
+  autoResize = false,
+  maxAutoHeight = 200,
   onChange,
   onBlur,
 }: YouJailMentionTextareaProps) {
@@ -76,6 +81,20 @@ export default function YouJailMentionTextarea({
     element.setSelectionRange(cursor, cursor)
   }, [autoFocus])
 
+  const syncTextareaHeight = () => {
+    if (!autoResize) return
+    const element = textareaRef.current
+    if (!element) return
+    element.style.height = 'auto'
+    const nextHeight = Math.min(element.scrollHeight, maxAutoHeight)
+    element.style.height = `${nextHeight}px`
+    element.style.overflowY = element.scrollHeight > maxAutoHeight ? 'auto' : 'hidden'
+  }
+
+  useEffect(() => {
+    syncTextareaHeight()
+  }, [value, autoResize, maxAutoHeight])
+
   const syncMentionState = () => {
     const element = textareaRef.current
     if (!element) return
@@ -101,7 +120,7 @@ export default function YouJailMentionTextarea({
     setMentionQuery('')
     setActiveIndex(0)
     window.requestAnimationFrame(() => {
-      const nextCursor = mentionStart + `@[${employee.fullName}](employee:${employee.id}) `.length
+      const nextCursor = mentionStart + `${buildEmployeeMentionToken(employee)} `.length
       element.focus()
       element.setSelectionRange(nextCursor, nextCursor)
     })
@@ -109,7 +128,10 @@ export default function YouJailMentionTextarea({
 
   const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     onChange(event.target.value)
-    window.requestAnimationFrame(syncMentionState)
+    window.requestAnimationFrame(() => {
+      syncMentionState()
+      syncTextareaHeight()
+    })
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {

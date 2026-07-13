@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
-import { apiFetch, postForm } from '../api'
+import { apiFetch, patchJson, postForm } from '../api'
+import { handleEmployeeMentionClick } from '../org/employeeMentionClick'
 import OrgPhoto from '../org/OrgPhoto'
 import { notifyProblem, notifySuccess, notifyWarning } from '../toast'
 import { validateYouJailAttachment } from './limits'
@@ -11,7 +12,10 @@ type YouJailCardCommentsProps = {
   cardId: number
   comments: YouJailCardComment[]
   disabled?: boolean
+  canManageOrg?: boolean
+  orgEmployeeId?: number | null
   onCommentAdded: () => void
+  onMentionClick?: (employeeRef: string) => void
 }
 
 function formatCommentDate(iso: string): string {
@@ -24,6 +28,22 @@ function formatCommentDate(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function isCommentEdited(comment: YouJailCardComment): boolean {
+  const created = Date.parse(comment.createdAt)
+  const updated = Date.parse(comment.updatedAt)
+  return !Number.isNaN(created) && !Number.isNaN(updated) && updated - created > 1000
+}
+
+function canEditComment(
+  comment: YouJailCardComment,
+  canManageOrg: boolean,
+  orgEmployeeId: number | null | undefined,
+): boolean {
+  if (comment.canEdit) return true
+  if (canManageOrg) return true
+  return orgEmployeeId != null && comment.authorEmployeeId === orgEmployeeId
 }
 
 function YouJailAuthImage({ path, alt, className }: { path: string; alt: string; className?: string }) {
@@ -59,11 +79,28 @@ export default function YouJailCardComments({
   cardId,
   comments,
   disabled = false,
+  canManageOrg = false,
+  orgEmployeeId = null,
   onCommentAdded,
+  onMentionClick,
 }: YouJailCardCommentsProps) {
   const [bodyMd, setBodyMd] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null)
+  const [editBodyMd, setEditBodyMd] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  const sortedComments = useMemo(
+    () =>
+      [...comments].sort((left, right) => {
+        const leftTime = Date.parse(left.createdAt)
+        const rightTime = Date.parse(right.createdAt)
+        if (leftTime !== rightTime) return rightTime - leftTime
+        return right.id - left.id
+      }),
+    [comments],
+  )
 
   const filePreview = useMemo(
     () =>
@@ -139,6 +176,35 @@ export default function YouJailCardComments({
     }
   }
 
+  const startEdit = (comment: YouJailCardComment) => {
+    setEditingCommentId(comment.id)
+    setEditBodyMd(comment.bodyMd)
+  }
+
+  const cancelEdit = () => {
+    setEditingCommentId(null)
+    setEditBodyMd('')
+  }
+
+  const saveEdit = async (comment: YouJailCardComment) => {
+    const text = editBodyMd.trim()
+    if (!text && comment.attachments.length === 0) {
+      notifyWarning('Комментарий не может быть пустым')
+      return
+    }
+    setSavingEdit(true)
+    try {
+      await patchJson<YouJailCardComment>(`/api/youjail/comments/${comment.id}`, { bodyMd: text })
+      cancelEdit()
+      notifySuccess('Комментарий обновлён')
+      onCommentAdded()
+    } catch (err) {
+      notifyProblem(err, 'Не удалось сохранить комментарий')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
   return (
     <section className="youjail-comments-card">
       <div className="youjail-comments-head">
@@ -152,6 +218,7 @@ export default function YouJailCardComments({
           value={bodyMd}
           disabled={disabled || submitting}
           placeholder="Написать комментарий…"
+          autoResize
           onChange={setBodyMd}
         />
         {filePreview.length > 0 ? (
@@ -196,11 +263,16 @@ export default function YouJailCardComments({
         </div>
       </div>
 
-      {comments.length === 0 ? (
+      {sortedComments.length === 0 ? (
         <p className="youjail-muted youjail-empty-hint">Пока нет комментариев</p>
       ) : (
         <ul className="youjail-comment-list">
-          {comments.map((comment) => (
+          {sortedComments.map((comment) => {
+            const isEditing = editingCommentId === comment.id
+            const edited = isCommentEdited(comment)
+            const showEdit = canEditComment(comment, canManageOrg, orgEmployeeId)
+
+            return (
             <li key={comment.id} className="youjail-comment-item">
               <div className="youjail-comment-meta">
                 <OrgPhoto
@@ -209,17 +281,74 @@ export default function YouJailCardComments({
                   className="youjail-comment-photo"
                   placeholderClassName="youjail-comment-photo youjail-comment-photo--placeholder"
                 />
-                <div>
+                <div className="youjail-comment-meta-text">
                   <strong>{comment.authorName ?? 'Пользователь'}</strong>
-                  <time className="youjail-comment-time" dateTime={comment.createdAt}>
-                    {formatCommentDate(comment.createdAt)}
-                  </time>
+                  <div className="youjail-comment-meta-line">
+                    <time className="youjail-comment-time" dateTime={comment.createdAt}>
+                      {formatCommentDate(comment.createdAt)}
+                    </time>
+                    {edited ? (
+                      <span
+                        className="youjail-comment-edited"
+                        title={`Изменён ${formatCommentDate(comment.updatedAt)}`}
+                      >
+                        изменён
+                      </span>
+                    ) : null}
+                    {showEdit && !isEditing ? (
+                      <button
+                        type="button"
+                        className="btn-ghost youjail-comment-edit-btn"
+                        disabled={disabled || savingEdit}
+                        onClick={() => startEdit(comment)}
+                      >
+                        Редактировать
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               </div>
-              {comment.bodyMd.trim() ? (
+              {isEditing ? (
+                <div className="youjail-comment-edit">
+                  <YouJailMentionTextarea
+                    className="youjail-comment-editor"
+                    value={editBodyMd}
+                    disabled={disabled || savingEdit}
+                    placeholder="Текст комментария…"
+                    autoResize
+                    autoFocus
+                    onChange={setEditBodyMd}
+                  />
+                  <div className="youjail-comment-edit-actions">
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={disabled || savingEdit}
+                      onClick={cancelEdit}
+                    >
+                      Отмена
+                    </button>
+                    <button
+                      type="button"
+                      className="youjail-comment-submit"
+                      disabled={
+                        disabled ||
+                        savingEdit ||
+                        (!editBodyMd.trim() && comment.attachments.length === 0)
+                      }
+                      onClick={() => void saveEdit(comment)}
+                    >
+                      {savingEdit ? 'Сохранение…' : 'Сохранить'}
+                    </button>
+                  </div>
+                </div>
+              ) : comment.bodyMd.trim() ? (
                 <div
                   className="youjail-comment-body youjail-notes-preview"
                   dangerouslySetInnerHTML={{ __html: renderMarkdown(comment.bodyMd) }}
+                  onClick={(event) => {
+                    if (onMentionClick) handleEmployeeMentionClick(event, onMentionClick)
+                  }}
                 />
               ) : null}
               {comment.attachments.length > 0 ? (
@@ -260,7 +389,8 @@ export default function YouJailCardComments({
                 </div>
               ) : null}
             </li>
-          ))}
+            )
+          })}
         </ul>
       )}
     </section>

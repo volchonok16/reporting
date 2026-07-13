@@ -8,6 +8,7 @@ import VacationSchedule from './VacationSchedule'
 import WorkspaceBooking from './WorkspaceBooking'
 import OfficePresence from './OfficePresence'
 import EmployeeCardModal from './EmployeeCardModal'
+import { employeeApiRef, employeeApiRefFromId } from './employeeMentions'
 import OrgPhoto from './OrgPhoto'
 import OrgFilterIcon from './OrgFilterIcon'
 import { buildHolidayKeySet } from './ruPublicHolidays'
@@ -24,7 +25,7 @@ import type {
   OfficeDay,
   OrgChartData,
   OrgPanel,
-  SelectOption,
+  EmployeeOption,
   TeamRole,
 } from './types'
 import './org.css'
@@ -128,7 +129,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const [positions, setPositions] = useState<JobPosition[]>([])
   const [teamRoles, setTeamRoles] = useState<TeamRole[]>([])
   const [expertiseDirections, setExpertiseDirections] = useState<ExpertiseDirection[]>([])
-  const [employeeOptions, setEmployeeOptions] = useState<SelectOption[]>([])
+  const [employeeOptions, setEmployeeOptions] = useState<EmployeeOption[]>([])
   const [orgChart, setOrgChart] = useState<OrgChartData | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -141,7 +142,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const [showEmployeeModal, setShowEmployeeModal] = useState(false)
   const [showDepartmentModal, setShowDepartmentModal] = useState(false)
   const [showMemberModal, setShowMemberModal] = useState(false)
-  const [cardEmployeeId, setCardEmployeeId] = useState<number | null>(null)
+  const [cardEmployeeRef, setCardEmployeeRef] = useState<string | null>(null)
   const [cardDepartmentId, setCardDepartmentId] = useState<number | null>(null)
   const [expertiseDirectionId, setExpertiseDirectionId] = useState('')
   const [expertiseLevel, setExpertiseLevel] = useState('')
@@ -164,8 +165,6 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const photoInputRef = useRef<HTMLInputElement>(null)
   const userPickedAllCompany = useRef(savedOrgUi.allCompany)
 
-  const openEmployeeCard = (employeeId: number) => setCardEmployeeId(employeeId)
-  const closeEmployeeCard = () => setCardEmployeeId(null)
   const openDepartmentCard = (departmentId: number) => setCardDepartmentId(departmentId)
   const closeDepartmentCard = () => setCardDepartmentId(null)
 
@@ -187,6 +186,12 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
     for (const emp of employees) map.set(emp.id, emp)
     return map
   }, [employees])
+
+  const openEmployeeCard = (employeeRef: string) => setCardEmployeeRef(employeeRef)
+  const openEmployeeCardById = (employeeId: number) => {
+    setCardEmployeeRef(employeeApiRefFromId(employeeById, employeeId))
+  }
+  const closeEmployeeCard = () => setCardEmployeeRef(null)
   const cardDepartmentEmployees = useMemo(() => {
     if (cardDepartmentId === null) return []
     return employees
@@ -233,7 +238,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
         getJson<JobPosition[]>('/api/org/job-positions'),
         getJson<TeamRole[]>('/api/org/team-roles'),
         getJson<ExpertiseDirection[]>('/api/org/expertise-directions'),
-        getJson<SelectOption[]>('/api/org/employee-options'),
+        getJson<EmployeeOption[]>('/api/org/employee-options'),
       ])
       setDepartments(deptData)
       setEmployees(empData)
@@ -279,7 +284,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
           month: String(month + 1),
         })
         const response = await getJson<OfficeDay[]>(
-          `/api/org/employees/${employeeId}/office-days?${query.toString()}`,
+          `/api/org/employees/${employeeApiRefFromId(employeeById, employeeId)}/office-days?${query.toString()}`,
         )
         setEmployeeOfficeDays(response)
       } catch (err) {
@@ -520,7 +525,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
     const present = !employeeOfficeDaySet.has(day)
     setSavingEmployeeOfficeDay(day)
     try {
-      await putJson(`/api/org/employees/${editingEmployeeId}/office-days/range`, {
+      await putJson(`/api/org/employees/${employeeApiRefFromId(employeeById, editingEmployeeId)}/office-days/range`, {
         fromDay: day,
         toDay: day,
         present,
@@ -548,7 +553,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const uploadEmployeePhoto = async (employeeId: number, file: File) => {
     const form = new FormData()
     form.append('file', file)
-    await postForm(`/api/org/employees/${employeeId}/photo`, form)
+    await postForm(`/api/org/employees/${employeeApiRefFromId(employeeById, employeeId)}/photo`, form)
   }
 
   const saveEmployee = async (event: React.FormEvent) => {
@@ -571,7 +576,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
     try {
       let employeeId = editingEmployeeId
       if (editingEmployeeId) {
-        await patchJson(`/api/org/employees/${editingEmployeeId}`, {
+        await patchJson(`/api/org/employees/${employeeApiRefFromId(employeeById, editingEmployeeId)}`, {
           fullName: body.fullName,
           email: body.email,
           positionId: body.positionId,
@@ -602,7 +607,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const removeEmployee = async (id: number) => {
     if (!canManage || !window.confirm('Удалить сотрудника?')) return
     try {
-      await deleteJson(`/api/org/employees/${id}`)
+      await deleteJson(`/api/org/employees/${employeeApiRefFromId(employeeById, id)}`)
       await refreshAll()
     } catch (err) {
       notifyProblem(err, 'Ошибка удаления')
@@ -741,7 +746,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const addEmployeeExpertise = async () => {
     if (!editingEmployeeId || !expertiseDirectionId || !canManage) return
     try {
-      await postJson(`/api/org/employees/${editingEmployeeId}/expertise`, {
+      await postJson(`/api/org/employees/${employeeApiRefFromId(employeeById, editingEmployeeId)}/expertise`, {
         expertiseDirectionId: Number(expertiseDirectionId),
         level: expertiseLevel.trim() || null,
       })
@@ -761,7 +766,9 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
     if (!editingEmployeeId || !canManage) return
     if (!window.confirm('Удалить экспертизу?')) return
     try {
-      await deleteJson(`/api/org/employees/${editingEmployeeId}/expertise/${expertiseId}`)
+      await deleteJson(
+        `/api/org/employees/${employeeApiRefFromId(employeeById, editingEmployeeId)}/expertise/${expertiseId}`,
+      )
       await loadBase()
     } catch (err) {
       notifyProblem(err, 'Ошибка удаления экспертизы')
@@ -985,7 +992,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                         employeeId={row.employeeId}
                         name={row.fullName}
                         photoUrl={row.photoUrl}
-                        onOpen={openEmployeeCard}
+                        onOpen={openEmployeeCardById}
                       />
                     </td>
                     <td>{row.secondary}</td>
@@ -1091,7 +1098,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                       employeeId={emp.id}
                       name={emp.fullName}
                       photoUrl={emp.photoUrl}
-                      onOpen={openEmployeeCard}
+                      onOpen={openEmployeeCardById}
                     />
                   </td>
                   <td>{emp.position ?? '—'}</td>
@@ -1685,12 +1692,12 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
         </div>
       ) : null}
 
-      {cardEmployeeId !== null ? (
+      {cardEmployeeRef !== null ? (
         <EmployeeCardModal
-          employeeId={cardEmployeeId}
+          employeeRef={cardEmployeeRef}
           canManage={canManage}
           onClose={closeEmployeeCard}
-          onOpenEmployee={openEmployeeCard}
+          onOpenEmployee={(employeeRef) => setCardEmployeeRef(employeeRef)}
           onEdit={(employee: EmployeeDetail) => {
             closeEmployeeCard()
             openEditEmployee(employee)
@@ -1723,7 +1730,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                     className="org-department-card-person"
                     onClick={() => {
                       closeDepartmentCard()
-                      openEmployeeCard(cardDepartmentHead.id)
+                      openEmployeeCardById(cardDepartmentHead.id)
                     }}
                   >
                     <OrgPhoto
@@ -1750,7 +1757,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                           className="org-department-card-person"
                           onClick={() => {
                             closeDepartmentCard()
-                            openEmployeeCard(employee.id)
+                            openEmployeeCard(employeeApiRef(employee))
                           }}
                         >
                           <OrgPhoto

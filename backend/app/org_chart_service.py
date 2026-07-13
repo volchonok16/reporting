@@ -10,6 +10,7 @@ from app.org_photo_service import photo_public_url
 @dataclass
 class OrgChartPerson:
     employeeId: int
+    publicId: str
     fullName: str
     position: str | None = None
     email: str | None = None
@@ -112,6 +113,7 @@ def _build_node(
         memberId=member.id or None,
         person=OrgChartPerson(
             employeeId=member.employee_id,
+            publicId=str(member.employee.public_id) if member.employee else "",
             fullName=member.employee.full_name if member.employee else "",
             position=_display_position(member),
             email=_display_email(member),
@@ -165,6 +167,7 @@ def node_for_employee(employee: Employee, *, is_head: bool = False) -> OrgChartN
     return OrgChartNode(
         person=OrgChartPerson(
             employeeId=employee.id,
+            publicId=str(employee.public_id),
             fullName=employee.full_name,
             position=employee.position or (employee.job_position.name if employee.job_position else None),
             email=employee.email,
@@ -283,6 +286,7 @@ def _node_to_dict(node: OrgChartNode | None) -> dict[str, Any] | None:
         "memberId": node.memberId,
         "person": {
             "employeeId": node.person.employeeId,
+            "publicId": node.person.publicId,
             "fullName": node.person.fullName,
             "position": node.person.position,
             "email": node.person.email,

@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 class OrgChartPersonOut(BaseModel):
     employeeId: int
+    publicId: str
     fullName: str
     position: str | None = None
     email: str | None = None
@@ -154,12 +155,14 @@ class EmployeeDepartmentBriefOut(BaseModel):
 
 class EmployeeOut(BaseModel):
     id: int
+    publicId: str
     fullName: str
     email: str | None = None
     positionId: int | None = None
     position: str | None = None
     managerId: int | None = None
     managerName: str | None = None
+    managerPublicId: str | None = None
     photoUrl: str | None = None
     dailyWorkHours: Decimal
     isActive: bool
@@ -171,6 +174,7 @@ class EmployeeOut(BaseModel):
 
 class EmployeeBriefOut(BaseModel):
     id: int
+    publicId: str
     fullName: str
     position: str | None = None
 
@@ -245,6 +249,7 @@ class DepartmentMemberOut(BaseModel):
     id: int
     departmentId: int
     employeeId: int
+    employeePublicId: str
     employeeName: str
     teamRoleId: int | None = None
     teamRoleName: str | None = None
@@ -319,12 +324,19 @@ class SelectOptionOut(BaseModel):
     name: str
 
 
+class EmployeeOptionOut(BaseModel):
+    id: int
+    publicId: str
+    name: str
+
+
 TimeOffKind = Literal["vacation", "dayoff", "sick_leave", "business_trip"]
 EditableTimeOffKind = Literal["vacation", "dayoff", "sick_leave", "business_trip", "erase"]
 
 
 class VacationEmployeeOut(BaseModel):
     id: int
+    publicId: str
     fullName: str
     departmentName: str | None = None
     position: str | None = None
@@ -354,7 +366,7 @@ class VacationScheduleOut(BaseModel):
 
 
 class VacationRangeIn(BaseModel):
-    employeeId: int
+    employeeRef: str
     fromDay: str
     toDay: str
     kind: EditableTimeOffKind
@@ -426,7 +438,7 @@ class WorkspaceBookingToggleIn(BaseModel):
     placeId: int
     day: str
     action: WorkspaceBookingAction
-    employeeId: int | None = None
+    employeeRef: str | None = None
 
 
 class WorkspaceBookingToggleOut(BaseModel):

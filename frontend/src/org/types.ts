@@ -1,5 +1,6 @@
 export type OrgChartPerson = {
   employeeId: number
+  publicId: string
   fullName: string
   position?: string | null
   email?: string | null
@@ -101,12 +102,14 @@ export type OrgUserBrief = {
 
 export type Employee = {
   id: number
+  publicId: string
   fullName: string
   email?: string | null
   positionId?: number | null
   position?: string | null
   managerId?: number | null
   managerName?: string | null
+  managerPublicId?: string | null
   photoUrl?: string | null
   dailyWorkHours: number
   isActive: boolean
@@ -118,6 +121,7 @@ export type Employee = {
 
 export type EmployeeBrief = {
   id: number
+  publicId: string
   fullName: string
   position?: string | null
 }
@@ -160,6 +164,7 @@ export type DepartmentMember = {
   id: number
   departmentId: number
   employeeId: number
+  employeePublicId: string
   employeeName: string
   teamRoleId?: number | null
   teamRoleName?: string | null
@@ -184,6 +189,12 @@ export type SelectOption = {
   name: string
 }
 
+export type EmployeeOption = {
+  id: number
+  publicId: string
+  name: string
+}
+
 export type OrgPanel =
   | 'roster'
   | 'pyramid'
@@ -198,6 +209,7 @@ export type EditableTimeOffKind = TimeOffKind | 'erase'
 
 export type VacationEmployee = {
   id: number
+  publicId: string
   fullName: string
   departmentName?: string | null
   position?: string | null

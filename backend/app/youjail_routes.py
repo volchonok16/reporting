@@ -19,6 +19,7 @@ from app.youjail_schemas import (
     YouJailColumnOut,
     YouJailColumnUpdateIn,
     YouJailCommentOut,
+    YouJailCommentUpdateIn,
     YouJailExecuteIn,
     YouJailExecutionOut,
     YouJailProjectIn,
@@ -74,6 +75,7 @@ from app.youjail_service import (
     start_execution,
     toggle_board_pin,
     update_card,
+    update_card_comment,
     update_column,
     update_project,
     update_team,
@@ -546,6 +548,16 @@ async def api_create_card_comment(
     meta: dict = Depends(_load_session_meta),
 ) -> dict:
     return await create_card_comment(db, card_id, body_md=body_md, files=files, meta=meta)
+
+
+@router.patch("/comments/{comment_id}", response_model=YouJailCommentOut)
+def api_update_card_comment(
+    comment_id: int,
+    payload: YouJailCommentUpdateIn,
+    db: Session = Depends(get_db),
+    meta: dict = Depends(_load_session_meta),
+) -> dict:
+    return update_card_comment(db, comment_id, body_md=payload.bodyMd, meta=meta)
 
 
 @router.get("/comment-attachments/{attachment_id}/download")

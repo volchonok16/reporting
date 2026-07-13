@@ -38,9 +38,10 @@ function defaultMoveTargetId(columns: YouJailColumn[], excludeColumnId: number):
 
 type YouJailBoardProps = {
   canManageOrg?: boolean
+  orgEmployeeId?: number | null
 }
 
-export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps) {
+export default function YouJailBoard({ canManageOrg = false, orgEmployeeId = null }: YouJailBoardProps) {
   const [board, setBoard] = useState<YouJailBoard | null>(null)
   const [activeBoardId, setActiveBoardId] = useState<number | null>(() => {
     const saved = localStorage.getItem(BOARD_STORAGE_KEY)
@@ -993,6 +994,7 @@ export default function YouJailBoard({ canManageOrg = false }: YouJailBoardProps
         projects={board?.projects ?? []}
         allTags={board?.tags ?? []}
         canManageOrg={canManageOrg}
+        orgEmployeeId={orgEmployeeId}
         onClose={() => setSelectedCardId(null)}
         onOpenCard={handleOpenCard}
         onUpdated={handleCardUpdated}

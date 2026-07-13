@@ -235,7 +235,12 @@ class YouJailCommentOut(BaseModel):
     authorPhotoUrl: str | None = None
     createdAt: datetime
     updatedAt: datetime
+    canEdit: bool = False
     attachments: list[YouJailCommentAttachmentOut] = Field(default_factory=list)
+
+
+class YouJailCommentUpdateIn(BaseModel):
+    bodyMd: str = ""
 
 
 class YouJailExecutionLogOut(BaseModel):

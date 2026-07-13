@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from uuid import UUID
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import func, select, update
@@ -40,6 +41,7 @@ from app.org_schemas import (
     EmployeeExpertiseOut,
     EmployeeHeadedDepartmentOut,
     EmployeeIn,
+    EmployeeOptionOut,
     EmployeeOut,
     EmployeeUpdateIn,
     ExpertiseDirectionIn,
@@ -76,11 +78,34 @@ def _user_status_label(status: int) -> str:
     return "active"
 
 
+def resolve_employee(db: Session, employee_ref: str) -> Employee:
+    ref = employee_ref.strip()
+    if not ref:
+        raise HTTPException(status_code=404, detail="Сотрудник не найден.")
+    emp: Employee | None
+    try:
+        parsed_uuid = UUID(ref)
+    except ValueError:
+        parsed_uuid = None
+    if parsed_uuid is not None:
+        emp = db.scalar(select(Employee).where(Employee.public_id == parsed_uuid))
+    elif ref.isdigit():
+        emp = db.get(Employee, int(ref))
+    else:
+        emp = None
+    if emp is None:
+        raise HTTPException(status_code=404, detail="Сотрудник не найден.")
+    return emp
+
+
 def _employee_out(db: Session, emp: Employee) -> EmployeeOut:
     manager_name = None
+    manager_public_id = None
     if emp.manager_id:
         manager = db.get(Employee, emp.manager_id)
-        manager_name = manager.full_name if manager else None
+        if manager:
+            manager_name = manager.full_name
+            manager_public_id = str(manager.public_id)
     user_out = None
     if emp.user:
         user_out = OrgUserBriefOut(
@@ -107,12 +132,14 @@ def _employee_out(db: Session, emp: Employee) -> EmployeeOut:
     ] if emp.department_members else []
     return EmployeeOut(
         id=emp.id,
+        publicId=str(emp.public_id),
         fullName=emp.full_name,
         email=emp.email,
         positionId=emp.position_id,
         position=emp.position,
         managerId=emp.manager_id,
         managerName=manager_name,
+        managerPublicId=manager_public_id,
         photoUrl=photo_public_url(emp.photo_path),
         dailyWorkHours=emp.daily_work_hours,
         isActive=emp.is_active,
@@ -186,6 +213,7 @@ def _member_out(member: DepartmentMember) -> DepartmentMemberOut:
         id=member.id,
         departmentId=member.department_id,
         employeeId=member.employee_id,
+        employeePublicId=str(emp.public_id) if emp else "",
         employeeName=emp.full_name if emp else "",
         teamRoleId=member.team_role_id,
         teamRoleName=member.team_role.name if member.team_role else None,
@@ -337,11 +365,11 @@ def create_expertise_direction(db: Session, data: ExpertiseDirectionIn) -> Exper
     )
 
 
-def list_employee_options(db: Session) -> list[SelectOptionOut]:
+def list_employee_options(db: Session) -> list[EmployeeOptionOut]:
     rows = db.scalars(
         select(Employee).where(Employee.is_active.is_(True)).order_by(Employee.full_name)
     ).all()
-    return [SelectOptionOut(id=r.id, name=r.full_name) for r in rows]
+    return [EmployeeOptionOut(id=r.id, publicId=str(r.public_id), name=r.full_name) for r in rows]
 
 
 def list_employees(db: Session) -> list[EmployeeOut]:
@@ -358,7 +386,9 @@ def list_employees(db: Session) -> list[EmployeeOut]:
     return [_employee_out(db, r) for r in rows]
 
 
-def get_employee(db: Session, employee_id: int) -> EmployeeDetailOut:
+def get_employee(db: Session, employee_ref: str) -> EmployeeDetailOut:
+    emp = resolve_employee(db, employee_ref)
+    employee_id = emp.id
     emp = db.scalars(
         select(Employee)
         .options(
@@ -394,7 +424,13 @@ def get_employee(db: Session, employee_id: int) -> EmployeeDetailOut:
     return EmployeeDetailOut(
         **base.model_dump(exclude={"departments"}),
         subordinates=[
-            EmployeeBriefOut(id=s.id, fullName=s.full_name, position=s.position) for s in subordinates
+            EmployeeBriefOut(
+                id=s.id,
+                publicId=str(s.public_id),
+                fullName=s.full_name,
+                position=s.position,
+            )
+            for s in subordinates
         ],
         departments=[
             EmployeeDepartmentMembershipOut(
@@ -443,13 +479,12 @@ def create_employee(db: Session, data: EmployeeIn) -> EmployeeOut:
     if data.departmentIds:
         _sync_employee_departments(db, emp.id, data.departmentIds)
     db.commit()
-    return get_employee(db, emp.id)
+    return get_employee(db, str(emp.public_id))
 
 
-def update_employee(db: Session, employee_id: int, data: EmployeeUpdateIn) -> EmployeeOut:
-    emp = db.get(Employee, employee_id)
-    if emp is None:
-        raise HTTPException(status_code=404, detail="Сотрудник не найден.")
+def update_employee(db: Session, employee_ref: str, data: EmployeeUpdateIn) -> EmployeeOut:
+    emp = resolve_employee(db, employee_ref)
+    employee_id = emp.id
     if data.fullName is not None:
         emp.full_name = data.fullName.strip()
     if data.email is not None:
@@ -494,32 +529,28 @@ def update_employee(db: Session, employee_id: int, data: EmployeeUpdateIn) -> Em
     if data.departmentIds is not None:
         _sync_employee_departments(db, employee_id, data.departmentIds)
     db.commit()
-    return get_employee(db, employee_id)
+    return get_employee(db, str(emp.public_id))
 
 
-def delete_employee(db: Session, employee_id: int) -> None:
-    emp = db.get(Employee, employee_id)
-    if emp is None:
-        raise HTTPException(status_code=404, detail="Сотрудник не найден.")
+def delete_employee(db: Session, employee_ref: str) -> None:
+    emp = resolve_employee(db, employee_ref)
     delete_photo_file(emp.photo_path)
     db.delete(emp)
     db.commit()
 
 
-async def upload_employee_photo(db: Session, employee_id: int, file: UploadFile) -> EmployeeOut:
-    emp = db.get(Employee, employee_id)
-    if emp is None:
-        raise HTTPException(status_code=404, detail="Сотрудник не найден.")
+async def upload_employee_photo(db: Session, employee_ref: str, file: UploadFile) -> EmployeeOut:
+    emp = resolve_employee(db, employee_ref)
+    employee_id = emp.id
     delete_photo_file(emp.photo_path)
     emp.photo_path = await save_employee_photo(employee_id, file)
     db.commit()
-    return get_employee(db, employee_id)
+    return get_employee(db, str(emp.public_id))
 
 
-def add_employee_expertise(db: Session, employee_id: int, data: EmployeeExpertiseIn) -> EmployeeOut:
-    emp = db.get(Employee, employee_id)
-    if emp is None:
-        raise HTTPException(status_code=404, detail="Сотрудник не найден.")
+def add_employee_expertise(db: Session, employee_ref: str, data: EmployeeExpertiseIn) -> EmployeeOut:
+    emp = resolve_employee(db, employee_ref)
+    employee_id = emp.id
     direction = db.get(ExpertiseDirection, data.expertiseDirectionId)
     if direction is None:
         raise HTTPException(status_code=404, detail="Направление экспертизы не найдено.")
@@ -539,16 +570,18 @@ def add_employee_expertise(db: Session, employee_id: int, data: EmployeeExpertis
         )
     )
     db.commit()
-    return get_employee(db, employee_id)
+    return get_employee(db, str(emp.public_id))
 
 
-def delete_employee_expertise(db: Session, employee_id: int, expertise_id: int) -> EmployeeOut:
+def delete_employee_expertise(db: Session, employee_ref: str, expertise_id: int) -> EmployeeOut:
+    emp = resolve_employee(db, employee_ref)
+    employee_id = emp.id
     row = db.get(EmployeeExpertise, expertise_id)
     if row is None or row.employee_id != employee_id:
         raise HTTPException(status_code=404, detail="Экспертиза не найдена.")
     db.delete(row)
     db.commit()
-    return get_employee(db, employee_id)
+    return get_employee(db, str(emp.public_id))
 
 
 def list_departments(db: Session) -> list[DepartmentOut]:

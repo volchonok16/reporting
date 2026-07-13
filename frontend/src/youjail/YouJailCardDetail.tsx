@@ -18,6 +18,7 @@ type YouJailCardDetailProps = {
   projects: YouJailProject[]
   allTags: YouJailTag[]
   canManageOrg?: boolean
+  orgEmployeeId?: number | null
   onClose: () => void
   onUpdated: (card: YouJailCard) => void
   onDeleted: (cardId: number) => void
@@ -50,6 +51,7 @@ export default function YouJailCardDetail({
   projects,
   allTags,
   canManageOrg = false,
+  orgEmployeeId = null,
   onClose,
   onUpdated,
   onDeleted,
@@ -59,7 +61,7 @@ export default function YouJailCardDetail({
   const [card, setCard] = useState<YouJailCard | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [mentionEmployeeId, setMentionEmployeeId] = useState<number | null>(null)
+  const [mentionEmployeeRef, setMentionEmployeeRef] = useState<string | null>(null)
   const [runningAction, setRunningAction] = useState<string | null>(null)
 
   const loadCard = useCallback(async () => {
@@ -353,7 +355,7 @@ export default function YouJailCardDetail({
                   placeholder="Текст задачи, детали, чек-лист…"
                   onChange={(descriptionMd) => setCard({ ...card, descriptionMd })}
                   onBlur={() => void saveCard({ descriptionMd: card.descriptionMd })}
-                  onMentionClick={setMentionEmployeeId}
+                  onMentionClick={setMentionEmployeeRef}
                 />
               </section>
 
@@ -361,7 +363,10 @@ export default function YouJailCardDetail({
                 cardId={card.id}
                 comments={card.comments ?? []}
                 disabled={saving}
+                canManageOrg={canManageOrg}
+                orgEmployeeId={orgEmployeeId}
                 onCommentAdded={() => void loadCard()}
+                onMentionClick={setMentionEmployeeRef}
               />
 
               <div className="youjail-detail-grid">
@@ -430,12 +435,12 @@ export default function YouJailCardDetail({
         ) : null}
       </aside>
 
-      {mentionEmployeeId !== null ? (
+      {mentionEmployeeRef !== null ? (
         <EmployeeCardModal
-          employeeId={mentionEmployeeId}
+          employeeRef={mentionEmployeeRef}
           canManage={canManageOrg}
-          onClose={() => setMentionEmployeeId(null)}
-          onOpenEmployee={setMentionEmployeeId}
+          onClose={() => setMentionEmployeeRef(null)}
+          onOpenEmployee={setMentionEmployeeRef}
         />
       ) : null}
     </div>

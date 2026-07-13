@@ -1,3 +1,4 @@
+import { employeeApiRef } from './employeeMentions'
 import { ORG_TREE_MAX_SIBLINGS_PER_ROW } from './orgChartLayout'
 import type { DepartmentBlock, OrgChartNode } from './types'
 import ManualOrgChartView from './ManualOrgChartView'
@@ -20,7 +21,7 @@ type OrgChartViewProps = {
   departmentId?: number | null
   framed?: boolean
   canManage?: boolean
-  onEmployeeClick?: (employeeId: number) => void
+  onEmployeeClick?: (employeeRef: string) => void
   onDepartmentClick?: (departmentId: number) => void
 }
 
@@ -29,7 +30,7 @@ function PersonCard({
   onEmployeeClick,
 }: {
   node: OrgChartNode
-  onEmployeeClick?: (employeeId: number) => void
+  onEmployeeClick?: (employeeRef: string) => void
 }) {
   const { person } = node
 
@@ -57,7 +58,7 @@ function PersonCard({
         <button
           type="button"
           className="org-person-card-button"
-          onClick={() => onEmployeeClick(person.employeeId)}
+          onClick={() => onEmployeeClick(employeeApiRef(person))}
         >
           {cardBody}
         </button>
@@ -73,7 +74,7 @@ function OrgTreeChildren({
   onEmployeeClick,
 }: {
   children: OrgChartNode[]
-  onEmployeeClick?: (employeeId: number) => void
+  onEmployeeClick?: (employeeRef: string) => void
 }) {
   const rows =
     children.length <= ORG_TREE_MAX_SIBLINGS_PER_ROW
@@ -108,7 +109,7 @@ function OrgTreeNode({
   onEmployeeClick,
 }: {
   node: OrgChartNode
-  onEmployeeClick?: (employeeId: number) => void
+  onEmployeeClick?: (employeeRef: string) => void
 }) {
   return (
     <li className="org-tree-node">
@@ -125,7 +126,7 @@ function OrgTreeRoots({
   onEmployeeClick,
 }: {
   roots: OrgChartNode[]
-  onEmployeeClick?: (employeeId: number) => void
+  onEmployeeClick?: (employeeRef: string) => void
 }) {
   if (roots.length === 0) {
     return null
@@ -152,7 +153,7 @@ function CompanyPyramid({
   departments: DepartmentBlock[]
   standaloneRoots?: OrgChartNode[]
   canManage?: boolean
-  onEmployeeClick?: (employeeId: number) => void
+  onEmployeeClick?: (employeeRef: string) => void
   onDepartmentClick?: (departmentId: number) => void
 }) {
   return (
