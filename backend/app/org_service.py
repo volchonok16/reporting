@@ -949,7 +949,7 @@ def load_profile(db: Session, *, org_user_id: int | None, app_login: str | None,
             role = "admin" if user.role == ORG_USER_ROLE_ADMIN else "user"
             emp = get_employee_for_org_user(db, org_user_id)
             if emp:
-                employee_out = get_employee(db, emp.id)
+                employee_out = get_employee(db, str(emp.public_id))
     return ProfileOut(email=email, role=role, employee=employee_out)  # type: ignore[arg-type]
 
 
