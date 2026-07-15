@@ -1,13 +1,7 @@
--- jmc → gmc в колонке влияния
+-- Историческая миграция jmc→gmc.
+-- Не перезаписывает cells: ключ «Влияние на jmc» читается как alias в backend.
 
 COMMENT ON COLUMN revenue_activity_row.cells IS
-  'JSON: Активность, Влияние на базу/выручку/gmc, Комментарий, Результат (сумма числовых) → текст ячейки';
+  'JSON: Активность, влияния (в т.ч. gmc), Комментарий; legacy jmc читается без UPDATE';
 
-UPDATE revenue_activity_row
-SET cells = (cells - 'Влияние на jmc')
-    || jsonb_build_object(
-      'Влияние на gmc',
-      COALESCE(NULLIF(cells->>'Влияние на gmc', ''), cells->>'Влияние на jmc', '')
-    ),
-    updated_at = NOW()
-WHERE cells ? 'Влияние на jmc';
+SELECT 1;

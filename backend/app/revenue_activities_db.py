@@ -94,9 +94,20 @@ def _format_numeric(value: float) -> str:
 
 
 def _source_cell_value(source: dict[str, Any], column: str) -> str:
+    """Берёт значение колонки; пустые новые ключи не затирают непустые legacy-алиасы."""
+    fallback = ""
+    seen = False
     for key in _COLUMN_SOURCE_KEYS.get(column, (column,)):
-        if key in source and source.get(key) is not None:
-            return str(source.get(key))
+        if key not in source or source.get(key) is None:
+            continue
+        value = str(source.get(key))
+        seen = True
+        if value.strip():
+            return value
+        if not fallback:
+            fallback = value
+    if seen:
+        return fallback
     value = source.get(column, "")
     return "" if value is None else str(value)
 

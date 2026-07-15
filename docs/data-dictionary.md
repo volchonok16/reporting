@@ -202,3 +202,9 @@
 | `revenue_activity_row` | `section_id`, `sort_order`, `cells` | Строки; «Активность», «Статус F2 2026», «Ответственный», влияния (тыс/млн), «Комментарий» |
 | `revenue_activity_history` | `section_id`, `row_id`, `action` | Журнал create/update/delete/restore |
 | `revenue_activity_snapshot` | `section_id`, `rows`, `changed_by` | Снимок для отката версии |
+
+## schema_migration — журнал SQL-миграций
+
+| Таблица | Ключевые поля | Назначение |
+|---------|---------------|------------|
+| `schema_migration` | `name`, `applied_at` | Какие файлы `db/migrations/*` уже применил `ensure_startup_schema` |

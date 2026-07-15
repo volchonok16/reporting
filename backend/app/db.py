@@ -116,8 +116,50 @@ def _ensure_app_user_grants(conn) -> None:
             pass
 
 
+def _migration_file_path(migration_name: str) -> Path | None:
+    candidates = [
+        Path(__file__).resolve().parents[2] / "db" / "migrations" / migration_name,
+        Path(__file__).resolve().parents[1] / "migrations" / migration_name,
+    ]
+    return next((path for path in candidates if path.is_file()), None)
+
+
+def _ensure_schema_migration_table(conn) -> None:
+    tracking_path = _migration_file_path("000_schema_migration.sql")
+    if tracking_path is not None:
+        _execute_startup_sql(conn, tracking_path.read_text(encoding="utf-8"))
+        return
+    _execute_startup_sql(
+        conn,
+        """
+        CREATE TABLE IF NOT EXISTS schema_migration (
+            name         VARCHAR(255) PRIMARY KEY,
+            applied_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+        """,
+    )
+
+
+def _applied_migrations(conn) -> set[str]:
+    result = conn.execute(text("SELECT name FROM schema_migration"))
+    return {str(row[0]) for row in result}
+
+
+def _mark_migration_applied(conn, migration_name: str) -> None:
+    conn.execute(
+        text(
+            """
+            INSERT INTO schema_migration (name)
+            VALUES (:name)
+            ON CONFLICT (name) DO NOTHING
+            """
+        ),
+        {"name": migration_name},
+    )
+
+
 def ensure_startup_schema() -> None:
-    """Idempotent DDL on app startup. Safe with multiple uvicorn workers."""
+    """Apply pending SQL migrations once (tracked in schema_migration). Safe with multiple workers."""
     org_migration_names = (
         "005_org_structure.sql",
         "006_vacation_schedule.sql",
@@ -149,15 +191,6 @@ def ensure_startup_schema() -> None:
         "034_revenue_activities_status_owner.sql",
         "035_revenue_activities_filters_columns.sql",
     )
-    org_migrations: list[str] = []
-    for migration_name in org_migration_names:
-        candidates = [
-            Path(__file__).resolve().parents[2] / "db" / "migrations" / migration_name,
-            Path(__file__).resolve().parents[1] / "migrations" / migration_name,
-        ]
-        migration_path = next((path for path in candidates if path.is_file()), None)
-        if migration_path is not None:
-            org_migrations.append(migration_path.read_text(encoding="utf-8"))
 
     auth_session_sql = """
         CREATE TABLE IF NOT EXISTS auth_session (
@@ -174,8 +207,52 @@ def ensure_startup_schema() -> None:
                 {"lock_id": _STARTUP_MIGRATION_LOCK_ID},
             )
             _execute_startup_sql(conn, auth_session_sql)
-            for sql in org_migrations:
-                _execute_startup_sql(conn, sql)
+            _ensure_schema_migration_table(conn)
+            applied = _applied_migrations(conn)
+
+            # Уже развёрнутая БД без журнала: только отмечаем миграции как применённые.
+            # Никаких data-UPDATE по revenue/cells — данные не перезаписываем.
+            if not applied:
+                existing_db = bool(
+                    conn.execute(
+                        text(
+                            """
+                            SELECT EXISTS (
+                                SELECT 1
+                                FROM information_schema.tables
+                                WHERE table_schema = 'public'
+                                  AND table_name IN (
+                                      'task',
+                                      'employee',
+                                      'b2b_product_status_row',
+                                      'revenue_activity_row'
+                                  )
+                            )
+                            """
+                        )
+                    ).scalar_one()
+                )
+                if existing_db:
+                    for migration_name in org_migration_names:
+                        _mark_migration_applied(conn, migration_name)
+                    logger.info(
+                        "schema_migration: существующая БД — зафиксировано %s миграций, данные не трогаем",
+                        len(org_migration_names),
+                    )
+                    _ensure_app_user_grants(conn)
+                    return
+
+            for migration_name in org_migration_names:
+                if migration_name in applied:
+                    continue
+                migration_path = _migration_file_path(migration_name)
+                if migration_path is None:
+                    logger.warning("Миграция не найдена: %s", migration_name)
+                    continue
+                _execute_startup_sql(conn, migration_path.read_text(encoding="utf-8"))
+                _mark_migration_applied(conn, migration_name)
+                logger.info("Применена миграция %s", migration_name)
+
             _ensure_app_user_grants(conn)
 
 

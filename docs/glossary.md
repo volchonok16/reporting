@@ -1140,6 +1140,8 @@ API: `GET /api/revenue-activities`, `POST /api/revenue-activities/save`, `GET /a
 
 История и снимки (`revenue_activity_history`, `revenue_activity_snapshot`) старше 28 дней удаляются автоматически (см. `B2B_AUDIT_RETENTION_DAYS`); строки `revenue_activity_row` не удаляются.
 
+Миграции схемы учитываются в таблице `schema_migration` и не перезапускаются при каждом старте backend (это защищает данные «Активности по выручкам» от повторных data-UPDATE).
+
 ---
 
 ## Вкладка «Отделы» (UI)

@@ -89,7 +89,7 @@
 
 Диаграммы: [diagrams.md](diagrams.md) · глоссарий API подробнее: [glossary.md](glossary.md).
 
-## Таблицы (36) + представления (4)
+## Таблицы (37) + представления (4)
 
 ### Справочники и маппинг
 
@@ -144,6 +144,7 @@
 | `revenue_activity_row` | Строки таблицы активностей (`cells`: Активность, Статус F2 2026, Ответственный, влияния тыс/млн, Комментарий) |
 | `revenue_activity_history` | История изменений активностей по выручкам |
 | `revenue_activity_snapshot` | Снимки версий для отката |
+| `schema_migration` | Журнал применённых SQL-миграций (`ensure_startup_schema`) |
 | `person` | Человек |
 | `person_external` | ID пользователя в Jira/TFS/Trello |
 

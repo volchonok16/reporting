@@ -1106,3 +1106,13 @@ CREATE TABLE revenue_activity_snapshot (
 
 CREATE INDEX idx_revenue_activity_snapshot_section
     ON revenue_activity_snapshot (section_id, created_at DESC, id DESC);
+
+-- -----------------------------------------------------------------------------
+-- Журнал миграций schema
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE schema_migration (
+    name         VARCHAR(255) PRIMARY KEY,
+    applied_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
