@@ -41,6 +41,33 @@ export function formatRevenueNumber(value: number): string {
   return String(Number(value.toPrecision(12)))
 }
 
+/** Сумма только по числовым ячейкам; текстовые поля игнорируются. */
+export function computeRevenueResult(
+  row: Record<string, string>,
+  sourceColumns: readonly string[] = REVENUE_NUMERIC_COLUMNS,
+): string {
+  let total = 0
+  let hasValue = false
+  for (const column of sourceColumns) {
+    const parsed = parseRevenueNumber(row[column])
+    if (parsed === null) continue
+    total += parsed
+    hasValue = true
+  }
+  return hasValue ? formatRevenueNumber(total) : ''
+}
+
+export function withRevenueResult(
+  row: Record<string, string>,
+  sourceColumns: readonly string[] = REVENUE_NUMERIC_COLUMNS,
+  sumColumn: string = REVENUE_SUM_COLUMN,
+): Record<string, string> {
+  return {
+    ...row,
+    [sumColumn]: computeRevenueResult(row, sourceColumns),
+  }
+}
+
 /** Итоги по колонкам: суммируются только числовые значения, текст игнорируется. */
 export function computeRevenueColumnTotals(
   rows: Array<Record<string, string>>,
