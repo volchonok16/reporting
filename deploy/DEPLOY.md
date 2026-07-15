@@ -17,6 +17,23 @@
 COMPOSE_CMD=docker-compose
 ```
 
+### Закрытый сервер (offline)
+
+Если `docker pull` падает с `i/o timeout` — сервер не достучался до Docker Hub. Соберите bundle на машине с интернетом и перенесите архив:
+
+```bash
+# Mac / CI
+bash scripts/offline-bundle.sh dist/reporting-offline.tar linux/amd64
+scp dist/reporting-offline.tar user@SERVER:/tmp/
+
+# сервер
+cd ~/app/database/b2bproduct   # путь к репозиторию
+git pull
+bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel
+```
+
+Подробнее: [docs/docker.md](../docs/docker.md#закрытый-сервер-без-docker-hub).
+
 ### Только Docker (без nginx) — вручную
 
 **Обычное обновление на сервере** (git pull + пересборка + туннель PostgreSQL для DBeaver):

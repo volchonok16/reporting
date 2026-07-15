@@ -16,6 +16,36 @@ sudo bash scripts/production.sh
 
 Скрипт поднимает Docker, nginx и при необходимости certbot. См. [deploy/DEPLOY.md](../deploy/DEPLOY.md).
 
+## Закрытый сервер (без Docker Hub)
+
+На корпоративных VPS исходящий доступ к `registry-1.docker.io` часто закрыт (`i/o timeout` при `docker pull`). VPN на Mac **не помогает** — интернет нужен самому серверу.
+
+**Сборка bundle** (Mac/CI с интернетом и Docker):
+
+```bash
+bash scripts/offline-bundle.sh
+# явная платформа для x86-сервера:
+bash scripts/offline-bundle.sh dist/reporting-offline.tar linux/amd64
+```
+
+Создаёт `dist/reporting-offline.tar` (образы `reporting/*`) и manifest. Архив **не коммитят** — копируют на сервер:
+
+```bash
+scp dist/reporting-offline.tar root@SERVER:/tmp/
+```
+
+**Деплой на сервере** (после `git pull` и `.env`):
+
+```bash
+bash scripts/offline-deploy.sh /tmp/reporting-offline.tar
+# с туннелем PostgreSQL для DBeaver:
+bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel
+```
+
+Compose-файлы: `docker-compose.prod.yml` + `docker-compose.offline.yml` (`pull_policy: never`, фиксированные теги).
+
+Обновление версии: заново `offline-bundle.sh` на машине с интернетом → `scp` → `offline-deploy.sh` на сервере.
+
 ## Полный стек вручную (dev)
 
 ```bash

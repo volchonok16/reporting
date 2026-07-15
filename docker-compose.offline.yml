@@ -1,0 +1,31 @@
+# Offline / air-gapped deploy: фиксированные имена образов, без pull с Docker Hub.
+# Сборка bundle: bash scripts/offline-bundle.sh
+# На сервере: bash scripts/offline-deploy.sh dist/reporting-offline.tar
+
+services:
+  postgres:
+    image: reporting/postgres:16-alpine
+    pull_policy: never
+
+  backend:
+    image: reporting/backend:offline
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+
+  frontend:
+    image: reporting/frontend:offline
+    pull_policy: never
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+
+  minio:
+    image: reporting/minio:2025-04-22
+    pull_policy: never
+
+  minio-init:
+    image: reporting/minio-mc:2025-04-08
+    pull_policy: never

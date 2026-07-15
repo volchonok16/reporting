@@ -18,3 +18,7 @@ Desktop.ini
 
 # PlantUML export (генерируйте локально при необходимости)
 plantuml/out/
+
+# Offline Docker bundle (собирается локально, переносится scp)
+dist/*.tar
+dist/*.manifest.txt
