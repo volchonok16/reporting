@@ -38,6 +38,8 @@ REVENUE_SUM_COLUMN = "Результат"
 REVENUE_ACTIVITY_SECTION_COLUMNS: dict[str, tuple[str, ...]] = {
     "main": (
         "Активность",
+        "Статус",
+        "Ответственный",
         "Влияние на базу",
         "Влияние на выручку",
         "Влияние на gmc",

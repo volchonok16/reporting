@@ -1768,6 +1768,14 @@ body {
   width: 220px;
 }
 
+.product-status-table col.col-status-text {
+  width: 120px;
+}
+
+.product-status-table col.col-owner {
+  width: 140px;
+}
+
 .product-status-table col.col-presentation-flag {
   width: 76px;
 }

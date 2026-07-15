@@ -352,6 +352,8 @@ function resolveColumnClass(column: string): string | undefined {
   if (key.includes('комментар')) return 'col-comment'
   if (key.startsWith('влияние на') || key === 'результат') return 'col-numeric'
   if (key === 'активность') return 'col-activity'
+  if (key === 'статус') return 'col-status-text'
+  if (key.includes('ответственн')) return 'col-owner'
   return undefined
 }
 

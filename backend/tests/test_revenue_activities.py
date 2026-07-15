@@ -19,6 +19,8 @@ from app.revenue_activities_db import (
 def test_revenue_section_columns() -> None:
     assert REVENUE_ACTIVITY_SECTION_COLUMNS["main"] == (
         "Активность",
+        "Статус",
+        "Ответственный",
         "Влияние на базу",
         "Влияние на выручку",
         "Влияние на gmc",
@@ -49,7 +51,9 @@ def test_normalize_cells_fills_missing_and_sums() -> None:
     assert cells["Активность"] == "Акция"
     assert cells["Комментарий"] == "ок"
     assert cells["Результат"] == "13.5"
-    assert len(cells) == 6
+    assert len(cells) == 8
+    assert cells["Статус"] == ""
+    assert cells["Ответственный"] == ""
 
 
 def test_normalize_ignores_text_in_numeric_columns() -> None:

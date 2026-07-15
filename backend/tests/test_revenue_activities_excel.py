@@ -17,6 +17,8 @@ def test_revenue_excel_exports_numbers_as_numeric_cells() -> None:
                 name="Активности по выручкам",
                 columns=[
                     "Активность",
+                    "Статус",
+                    "Ответственный",
                     "Влияние на базу",
                     "Влияние на выручку",
                     "Влияние на gmc",
@@ -26,6 +28,8 @@ def test_revenue_excel_exports_numbers_as_numeric_cells() -> None:
                 rows=[
                     {
                         "Активность": "Пилот",
+                        "Статус": "В работе",
+                        "Ответственный": "Иванов",
                         "Влияние на базу": "10",
                         "Влияние на выручку": "2,5",
                         "Влияние на gmc": "1",
@@ -45,20 +49,24 @@ def test_revenue_excel_exports_numbers_as_numeric_cells() -> None:
     workbook = load_workbook(io.BytesIO(content))
     sheet = workbook["Активности по выручкам"]
     assert sheet["A1"].value == "Активность"
-    assert sheet["D1"].value == "Влияние на gmc"
+    assert sheet["B1"].value == "Статус"
+    assert sheet["C1"].value == "Ответственный"
+    assert sheet["F1"].value == "Влияние на gmc"
     assert sheet["A2"].value == "Пилот"
-    assert sheet["B2"].value == 10
-    assert sheet["C2"].value == 2.5
-    assert sheet["D2"].value == 1
-    assert sheet["E2"].value == "ок"
-    assert sheet["F2"].value == 13.5
-    assert isinstance(sheet["B2"].value, (int, float))
-    assert isinstance(sheet["F2"].value, float)
+    assert sheet["B2"].value == "В работе"
+    assert sheet["C2"].value == "Иванов"
+    assert sheet["D2"].value == 10
+    assert sheet["E2"].value == 2.5
+    assert sheet["F2"].value == 1
+    assert sheet["G2"].value == "ок"
+    assert sheet["H2"].value == 13.5
+    assert isinstance(sheet["D2"].value, (int, float))
+    assert isinstance(sheet["H2"].value, float)
     assert sheet["A3"].value == "Итого"
-    assert sheet["B3"].value == 10
-    assert sheet["C3"].value == 2.5
-    assert sheet["D3"].value == 1
-    assert sheet["F3"].value == 13.5
+    assert sheet["D3"].value == 10
+    assert sheet["E3"].value == 2.5
+    assert sheet["F3"].value == 1
+    assert sheet["H3"].value == 13.5
 
 
 def test_revenue_excel_keeps_non_numeric_influence_as_text() -> None:
