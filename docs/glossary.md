@@ -1001,7 +1001,9 @@ API: префикс `/api/youjail/*`. `DELETE /api/youjail/boards/{id}`, `POST /
 
 ## b2b_product_status_office — продуктовые офисы B2B
 
-Вкладки экрана «Статус продукта B2B» (SMS, VOICE, CORE и т.д.). Данные таблицы хранятся в PostgreSQL, без Google Sheets.
+Вкладки экрана «Статус продукта B2B» (SMS, VOICE, CORE, Аналитики, Проекты и т.д.). Данные таблицы хранятся в PostgreSQL, без Google Sheets.
+
+Seed: миграция `013_b2b_product_status.sql` — SMS, VOICE, Перспективные продукты, M2M / IoT, Продуктовый маркетинг, CORE, CORE (операционка); `030_b2b_product_status_offices_analytics_projects.sql` — Аналитики (`gid=analytics`), Проекты (Саша и Ваня) (`gid=projects`).
 
 | Поле | Тип | Описание |
 |------|-----|----------|

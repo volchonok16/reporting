@@ -130,7 +130,7 @@
 | `youjail_attachment` | Вложения карточек |
 | `youjail_execution` | Запуски исполнителя |
 | `youjail_execution_log` | Лог stdout/stderr/system |
-| `b2b_product_status_office` | Продуктовые офисы B2B (вкладки статуса продукта) |
+| `b2b_product_status_office` | Продуктовые офисы B2B (вкладки статуса: SMS, VOICE, CORE, Аналитики, Проекты и др.) |
 | `b2b_product_status_row` | Строки таблицы «Статус продукта B2B» (`cells` jsonb) |
 | `b2b_product_status_history` | История изменений строк статуса продукта B2B |
 | `b2b_product_status_snapshot` | Снимки версий офиса для отката к сохранённому состоянию |
