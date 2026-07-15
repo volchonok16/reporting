@@ -595,14 +595,23 @@
 
 ## Веб-приложение reporting
 
-Дашборд ЗНИ: FastAPI + Vite, домен production — **pallink.fun**.
+Дашборд-workbook: FastAPI + Vite; production — nginx + HTTPS (хосты в `.env` / `CERTBOT_DOMAINS`, см. [deploy/DEPLOY.md](../deploy/DEPLOY.md)).
+
+**Вкладки UI:** ЗНИ · Статус продукта B2B · Планы Digital · Доска (YouJail) · Staffing · Диаграммы (+ личный кабинет).
 
 | Компонент | Путь / URL | Назначение |
 |-----------|------------|------------|
-| Frontend | `frontend/`, `https://pallink.fun` | React UI: вход (логин/PAT), дашборд, экспорт |
-| Backend | `backend/`, `https://api.pallink.fun` | REST API, TFS sync, сессии |
+| Frontend | `frontend/`, HTTPS UI | React workbook |
+| Backend | `backend/`, HTTPS API | REST: TFS, org, youjail, B2B+PPTX |
+| PostgreSQL | `postgres:5432`, volume `reporting_pgdata` | Доменные данные (в т.ч. B2B в БД) |
+| MinIO | `:9000` API / `:9001` Console, volume `reporting_miniodata` | Фото (`MINIO_BUCKET=photos`) |
+| minio-init | one-shot `mc` | Создание bucket + anonymous download |
+| `YOUJAIL_WORKSPACE_DIR` | диск backend | Вложения / worktree доски |
+| `ORG_UPLOADS_DIR` | `/app/uploads` | Fallback фото без MinIO |
+| PPTX template | `assets/Status.pptx` | Генерация презентаций B2B |
 | nginx | `deploy/nginx/` | HTTPS, reverse proxy на :5173 и :8000 |
-| certbot | `scripts/production.sh` | Let's Encrypt для pallink.fun |
+| certbot | `scripts/production.sh` | Let's Encrypt (`CERTBOT_DOMAINS`) |
+| FineBI | JDBC → Postgres | Views `v_*` |
 
 Аутентификация: `POST /api/auth/login` — **PAT** (свой токен) или **логин/пароль** приложения (`APP_AUTH_USERS`, выгрузка через `TFS_SYNC_PAT`) → `auth_session` → `X-Session-Id`. Секреты TFS не отдаются клиенту.
 

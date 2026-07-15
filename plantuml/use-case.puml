@@ -1,59 +1,114 @@
 @startuml use-case
 left to right direction
 skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam roundCorner 8
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam ArrowColor #42526E
+skinparam actorBackgroundColor #DEEBFF
+skinparam actorBorderColor #0052CC
+skinparam usecaseBackgroundColor #FFFFFF
+skinparam usecaseBorderColor #0052CC
+skinparam packageBackgroundColor #F4F5F7
+skinparam packageBorderColor #DFE1E6
+skinparam rectangleBackgroundColor #FFFFFF
+skinparam rectangleBorderColor #DFE1E6
 
-title Use Case — reporting (ЗНИ + единая БД)
+title Use Case — reporting
 
-actor "Аналитик" as analyst
-actor "Администратор" as admin
+actor "Пользователь" as user
+actor "Администратор org" as admin
 actor "FineBI" as bi
 
 rectangle "Система reporting" {
 
-  package "Веб-приложение (pallink.fun)" {
-    usecase "Вход по PAT TFS" as UC_AUTH
-    usecase "Дашборд ЗНИ\n(фильтры, метрики)" as UC_DASH
-    usecase "Синхронизация\nиз TFS" as UC_SYNC
-    usecase "Экспорт CSV\n(ЗНИ + ошибки)" as UC_EXPORT
-    usecase "Все доски /\nодна доска" as UC_BOARD
+  package "Вход и профиль" {
+    usecase "Вход PAT / email+пароль" as UC_AUTH
+    usecase "Личный кабинет\nфото, офис, пароль" as UC_PROFILE
+  }
+
+  package "ЗНИ" {
+    usecase "Дашборд ЗНИ\nметрики, фильтры" as UC_DASH
+    usecase "Синхронизация TFS" as UC_SYNC
+    usecase "Экспорт CSV" as UC_EXPORT
+    usecase "Выбор доски TFS" as UC_BOARD
+  }
+
+  package "Статус продукта B2B" {
+    usecase "Таблица статуса\nпо офисам" as UC_B2B
+    usecase "Новости и запуски" as UC_NEWS
+    usecase "Генерация PPTX\nпрезентации" as UC_PPTX
+  }
+
+  package "Планы Digital" {
+    usecase "Roadmap колбаски\nприоритет / комментарий" as UC_ROADMAP
+  }
+
+  package "Доска YouJail" {
+    usecase "Kanban доски\nкарточки, теги" as UC_YJ
+    usecase "Связь карточки ↔ ЗНИ" as UC_YJ_ZNI
+  }
+
+  package "Staffing" {
+    usecase "График отпусков" as UC_VAC
+    usecase "Бронь мест" as UC_BOOK
+    usecase "Сотрудники в офисе" as UC_OFFICE
+    usecase "Состав / пирамида\nоргсхема" as UC_ORG
+    usecase "Фото в MinIO" as UC_PHOTO
+  }
+
+  package "Диаграммы" {
+    usecase "Конструктор диаграмм\n(UI)" as UC_DIAG
   }
 
   package "Отчётность BI" {
     usecase "Время в статусах" as UC2
     usecase "Время в бэклоге" as UC3
     usecase "Загрузка команды" as UC4
-    usecase "Отгрузка в релиз" as UC5
-  }
-
-  package "Администрирование" {
-    usecase "Маппинг полей\nи статусов" as UC6
   }
 
   package "Интеграция TFS" {
     usecase "WIQL → Batch ЗНИ" as UC9A
-    usecase "WIQL связи\nЗНИ → Ошибка" as UC9B
+    usecase "Связи ЗНИ → Ошибка" as UC9B
     usecase "Upsert task" as UC9C
     usecase "Аудит sync_run" as UC16
   }
 }
 
-analyst --> UC_AUTH
-analyst --> UC_DASH
-analyst --> UC_SYNC
-analyst --> UC_EXPORT
-analyst --> UC_BOARD
+user --> UC_AUTH
+user --> UC_PROFILE
+user --> UC_DASH
+user --> UC_SYNC
+user --> UC_EXPORT
+user --> UC_BOARD
+user --> UC_B2B
+user --> UC_NEWS
+user --> UC_PPTX
+user --> UC_ROADMAP
+user --> UC_YJ
+user --> UC_YJ_ZNI
+user --> UC_VAC
+user --> UC_BOOK
+user --> UC_OFFICE
+user --> UC_ORG
+user --> UC_DIAG
+user --> UC_PHOTO
+
+admin --> UC_ORG
+admin --> UC_BOOK
+admin --> UC_VAC
+admin --> UC_PHOTO
 
 bi --> UC2
 bi --> UC3
 bi --> UC4
-bi --> UC5
-
-admin --> UC6
 
 UC_SYNC ..> UC9A : <<include>>
 UC_SYNC ..> UC9B : <<include>>
 UC_SYNC ..> UC9C : <<include>>
 UC_SYNC ..> UC16 : <<include>>
 UC_DASH ..> UC_AUTH : <<include>>
+UC_PPTX ..> UC_B2B : <<include>>
 
 @enduml

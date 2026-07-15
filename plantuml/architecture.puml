@@ -1,68 +1,92 @@
 @startuml architecture
-title Архитектура reporting — ЗНИ, TFS, pallink.fun
+title Архитектура reporting
 
-skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam roundCorner 8
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
 skinparam defaultTextAlignment center
+skinparam componentStyle rectangle
+skinparam ArrowColor #42526E
+skinparam ArrowThickness 1.2
+skinparam noteBackgroundColor #FFFAE6
+skinparam noteBorderColor #FFC400
+skinparam packageBorderColor #DFE1E6
+skinparam packageFontColor #172B4D
+skinparam packageTitleAlignment left
 
-actor "Аналитик" as analyst
+actor "Пользователь" as user #DEEBFF
 
-cloud "Internet" as inet
+cloud "Internet" as inet #F4F5F7
 
-package "Production (VPS)" #LightGray {
-  node "nginx + Let's Encrypt" as nginx {
-    [pallink.fun\nHTTPS] as fe_ssl
-    [api.pallink.fun\nHTTPS] as api_ssl
+package "Production" #F4F5F7 {
+  node "nginx + TLS" as nginx #FFFFFF {
+    [UI HTTPS] as fe_ssl #DEEBFF
+    [API HTTPS] as api_ssl #DEEBFF
   }
 
-  package "Docker Compose" #LightGreen {
-    [Frontend\nVite + React\n:5173] as fe
-    [Backend\nFastAPI\n:8000] as api
-    database "PostgreSQL\n:5432" as pg
+  package "Docker Compose" #E3FCEF {
+    [Frontend\nReact :5173] as fe #FFFFFF
+    [Backend\nFastAPI :8000] as api #FFFFFF
+    database "PostgreSQL\n:5432" as pg #FFFFFF
+    [MinIO\nphotos :9000] as minio #FFFFFF
+    [minio-init] as minioinit #FFFFFF
+    folder "youjail workspace" as yjfs #FFFFFF
+    folder "uploads fallback" as uploads #FFFFFF
+    folder "Status.pptx" as pptx #FFFFFF
   }
 }
 
-package "Внешние системы" #LightBlue {
-  [Azure DevOps\nTFS API] as tfs
+package "Внешние системы" #EAE6FF {
+  [Azure DevOps / TFS] as tfs #FFFFFF
+  [FineBI] as finebi #FFFFFF
 }
 
-package "Слой интеграции" #LightYellow {
-  [TfsClient\nWIQL + Batch] as client
-  [Sync Service] as sync
-  [Auth PAT\nauth_session] as auth
+package "Модули" #FFFAE6 {
+  [Auth] as auth #FFFFFF
+  [TFS Sync] as sync #FFFFFF
+  [Org / Staffing] as org #FFFFFF
+  [YouJail] as yj #FFFFFF
+  [B2B + PPTX] as b2b #FFFFFF
+  [Roadmap] as roadmap #FFFFFF
 }
 
-analyst --> inet
+user --> inet
 inet --> nginx
-fe_ssl --> fe : proxy
-api_ssl --> api : proxy
-fe --> api : REST\nX-Session-Id
+fe_ssl --> fe
+api_ssl --> api
+fe --> api : REST / session
 
 api --> auth
 api --> sync
+api --> org
+api --> yj
+api --> b2b
+api --> roadmap
 api --> pg
 auth --> pg
-sync --> client
+sync --> tfs
 sync --> pg
-client --> tfs : PAT
+org --> pg
+org --> minio
+org --> uploads
+yj --> pg
+yj --> yjfs
+b2b --> pg
+b2b --> pptx
+roadmap --> pg
+minioinit --> minio
+pg --> finebi : views
 
-note right of pg
-  **ЗНИ:** task_type = change_request
-  **Ошибка:** task_type = error
-  parent_task_id → ЗНИ
-  auth_session — PAT (сервер)
+note right of fe
+  Вкладки: ЗНИ · B2B · Планы
+  Доска · Staffing · Диаграммы
+  + профиль
 end note
 
-note bottom of sync
-  Оптимизация:
-  • поля без $expand All
-  • ошибки через WIQL WorkItemLinks
-  • Closed > 365 дней — пропуск
-  Доски: Digital Streams B2b, BE-T2 Team
-end note
-
-note bottom of nginx
-  Запуск: sudo bash scripts/production.sh
-  certbot → /etc/letsencrypt/live/pallink.fun
+note bottom of b2b
+  Данные B2B в PostgreSQL
+  PPTX из Status.pptx
 end note
 
 @enduml

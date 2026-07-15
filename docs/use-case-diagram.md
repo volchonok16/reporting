@@ -1,87 +1,161 @@
-# Use Case Diagram — система учёта задач
+# Use Case Diagram — система reporting (полный workbook)
 
 ## Диаграмма (Mermaid)
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph Actors
-        A1[Аналитик / Менеджер]
-        A2[Администратор]
+        A1[Пользователь]
+        A2[Администратор org]
         A4[FineBI]
     end
 
-    subgraph Web["Веб-приложение (pallink.fun)"]
-        UC_AUTH((Вход по PAT TFS))
-        UC_DASH((Дашборд ЗНИ\nметрики, таблица))
-        UC_SYNC((Синхронизация\nиз TFS))
-        UC_EXPORT((Экспорт CSV\nЗНИ + ошибки))
-        UC_BOARD((Фильтр доски\nВсе / Digital / BE-T2))
+    subgraph Auth["Вход и профиль"]
+        UC_AUTH((Вход PAT /\nemail+пароль))
+        UC_PROFILE((Личный кабинет))
     end
 
-    subgraph System["Единая система задач (PostgreSQL)"]
-        UC1((Просмотр отчётов\nпо задачам))
-        UC2((Анализ времени\nв статусах))
-        UC3((Анализ времени\nв бэклоге))
-        UC4((Загрузка команды\nи бэклога))
-        UC5((Отгрузка по релизам\nи датам))
-        UC6((Настройка маппинга\nполей и статусов))
-        UC9A((WIQL + Batch ЗНИ))
-        UC9B((Связи ЗНИ → Ошибка))
-        UC9C((Upsert task))
-        UC16((Аудит sync_run))
+    subgraph ZNI["ЗНИ"]
+        UC_DASH((Дашборд ЗНИ))
+        UC_SYNC((Синхронизация TFS))
+        UC_EXPORT((Экспорт CSV))
+        UC_BOARD((Выбор доски))
+    end
+
+    subgraph B2B["Статус продукта B2B"]
+        UC_B2B((Таблица статуса))
+        UC_NEWS((Новости и запуски))
+        UC_PPTX((Генерация PPTX))
+    end
+
+    subgraph Plans["Планы Digital"]
+        UC_ROADMAP((Roadmap колбаски))
+    end
+
+    subgraph YJ["Доска YouJail"]
+        UC_YJ((Kanban доски))
+        UC_YJ_ZNI((Связь с ЗНИ))
+    end
+
+    subgraph Staff["Staffing"]
+        UC_VAC((График отпусков))
+        UC_BOOK((Бронь мест))
+        UC_OFFICE((Сотрудники в офисе))
+        UC_ORG((Состав / пирамида))
+        UC_PHOTO((Фото → MinIO))
+    end
+
+    subgraph Diag["Диаграммы"]
+        UC_DIAG((Конструктор UI))
+    end
+
+    subgraph BI["Отчётность BI"]
+        UC2((Время в статусах))
+        UC3((Время в бэклоге))
+        UC4((Загрузка команды))
     end
 
     A1 --> UC_AUTH
+    A1 --> UC_PROFILE
     A1 --> UC_DASH
     A1 --> UC_SYNC
     A1 --> UC_EXPORT
     A1 --> UC_BOARD
-    A1 --> UC1
-    A1 --> UC2
-    A1 --> UC3
-    A1 --> UC4
-    A1 --> UC5
+    A1 --> UC_B2B
+    A1 --> UC_NEWS
+    A1 --> UC_PPTX
+    A1 --> UC_ROADMAP
+    A1 --> UC_YJ
+    A1 --> UC_YJ_ZNI
+    A1 --> UC_VAC
+    A1 --> UC_BOOK
+    A1 --> UC_OFFICE
+    A1 --> UC_ORG
+    A1 --> UC_DIAG
+    A1 --> UC_PHOTO
 
-    A4 --> UC1
+    A2 --> UC_ORG
+    A2 --> UC_BOOK
+    A2 --> UC_VAC
+    A2 --> UC_PHOTO
+
     A4 --> UC2
     A4 --> UC3
     A4 --> UC4
-    A4 --> UC5
 
-    A2 --> UC6
-
-    UC_SYNC -.->|include| UC9A
-    UC_SYNC -.->|include| UC9B
-    UC_SYNC -.->|include| UC9C
-    UC_SYNC -.->|include| UC16
     UC_DASH -.->|include| UC_AUTH
+    UC_PPTX -.->|include| UC_B2B
 ```
+
+Источник PlantUML: [plantuml/use-case.puml](../plantuml/use-case.puml) · свод в [diagrams.md](diagrams.md).
 
 ## Краткое описание use cases
 
-### Веб-приложение ЗНИ
+### Вход и профиль
 
-| ID | Use Case | Актор | Описание |
-|----|----------|-------|----------|
-| UC_AUTH | Вход по PAT TFS | Аналитик | PAT сохраняется в `auth_session`; клиент получает `sessionId` |
-| UC_DASH | Дашборд ЗНИ | Аналитик | KPI: всего, скоро запуск, запущено, ошибок; таблица с поиском и сортировкой |
-| UC_SYNC | Синхронизация TFS | Аналитик | WIQL → batch ЗНИ → WIQL связи → batch ошибок; аудит в `sync_run` |
-| UC_EXPORT | Экспорт CSV | Аналитик | Только ЗНИ и связанные ошибки по выбранной доске |
-| UC_BOARD | Фильтр доски | Аналитик | «Все доски», Digital Streams B2b, BE-T2 Team |
+| ID | Use Case | Описание |
+|----|----------|----------|
+| UC_AUTH | Вход | PAT TFS или email/пароль (`org_user` / `APP_AUTH_*`) → `auth_session` |
+| UC_PROFILE | Личный кабинет | Фото (MinIO), пароль, дни в офисе без места |
 
-### Отчётность и ETL (единая БД)
+### ЗНИ
 
-| ID | Use Case | Актор | Описание |
-|----|----------|-------|----------|
-| UC1 | Просмотр отчётов по задачам | Аналитик, FineBI | Что сделано / в работе / запланировано |
-| UC2 | Анализ времени в статусах | Аналитик, FineBI | Сколько задача была в In Progress, Review и т.д. |
-| UC3 | Анализ времени в бэклоге | Аналитик, FineBI | Метрика «застоя» до начала работ |
-| UC4 | Загрузка команды и бэклога | Аналитик, FineBI | Открытые задачи, story points, размер бэклога |
-| UC5 | Отгрузка по релизам и датам | Аналитик, FineBI | Сколько задач ушло в релиз / на дату |
-| UC6 | Настройка маппинга | Администратор | `field_mapping`, `source_status_mapping`, `source_team_mapping` |
-| UC9A–C | Выгрузка из TFS | Sync Service | Оптимизированный batch без `$expand` Relations |
-| UC16 | Аудит синхронизаций | Sync, Админ | `sync_run`, `sync_run_log` |
+| ID | Use Case | Описание |
+|----|----------|----------|
+| UC_DASH | Дашборд ЗНИ | KPI, таблица, фильтры (`tag_group`, метрики) |
+| UC_SYNC | Синхронизация TFS | WIQL → batch ЗНИ → связи → ошибки; `sync_run` |
+| UC_EXPORT | Экспорт CSV | ЗНИ + связанные ошибки |
+| UC_BOARD | Выбор доски | Digital, B2B Product, BE Analytics, ESB, «Все доски» |
 
-## PlantUML (экспорт в SVG)
+### Статус продукта B2B
 
-Исходник: [plantuml/use-case.puml](../plantuml/use-case.puml) · SVG: [diagrams/svg/use-case.svg](diagrams/svg/use-case.svg)
+| ID | Use Case | Описание |
+|----|----------|----------|
+| UC_B2B | Таблица статуса | Офисы / строки `b2b_product_status_*`, история, снимки |
+| UC_NEWS | Новости и запуски | `b2b_news_*` |
+| UC_PPTX | Генерация презентации | `GET/POST /api/product-status/b2b/presentation` → PPTX |
+
+### Планы Digital
+
+| ID | Use Case | Описание |
+|----|----------|----------|
+| UC_ROADMAP | Roadmap | Колбаски: `extra_json.roadmap_priority`, `roadmap_comment` |
+
+### Доска YouJail
+
+| ID | Use Case | Описание |
+|----|----------|----------|
+| UC_YJ | Kanban | Доски, колонки, карточки, теги, комментарии, PTY |
+| UC_YJ_ZNI | Связь с ЗНИ | `youjail_card_zni` → `task` |
+
+### Staffing
+
+| ID | Use Case | Описание |
+|----|----------|----------|
+| UC_VAC | График отпусков | `employee_time_off_day` |
+| UC_BOOK | Бронь мест | `workspace_place` / `workspace_booking` |
+| UC_OFFICE | Сотрудники в офисе | бронь + `employee_office_day` + отсутствия |
+| UC_ORG | Состав / пирамида | отделы, сотрудники, `org_chart_layout` |
+| UC_PHOTO | Фото сотрудника | MinIO bucket `photos` (`employee.photo_path`); fallback `ORG_UPLOADS_DIR` |
+
+### Инфраструктура (связь с use cases)
+
+| Ресурс | Кто использует |
+|--------|----------------|
+| MinIO | UC_PHOTO, профиль, Staffing |
+| `YOUJAIL_WORKSPACE_DIR` | UC_YJ вложения / исполнения |
+| `assets/Status.pptx` | UC_PPTX |
+| PostgreSQL | данные B2B / org / YouJail / ЗНИ |
+| FineBI ← PostgreSQL views | UC2–UC4 |
+
+### Диаграммы
+
+| ID | Use Case | Описание |
+|----|----------|----------|
+| UC_DIAG | Конструктор | Вкладка «Диаграммы» — UI-редактор схем |
+
+### BI
+
+| ID | Use Case | Описание |
+|----|----------|----------|
+| UC2–UC4 | Views FineBI | `v_task_status_time`, `v_task_backlog_duration`, `v_team_open_tasks` |

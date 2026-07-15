@@ -10,7 +10,7 @@
 |------|------------|--------|
 | 0 | Схема БД, use case, UML, план | Готово |
 | 1 | Веб-приложение ЗНИ (FastAPI + Vite, TFS sync, экспорт, PAT) | **Готово** |
-| 1b | Production: nginx + certbot, pallink.fun | **Готово** |
+| 1b | Production: nginx + certbot (HTTPS) | **Готово** |
 | 2 | Маппинг полей Jira → каноническая модель | Ожидает примеров данных |
 | 3 | Маппинг команд (`source_team_mapping`): доска, тег, area | Частично (доски TFS) |
 | 4 | Расчёт `task_status_duration` из changelog | После ETL |

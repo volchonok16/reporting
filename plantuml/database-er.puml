@@ -1,13 +1,18 @@
 @startuml database-er
-' Откройте в https://www.plantuml.com/plantuml или в IDE с PlantUML
-' Схема единой БД reporting (PostgreSQL) — без тестовых данных
+' ER для Confluence / docs — без тестовых данных
 
+skinparam shadowing false
 skinparam linetype ortho
-skinparam classBackgroundColor #FEFEFE
-skinparam classBorderColor #333333
-skinparam arrowColor #555555
+skinparam roundCorner 6
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 11
+skinparam classBackgroundColor #FFFFFF
+skinparam classBorderColor #42526E
+skinparam arrowColor #42526E
+skinparam packageBorderColor #DFE1E6
+skinparam packageFontColor #172B4D
 
-title Единая БД задач (PostgreSQL)\nJira · TFS · Trello · Прочие
+title База данных reporting (PostgreSQL)
 
 package "Справочники" #E8F4FC {
   class source_system <<table>> {
@@ -160,21 +165,6 @@ package "Приложение и синхронизация" #F0E8FC {
     created_at : timestamptz
   }
 
-  class department <<table>> {
-    +id : bigserial PK
-    name : varchar
-    head_employee_id : FK
-    is_active : boolean
-  }
-
-  class org_chart_layout <<table>> {
-    +id : bigserial PK
-    scope : varchar
-    department_id : FK
-    layout_json : jsonb
-    updated_at : timestamptz
-  }
-
   class sync_run <<table>> {
     +id : bigserial PK
     source_system_id : FK
@@ -198,8 +188,114 @@ package "Приложение и синхронизация" #F0E8FC {
     snapshot_date : date
     backlog_count : int
     active_count : int
-    tasks_shipped_to_release : int
-    release_id : FK
+  }
+}
+
+package "Staffing / Org" #E8FCE8 {
+  class org_user <<table>> {
+    +id : bigserial PK
+    email : varchar UK
+    role : smallint
+  }
+
+  class employee <<table>> {
+    +id : bigserial PK
+    public_id : uuid UK
+    full_name : varchar
+    user_id : FK
+    manager_id : FK
+  }
+
+  class department <<table>> {
+    +id : bigserial PK
+    name : varchar
+    head_employee_id : FK
+  }
+
+  class department_member <<table>> {
+    +id : bigserial PK
+    department_id : FK
+    employee_id : FK
+  }
+
+  class employee_time_off_day <<table>> {
+    employee_id : FK
+    day : date
+    kind : varchar
+  }
+
+  class workspace_place <<table>> {
+    +id : bigserial PK
+    name : varchar
+    sort_order : int
+  }
+
+  class workspace_booking <<table>> {
+    place_id : FK
+    employee_id : FK
+    day : date
+  }
+
+  class employee_office_day <<table>> {
+    employee_id : FK
+    day : date
+  }
+
+  class org_chart_layout <<table>> {
+    scope : varchar
+    department_id : FK
+    layout_json : jsonb
+  }
+}
+
+package "YouJail (Доска)" #FFF0E0 {
+  class youjail_board <<table>> {
+    +id : bigserial PK
+    slug : varchar
+    owner_employee_id : FK
+  }
+
+  class youjail_column <<table>> {
+    +id : bigserial PK
+    board_id : FK
+    name : varchar
+  }
+
+  class youjail_card <<table>> {
+    +id : bigserial PK
+    board_id : FK
+    column_id : FK
+    title : varchar
+  }
+
+  class youjail_card_zni <<table>> {
+    card_id : FK
+    task_id : FK
+  }
+}
+
+package "Статус продукта B2B" #E0F0FF {
+  class b2b_product_status_office <<table>> {
+    +id : bigserial PK
+    code : varchar
+    name : varchar
+  }
+
+  class b2b_product_status_row <<table>> {
+    +id : bigserial PK
+    office_id : FK
+    cells : jsonb
+  }
+
+  class b2b_news_section <<table>> {
+    +id : bigserial PK
+    code : varchar
+  }
+
+  class b2b_news_row <<table>> {
+    +id : bigserial PK
+    section_id : FK
+    cells : jsonb
   }
 }
 
@@ -243,7 +339,24 @@ task_status_duration ..> v_task_status_time : feeds
 task ..> v_tasks_by_release : feeds
 team ..> v_team_open_tasks : feeds
 
-org_chart_layout "0..*" -- "0..1" department
+org_user "0..1" -- "0..1" employee
+employee "0..1" -- "0..*" employee : manager
+department "1" -- "0..*" department_member
+employee "1" -- "0..*" department_member
+employee "1" -- "0..*" employee_time_off_day
+employee "1" -- "0..*" workspace_booking
+employee "1" -- "0..*" employee_office_day
+workspace_place "1" -- "0..*" workspace_booking
+department "0..1" -- "0..*" org_chart_layout
+
+youjail_board "1" -- "0..*" youjail_column
+youjail_board "1" -- "0..*" youjail_card
+youjail_column "1" -- "0..*" youjail_card
+youjail_card "1" -- "0..*" youjail_card_zni
+task "1" -- "0..*" youjail_card_zni
+
+b2b_product_status_office "1" -- "0..*" b2b_product_status_row
+b2b_news_section "1" -- "0..*" b2b_news_row
 
 note right of source_system
   **Коды источников:**
@@ -254,10 +367,20 @@ note right of task
   **ЗНИ:** task_type = change_request
   **Ошибка:** task_type = error
   parent_task_id → ЗНИ
+  Планы: extra_json.roadmap_*
 end note
 
 note bottom of auth_session
-  PAT TFS; клиент — только sessionId
+  PAT TFS или app login;
+  клиент — только sessionId
+end note
+
+note bottom of workspace_booking
+  Staffing: бронь места на день
+end note
+
+note bottom of b2b_product_status_row
+  PPTX: /api/product-status/b2b/presentation
 end note
 
 note bottom of task_status_duration

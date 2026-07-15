@@ -7,7 +7,7 @@ cp .env.example .env
 bash scripts/dev.sh
 ```
 
-## Production (pallink.fun)
+## Production (nginx + certbot)
 
 ```bash
 cp .env.production.example .env

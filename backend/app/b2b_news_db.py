@@ -143,8 +143,6 @@ def _sheet_from_rows(
     sheet_rows: list[dict[str, str]] = []
     for row in rows:
         cells = _normalize_cells(row.get("cells"), columns=columns)
-        if not _row_has_content(cells):
-            continue
         payload = dict(cells)
         payload[ROW_ID_KEY] = str(row["id"])
         sheet_rows.append(payload)
@@ -374,10 +372,12 @@ def save_b2b_news_to_db(
 
         updates = updates_by_gid.get(section_gid, [])
         data_updates = [item for item in updates if item.rowIndex >= 1]
-        max_row_index = max((item.rowIndex for item in data_updates), default=0)
         conflicts: list[str] = []
 
-        while len(db_rows) < max_row_index:
+        # Updates without rowId are always new rows — never overwrite existing by index
+        # (index matching wiped the table when empty rows were prepended in the UI).
+        new_rows_by_index: dict[int, dict[str, Any]] = {}
+        for row_index in sorted({item.rowIndex for item in data_updates if item.rowId is None}):
             insert = db.execute(
                 text(
                     """
@@ -395,6 +395,8 @@ def save_b2b_news_to_db(
             created = dict(insert.first()._mapping)
             created["cells"] = _normalize_cells(created.get("cells"), columns=columns)
             db_rows.append(created)
+            row_by_id[int(created["id"])] = created
+            new_rows_by_index[row_index] = created
             _append_history(
                 db,
                 row_id=int(created["id"]),
@@ -408,7 +410,12 @@ def save_b2b_news_to_db(
             )
 
         for update in data_updates:
-            row = resolve_row(update, db_rows=db_rows, row_by_id=row_by_id)
+            row = resolve_row(
+                update,
+                db_rows=db_rows,
+                row_by_id=row_by_id,
+                new_rows_by_index=new_rows_by_index,
+            )
             if row is None:
                 conflicts.append(f"строка {update.rowIndex}")
                 continue

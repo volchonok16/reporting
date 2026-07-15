@@ -1,8 +1,15 @@
 # Диаграммы проекта reporting
 
-Все схемы в одном месте. **На GitHub** диаграммы Mermaid ниже отображаются прямо в браузере — откройте этот файл в репозитории, PlantUML не нужен.
+Все схемы в одном месте.
 
-**Прямая ссылка:** [github.com/volchonok16/reporting/blob/main/docs/diagrams.md](https://github.com/volchonok16/reporting/blob/main/docs/diagrams.md)
+| Для чего | Куда |
+|----------|------|
+| **Вставка в Confluence** | [confluence.md](confluence.md) + картинки [diagrams/png/](diagrams/png/) |
+| Просмотр на GitHub (Mermaid) | этот файл |
+| Исходники PlantUML | [plantuml/](../plantuml/) |
+| SVG | [diagrams/svg/](diagrams/svg/) |
+
+**Прямая ссылка (GitHub):** [docs/diagrams.md](https://github.com/volchonok16/reporting/blob/main/docs/diagrams.md)
 
 | Раздел | Тип | Исходник |
 |--------|-----|----------|
@@ -19,53 +26,83 @@
 
 ## Архитектура
 
-Веб-приложение reporting: TFS (ЗНИ + Ошибки) → FastAPI sync → PostgreSQL → Vite UI + CSV. Production — nginx + Let's Encrypt на **pallink.fun**.
+Workbench: **ЗНИ**, **Статус продукта B2B** (+ PPTX), **Планы Digital**, **Доска YouJail**, **Staffing**, **Диаграммы**.  
+Инфраструктура Compose: **PostgreSQL**, **MinIO** (фото), диск **YOUJAIL_WORKSPACE_DIR**, шаблон **Status.pptx**.
 
 ```mermaid
 flowchart TB
     subgraph External["Внешние системы"]
         TFS[Azure DevOps / TFS]
-    end
-
-    subgraph Prod["Production (опционально)"]
-        NGINX[nginx + certbot\npallink.fun / api.pallink.fun]
-    end
-
-    subgraph App["Docker Compose"]
-        FE[Vite + React :5173]
-        API[FastAPI :8000]
-        Sync[TFS Sync Service]
-        Client[TfsClient\nWIQL + Batch]
-        PG[(PostgreSQL :5432)]
-    end
-
-    Analyst[Аналитик] --> NGINX
-    NGINX --> FE
-    NGINX --> API
-    FE --> API
-    API --> Sync
-    Sync --> Client
-    Client --> TFS
-    Sync --> PG
-    API --> PG
-
-    subgraph Storage["Ключевые таблицы"]
-        Task[(task:\nchange_request, error)]
-        Auth[(auth_session)]
-        SyncRun[(sync_run)]
-    end
-
-    PG --- Task
-    PG --- Auth
-    PG --- SyncRun
-
-    subgraph BI["Отчётность (опционально)"]
         FineBI[FineBI]
     end
 
-    Task --> FineBI
-    FE -->|CSV export| Analyst
+    subgraph Prod["Production"]
+        NGINX[nginx + certbot\nHTTPS UI / API]
+    end
+
+    subgraph App["Docker Compose"]
+        FE[Frontend :5173]
+        API[Backend FastAPI :8000]
+        PG[(PostgreSQL :5432\nreporting_pgdata)]
+        MinIO[(MinIO :9000 / :9001\nbucket photos\nreporting_miniodata)]
+        MinInit[minio-init\nmc mb + public read]
+        YJFS[("YOUJAIL_WORKSPACE_DIR\nвложения")]
+        Uploads[("ORG_UPLOADS_DIR\nfallback фото")]
+        Tpl[("assets/Status.pptx")]
+    end
+
+    User[Пользователь] --> NGINX
+    NGINX --> FE
+    NGINX --> API
+    FE --> API
+
+    API --> PG
+    API --> TFS
+    API --> MinIO
+    API --> YJFS
+    API --> Uploads
+    API --> Tpl
+    MinInit --> MinIO
+    PG --> FineBI
+
+    subgraph Modules["Модули backend"]
+        Sync[TFS Sync]
+        Org[Org / Staffing + фото]
+        YJ[YouJail]
+        B2B[B2B Status + PPTX]
+        Road[Roadmap]
+        Auth[Auth PAT / org_user]
+    end
+
+    API --- Modules
+    Org --> MinIO
+    Org --> Uploads
+    YJ --> YJFS
+    B2B --> Tpl
+    Sync --> TFS
+
+    subgraph Tabs["Вкладки UI"]
+        S1[ЗНИ]
+        S2[Статус B2B / новости]
+        S3[Планы Digital]
+        S4[Доска YouJail]
+        S5[Staffing]
+        S6[Диаграммы]
+        S7[Профиль]
+    end
+
+    FE --- Tabs
 ```
+
+| Компонент | Назначение |
+|-----------|------------|
+| PostgreSQL | Все доменные таблицы (ЗНИ, org, YouJail, B2B), `auth_session`, sync |
+| MinIO | S3-совместимое хранилище фото (`MINIO_BUCKET=photos`) |
+| minio-init | Создаёт bucket и anonymous download |
+| `YOUJAIL_WORKSPACE_DIR` | Файлы/вложения/worktree доски |
+| `ORG_UPLOADS_DIR` | Локальный fallback, если MinIO недоступен |
+| `assets/Status.pptx` | Шаблон генерации презентаций B2B |
+| FineBI | Чтение views `v_*` из PostgreSQL |
 
 ---
 
@@ -73,15 +110,18 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    User[Браузер] -->|HTTPS pallink.fun| N[nginx]
-    User -->|HTTPS api.pallink.fun| N
-    N -->|proxy :5173| FE[frontend]
-    N -->|proxy :8000| BE[backend]
+    User[Браузер] -->|HTTPS UI| N[nginx]
+    User -->|HTTPS API| N
+    N -->|:5173| FE[frontend]
+    N -->|:8000| BE[backend]
     BE --> PG[(postgres)]
-    Cert[certbot\nLet's Encrypt] -.->|сертификат| N
+    BE --> M[(MinIO\nphotos)]
+    BE --> YJFS[youjail workspace]
+    Cert[certbot] -.->|LE cert| N
 ```
 
-Запуск: `sudo bash scripts/production.sh` · Конфиги: `deploy/nginx/` · Подробнее: [deploy/DEPLOY.md](../deploy/DEPLOY.md)
+Стек на хосте: Docker Compose (`postgres`, `backend`, `frontend`, `minio`, `minio-init`) + nginx + certbot.  
+Запуск: `sudo bash scripts/production.sh` · [deploy/DEPLOY.md](../deploy/DEPLOY.md) · MinIO/env: [docker.md](docker.md)
 
 ---
 
@@ -113,126 +153,116 @@ sequenceDiagram
     API-->>UI: progress / done
 ```
 
-**Доски:** Digital (`Tele2\Digital\Streams\B2b`), Продукты (`Tele2\Продукты`, ЗНИ с `b2b_product`), Reports (`Tele2\Reports\Team A`, ЗНИ с `b2b_product`), B2B Product (CORE, КАТС, Voice, M2M, SMS, Solar, Umnico), BE Analytics, ESB. Фильтр «Все доски» — объединение.
+**Доски:** Digital, Продукты, Reports, B2B Product (CORE, КАТС, Voice, M2M, SMS, Solar, Umnico), BE Analytics, ESB. Фильтр «Все доски» — объединение.
 
 ---
 
 ## ER — база данных
 
-Основные таблицы и связи единой БД (включая веб-приложение).
+Ядро задач + Staffing + YouJail + B2B (полная PlantUML: [database-er.puml](../plantuml/database-er.puml)).
 
 ```mermaid
 erDiagram
-    source_system ||--o{ project : has
     source_system ||--o{ task : originates
-    source_system ||--o{ field_mapping : maps
-    source_system ||--o{ source_status_mapping : maps
     source_system ||--o{ sync_run : audits
-
-    team ||--o{ project : owns
     team ||--o{ task : assigned
-    team ||--o{ source_team_mapping : rules
-    team ||--o{ team_workload_snapshot : measured
-
-    project ||--o{ task : contains
-    project ||--o{ release : ships
-
-    canonical_status ||--o{ task : current
-    canonical_status ||--o{ task_status_duration : interval
-
-    person ||--o{ task : assignee
-    person ||--o{ task_comment : author
-
-    task ||--o{ task_comment : has
-    task ||--o{ task_status_history : changelog
-    task ||--o{ task_status_duration : time_in_status
-    task ||--o{ task_release : versions
     task |o--o| task : parent_child
+    task ||--o{ task_status_duration : time_in_status
+    task ||--o{ youjail_card_zni : linked
 
-    release ||--o{ task : primary_release
+    org_user ||--o| employee : may_bind
+    employee ||--o{ department_member : in
+    department ||--o{ department_member : has
+    employee ||--o{ employee_time_off_day : absence
+    employee ||--o{ workspace_booking : books
+    workspace_place ||--o{ workspace_booking : reserved
+    employee ||--o{ employee_office_day : present
 
-    sync_run ||--o{ sync_run_log : logs
+    youjail_board ||--o{ youjail_column : columns
+    youjail_board ||--o{ youjail_card : cards
+    youjail_column ||--o{ youjail_card : holds
+    youjail_card ||--o{ youjail_card_zni : zni
+
+    b2b_product_status_office ||--o{ b2b_product_status_row : rows
+    b2b_news_section ||--o{ b2b_news_row : rows
 
     auth_session {
         varchar id PK
         jsonb payload
-        timestamptz created_at
     }
 
     task {
         bigint id PK
-        bigint team_id FK
-        bigint parent_task_id FK
-        varchar external_id
         varchar task_type
-        varchar title
-        date start_date
-        date release_date
         jsonb extra_json
     }
 
-    team {
-        varchar code
-        varchar name
+    workspace_booking {
+        bigint place_id FK
+        bigint employee_id FK
+        date day
     }
 
-    sync_run {
+    youjail_card {
         bigint id PK
-        varchar status
-        int records_fetched
-        int records_upserted
-        jsonb parameters_json
+        bigint board_id FK
+        varchar title
+    }
+
+    b2b_product_status_row {
+        bigint id PK
+        jsonb cells
     }
 ```
 
-Полный глоссарий полей: [glossary.md](glossary.md)
+Глоссарий: [glossary.md](glossary.md) · обзор таблиц: [database-overview.md](database-overview.md)
 
 ---
 
 ## Use Case
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph Actors
-        A1[Аналитик]
-        A2[Администратор]
+        A1[Пользователь]
+        A2[Админ org]
         A4[FineBI]
     end
 
-    subgraph Web["Веб-приложение pallink.fun"]
-        UC_AUTH((Вход PAT TFS))
-        UC_DASH((Дашборд ЗНИ))
-        UC_SYNC((Синхронизация TFS))
-        UC_EXPORT((Экспорт CSV))
-        UC_BOARD((Все доски / одна))
+    subgraph Web["Workbook + infra"]
+        UC_AUTH((Вход PAT / email))
+        UC_DASH((ЗНИ + sync TFS))
+        UC_B2B((Статус B2B +\nPPTX))
+        UC_ROAD((Планы))
+        UC_YJ((Доска +\nфайлы на диске))
+        UC_STAFF((Staffing))
+        UC_PHOTO((Фото → MinIO))
+        UC_ORG((Оргсхема))
+        UC_DIAG((Диаграммы UI))
+        UC_PROFILE((Профиль))
     end
 
-    subgraph BI["Отчётность BI"]
-        UC1((Отчёты по задачам))
-        UC2((Время в статусах))
-        UC3((Время в бэклоге))
-        UC4((Загрузка команды))
-        UC5((Отгрузка в релиз))
-    end
-
-    subgraph Admin["Администрирование"]
-        UC6((Маппинг полей))
+    subgraph BI["BI"]
+        UC2((Views v_*))
     end
 
     A1 --> UC_AUTH
     A1 --> UC_DASH
-    A1 --> UC_SYNC
-    A1 --> UC_EXPORT
-    A1 --> UC_BOARD
-    A1 --> UC1
-    A4 --> UC1
+    A1 --> UC_B2B
+    A1 --> UC_ROAD
+    A1 --> UC_YJ
+    A1 --> UC_STAFF
+    A1 --> UC_PHOTO
+    A1 --> UC_ORG
+    A1 --> UC_DIAG
+    A1 --> UC_PROFILE
+    A2 --> UC_ORG
+    A2 --> UC_STAFF
+    A2 --> UC_PHOTO
     A4 --> UC2
-    A2 --> UC6
-    UC_SYNC -.-> UC_DASH
-    UC_AUTH -.-> UC_DASH
 ```
 
-Подробная таблица use cases: [use-case-diagram.md](use-case-diagram.md)
+Подробная таблица: [use-case-diagram.md](use-case-diagram.md)
 
 ---
 
@@ -245,49 +275,47 @@ classDiagram
         +String externalId
         +String taskType
         +Long parentTaskId
-        +String title
-        +Date startDate
-        +Date releaseDate
         +Json extraJson
+    }
+
+    class Employee {
+        +Long id
+        +UUID publicId
+        +String fullName
+    }
+
+    class WorkspaceBooking {
+        +Long placeId
+        +Long employeeId
+        +Date day
+    }
+
+    class YouJailCard {
+        +Long id
+        +Long boardId
+        +String title
+    }
+
+    class B2BStatusRow {
+        +Long officeId
+        +Json cells
     }
 
     class AuthSession {
         +String id
         +Json payload
-        +DateTime createdAt
-    }
-
-    class CanonicalStatus {
-        +String code
-        +String category
-    }
-
-    class TaskStatusDuration {
-        +DateTime enteredAt
-        +DateTime leftAt
-        +Long durationSeconds
-    }
-
-    class SourceSystem {
-        +String code
-    }
-
-    class Project {
-        +String externalKey
     }
 
     class SyncRun {
         +String status
-        +Int recordsFetched
         +Int recordsUpserted
     }
 
-    SourceSystem "1" --> "*" Project
-    Project "1" --> "*" Task
-    Task "1" --> "*" TaskStatusDuration
-    Task --> CanonicalStatus
     Task "0..1" --> "0..*" Task : parent
-    SourceSystem "1" --> "*" SyncRun
+    Employee "1" --> "0..*" WorkspaceBooking
+    YouJailCard "0..*" --> "0..*" Task : card_zni
+    B2BStatusRow ..> Task : cells.ЗНИ
+    SyncRun --> Task : upserts
 ```
 
 ---
@@ -310,11 +338,48 @@ sequenceDiagram
     BI->>D: v_task_backlog_duration
 ```
 
+### Генерация PPTX (Статус продукта B2B)
+
+```mermaid
+sequenceDiagram
+    participant UI as Frontend B2B
+    participant API as FastAPI
+    participant Gen as product_status_presentation
+    participant Tpl as assets/Status.pptx
+    participant DB as PostgreSQL
+
+    UI->>API: GET/POST /api/product-status/b2b/presentation
+    API->>DB: строки статуса / новости
+    API->>Gen: generate(rows)
+    Gen->>Tpl: шаблон PPTX
+    Gen-->>API: PPTX bytes
+    API-->>UI: download .pptx
+```
+
+### Фото сотрудника (MinIO)
+
+```mermaid
+sequenceDiagram
+    participant UI as Профиль / Staffing
+    participant API as FastAPI org
+    participant M as MinIO bucket photos
+    participant FS as ORG_UPLOADS_DIR
+
+    UI->>API: POST multipart photo
+    alt MinIO доступен
+        API->>M: putObject employees/…
+        API-->>UI: photo_path / URL
+    else fallback
+        API->>FS: save file
+        API-->>UI: local path
+    end
+```
+
 ---
 
 ## PlantUML — детальные диаграммы
 
-Детальные схемы с полным набором таблиц и полей. **SVG** обновляются при push в `main` (GitHub Actions) или локально:
+Детальные схемы. **SVG** обновляются при push в `main` (GitHub Actions) или локально:
 
 ```bash
 docker run --rm -v "$(pwd):/work" -w /work plantuml/plantuml \
@@ -330,7 +395,7 @@ docker run --rm -v "$(pwd):/work" -w /work plantuml/plantuml \
 | Архитектура | [architecture.svg](diagrams/svg/architecture.svg) | [architecture.puml](../plantuml/architecture.puml) |
 | Use Case | [use-case.svg](diagrams/svg/use-case.svg) | [use-case.puml](../plantuml/use-case.puml) |
 
-> Если SVG ещё не сгенерированы — откройте любой `.puml` на [plantuml.com/plantuml](https://www.plantuml.com/plantuml/uml) или дождитесь workflow **Render diagrams** во вкладке Actions.
+> Если SVG ещё не сгенерированы — откройте любой `.puml` на [plantuml.com/plantuml](https://www.plantuml.com/plantuml/uml) или дождитесь workflow **Render diagrams**.
 
 ### Просмотр без GitHub
 

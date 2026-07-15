@@ -15,9 +15,14 @@ def resolve_row(
     *,
     db_rows: list[dict[str, Any]],
     row_by_id: dict[int, dict[str, Any]],
+    new_rows_by_index: dict[int, dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     if update.rowId is not None:
         return row_by_id.get(update.rowId)
+    if new_rows_by_index is not None:
+        # New rows are created before apply; never fall back to positional overwrite.
+        return new_rows_by_index.get(update.rowIndex)
+    # Legacy: updates without rowId target padded rows at the end by 1-based index.
     if 1 <= update.rowIndex <= len(db_rows):
         return db_rows[update.rowIndex - 1]
     return None

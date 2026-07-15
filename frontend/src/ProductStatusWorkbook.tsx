@@ -201,7 +201,9 @@ function diffSheetToUpdates(baseline: ProductStatusSheet, current: ProductStatus
     if (rowId) {
       return baselineRowsById.get(rowId)
     }
-    return baseline.rows[rowIndex]
+    // Новая локальная строка без id: не сравнивать с baseline по индексу —
+    // иначе вставка пустой строки сверху превращалась в очистку существующих.
+    return undefined
   }
 
   for (let columnIndex = baseline.columns.length; columnIndex < current.columns.length; columnIndex += 1) {

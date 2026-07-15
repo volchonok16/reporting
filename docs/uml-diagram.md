@@ -1,79 +1,41 @@
 # UML — ER-диаграмма и компоненты
 
+> Актуальная полная картина workbook: [diagrams.md](diagrams.md) (architecture, use case, ER с Staffing / YouJail / B2B).
+
 ## ER-диаграмма (Mermaid)
 
 ```mermaid
 erDiagram
     source_system ||--o{ project : has
     source_system ||--o{ task : originates
-    source_system ||--o{ field_mapping : maps
-    source_system ||--o{ source_status_mapping : maps
     source_system ||--o{ sync_run : logs
-
-    team ||--o{ project : owns
-    team ||--o{ team_workload_snapshot : measured
-
-    project ||--o{ task : contains
-    project ||--o{ release : ships
-
-    canonical_status ||--o{ source_status_mapping : target
-    canonical_status ||--o{ task : current
-    canonical_status ||--o{ task_status_history : transition
-    canonical_status ||--o{ task_status_duration : interval
-
-    person ||--o{ person_external : linked
-    person ||--o{ task : assignee
-    person ||--o{ task_comment : author
-
-    task ||--o{ task_comment : has
-    task ||--o{ task_status_history : changelog
-    task ||--o{ task_status_duration : time_in_status
-    task ||--o{ task_status_duration_agg : agg
-    task ||--o{ task_assignee_history : ownership
-    task ||--o{ task_release : versions
-    task |o--o| task : parent_child
-
-    release ||--o{ task : primary_release
-    release ||--o{ task_release : many
-    release ||--o{ team_workload_snapshot : shipped
-
     team ||--o{ task : assigned
+    task |o--o| task : parent_child
+    task ||--o{ task_status_duration : time_in_status
+    task ||--o{ youjail_card_zni : linked
+
+    employee ||--o{ workspace_booking : books
+    workspace_place ||--o{ workspace_booking : place
+    employee ||--o{ employee_time_off_day : absence
+    youjail_board ||--o{ youjail_card : cards
+    youjail_card ||--o{ youjail_card_zni : zni
+    b2b_product_status_office ||--o{ b2b_product_status_row : rows
 
     auth_session {
         varchar id PK
         jsonb payload
-        timestamptz created_at
     }
 
     task {
         bigint id PK
-        bigint team_id FK
-        bigint parent_task_id FK
-        varchar external_id
         varchar task_type
-        varchar title
-        date start_date
-        date release_date
         jsonb extra_json
     }
 
-    task_status_duration {
-        bigint id PK
-        timestamptz entered_at
-        timestamptz left_at
-        bigint duration_seconds
-        boolean is_current
-    }
-
-    task_comment {
-        bigint id PK
-        text body
-        timestamptz created_at
-    }
-
-    field_mapping {
-        varchar source_field_path
-        varchar canonical_field
+    workspace_booking {
+        bigint place_id FK
+        bigint employee_id FK
+        date day
     }
 ```
 

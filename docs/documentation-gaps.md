@@ -11,8 +11,8 @@
 | [data-dictionary.md](data-dictionary.md) | Краткая выжимка; нет org/B2B/Roadmap полей |
 | [docker.md](docker.md) | Dev/prod/MinIO OK; не все env и скрипты |
 | [teams.md](teams.md) | Актуален |
-| [diagrams.md](diagrams.md) | ER/use case без org-модуля |
-| [README.md](../README.md) | Описывает только дашборд ЗНИ |
+| [diagrams.md](diagrams.md) | Обновлено: architecture / use case / ER включают Staffing, YouJail, B2B+PPTX, Планы, Диаграммы |
+| [README.md](../README.md) | Обновлено: полный workbook |
 
 ---
 
@@ -28,16 +28,11 @@
 
 ## Critical — исправить в первую очередь
 
-### 1. README описывает устаревший продукт
+### 1. README / диаграммы — ранее устаревшие, обновлены
 
-| В коде | Где | В docs |
-|--------|-----|--------|
-| 4 вкладки: ЗНИ, Статус продукта B2B, Планы, Staffing | `frontend/src/WorkbookApp.tsx` | README — только «дашборд ЗНИ» |
-| Личный кабинет (профиль, пароль, фото, офис) | `EmployeeProfile.tsx` | не упомянут |
-| Org-модуль, MinIO, `secrets/` | `docker-compose.yml`, `org_*` | не в структуре репо |
-| Вход: PAT **или** email/пароль (`org_user`, `APP_AUTH_*`) | `auth_service.py`, `Login.tsx` | README — только PAT |
+Workbook (ЗНИ, B2B, Планы, Доска, Staffing, Диаграммы) отражён в [README.md](../README.md) и [diagrams.md](diagrams.md). Осталось: полный каталог API (`docs/api.md`), матрица ролей.
 
-**Действие:** переписать разделы «Текущий этап», «Возможности», «Структура репозитория» в [README.md](../README.md).
+~~**Действие:** переписать разделы «Текущий этап», «Возможности»~~ — **сделано** (июль 2026). Остаточное: личный кабинет и роли — см. п. 3.
 
 ---
 

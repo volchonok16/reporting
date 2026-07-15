@@ -83,6 +83,107 @@ def test_cells_json_serializes_for_psycopg() -> None:
     assert isinstance(payload, str)
 
 
+def test_save_without_row_id_creates_new_row_instead_of_overwriting() -> None:
+    """Empty prepended rows used to clear the table via 1-based index overwrite."""
+    office_result = MagicMock()
+    office_result.first.return_value = MagicMock(
+        _mapping={"id": 1, "gid": "0", "name": "Офис: CORE"}
+    )
+
+    existing_cells = {
+        "Дата запуска": "01.07",
+        "Проект координация": "keep-me",
+    }
+    row_result = MagicMock()
+    row_result.__iter__.return_value = iter(
+        [
+            MagicMock(
+                _mapping={
+                    "id": 10,
+                    "cells": existing_cells,
+                    "sort_order": 0,
+                }
+            )
+        ]
+    )
+
+    insert_result = MagicMock()
+    insert_result.first.return_value = MagicMock(
+        _mapping={"id": 99, "cells": {}, "sort_order": 1}
+    )
+
+    snapshot_rows_result = MagicMock()
+    snapshot_rows_result.__iter__.return_value = iter(
+        [
+            MagicMock(
+                _mapping={
+                    "id": 10,
+                    "cells": existing_cells,
+                    "sort_order": 0,
+                }
+            ),
+            MagicMock(
+                _mapping={
+                    "id": 99,
+                    "cells": {"Дата запуска": "new"},
+                    "sort_order": 1,
+                }
+            ),
+        ]
+    )
+
+    db = MagicMock()
+    db.execute.side_effect = [
+        office_result,
+        row_result,
+        insert_result,  # create new row
+        MagicMock(),  # history create
+        MagicMock(),  # update cells on new row
+        MagicMock(),  # history update
+        MagicMock(),  # reorder/sort updates (may vary)
+        MagicMock(),
+        snapshot_rows_result,
+        MagicMock(),
+    ]
+
+    save_b2b_product_status_to_db(
+        db,
+        ProductStatusSaveIn(
+            updates=[
+                ProductStatusCellUpdate(
+                    gid="0",
+                    rowIndex=1,
+                    columnIndex=0,
+                    column="Дата запуска",
+                    value="new",
+                    expectedValue="",
+                    rowId=None,
+                ),
+            ]
+        ),
+        meta={
+            "auth_mode": "app_user",
+            "app_role": "full",
+            "org_user_role": "user",
+        },
+    )
+
+    insert_sql = str(db.execute.call_args_list[2].args[0])
+    assert "INSERT INTO b2b_product_status_row" in insert_sql
+    # Existing row must not be updated by this save (no UPDATE targeting id=10).
+    update_calls = [
+        call
+        for call in db.execute.call_args_list
+        if "UPDATE b2b_product_status_row" in str(call.args[0])
+        and "SET cells" in str(call.args[0])
+    ]
+    assert len(update_calls) == 1
+    assert update_calls[0].kwargs.get("row_id") == 99 or (
+        update_calls[0].args[1].get("row_id") == 99
+    )
+    db.commit.assert_called_once()
+
+
 def test_save_allows_coordination_column_for_non_admin() -> None:
     office_result = MagicMock()
     office_result.first.return_value = MagicMock(

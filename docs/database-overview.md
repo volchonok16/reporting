@@ -33,13 +33,17 @@
 
 | Сервис | Порт (dev) | Назначение |
 |--------|------------|------------|
-| `frontend` | 5173 | Дашборд ЗНИ: фильтры, метрики, экспорт CSV |
-| `backend` | 8000 | FastAPI: синхронизация TFS, REST API, PAT-сессии |
-| `postgres` | 5432 | PostgreSQL |
+| `frontend` | 5173 | Workbook: ЗНИ, B2B статус, Планы, Доска, Staffing, Диаграммы |
+| `backend` | 8000 | FastAPI: TFS sync, org, youjail, B2B+PPTX, сессии |
+| `postgres` | 5432 | PostgreSQL (`reporting_pgdata`) |
+| `minio` | 9000 / 9001 | Фото сотрудников, bucket `photos` (`reporting_miniodata`) |
+| `minio-init` | — | One-shot: создать bucket + public read |
+
+**Тома / каталоги:** `YOUJAIL_WORKSPACE_DIR` (файлы доски), `ORG_UPLOADS_DIR` (fallback фото), `assets/Status.pptx` (шаблон презентаций).
 
 **Локально:** `bash scripts/dev.sh` или `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build`
 
-**Production (pallink.fun):** nginx + certbot → `https://pallink.fun` (UI), `https://api.pallink.fun` (API). Запуск: `sudo bash scripts/production.sh`. См. [deploy/DEPLOY.md](../deploy/DEPLOY.md).
+**Production:** nginx + certbot → HTTPS UI и HTTPS API (хосты из `.env`). Запуск: `sudo bash scripts/production.sh`. См. [deploy/DEPLOY.md](../deploy/DEPLOY.md) · MinIO/env: [docker.md](docker.md).
 
 ### Доски TFS
 
@@ -73,11 +77,15 @@
 
 | Метод | Путь | Назначение |
 |-------|------|------------|
-| POST | `/api/auth/login` | Вход по PAT → `sessionId` |
+| POST | `/api/auth/login` | Вход PAT или email/пароль → `sessionId` |
 | GET | `/api/dashboard` | Метрики и список ЗНИ |
 | POST | `/api/sync` | Запуск синхронизации доски |
-| GET | `/api/sync/status` | Прогресс синхронизации |
-| GET | `/api/export/csv` | Экспорт ЗНИ + ошибки |
+| GET | `/api/export` | Экспорт ЗНИ + ошибки (CSV) |
+| GET/POST | `/api/product-status/b2b/presentation` | Генерация PPTX |
+| * | `/api/org/*` | Staffing: отпуска, бронь, офис, сотрудники |
+| * | `/api/youjail/*` | Доска YouJail |
+
+Диаграммы: [diagrams.md](diagrams.md) · глоссарий API подробнее: [glossary.md](glossary.md).
 
 ## Таблицы (32) + представления (4)
 
