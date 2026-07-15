@@ -143,6 +143,7 @@ def ensure_startup_schema() -> None:
         "028_employee_public_id.sql",
         "029_youjail_comment_attachment_sync.sql",
         "030_b2b_product_status_offices_analytics_projects.sql",
+        "031_revenue_activities.sql",
     )
     org_migrations: list[str] = []
     for migration_name in org_migration_names:

@@ -193,3 +193,12 @@
 | `b2b_news_snapshot` | `section_id`, `rows`, `changed_by` | Снимок для отката версии |
 
 Колонка «Проект координация» в `cells` доступна на запись только админам (`canManageOrg`).
+
+## revenue_activity_* — активности по выручкам
+
+| Таблица | Ключевые поля | Назначение |
+|---------|---------------|------------|
+| `revenue_activity_section` | `gid`, `name`, `sort_order` | Вкладка (`main`) |
+| `revenue_activity_row` | `section_id`, `sort_order`, `cells` | Строки; колонки «Статус», «Ответственный», «Результат» |
+| `revenue_activity_history` | `section_id`, `row_id`, `action` | Журнал create/update/delete/restore |
+| `revenue_activity_snapshot` | `section_id`, `rows`, `changed_by` | Снимок для отката версии |

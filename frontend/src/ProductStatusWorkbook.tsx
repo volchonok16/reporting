@@ -1383,7 +1383,7 @@ export default function ProductStatusWorkbook({
 
       {afterHeader}
 
-      {sheets.length > 0 && viewMode === 'table' ? (
+      {sheets.length > 1 && viewMode === 'table' ? (
         <nav className="product-status-sheet-tabs" aria-label="Продуктовые офисы">
           <div className="product-status-sheet-tabs-list">
             {sheets.map((sheet) => (
@@ -1426,7 +1426,7 @@ export default function ProductStatusWorkbook({
         </nav>
       ) : null}
 
-      {viewMode === 'history' && enableHistory && sheets.length > 0 ? (
+      {viewMode === 'history' && enableHistory && sheets.length > 1 ? (
         <nav className="product-status-sheet-tabs product-status-sheet-tabs-compact" aria-label="Офис для истории">
           <div className="product-status-sheet-tabs-list">
             {sheets.map((sheet) => (

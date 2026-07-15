@@ -297,6 +297,17 @@ package "Статус продукта B2B" #E0F0FF {
     section_id : FK
     cells : jsonb
   }
+
+  class revenue_activity_section <<table>> {
+    +id : bigserial PK
+    gid : varchar
+  }
+
+  class revenue_activity_row <<table>> {
+    +id : bigserial PK
+    section_id : FK
+    cells : jsonb
+  }
 }
 
 package "Представления (FineBI)" #EEEEEE {
@@ -357,6 +368,7 @@ task "1" -- "0..*" youjail_card_zni
 
 b2b_product_status_office "1" -- "0..*" b2b_product_status_row
 b2b_news_section "1" -- "0..*" b2b_news_row
+revenue_activity_section "1" -- "0..*" revenue_activity_row
 
 note right of source_system
   **Коды источников:**

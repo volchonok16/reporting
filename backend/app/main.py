@@ -24,6 +24,14 @@ from app.b2b_news_service import (
     restore_b2b_news_snapshot,
     save_b2b_news_to_db,
 )
+from app.revenue_activities_service import (
+    delete_revenue_activity_row,
+    load_revenue_activities,
+    load_revenue_activities_history,
+    load_revenue_activities_snapshots,
+    restore_revenue_activity_snapshot,
+    save_revenue_activities_to_db,
+)
 from app.b2b_product_status_db import (
     delete_b2b_product_status_row,
     load_b2b_product_status_history,
@@ -591,6 +599,80 @@ def b2b_news_restore_snapshot(
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     restore_b2b_news_snapshot(db, snapshot_id=snapshot_id, gid=gid, meta=meta)
+    return {"status": "ok"}
+
+
+@app.get("/api/revenue-activities", response_model=ProductStatusB2BOut)
+def revenue_activities(
+    gid: str | None = Query(default=None),
+    meta_only: bool = Query(default=False),
+    refresh: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_full_app_access),
+) -> ProductStatusB2BOut:
+    del refresh
+    return load_revenue_activities(
+        db=db,
+        gid=gid,
+        meta_only=meta_only,
+    )
+
+
+@app.post("/api/revenue-activities/save")
+def revenue_activities_save(
+    payload: ProductStatusSaveIn,
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_full_app_access),
+) -> dict[str, str]:
+    _, meta = get_session_with_meta(x_session_id)
+    save_revenue_activities_to_db(db, payload, meta=meta)
+    return {"status": "ok"}
+
+
+@app.delete("/api/revenue-activities/rows/{row_id}")
+def revenue_activities_delete_row(
+    row_id: int,
+    gid: str = Query(...),
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_full_app_access),
+) -> dict[str, str]:
+    _, meta = get_session_with_meta(x_session_id)
+    delete_revenue_activity_row(db, gid=gid, row_id=row_id, meta=meta)
+    return {"status": "ok"}
+
+
+@app.get("/api/revenue-activities/history", response_model=ProductStatusHistoryOut)
+def revenue_activities_history(
+    gid: str = Query(...),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_org_manage_access),
+) -> ProductStatusHistoryOut:
+    return load_revenue_activities_history(db, gid=gid, limit=limit)
+
+
+@app.get("/api/revenue-activities/snapshots", response_model=ProductStatusSnapshotsOut)
+def revenue_activities_snapshots(
+    gid: str = Query(...),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_org_manage_access),
+) -> ProductStatusSnapshotsOut:
+    return load_revenue_activities_snapshots(db, gid=gid, limit=limit)
+
+
+@app.post("/api/revenue-activities/snapshots/{snapshot_id}/restore")
+def revenue_activities_restore_snapshot(
+    snapshot_id: int,
+    gid: str = Query(...),
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_org_manage_access),
+) -> dict[str, str]:
+    _, meta = get_session_with_meta(x_session_id)
+    restore_revenue_activity_snapshot(db, snapshot_id=snapshot_id, gid=gid, meta=meta)
     return {"status": "ok"}
 
 

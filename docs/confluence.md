@@ -24,6 +24,7 @@
 |---------|------------|
 | ЗНИ | Дашборд, sync из TFS, CSV |
 | Статус продукта B2B | Таблица по офисам, новости, PPTX |
+| Активности по выручкам | Таблица Статус / Ответственный / Результат |
 | Планы Digital | Roadmap (приоритет, комментарий) |
 | Доска | YouJail kanban + связь с ЗНИ |
 | Staffing | Отпуска, бронь мест, офис, оргсхема |
@@ -79,6 +80,7 @@
 | Staffing | `employee`, `workspace_booking`, `employee_time_off_day` |
 | YouJail | `youjail_board`, `youjail_card`, `youjail_card_zni` |
 | B2B | `b2b_product_status_*`, `b2b_news_*` |
+| Активности по выручкам | `revenue_activity_*` |
 
 Полный глоссарий полей — в репозитории: `docs/glossary.md`.
 

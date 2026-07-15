@@ -15,6 +15,8 @@ _B2B_AUDIT_TABLES: tuple[tuple[str, str], ...] = (
     ("b2b_product_status_snapshot", "created_at"),
     ("b2b_news_history", "changed_at"),
     ("b2b_news_snapshot", "created_at"),
+    ("revenue_activity_history", "changed_at"),
+    ("revenue_activity_snapshot", "created_at"),
 )
 
 

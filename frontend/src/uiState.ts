@@ -3,6 +3,7 @@ const STORAGE_KEY = 'reporting.uiState'
 export type SheetId =
   | 'zni'
   | 'product-status-b2b'
+  | 'revenue-activities'
   | 'roadmap'
   | 'youjail-board'
   | 'departments'
@@ -53,6 +54,7 @@ type UiState = {
   roadmap?: Partial<RoadmapUiState>
   productStatusB2bGid?: string | null
   b2bNewsGid?: string | null
+  revenueActivitiesGid?: string | null
   b2bPanel?: B2bPanelId
   org?: Partial<OrgUiState>
 }
@@ -75,6 +77,7 @@ function writeUiState(patch: UiState): void {
 const WORKBOOK_SHEETS: SheetId[] = [
   'zni',
   'product-status-b2b',
+  'revenue-activities',
   'roadmap',
   'youjail-board',
   'departments',
@@ -172,6 +175,15 @@ export function loadB2bNewsGid(): string | null {
 
 export function saveB2bNewsGid(gid: string | null): void {
   writeUiState({ b2bNewsGid: gid })
+}
+
+export function loadRevenueActivitiesGid(): string | null {
+  const gid = readUiState().revenueActivitiesGid
+  return typeof gid === 'string' && gid ? gid : null
+}
+
+export function saveRevenueActivitiesGid(gid: string | null): void {
+  writeUiState({ revenueActivitiesGid: gid })
 }
 
 export function loadB2bPanel(): B2bPanelId {

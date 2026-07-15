@@ -1056,3 +1056,53 @@ CREATE TABLE b2b_news_snapshot (
 );
 
 CREATE INDEX idx_b2b_news_snapshot_section ON b2b_news_snapshot (section_id, created_at DESC, id DESC);
+
+-- -----------------------------------------------------------------------------
+-- Активности по выручкам
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE revenue_activity_section (
+    id              BIGSERIAL PRIMARY KEY,
+    gid             VARCHAR(32)  NOT NULL UNIQUE,
+    name            VARCHAR(255) NOT NULL,
+    sort_order      INT          NOT NULL DEFAULT 0,
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE revenue_activity_row (
+    id              BIGSERIAL PRIMARY KEY,
+    section_id      BIGINT       NOT NULL REFERENCES revenue_activity_section(id) ON DELETE CASCADE,
+    sort_order      INT          NOT NULL DEFAULT 0,
+    cells           JSONB        NOT NULL DEFAULT '{}'::jsonb,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_revenue_activity_row_section ON revenue_activity_row (section_id, sort_order);
+
+CREATE TABLE revenue_activity_history (
+    id              BIGSERIAL PRIMARY KEY,
+    row_id          BIGINT       REFERENCES revenue_activity_row(id) ON DELETE SET NULL,
+    section_id      BIGINT       NOT NULL REFERENCES revenue_activity_section(id) ON DELETE CASCADE,
+    section_name    VARCHAR(255) NOT NULL,
+    action          VARCHAR(32)  NOT NULL,
+    field_name      VARCHAR(255),
+    old_value       TEXT,
+    new_value       TEXT,
+    changed_by      VARCHAR(255),
+    changed_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_revenue_activity_history_section ON revenue_activity_history (section_id, changed_at DESC);
+
+CREATE TABLE revenue_activity_snapshot (
+    id              BIGSERIAL PRIMARY KEY,
+    section_id      BIGINT       NOT NULL REFERENCES revenue_activity_section(id) ON DELETE CASCADE,
+    rows            JSONB        NOT NULL,
+    changed_by      VARCHAR(255),
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_revenue_activity_snapshot_section
+    ON revenue_activity_snapshot (section_id, created_at DESC, id DESC);

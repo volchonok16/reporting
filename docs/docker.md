@@ -207,7 +207,7 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 
 Дополнительные рабочие места для брони — `db/migrations/012_workspace_places_99_106.sql`: в справочник `workspace_place` добавляются места **99–106** (без дубликатов, если номер уже есть).
 
-Статус продукта B2B в PostgreSQL — `db/migrations/013_b2b_product_status.sql`: таблицы `b2b_product_status_office`, `b2b_product_status_row`, `b2b_product_status_history` и seed вкладок офисов; `db/migrations/014_b2b_product_status_snapshots.sql` — снимки версий для отката; `db/migrations/015_b2b_news.sql` — «Новости и запуски» в БД; `db/migrations/016_b2b_product_status_merge_why_columns.sql` — объединение двух столбцов «Зачем» в один; `db/migrations/030_b2b_product_status_offices_analytics_projects.sql` — вкладки «Офис: Аналитики» и «Офис: Проекты (Саша и Ваня)». Миграции также подхватываются при старте backend (`ensure_startup_schema`).
+Статус продукта B2B в PostgreSQL — `db/migrations/013_b2b_product_status.sql`: таблицы `b2b_product_status_office`, `b2b_product_status_row`, `b2b_product_status_history` и seed вкладок офисов; `db/migrations/014_b2b_product_status_snapshots.sql` — снимки версий для отката; `db/migrations/015_b2b_news.sql` — «Новости и запуски» в БД; `db/migrations/016_b2b_product_status_merge_why_columns.sql` — объединение двух столбцов «Зачем» в один; `db/migrations/030_b2b_product_status_offices_analytics_projects.sql` — вкладки «Офис: Аналитики» и «Офис: Проекты (Саша и Ваня)»; `db/migrations/031_revenue_activities.sql` — «Активности по выручкам» (`revenue_activity_*`). Миграции также подхватываются при старте backend (`ensure_startup_schema`).
 
 Если права нужно обновить вручную (новые таблицы org/vacation, backend создал таблицы от alex):
 

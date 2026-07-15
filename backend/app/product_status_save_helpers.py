@@ -63,7 +63,7 @@ def fetch_row_cell(
     column: str,
     normalize_cells,
 ) -> str | None:
-    if table not in {"b2b_product_status_row", "b2b_news_row"}:
+    if table not in {"b2b_product_status_row", "b2b_news_row", "revenue_activity_row"}:
         raise ValueError(f"Unsupported table: {table}")
     result = db.execute(
         text(f"SELECT cells FROM {table} WHERE id = :row_id"),
@@ -88,7 +88,7 @@ def update_row_cell_if_expected(
     new_value: str,
     updated_at: datetime | None = None,
 ) -> bool:
-    if table not in {"b2b_product_status_row", "b2b_news_row"}:
+    if table not in {"b2b_product_status_row", "b2b_news_row", "revenue_activity_row"}:
         raise ValueError(f"Unsupported table: {table}")
     if parent_column not in {"office_id", "section_id"}:
         raise ValueError(f"Unsupported parent column: {parent_column}")

@@ -1102,6 +1102,44 @@ API: `GET /api/b2b-news`, `POST /api/b2b-news/save`, `GET /api/b2b-news/history?
 
 ---
 
+## revenue_activity_section — вкладка «Активности по выручкам»
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `gid` | varchar(32) | Стабильный ключ вкладки (`main`) |
+| `name` | varchar(255) | Название вкладки |
+| `sort_order` | int | Порядок вкладок в UI |
+| `is_active` | boolean | Активна ли вкладка |
+
+Seed: `main` → «Активности по выручкам».
+
+---
+
+## revenue_activity_row — строка активностей по выручкам
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `section_id` | bigint | FK → `revenue_activity_section` |
+| `sort_order` | int | Порядок строки |
+| `cells` | jsonb | Значения колонок с rich-text |
+
+Колонки (`gid=main`): «Статус», «Ответственный», «Результат».  
+Логика редактирования, цветов ячеек, сохранения и отмены — как у «Статус продукта B2B» (`ProductStatusWorkbook`), без офисов, новостей, презентации и Excel.
+
+---
+
+## revenue_activity_history / revenue_activity_snapshot
+
+Аналогично `b2b_product_status_history` / `b2b_product_status_snapshot`, но для активностей по выручкам (`section_id`, `section_name`).
+
+API: `GET /api/revenue-activities`, `POST /api/revenue-activities/save`, `GET /api/revenue-activities/history?gid=`, `GET /api/revenue-activities/snapshots?gid=`, `POST /api/revenue-activities/snapshots/{id}/restore?gid=` — история и снимки **только админы**; удаление строки — через `deletedRows` в save или `DELETE /api/revenue-activities/rows/{row_id}?gid=`.
+
+История и снимки (`revenue_activity_history`, `revenue_activity_snapshot`) старше 28 дней удаляются автоматически (см. `B2B_AUDIT_RETENTION_DAYS`); строки `revenue_activity_row` не удаляются.
+
+---
+
 ## Вкладка «Отделы» (UI)
 
 | Раздел | API |

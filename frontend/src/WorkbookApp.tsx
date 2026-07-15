@@ -3,6 +3,7 @@ import { apiFetch, clearSessionId } from './api'
 import Dashboard from './Dashboard'
 import DiagramBuilder from './DiagramBuilder'
 import ProductStatusB2B from './ProductStatusB2B'
+import RevenueActivities from './RevenueActivities'
 import Roadmap from './Roadmap'
 import YouJailBoard from './YouJailBoard'
 import Departments from './org/Departments'
@@ -20,6 +21,7 @@ type SheetTab = {
 const SHEETS: SheetTab[] = [
   { id: 'zni', label: 'ЗНИ' },
   { id: 'product-status-b2b', label: 'Статус продукта B2B' },
+  { id: 'revenue-activities', label: 'Активности по выручкам' },
   { id: 'roadmap', label: 'Планы Digital' },
   { id: 'youjail-board', label: 'Доска' },
   { id: 'departments', label: 'Staffing' },
@@ -155,6 +157,10 @@ export default function WorkbookApp({
           </div>
         ) : activeSheet === 'diagrams' ? (
           <DiagramBuilder />
+        ) : activeSheet === 'revenue-activities' ? (
+          <div className="app">
+            <RevenueActivities canManageOrg={canManageOrg} />
+          </div>
         ) : (
           <div className="app">
             <ProductStatusB2B canManageOrg={canManageOrg} />

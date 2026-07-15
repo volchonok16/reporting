@@ -82,12 +82,13 @@
 | POST | `/api/sync` | Запуск синхронизации доски |
 | GET | `/api/export` | Экспорт ЗНИ + ошибки (CSV) |
 | GET/POST | `/api/product-status/b2b/presentation` | Генерация PPTX |
+| GET/POST | `/api/revenue-activities` | Активности по выручкам (таблица Статус / Ответственный / Результат) |
 | * | `/api/org/*` | Staffing: отпуска, бронь, офис, сотрудники |
 | * | `/api/youjail/*` | Доска YouJail |
 
 Диаграммы: [diagrams.md](diagrams.md) · глоссарий API подробнее: [glossary.md](glossary.md).
 
-## Таблицы (32) + представления (4)
+## Таблицы (36) + представления (4)
 
 ### Справочники и маппинг
 
@@ -138,6 +139,10 @@
 | `b2b_news_row` | Строки таблицы новостей/запусков (`cells` jsonb) |
 | `b2b_news_history` | История изменений новостей и запусков |
 | `b2b_news_snapshot` | Снимки версий вкладки для отката |
+| `revenue_activity_section` | Вкладка «Активности по выручкам» |
+| `revenue_activity_row` | Строки таблицы активностей (`cells` jsonb: Статус, Ответственный, Результат) |
+| `revenue_activity_history` | История изменений активностей по выручкам |
+| `revenue_activity_snapshot` | Снимки версий для отката |
 | `person` | Человек |
 | `person_external` | ID пользователя в Jira/TFS/Trello |
 

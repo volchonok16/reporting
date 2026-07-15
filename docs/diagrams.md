@@ -185,6 +185,7 @@ erDiagram
 
     b2b_product_status_office ||--o{ b2b_product_status_row : rows
     b2b_news_section ||--o{ b2b_news_row : rows
+    revenue_activity_section ||--o{ revenue_activity_row : rows
 
     auth_session {
         varchar id PK
