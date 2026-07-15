@@ -63,6 +63,30 @@ def _autosize_columns(
         worksheet.column_dimensions[letter].width = width
 
 
+_TOTALS_FILL = PatternFill(fill_type="solid", fgColor="E8E8E8")
+_TOTALS_FONT = Font(bold=True)
+
+
+def _column_totals(sheet: ProductStatusSheetOut, columns: list[str]) -> dict[str, float | None]:
+    totals: dict[str, float | None] = {}
+    for column in columns:
+        if not _is_numeric_export_column(column):
+            totals[column] = None
+            continue
+        total = 0.0
+        has_value = False
+        for row in sheet.rows:
+            raw = row.get(column, "") if column else ""
+            text = display_cell_text(raw if isinstance(raw, str) else str(raw or "")).strip()
+            parsed = _parse_numeric(text)
+            if parsed is None:
+                continue
+            total += parsed
+            has_value = True
+        totals[column] = total if has_value else None
+    return totals
+
+
 def _write_revenue_sheet(worksheet: Worksheet, sheet: ProductStatusSheetOut) -> None:
     columns = list(sheet.columns) or list(REVENUE_ACTIVITY_SECTION_COLUMNS["main"])
     for col_index, column_name in enumerate(columns, start=1):
@@ -82,13 +106,38 @@ def _write_revenue_sheet(worksheet: Worksheet, sheet: ProductStatusSheetOut) -> 
             else:
                 cell.alignment = _TEXT_ALIGNMENT
 
+    totals_row_index = len(sheet.rows) + 2
+    column_totals = _column_totals(sheet, columns)
+    for col_index, column_name in enumerate(columns, start=1):
+        if col_index == 1:
+            cell = worksheet.cell(row=totals_row_index, column=col_index, value="Итого")
+            cell.alignment = _TEXT_ALIGNMENT
+        else:
+            total = column_totals.get(column_name)
+            cell = worksheet.cell(
+                row=totals_row_index,
+                column=col_index,
+                value=total if total is not None else None,
+            )
+            if total is not None:
+                cell.alignment = _NUMBER_ALIGNMENT
+                cell.number_format = _NUMBER_FORMAT
+            else:
+                cell.alignment = _TEXT_ALIGNMENT
+        cell.fill = _TOTALS_FILL
+        cell.font = _TOTALS_FONT
+
     _autosize_columns(
         worksheet,
         column_count=len(columns),
-        row_count=max(1, len(sheet.rows) + 1),
+        row_count=max(1, totals_row_index),
     )
     worksheet.freeze_panes = "A2"
-    worksheet.auto_filter.ref = worksheet.dimensions
+    if sheet.rows:
+        last_data_row = len(sheet.rows) + 1
+        worksheet.auto_filter.ref = f"A1:{get_column_letter(len(columns))}{last_data_row}"
+    else:
+        worksheet.auto_filter.ref = worksheet.dimensions
 
 
 def generate_revenue_activities_excel(data: ProductStatusB2BOut) -> tuple[bytes, str]:

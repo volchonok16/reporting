@@ -69,3 +69,28 @@ export function withRevenueResult(
     [sumColumn]: computeRevenueResult(row, sourceColumns),
   }
 }
+
+/** Итоги по колонкам: суммируются только числовые значения, текст игнорируется. */
+export function computeRevenueColumnTotals(
+  rows: Array<Record<string, string>>,
+  columns: readonly string[],
+  totalColumns: readonly string[] = [...REVENUE_NUMERIC_COLUMNS, REVENUE_SUM_COLUMN],
+): Record<string, string> {
+  const totals: Record<string, string> = {}
+  for (const column of columns) {
+    if (!(totalColumns as readonly string[]).includes(column)) {
+      totals[column] = ''
+      continue
+    }
+    let total = 0
+    let hasValue = false
+    for (const row of rows) {
+      const parsed = parseRevenueNumber(row[column])
+      if (parsed === null) continue
+      total += parsed
+      hasValue = true
+    }
+    totals[column] = hasValue ? formatRevenueNumber(total) : ''
+  }
+  return totals
+}

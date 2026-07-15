@@ -1897,6 +1897,27 @@ body {
   border-bottom: none;
 }
 
+.product-status-table tfoot td {
+  border-top: 2px solid var(--border);
+  background: var(--surface-1);
+  font-weight: 600;
+  padding: 8px 10px;
+  vertical-align: middle;
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  box-shadow: 0 -1px 0 var(--border);
+}
+
+.product-status-table tfoot .product-status-totals-label {
+  color: var(--text);
+}
+
+.product-status-table tfoot .product-status-totals-cell.product-status-numeric-cell {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .product-status-multiline {
   white-space: pre-wrap;
   word-break: break-word;

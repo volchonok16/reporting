@@ -54,6 +54,11 @@ def test_revenue_excel_exports_numbers_as_numeric_cells() -> None:
     assert sheet["F2"].value == 13.5
     assert isinstance(sheet["B2"].value, (int, float))
     assert isinstance(sheet["F2"].value, float)
+    assert sheet["A3"].value == "Итого"
+    assert sheet["B3"].value == 10
+    assert sheet["C3"].value == 2.5
+    assert sheet["D3"].value == 1
+    assert sheet["F3"].value == 13.5
 
 
 def test_revenue_excel_keeps_non_numeric_influence_as_text() -> None:

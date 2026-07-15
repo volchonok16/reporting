@@ -18,7 +18,7 @@ import {
   writeProductStatusCache,
 } from './productStatusClientCache'
 import { formatProductStatusColumnHeader } from './productStatusColumns'
-import { withRevenueResult } from './revenueActivitiesColumns'
+import { withRevenueResult, computeRevenueColumnTotals } from './revenueActivitiesColumns'
 import type { ChangeRequest, TaskLookupResponse } from './zniTypes'
 import ZniDetailModal from './ZniDetailModal'
 
@@ -107,6 +107,8 @@ export type ProductStatusWorkbookConfig = {
   /** Колонка суммы: только чтение, пересчитывается из sumSourceColumns */
   sumColumn?: string
   sumSourceColumns?: readonly string[]
+  /** Строка «Итого» внизу таблицы по numericColumns + sumColumn */
+  showTotalsRow?: boolean
 }
 
 const ADMIN_ONLY_COLUMNS = new Set<string>()
@@ -412,6 +414,7 @@ export default function ProductStatusWorkbook({
   numericColumns,
   sumColumn,
   sumSourceColumns,
+  showTotalsRow = false,
 }: ProductStatusWorkbookConfig) {
   const isSection = variant === 'section'
   const RootTag = isSection ? 'section' : 'div'
@@ -1262,6 +1265,16 @@ export default function ProductStatusWorkbook({
   const activeSheetReady = Boolean(activeSheet && activeSheet.columns.length > 0)
   const tablePending = Boolean(activeSheetReady && sheetLoading && sheetLoadingGid === activeGid)
 
+  const totalsRow = useMemo(() => {
+    if (!showTotalsRow || !activeSheet || activeSheet.columns.length === 0) return null
+    const totalColumns = [
+      ...(numericColumns ?? []),
+      ...(sumColumn ? [sumColumn] : []),
+    ]
+    if (totalColumns.length === 0) return null
+    return computeRevenueColumnTotals(activeSheet.rows, activeSheet.columns, totalColumns)
+  }, [activeSheet, numericColumns, showTotalsRow, sumColumn])
+
   const applyTextStyle = useCallback((patch: Partial<TextStyleSegment>) => {
     const applied = activeCellRef.current?.applyTextStyle(patch)
     if (!applied) {
@@ -1748,6 +1761,41 @@ export default function ProductStatusWorkbook({
                     )
                   })}
                 </tbody>
+                {totalsRow ? (
+                  <tfoot>
+                    <tr className="product-status-totals-row">
+                      {enableRowDelete ? (
+                        <td className="product-status-row-actions" aria-hidden="true" />
+                      ) : null}
+                      {activeSheet!.columns.map((column, index) => {
+                        const isNumeric =
+                          isNumericColumn(column) || Boolean(sumColumn && column === sumColumn)
+                        const value = totalsRow[column] ?? ''
+                        if (index === 0) {
+                          return (
+                            <td key={column} className="product-status-totals-label">
+                              Итого
+                            </td>
+                          )
+                        }
+                        return (
+                          <td
+                            key={column}
+                            className={[
+                              resolveColumnClass(column),
+                              isNumeric ? 'product-status-numeric-cell' : '',
+                              'product-status-totals-cell',
+                            ]
+                              .filter(Boolean)
+                              .join(' ')}
+                          >
+                            {isNumeric && value ? value : value || ''}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  </tfoot>
+                ) : null}
               </table>
             ) : loading || sheetLoading ? (
               <div

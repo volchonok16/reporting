@@ -28,6 +28,7 @@ export default function RevenueActivities({ canManageOrg = false }: RevenueActiv
       numericColumns={REVENUE_NUMERIC_COLUMNS}
       sumColumn={REVENUE_SUM_COLUMN}
       sumSourceColumns={REVENUE_NUMERIC_COLUMNS}
+      showTotalsRow
     />
   )
 }
