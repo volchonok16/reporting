@@ -1,0 +1,71 @@
+/** Колонки вкладки «Активности по выручкам». */
+
+export const REVENUE_ACTIVITY_COLUMNS = [
+  'Активность',
+  'Влияние на базу',
+  'Влияние на выручку',
+  'Влияние на gmc',
+  'Комментарий',
+  'Результат',
+] as const
+
+export const REVENUE_NUMERIC_COLUMNS = [
+  'Влияние на базу',
+  'Влияние на выручку',
+  'Влияние на gmc',
+] as const
+
+export const REVENUE_SUM_COLUMN = 'Результат'
+
+export function isRevenueNumericColumn(column: string): boolean {
+  return (REVENUE_NUMERIC_COLUMNS as readonly string[]).includes(column)
+}
+
+export function isRevenueSumColumn(column: string): boolean {
+  return column === REVENUE_SUM_COLUMN
+}
+
+/** Парсит число из ячейки; текстовые / пустые значения не участвуют в сумме. */
+export function parseRevenueNumber(value: string | undefined | null): number | null {
+  const raw = String(value ?? '')
+    .trim()
+    .replace(/\u00a0/g, '')
+    .replace(/\s/g, '')
+    .replace(',', '.')
+  if (!raw) return null
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed)) return null
+  return parsed
+}
+
+export function formatRevenueNumber(value: number): string {
+  if (Number.isInteger(value)) return String(value)
+  return String(Number(value.toPrecision(12)))
+}
+
+/** Сумма только по числовым ячейкам; текстовые поля игнорируются. */
+export function computeRevenueResult(
+  row: Record<string, string>,
+  sourceColumns: readonly string[] = REVENUE_NUMERIC_COLUMNS,
+): string {
+  let total = 0
+  let hasValue = false
+  for (const column of sourceColumns) {
+    const parsed = parseRevenueNumber(row[column])
+    if (parsed === null) continue
+    total += parsed
+    hasValue = true
+  }
+  return hasValue ? formatRevenueNumber(total) : ''
+}
+
+export function withRevenueResult(
+  row: Record<string, string>,
+  sourceColumns: readonly string[] = REVENUE_NUMERIC_COLUMNS,
+  sumColumn: string = REVENUE_SUM_COLUMN,
+): Record<string, string> {
+  return {
+    ...row,
+    [sumColumn]: computeRevenueResult(row, sourceColumns),
+  }
+}

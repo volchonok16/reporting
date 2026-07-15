@@ -41,6 +41,7 @@ from app.b2b_product_status_db import (
 )
 from app.product_status_service import load_b2b_product_status
 from app.product_status_excel import generate_b2b_product_status_excel
+from app.revenue_activities_excel import generate_revenue_activities_excel
 from app.product_status_presentation import generate_b2b_product_status_presentation
 from app.report_service import export_csv, load_change_requests, load_change_requests_by_numbers
 from app.business_value_service import update_business_value
@@ -615,6 +616,32 @@ def revenue_activities(
         db=db,
         gid=gid,
         meta_only=meta_only,
+    )
+
+
+@app.get("/api/revenue-activities/excel")
+def revenue_activities_excel(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_full_app_access),
+) -> Response:
+    content, filename = generate_revenue_activities_excel(load_revenue_activities(db=db))
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/api/revenue-activities/excel")
+def revenue_activities_excel_from_payload(
+    payload: ProductStatusB2BOut,
+    _: None = Depends(require_full_app_access),
+) -> Response:
+    content, filename = generate_revenue_activities_excel(payload)
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

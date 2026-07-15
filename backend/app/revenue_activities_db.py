@@ -28,8 +28,22 @@ from app.schemas import (
 
 ROW_ID_KEY = "__rowId"
 
+REVENUE_NUMERIC_COLUMNS: tuple[str, ...] = (
+    "Влияние на базу",
+    "Влияние на выручку",
+    "Влияние на gmc",
+)
+REVENUE_SUM_COLUMN = "Результат"
+
 REVENUE_ACTIVITY_SECTION_COLUMNS: dict[str, tuple[str, ...]] = {
-    "main": ("Статус", "Ответственный", "Результат"),
+    "main": (
+        "Активность",
+        "Влияние на базу",
+        "Влияние на выручку",
+        "Влияние на gmc",
+        "Комментарий",
+        "Результат",
+    ),
 }
 
 _TITLE = "Активности по выручкам"
@@ -46,17 +60,66 @@ def _empty_cells(columns: tuple[str, ...]) -> dict[str, str]:
     return {column: "" for column in columns}
 
 
+def _parse_numeric(value: str) -> float | None:
+    text = (
+        str(value or "")
+        .strip()
+        .replace("\u00a0", "")
+        .replace(" ", "")
+        .replace(",", ".")
+    )
+    if not text:
+        return None
+    try:
+        parsed = float(text)
+    except ValueError:
+        return None
+    if parsed != parsed:  # NaN
+        return None
+    return parsed
+
+
+def _format_numeric(value: float) -> str:
+    if value == int(value):
+        return str(int(value))
+    return f"{value:.12g}"
+
+
+def _apply_result_sum(cells: dict[str, str], *, columns: tuple[str, ...]) -> dict[str, str]:
+    if REVENUE_SUM_COLUMN not in columns:
+        return cells
+    total = 0.0
+    has_value = False
+    for column in REVENUE_NUMERIC_COLUMNS:
+        if column not in columns:
+            continue
+        parsed = _parse_numeric(cells.get(column, ""))
+        if parsed is None:
+            continue
+        total += parsed
+        has_value = True
+    cells[REVENUE_SUM_COLUMN] = _format_numeric(total) if has_value else ""
+    return cells
+
+
 def _row_has_content(cells: dict[str, str]) -> bool:
-    return any(str(value).strip() for value in cells.values())
+    for column, value in cells.items():
+        if column == REVENUE_SUM_COLUMN:
+            continue
+        if str(value).strip():
+            return True
+    return False
 
 
 def _normalize_cells(raw: dict[str, Any] | None, *, columns: tuple[str, ...]) -> dict[str, str]:
     source = raw or {}
     cells = _empty_cells(columns)
     for column in columns:
+        if column == REVENUE_SUM_COLUMN:
+            continue
         value = source.get(column, "")
         cells[column] = "" if value is None else str(value)
-    return cells
+    return _apply_result_sum(cells, columns=columns)
 
 
 def _cells_json(cells: dict[str, str]) -> str:
@@ -419,11 +482,11 @@ def save_revenue_activities_to_db(
                 continue
             row_id = int(row["id"])
             column = _resolve_column(update, columns=columns)
-            if column is None:
+            if column is None or column == REVENUE_SUM_COLUMN:
                 continue
 
-            cells = _normalize_cells(row.get("cells"), columns=columns)
-            current_value = cells.get(column, "")
+            stored = row.get("cells") if isinstance(row.get("cells"), dict) else {}
+            current_value = "" if stored.get(column) is None else str(stored.get(column, ""))
             new_value = update.value
             if current_value == new_value:
                 continue
@@ -453,12 +516,15 @@ def save_revenue_activities_to_db(
                         normalize_cells=lambda raw: _normalize_cells(raw, columns=columns),
                     )
                     if fresh_value == new_value:
-                        cells[column] = new_value
+                        cells = _normalize_cells(
+                            {**stored, column: new_value},
+                            columns=columns,
+                        )
                         row["cells"] = cells
                         continue
                     conflicts.append(f"{column} (строка {update.rowIndex})")
                     continue
-                cells[column] = new_value
+                cells = _normalize_cells({**stored, column: new_value}, columns=columns)
                 row["cells"] = cells
                 _append_history(
                     db,
@@ -474,7 +540,7 @@ def save_revenue_activities_to_db(
                 continue
 
             old_value = current_value
-            cells[column] = new_value
+            cells = _normalize_cells({**stored, column: new_value}, columns=columns)
             db.execute(
                 text(
                     """
@@ -509,15 +575,24 @@ def save_revenue_activities_to_db(
         db_rows = apply_row_order(db_rows, row_order_by_gid.get(section_gid))
 
         for index, row in enumerate(db_rows):
+            cells = _normalize_cells(row.get("cells"), columns=columns)
+            row["cells"] = cells
             db.execute(
                 text(
                     """
                     UPDATE revenue_activity_row
-                    SET sort_order = :sort_order
+                    SET sort_order = :sort_order,
+                        cells = CAST(:cells AS jsonb),
+                        updated_at = :updated_at
                     WHERE id = :row_id
                     """
                 ),
-                {"sort_order": index, "row_id": int(row["id"])},
+                {
+                    "sort_order": index,
+                    "cells": _cells_json(cells),
+                    "updated_at": datetime.now(UTC),
+                    "row_id": int(row["id"]),
+                },
             )
 
         _save_section_snapshot(

@@ -18,6 +18,7 @@ import {
   writeProductStatusCache,
 } from './productStatusClientCache'
 import { formatProductStatusColumnHeader } from './productStatusColumns'
+import { withRevenueResult } from './revenueActivitiesColumns'
 import type { ChangeRequest, TaskLookupResponse } from './zniTypes'
 import ZniDetailModal from './ZniDetailModal'
 
@@ -89,6 +90,8 @@ export type ProductStatusWorkbookConfig = {
   headerTitle?: ReactNode
   enablePresentationExport?: boolean
   enableExcelExport?: boolean
+  /** POST текущих строк с клиента (в т.ч. несохранённых), а не GET с сервера */
+  excelFromClientPayload?: boolean
   presentationFilename?: string
   excelFilename?: string
   lazySheets?: boolean
@@ -99,6 +102,11 @@ export type ProductStatusWorkbookConfig = {
   canEditAdminColumns?: boolean
   /** Правки в БД только по «Обновить»; до этого можно откатить */
   commitOnRefresh?: boolean
+  /** Числовые колонки (простой ввод, без rich-text) */
+  numericColumns?: readonly string[]
+  /** Колонка суммы: только чтение, пересчитывается из sumSourceColumns */
+  sumColumn?: string
+  sumSourceColumns?: readonly string[]
 }
 
 const ADMIN_ONLY_COLUMNS = new Set<string>()
@@ -340,6 +348,8 @@ function resolveColumnClass(column: string): string | undefined {
   if (key.includes('полное описание') || key.includes('для презентации')) return 'col-description'
   if (key.includes('описание')) return 'col-description'
   if (key.includes('комментар')) return 'col-comment'
+  if (key.startsWith('влияние на') || key === 'результат') return 'col-numeric'
+  if (key === 'активность') return 'col-activity'
   return undefined
 }
 
@@ -389,6 +399,7 @@ export default function ProductStatusWorkbook({
   headerTitle,
   enablePresentationExport = false,
   enableExcelExport = false,
+  excelFromClientPayload = false,
   presentationFilename = 'workbook.pptx',
   excelFilename = 'workbook.xlsx',
   lazySheets = false,
@@ -398,6 +409,9 @@ export default function ProductStatusWorkbook({
   enableHistory = false,
   canEditAdminColumns = false,
   commitOnRefresh = false,
+  numericColumns,
+  sumColumn,
+  sumSourceColumns,
 }: ProductStatusWorkbookConfig) {
   const isSection = variant === 'section'
   const RootTag = isSection ? 'section' : 'div'
@@ -922,9 +936,43 @@ export default function ProductStatusWorkbook({
     onMoveRow: moveRow,
   })
 
+  const numericColumnSet = useMemo(
+    () => new Set(numericColumns ?? []),
+    [numericColumns],
+  )
+
+  const isNumericColumn = useCallback(
+    (column: string) => numericColumnSet.has(column),
+    [numericColumnSet],
+  )
+
   const isReadOnlyColumn = useCallback(
-    (column: string) => isAdminOnlyColumn(column) && !canEditAdminColumns,
-    [canEditAdminColumns],
+    (column: string) =>
+      (isAdminOnlyColumn(column) && !canEditAdminColumns) ||
+      Boolean(sumColumn && column === sumColumn),
+    [canEditAdminColumns, sumColumn],
+  )
+
+  const updateCell = useCallback(
+    (gid: string, rowIndex: number, column: string, value: string) => {
+      if (sumColumn && column === sumColumn) return
+      setDirty(true)
+      setSheets((current) =>
+        current.map((sheet) => {
+          if (sheet.gid !== gid) return sheet
+          const rows = sheet.rows.map((row, index) => {
+            if (index !== rowIndex) return row
+            const next = { ...row, [column]: value }
+            if (sumColumn && sumSourceColumns && sumSourceColumns.length > 0) {
+              return withRevenueResult(next, sumSourceColumns, sumColumn)
+            }
+            return next
+          })
+          return { ...sheet, rows }
+        }),
+      )
+    },
+    [sumColumn, sumSourceColumns],
   )
 
   const handleExportPresentation = useCallback(async () => {
@@ -980,15 +1028,16 @@ export default function ProductStatusWorkbook({
     setExportingExcel(true)
     const toastId = notifyLoading('Формирование Excel…', 'product-status-excel')
     try {
+      const postFromClient = excelFromClientPayload || !lazySheets
       const response = await apiFetch(
         `${apiBase}/excel`,
-        lazySheets
-          ? undefined
-          : {
+        postFromClient
+          ? {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(buildPayload(data, sheets, defaultTitle)),
-            },
+            }
+          : undefined,
       )
       if (!response.ok) {
         throw new Error(await readApiError(response))
@@ -1004,20 +1053,16 @@ export default function ProductStatusWorkbook({
     } finally {
       setExportingExcel(false)
     }
-  }, [apiBase, data, defaultTitle, enableExcelExport, excelFilename, lazySheets, sheets])
-
-  const updateCell = useCallback((gid: string, rowIndex: number, column: string, value: string) => {
-    setDirty(true)
-    setSheets((current) =>
-      current.map((sheet) => {
-        if (sheet.gid !== gid) return sheet
-        const rows = sheet.rows.map((row, index) =>
-          index === rowIndex ? { ...row, [column]: value } : row,
-        )
-        return { ...sheet, rows }
-      }),
-    )
-  }, [])
+  }, [
+    apiBase,
+    data,
+    defaultTitle,
+    enableExcelExport,
+    excelFilename,
+    excelFromClientPayload,
+    lazySheets,
+    sheets,
+  ])
 
   const addRow = useCallback(() => {
     if (!activeGid) return
@@ -1689,6 +1734,7 @@ export default function ProductStatusWorkbook({
                         activeCellRef={activeCellRef}
                         resolveColumnClass={resolveColumnClass}
                         isBooleanColumn={isBooleanColumn}
+                        isNumericColumn={isNumericColumn}
                         isReadOnlyColumn={isReadOnlyColumn}
                         enableRowDelete={enableRowDelete}
                         onDeleteRow={deleteRow}

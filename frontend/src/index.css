@@ -1760,6 +1760,14 @@ body {
   width: 72px;
 }
 
+.product-status-table col.col-numeric {
+  width: 110px;
+}
+
+.product-status-table col.col-activity {
+  width: 220px;
+}
+
 .product-status-table col.col-presentation-flag {
   width: 76px;
 }
@@ -2444,6 +2452,31 @@ body.product-status-row-drag-active {
   color: var(--text-secondary);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.product-status-numeric-cell {
+  vertical-align: middle;
+}
+
+.product-status-numeric-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  padding: 6px 8px;
+}
+
+.product-status-numeric-input:focus {
+  outline: none;
+}
+
+.product-status-table td.product-status-numeric-cell .product-status-cell-readonly-value {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .product-status-history-section {

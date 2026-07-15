@@ -33,6 +33,7 @@ type ProductStatusTableRowProps = {
   activeCellRef: React.MutableRefObject<ProductStatusCellHandle | null>
   resolveColumnClass: (column: string) => string | undefined
   isBooleanColumn: (column: string) => boolean
+  isNumericColumn?: (column: string) => boolean
   isReadOnlyColumn?: (column: string) => boolean
   enableRowDelete?: boolean
   onDeleteRow?: (rowIndex: number) => void
@@ -107,6 +108,7 @@ function ProductStatusTableRow({
   activeCellRef,
   resolveColumnClass,
   isBooleanColumn,
+  isNumericColumn,
   isReadOnlyColumn,
   enableRowDelete = false,
   onDeleteRow,
@@ -205,7 +207,11 @@ function ProductStatusTableRow({
         const readOnly = isReadOnlyColumn?.(column) ?? false
         const cellClassName = [
           colClass,
-          isBooleanColumn(column) ? 'product-status-bool-cell' : 'product-status-multiline',
+          isBooleanColumn(column) ? 'product-status-bool-cell' : '',
+          isNumericColumn?.(column) ? 'product-status-numeric-cell' : '',
+          !isBooleanColumn(column) && !isNumericColumn?.(column)
+            ? 'product-status-multiline'
+            : '',
           readOnly ? 'product-status-cell-readonly' : '',
         ]
           .filter(Boolean)
@@ -254,6 +260,41 @@ function ProductStatusTableRow({
           return (
             <td key={column} className={cellClassName}>
               <div className="product-status-cell-readonly-value">{displayCellText(cellValue) || '—'}</div>
+            </td>
+          )
+        }
+
+        if (isNumericColumn?.(column)) {
+          return (
+            <td
+              key={column}
+              data-product-status-column={column}
+              className={[cellClassName, isActive ? 'product-status-cell-active' : '']
+                .filter(Boolean)
+                .join(' ')}
+              onMouseDownCapture={(event) => {
+                if (isInteractiveCellTarget(event.target)) return
+                activateProductStatusCell(
+                  activeCellRef,
+                  onActiveCellFocus,
+                  { rowIndex, column },
+                  isActive,
+                )
+              }}
+            >
+              <input
+                type="text"
+                inputMode="decimal"
+                className="product-status-numeric-input"
+                value={cellValue}
+                aria-label={column}
+                disabled={cellBusy}
+                onFocus={() => onActiveCellFocus({ rowIndex, column })}
+                onBlur={() => onActiveCellBlur({ rowIndex, column })}
+                onChange={(event) => {
+                  onUpdateCell(sheetGid, rowIndex, column, event.target.value)
+                }}
+              />
             </td>
           )
         }

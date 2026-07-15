@@ -25,7 +25,7 @@ CREATE INDEX IF NOT EXISTS idx_revenue_activity_row_section
     ON revenue_activity_row (section_id, sort_order);
 
 COMMENT ON TABLE revenue_activity_row IS 'Строка таблицы активностей по выручкам; cells — значения колонок с rich-text';
-COMMENT ON COLUMN revenue_activity_row.cells IS 'JSON: Статус / Ответственный / Результат → текст ячейки';
+COMMENT ON COLUMN revenue_activity_row.cells IS 'JSON: Активность / влияния / Комментарий / Результат (сумма) → текст ячейки';
 
 CREATE TABLE IF NOT EXISTS revenue_activity_history (
     id              BIGSERIAL PRIMARY KEY,
