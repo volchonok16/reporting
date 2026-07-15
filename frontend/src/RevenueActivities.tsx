@@ -1,8 +1,5 @@
 import ProductStatusWorkbook from './ProductStatusWorkbook'
-import {
-  REVENUE_NUMERIC_COLUMNS,
-  REVENUE_SUM_COLUMN,
-} from './revenueActivitiesColumns'
+import { REVENUE_NUMERIC_COLUMNS } from './revenueActivitiesColumns'
 import { loadRevenueActivitiesGid, saveRevenueActivitiesGid } from './uiState'
 
 type RevenueActivitiesProps = {
@@ -26,9 +23,9 @@ export default function RevenueActivities({ canManageOrg = false }: RevenueActiv
       excelFromClientPayload
       excelFilename="aktivnosti-po-vyruchkam.xlsx"
       numericColumns={REVENUE_NUMERIC_COLUMNS}
-      sumColumn={REVENUE_SUM_COLUMN}
-      sumSourceColumns={REVENUE_NUMERIC_COLUMNS}
       showTotalsRow
+      enableColumnFilters
+      compactRows
     />
   )
 }

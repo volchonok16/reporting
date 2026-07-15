@@ -18,7 +18,8 @@ import {
   writeProductStatusCache,
 } from './productStatusClientCache'
 import { formatProductStatusColumnHeader } from './productStatusColumns'
-import { withRevenueResult, computeRevenueColumnTotals } from './revenueActivitiesColumns'
+import { computeRevenueColumnTotals, withRevenueResult } from './revenueActivitiesColumns'
+import ProductStatusColumnFilter, { rowMatchesColumnFilters } from './ProductStatusColumnFilter'
 import type { ChangeRequest, TaskLookupResponse } from './zniTypes'
 import ZniDetailModal from './ZniDetailModal'
 
@@ -109,6 +110,10 @@ export type ProductStatusWorkbookConfig = {
   sumSourceColumns?: readonly string[]
   /** Строка «Итого» внизу таблицы по numericColumns + sumColumn */
   showTotalsRow?: boolean
+  /** Excel-подобные фильтры в заголовках столбцов */
+  enableColumnFilters?: boolean
+  /** Компактные строки и уменьшенные кнопки действий */
+  compactRows?: boolean
 }
 
 const ADMIN_ONLY_COLUMNS = new Set<string>()
@@ -352,7 +357,7 @@ function resolveColumnClass(column: string): string | undefined {
   if (key.includes('комментар')) return 'col-comment'
   if (key.startsWith('влияние на') || key === 'результат') return 'col-numeric'
   if (key === 'активность') return 'col-activity'
-  if (key === 'статус') return 'col-status-text'
+  if (key.startsWith('статус')) return 'col-status-text'
   if (key.includes('ответственн')) return 'col-owner'
   return undefined
 }
@@ -417,6 +422,8 @@ export default function ProductStatusWorkbook({
   sumColumn,
   sumSourceColumns,
   showTotalsRow = false,
+  enableColumnFilters = false,
+  compactRows = false,
 }: ProductStatusWorkbookConfig) {
   const isSection = variant === 'section'
   const RootTag = isSection ? 'section' : 'div'
@@ -444,6 +451,7 @@ export default function ProductStatusWorkbook({
   const [restoringSnapshotId, setRestoringSnapshotId] = useState<number | null>(null)
   const [loadedGids, setLoadedGids] = useState<Set<string>>(() => new Set())
   const [sheetLoadingGid, setSheetLoadingGid] = useState<string | null>(null)
+  const [columnFilters, setColumnFilters] = useState<Record<string, Set<string> | null>>({})
   const activeCellRef = useRef<ProductStatusCellHandle | null>(null)
   const blurTimerRef = useRef<number | null>(null)
   const tableScrollRef = useRef<HTMLDivElement | null>(null)
@@ -1264,6 +1272,31 @@ export default function ProductStatusWorkbook({
   const sheetLoading = sheetLoadingGid !== null
   const toolbarBusy = loading || sheetLoading || saving || exporting
   const cellBusy = saving || exporting
+  useEffect(() => {
+    setColumnFilters({})
+  }, [activeGid, apiBase])
+
+  const handleColumnFilterChange = useCallback((column: string, selected: Set<string> | null) => {
+    setColumnFilters((current) => {
+      const next = { ...current }
+      if (selected === null) {
+        delete next[column]
+      } else {
+        next[column] = selected
+      }
+      return next
+    })
+  }, [])
+
+  const visibleRows = useMemo(() => {
+    if (!activeSheet) return [] as Array<{ row: Record<string, string>; rowIndex: number }>
+    return activeSheet.rows
+      .map((row, rowIndex) => ({ row, rowIndex }))
+      .filter(({ row }) =>
+        enableColumnFilters ? rowMatchesColumnFilters(row, columnFilters) : true,
+      )
+  }, [activeSheet, columnFilters, enableColumnFilters])
+
   const activeSheetReady = Boolean(activeSheet && activeSheet.columns.length > 0)
   const tablePending = Boolean(activeSheetReady && sheetLoading && sheetLoadingGid === activeGid)
 
@@ -1274,8 +1307,18 @@ export default function ProductStatusWorkbook({
       ...(sumColumn ? [sumColumn] : []),
     ]
     if (totalColumns.length === 0) return null
-    return computeRevenueColumnTotals(activeSheet.rows, activeSheet.columns, totalColumns)
-  }, [activeSheet, numericColumns, showTotalsRow, sumColumn])
+    const rowsForTotals = enableColumnFilters
+      ? visibleRows.map((item) => item.row)
+      : activeSheet.rows
+    return computeRevenueColumnTotals(rowsForTotals, activeSheet.columns, totalColumns)
+  }, [
+    activeSheet,
+    enableColumnFilters,
+    numericColumns,
+    showTotalsRow,
+    sumColumn,
+    visibleRows,
+  ])
 
   const applyTextStyle = useCallback((patch: Partial<TextStyleSegment>) => {
     const applied = activeCellRef.current?.applyTextStyle(patch)
@@ -1650,8 +1693,11 @@ export default function ProductStatusWorkbook({
           <p className="table-meta">
             {activeSheet ? (
               <>
-                Лист «{activeSheet.name}» · строк {activeSheet.rows.length} · столбцов{' '}
-                {activeSheet.columns.length}
+                Лист «{activeSheet.name}» · строк{' '}
+                {enableColumnFilters && visibleRows.length !== activeSheet.rows.length
+                  ? `${visibleRows.length} из ${activeSheet.rows.length}`
+                  : activeSheet.rows.length}{' '}
+                · столбцов {activeSheet.columns.length}
               </>
             ) : (
               <>Показано строк 0</>
@@ -1690,7 +1736,14 @@ export default function ProductStatusWorkbook({
               .join(' ')}
           >
             {activeSheetReady ? (
-              <table className="product-status-table">
+              <table
+                className={[
+                  'product-status-table',
+                  compactRows ? 'product-status-table--compact' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              >
                 <colgroup>
                   {enableRowDelete ? <col className="col-row-actions" /> : null}
                   {activeSheet!.columns.map((column, index) => (
@@ -1708,17 +1761,28 @@ export default function ProductStatusWorkbook({
                         className={[
                           resolveColumnClass(column),
                           isBooleanColumn(column) ? 'product-status-bool-header' : '',
+                          enableColumnFilters ? 'product-status-th-filterable' : '',
                         ]
                           .filter(Boolean)
                           .join(' ')}
                       >
-                        <span title={column}>{formatProductStatusColumnHeader(column)}</span>
+                        <div className="product-status-th-inner">
+                          <span title={column}>{formatProductStatusColumnHeader(column)}</span>
+                          {enableColumnFilters ? (
+                            <ProductStatusColumnFilter
+                              column={column}
+                              rows={activeSheet!.rows}
+                              selected={columnFilters[column] ?? null}
+                              onChange={handleColumnFilterChange}
+                            />
+                          ) : null}
+                        </div>
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {activeSheet!.rows.map((row, rowIndex) => {
+                  {visibleRows.map(({ row, rowIndex }) => {
                     const { isPresentation, isAttention } = resolveRowHighlight(
                       row,
                       activeSheet!.columns,

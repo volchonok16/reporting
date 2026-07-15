@@ -2,29 +2,25 @@
 
 export const REVENUE_ACTIVITY_COLUMNS = [
   'Активность',
-  'Статус',
+  'Статус F2 2026',
   'Ответственный',
-  'Влияние на базу',
-  'Влияние на выручку',
-  'Влияние на gmc',
+  'Влияние на базу, тыс',
+  'Влияние на выручку, млн',
+  'Влияние на gmc, млн',
   'Комментарий',
-  'Результат',
 ] as const
 
 export const REVENUE_NUMERIC_COLUMNS = [
-  'Влияние на базу',
-  'Влияние на выручку',
-  'Влияние на gmc',
+  'Влияние на базу, тыс',
+  'Влияние на выручку, млн',
+  'Влияние на gmc, млн',
 ] as const
 
+/** @deprecated Колонка «Результат» удалена */
 export const REVENUE_SUM_COLUMN = 'Результат'
 
 export function isRevenueNumericColumn(column: string): boolean {
   return (REVENUE_NUMERIC_COLUMNS as readonly string[]).includes(column)
-}
-
-export function isRevenueSumColumn(column: string): boolean {
-  return column === REVENUE_SUM_COLUMN
 }
 
 /** Парсит число из ячейки; текстовые / пустые значения не участвуют в сумме. */
@@ -45,38 +41,11 @@ export function formatRevenueNumber(value: number): string {
   return String(Number(value.toPrecision(12)))
 }
 
-/** Сумма только по числовым ячейкам; текстовые поля игнорируются. */
-export function computeRevenueResult(
-  row: Record<string, string>,
-  sourceColumns: readonly string[] = REVENUE_NUMERIC_COLUMNS,
-): string {
-  let total = 0
-  let hasValue = false
-  for (const column of sourceColumns) {
-    const parsed = parseRevenueNumber(row[column])
-    if (parsed === null) continue
-    total += parsed
-    hasValue = true
-  }
-  return hasValue ? formatRevenueNumber(total) : ''
-}
-
-export function withRevenueResult(
-  row: Record<string, string>,
-  sourceColumns: readonly string[] = REVENUE_NUMERIC_COLUMNS,
-  sumColumn: string = REVENUE_SUM_COLUMN,
-): Record<string, string> {
-  return {
-    ...row,
-    [sumColumn]: computeRevenueResult(row, sourceColumns),
-  }
-}
-
 /** Итоги по колонкам: суммируются только числовые значения, текст игнорируется. */
 export function computeRevenueColumnTotals(
   rows: Array<Record<string, string>>,
   columns: readonly string[],
-  totalColumns: readonly string[] = [...REVENUE_NUMERIC_COLUMNS, REVENUE_SUM_COLUMN],
+  totalColumns: readonly string[] = REVENUE_NUMERIC_COLUMNS,
 ): Record<string, string> {
   const totals: Record<string, string> = {}
   for (const column of columns) {

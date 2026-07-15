@@ -15,7 +15,6 @@ from app.product_status_rich_text import display_cell_text
 from app.revenue_activities_db import (
     REVENUE_ACTIVITY_SECTION_COLUMNS,
     REVENUE_NUMERIC_COLUMNS,
-    REVENUE_SUM_COLUMN,
     _parse_numeric,
 )
 from app.schemas import ProductStatusB2BOut, ProductStatusSheetOut
@@ -26,10 +25,12 @@ _HEADER_FONT = Font(bold=True)
 _TEXT_ALIGNMENT = Alignment(wrap_text=True, vertical="top")
 _NUMBER_ALIGNMENT = Alignment(horizontal="right", vertical="top")
 _NUMBER_FORMAT = "0.####"
+_TOTALS_FILL = PatternFill(fill_type="solid", fgColor="E8E8E8")
+_TOTALS_FONT = Font(bold=True)
 
 
 def _is_numeric_export_column(column: str) -> bool:
-    return column in REVENUE_NUMERIC_COLUMNS or column == REVENUE_SUM_COLUMN
+    return column in REVENUE_NUMERIC_COLUMNS
 
 
 def _cell_export_value(column: str, raw: str) -> str | float | None:
@@ -61,10 +62,6 @@ def _autosize_columns(
             max_len = max(max_len, max(len(line) for line in lines))
         width = min(48, max(12, max_len + 2))
         worksheet.column_dimensions[letter].width = width
-
-
-_TOTALS_FILL = PatternFill(fill_type="solid", fgColor="E8E8E8")
-_TOTALS_FONT = Font(bold=True)
 
 
 def _column_totals(sheet: ProductStatusSheetOut, columns: list[str]) -> dict[str, float | None]:

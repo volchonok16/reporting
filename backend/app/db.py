@@ -147,6 +147,7 @@ def ensure_startup_schema() -> None:
         "032_revenue_activities_columns.sql",
         "033_revenue_activities_gmc.sql",
         "034_revenue_activities_status_owner.sql",
+        "035_revenue_activities_filters_columns.sql",
     )
     org_migrations: list[str] = []
     for migration_name in org_migration_names:

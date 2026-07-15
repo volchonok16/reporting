@@ -5,7 +5,6 @@ import json
 from app.revenue_activities_db import (
     REVENUE_ACTIVITY_SECTION_COLUMNS,
     REVENUE_NUMERIC_COLUMNS,
-    REVENUE_SUM_COLUMN,
     ROW_ID_KEY,
     _cells_json,
     _normalize_cells,
@@ -19,58 +18,52 @@ from app.revenue_activities_db import (
 def test_revenue_section_columns() -> None:
     assert REVENUE_ACTIVITY_SECTION_COLUMNS["main"] == (
         "Активность",
-        "Статус",
+        "Статус F2 2026",
         "Ответственный",
-        "Влияние на базу",
-        "Влияние на выручку",
-        "Влияние на gmc",
+        "Влияние на базу, тыс",
+        "Влияние на выручку, млн",
+        "Влияние на gmc, млн",
         "Комментарий",
-        "Результат",
     )
     assert columns_for_section_gid("main")[0] == "Активность"
-    assert REVENUE_SUM_COLUMN == "Результат"
+    assert "Результат" not in REVENUE_ACTIVITY_SECTION_COLUMNS["main"]
     assert REVENUE_NUMERIC_COLUMNS == (
-        "Влияние на базу",
-        "Влияние на выручку",
-        "Влияние на gmc",
+        "Влияние на базу, тыс",
+        "Влияние на выручку, млн",
+        "Влияние на gmc, млн",
     )
 
 
-def test_normalize_cells_fills_missing_and_sums() -> None:
+def test_normalize_cells_fills_missing_and_aliases() -> None:
     columns = columns_for_section_gid("main")
     cells = _normalize_cells(
         {
             "Активность": "Акция",
+            "Статус": "OK",
             "Влияние на базу": "10",
             "Влияние на выручку": "2,5",
             "Влияние на gmc": "1",
             "Комментарий": "ок",
+            "Результат": "13.5",
         },
         columns=columns,
     )
     assert cells["Активность"] == "Акция"
+    assert cells["Статус F2 2026"] == "OK"
+    assert cells["Влияние на базу, тыс"] == "10"
+    assert cells["Влияние на выручку, млн"] == "2,5"
+    assert cells["Влияние на gmc, млн"] == "1"
     assert cells["Комментарий"] == "ок"
-    assert cells["Результат"] == "13.5"
-    assert len(cells) == 8
-    assert cells["Статус"] == ""
-    assert cells["Ответственный"] == ""
+    assert "Результат" not in cells
+    assert len(cells) == 7
 
 
 def test_normalize_ignores_text_in_numeric_columns() -> None:
-    columns = columns_for_section_gid("main")
-    cells = _normalize_cells(
-        {
-            "Влияние на базу": "10",
-            "Влияние на выручку": "н/д",
-            "Влияние на gmc": "5",
-        },
-        columns=columns,
-    )
-    assert cells["Результат"] == "15"
     assert _parse_numeric("н/д") is None
+    assert _parse_numeric("2,5") == 2.5
 
 
-def test_row_has_content_ignores_sum_only() -> None:
+def test_row_has_content() -> None:
     columns = columns_for_section_gid("main")
     assert _row_has_content(_normalize_cells({"Активность": "X"}, columns=columns))
     assert not _row_has_content(_normalize_cells({}, columns=columns))
@@ -90,14 +83,14 @@ def test_section_snapshot_json() -> None:
         {
             "cells": {
                 "Активность": "Акция",
-                "Влияние на базу": "1",
+                "Влияние на базу, тыс": "1",
                 "Комментарий": "X",
             }
         }
     ]
     payload = json.loads(_section_snapshot_json(rows, columns=columns))
     assert payload["rows"][0]["cells"]["Комментарий"] == "X"
-    assert payload["rows"][0]["cells"]["Результат"] == "1"
+    assert payload["rows"][0]["cells"]["Влияние на базу, тыс"] == "1"
 
 
 def test_row_id_key_is_private_meta() -> None:

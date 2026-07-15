@@ -199,6 +199,6 @@
 | Таблица | Ключевые поля | Назначение |
 |---------|---------------|------------|
 | `revenue_activity_section` | `gid`, `name`, `sort_order` | Вкладка (`main`) |
-| `revenue_activity_row` | `section_id`, `sort_order`, `cells` | Строки; колонки «Активность», «Статус», «Ответственный», влияния (база/выручка/gmc), «Комментарий», «Результат» (сумма) |
+| `revenue_activity_row` | `section_id`, `sort_order`, `cells` | Строки; «Активность», «Статус F2 2026», «Ответственный», влияния (тыс/млн), «Комментарий» |
 | `revenue_activity_history` | `section_id`, `row_id`, `action` | Журнал create/update/delete/restore |
 | `revenue_activity_snapshot` | `section_id`, `rows`, `changed_by` | Снимок для отката версии |

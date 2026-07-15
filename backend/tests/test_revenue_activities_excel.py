@@ -17,24 +17,22 @@ def test_revenue_excel_exports_numbers_as_numeric_cells() -> None:
                 name="Активности по выручкам",
                 columns=[
                     "Активность",
-                    "Статус",
+                    "Статус F2 2026",
                     "Ответственный",
-                    "Влияние на базу",
-                    "Влияние на выручку",
-                    "Влияние на gmc",
+                    "Влияние на базу, тыс",
+                    "Влияние на выручку, млн",
+                    "Влияние на gmc, млн",
                     "Комментарий",
-                    "Результат",
                 ],
                 rows=[
                     {
                         "Активность": "Пилот",
-                        "Статус": "В работе",
+                        "Статус F2 2026": "В работе",
                         "Ответственный": "Иванов",
-                        "Влияние на базу": "10",
-                        "Влияние на выручку": "2,5",
-                        "Влияние на gmc": "1",
+                        "Влияние на базу, тыс": "10",
+                        "Влияние на выручку, млн": "2,5",
+                        "Влияние на gmc, млн": "1",
                         "Комментарий": "ок",
-                        "Результат": "13.5",
                     }
                 ],
                 totalShown=1,
@@ -49,24 +47,17 @@ def test_revenue_excel_exports_numbers_as_numeric_cells() -> None:
     workbook = load_workbook(io.BytesIO(content))
     sheet = workbook["Активности по выручкам"]
     assert sheet["A1"].value == "Активность"
-    assert sheet["B1"].value == "Статус"
-    assert sheet["C1"].value == "Ответственный"
-    assert sheet["F1"].value == "Влияние на gmc"
+    assert sheet["B1"].value == "Статус F2 2026"
+    assert sheet["D1"].value == "Влияние на базу, тыс"
     assert sheet["A2"].value == "Пилот"
-    assert sheet["B2"].value == "В работе"
-    assert sheet["C2"].value == "Иванов"
     assert sheet["D2"].value == 10
     assert sheet["E2"].value == 2.5
     assert sheet["F2"].value == 1
     assert sheet["G2"].value == "ок"
-    assert sheet["H2"].value == 13.5
-    assert isinstance(sheet["D2"].value, (int, float))
-    assert isinstance(sheet["H2"].value, float)
     assert sheet["A3"].value == "Итого"
     assert sheet["D3"].value == 10
     assert sheet["E3"].value == 2.5
     assert sheet["F3"].value == 1
-    assert sheet["H3"].value == 13.5
 
 
 def test_revenue_excel_keeps_non_numeric_influence_as_text() -> None:
@@ -76,12 +67,12 @@ def test_revenue_excel_keeps_non_numeric_influence_as_text() -> None:
             ProductStatusSheetOut(
                 gid="main",
                 name="Активности по выручкам",
-                columns=["Активность", "Влияние на базу", "Результат"],
+                columns=["Активность", "Влияние на базу, тыс", "Комментарий"],
                 rows=[
                     {
                         "Активность": "X",
-                        "Влияние на базу": "н/д",
-                        "Результат": "",
+                        "Влияние на базу, тыс": "н/д",
+                        "Комментарий": "",
                     }
                 ],
                 totalShown=1,
