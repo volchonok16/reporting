@@ -4,19 +4,14 @@ export function resolveApiBase(): string {
   const fromEnv = (import.meta.env.VITE_API_URL as string | undefined)?.trim().replace(/\/$/, '') ?? ''
   if (typeof window === 'undefined') return fromEnv
 
-  const { hostname, protocol } = window.location
+  const { hostname } = window.location
   const isCorpUiHost =
     hostname === 'taskatestovaya.ru' || hostname === 'www.taskatestovaya.ru'
   const isPallinkHost = hostname === 'pallink.fun' || hostname === 'www.pallink.fun'
 
-  if (isCorpUiHost) {
-    // nginx на taskatestovaya.ru проксирует /api/ → backend (HTTP или HTTPS)
+  if (isCorpUiHost || isPallinkHost) {
+    // nginx проксирует /api/ → backend (HTTP или HTTPS), same-origin
     return ''
-  }
-
-  if (isPallinkHost) {
-    // nginx на pallink.fun проксирует /api/ → backend; всегда без www (www отдаёт 301 на /api/)
-    return `${protocol}//pallink.fun`
   }
 
   const envPointsToLocal =

@@ -37,7 +37,11 @@ scp dist/reporting-offline.tar root@SERVER:/tmp/
 **Деплой на сервере** (после `git pull` и `.env`):
 
 ```bash
-# Рекомендуется для закрытого контура: образы + HTTP nginx (/api/ → backend)
+# Только pallink.fun (HTTP, без SSL) — рекомендуемый offline на VPS/отдельном сервере:
+cp .env.pallink-offline.example .env   # один раз, заполнить пароли
+sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --pallink
+
+# Corp taskatestovaya.ru (HTTP):
 sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx
 
 # только контейнеры (без nginx):
@@ -48,14 +52,16 @@ bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel
 sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-ssl
 ```
 
-`--with-nginx` → `deploy/setup-nginx-http.sh`: HTTP без certbot, `/api/` на backend, UI на frontend.  
-`--with-ssl` → `deploy/setup-nginx-ssl.sh` (нужен сертификат в `/etc/letsencrypt/live/reporting/` или доступ к LE).
+`--with-nginx --pallink` → `deploy/nginx/pallink-http.conf` (только pallink.fun / www / api / minio).  
+`--with-nginx` без флага → bootstrap corp+pallink.  
+`--with-ssl` → `deploy/setup-nginx-ssl.sh`.
 
-UI на **taskatestovaya.ru** ходит в API same-origin (`/api/…`); отдельный `api.*` и `VITE_API_URL` для corp не нужны.
+DNS для pallink HTTP: `pallink.fun`, `www.pallink.fun`, `api.pallink.fun` → IP сервера.  
+UI ходит в API same-origin (`/api/…`); `VITE_API_URL` не обязателен.
 
 Compose-файлы: `docker-compose.prod.yml` + `docker-compose.offline.yml` (фиксированные теги `reporting/*`).
 
-Обновление: `offline-bundle.sh` на Mac → `scp` tar → на сервере `git pull` + `sudo bash scripts/offline-deploy.sh … --with-nginx`.
+Обновление: `offline-bundle.sh` на Mac → `scp` tar → на сервере `git pull` + `sudo bash scripts/offline-deploy.sh … --with-nginx --pallink`.
 
 ## Полный стек вручную (dev)
 

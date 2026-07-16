@@ -2,11 +2,12 @@
 # Деплой offline-bundle на закрытом сервере (без Docker Hub).
 #
 #   bash scripts/offline-deploy.sh /tmp/reporting-offline.tar
-#   bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel
 #   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx
+#   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --pallink
 #
-# --with-nginx: HTTP nginx (без certbot) — /api/ → backend, / → frontend
-# --with-ssl:   nginx + попытка Let's Encrypt / corp-сертификат (нужен root)
+# --with-nginx: HTTP nginx (без certbot)
+# --pallink:    только pallink.fun (иначе bootstrap corp+pallink)
+# --with-ssl:   nginx + Let's Encrypt / corp-сертификат
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
@@ -22,12 +23,14 @@ TAR=""
 TUNNEL=0
 WITH_NGINX=0
 WITH_SSL=0
+PALLINK=0
 
 for arg in "$@"; do
   case "$arg" in
     --tunnel) TUNNEL=1 ;;
     --with-nginx) WITH_NGINX=1 ;;
     --with-ssl) WITH_SSL=1; WITH_NGINX=1 ;;
+    --pallink) PALLINK=1 ;;
     --*)
       echo "Неизвестный аргумент: $arg" >&2
       exit 1
@@ -51,14 +54,14 @@ if [[ -z "$TAR" ]]; then
 fi
 
 if [[ -z "$TAR" || ! -f "$TAR" ]]; then
-  echo "Использование: bash scripts/offline-deploy.sh [/path/to/reporting-offline.tar] [--tunnel] [--with-nginx] [--with-ssl]" >&2
+  echo "Использование: bash scripts/offline-deploy.sh [/path/to/tar] [--tunnel] [--with-nginx] [--pallink] [--with-ssl]" >&2
   echo "Bundle не найден: ${TAR:-<пусто>}" >&2
   exit 1
 fi
 
 if [[ "$WITH_NGINX" -eq 1 && "${EUID:-0}" -ne 0 ]]; then
   echo "Ошибка: --with-nginx / --with-ssl требуют root:" >&2
-  echo "  sudo bash scripts/offline-deploy.sh $TAR --with-nginx" >&2
+  echo "  sudo bash scripts/offline-deploy.sh $TAR --with-nginx --pallink" >&2
   exit 1
 fi
 
@@ -108,14 +111,23 @@ for i in $(seq 1 20); do
   sleep 2
 done
 
+UI_URL="http://taskatestovaya.ru/"
+API_CHECK="http://taskatestovaya.ru/api/health"
+if [[ "$PALLINK" -eq 1 ]]; then
+  UI_URL="http://pallink.fun/"
+  API_CHECK="http://pallink.fun/api/health"
+fi
+
 if [[ "$WITH_NGINX" -eq 1 ]]; then
   echo ""
   if [[ "$WITH_SSL" -eq 1 ]]; then
     echo "==> Nginx + SSL…"
     bash "$ROOT/deploy/setup-nginx-ssl.sh" || echo "Предупреждение: nginx/ssl не настроены полностью" >&2
   else
-    echo "==> Nginx HTTP (закрытый контур, без certbot)…"
-    bash "$ROOT/deploy/setup-nginx-http.sh" || echo "Предупреждение: nginx HTTP не настроен" >&2
+    echo "==> Nginx HTTP…"
+    NGINX_ARGS=()
+    [[ "$PALLINK" -eq 1 ]] && NGINX_ARGS+=(--pallink)
+    bash "$ROOT/deploy/setup-nginx-http.sh" "${NGINX_ARGS[@]}" || echo "Предупреждение: nginx HTTP не настроен" >&2
   fi
 
   echo ""
@@ -127,7 +139,7 @@ if [[ "$WITH_NGINX" -eq 1 ]]; then
   if [[ -n "$health" ]]; then
     echo "    GET /api/health → ${health}"
   else
-    echo "    GET /api/health → нет ответа (проверьте: curl http://taskatestovaya.ru/api/health)" >&2
+    echo "    GET /api/health → нет ответа (проверьте: curl $API_CHECK)" >&2
   fi
 fi
 
@@ -138,9 +150,9 @@ echo "==> Статус контейнеров"
 echo ""
 echo "Готово (offline deploy)."
 if [[ "$WITH_NGINX" -eq 0 ]]; then
-  echo "Nginx не трогали. Для HTTP на corp (рекомендуется):"
+  echo "Nginx не трогали. Для pallink HTTP:"
+  echo "  sudo bash scripts/offline-deploy.sh $TAR --with-nginx --pallink"
+  echo "Для corp HTTP:"
   echo "  sudo bash scripts/offline-deploy.sh $TAR --with-nginx"
-  echo "С SSL (corp-сертификат или LE):"
-  echo "  sudo bash scripts/offline-deploy.sh $TAR --with-ssl"
 fi
-echo "UI: http://taskatestovaya.ru/  (не https, пока нет сертификата)"
+echo "UI: $UI_URL  (не https, пока нет сертификата)"
