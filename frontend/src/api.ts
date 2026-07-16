@@ -5,7 +5,14 @@ export function resolveApiBase(): string {
   if (typeof window === 'undefined') return fromEnv
 
   const { hostname, protocol } = window.location
+  const isCorpUiHost =
+    hostname === 'taskatestovaya.ru' || hostname === 'www.taskatestovaya.ru'
   const isPallinkHost = hostname === 'pallink.fun' || hostname === 'www.pallink.fun'
+
+  if (isCorpUiHost) {
+    // nginx на taskatestovaya.ru проксирует /api/ → backend (HTTP или HTTPS)
+    return ''
+  }
 
   if (isPallinkHost) {
     // nginx на pallink.fun проксирует /api/ → backend; всегда без www (www отдаёт 301 на /api/)
