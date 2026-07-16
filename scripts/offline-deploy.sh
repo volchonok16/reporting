@@ -38,8 +38,15 @@ source "$(dirname "$0")/resolve-compose.sh" "$MODE"
 echo "==> docker load ← ${TAR}"
 docker load -i "$TAR"
 
-echo "==> docker compose up (offline, без pull/build)…"
-"${COMPOSE[@]}" up -d --no-build --pull never
+# Compose v1 (docker-compose) не знает --pull never / pull_policy.
+# v2 (docker compose): --pull never — не ходить в Docker Hub.
+UP_ARGS=(up -d --no-build)
+if [[ "$COMPOSE_CMD" != "docker-compose" ]]; then
+  UP_ARGS+=(--pull never)
+fi
+
+echo "==> ${COMPOSE[*]} ${UP_ARGS[*]}"
+"${COMPOSE[@]}" "${UP_ARGS[@]}"
 
 echo ""
 echo "==> Права БД для alex/ivan…"
