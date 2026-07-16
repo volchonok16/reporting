@@ -85,9 +85,42 @@ function createEmbeddedTable(rows: number, cols: number): EmbeddedTable {
   }
 }
 
+/** Убирает точный дубль абзаца/всего текста (ABC\\nABC → ABC). */
+function collapseDuplicatedPlainText(text: string): string {
+  const normalized = text.replace(/\r\n/g, '\n').replace(/\u00a0/g, ' ')
+  const trimmed = normalized.replace(/^\n+|\n+$/g, '')
+  if (!trimmed) return ''
+
+  const blankSplit = trimmed.split(/\n{2,}/)
+  if (blankSplit.length === 2 && blankSplit[0].trim() === blankSplit[1].trim()) {
+    return blankSplit[0].trim()
+  }
+
+  const lines = trimmed.split('\n')
+  if (lines.length >= 2 && lines.length % 2 === 0) {
+    const mid = lines.length / 2
+    const first = lines.slice(0, mid).join('\n').trim()
+    const second = lines.slice(mid).join('\n').trim()
+    if (first && first === second) {
+      return first
+    }
+  }
+
+  if (trimmed.length >= 40 && trimmed.length % 2 === 0) {
+    const half = trimmed.length / 2
+    const first = trimmed.slice(0, half)
+    const second = trimmed.slice(half)
+    if (first === second) {
+      return first
+    }
+  }
+
+  return trimmed
+}
+
 function serializeDocWithTable(doc: EmbeddedTableDoc): string {
   return serializeEmbeddedTableDoc({
-    text: doc.text,
+    text: collapseDuplicatedPlainText(doc.text),
     table: doc.table,
   })
 }
@@ -102,9 +135,80 @@ function cloneEmbeddedTable(table: EmbeddedTable): EmbeddedTable {
 
 function cloneEmbeddedTableDoc(doc: EmbeddedTableDoc): EmbeddedTableDoc {
   return {
-    text: doc.text,
+    text: collapseDuplicatedPlainText(doc.text),
     table: cloneEmbeddedTable(doc.table),
   }
+}
+
+function isBlockEditableNode(node: Node): boolean {
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const tag = (node as HTMLElement).tagName
+    return tag === 'DIV' || tag === 'P' || tag === 'LI' || tag === 'BR'
+  }
+  return false
+}
+
+/** Plain text из contentEditable: блочные узлы → переносы, без двойного учёта. */
+function editableToPlainText(root: HTMLElement): string {
+  const parts: string[] = []
+
+  const walk = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent ?? ''
+      if (text) parts.push(text)
+      return
+    }
+    if (!(node instanceof HTMLElement)) return
+    if (node.tagName === 'BR') {
+      parts.push('\n')
+      return
+    }
+    const block = isBlockEditableNode(node)
+    if (block && parts.length > 0 && !parts[parts.length - 1].endsWith('\n')) {
+      parts.push('\n')
+    }
+    node.childNodes.forEach(walk)
+    if (block && parts.length > 0 && !parts[parts.length - 1].endsWith('\n')) {
+      parts.push('\n')
+    }
+  }
+
+  root.childNodes.forEach(walk)
+  return collapseDuplicatedPlainText(parts.join('').replace(/\n{3,}/g, '\n\n'))
+}
+
+function resolvePreambleForNewTable(
+  tableDoc: EmbeddedTableDoc | null,
+  tableHost: HTMLElement | null,
+  element: HTMLElement | null,
+  value: string,
+  lastSerialized: string | null,
+): string {
+  if (tableDoc) {
+    if (tableHost) {
+      return collapseDuplicatedPlainText(readTableDocFromHost(tableHost, tableDoc.table).text)
+    }
+    return collapseDuplicatedPlainText(tableDoc.text)
+  }
+
+  // Уже tablejson в value (редкий race) — только preamble, без flatten строк таблицы.
+  const existing = parseEmbeddedTableDoc(lastSerialized ?? value)
+  if (existing) {
+    return collapseDuplicatedPlainText(existing.text)
+  }
+
+  if (element) {
+    // Сначала живой DOM (несохранённый ввод), затем закодированное value.
+    const fromDom = editableToPlainText(element)
+    if (fromDom) return fromDom
+    const fromSerialized = collapseDuplicatedPlainText(
+      displayCellText(serializeEditableCell(element, { bg: null, border: null })),
+    )
+    if (fromSerialized) return fromSerialized
+  }
+
+  const committed = lastSerialized ?? value
+  return collapseDuplicatedPlainText(displayCellText(committed))
 }
 
 /** Fallback, если браузер не дал доступ к системному буферу. */
@@ -301,7 +405,13 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
     const lastSerialized = useRef<string | null>(null)
     const cellStyleRef = useRef<CellStyle>({ bg: null, border: null })
 
-    const tableDoc = parseEmbeddedTableDoc(value)
+    const parsedTableDoc = parseEmbeddedTableDoc(value)
+    const tableDoc = parsedTableDoc
+      ? {
+          text: collapseDuplicatedPlainText(parsedTableDoc.text),
+          table: parsedTableDoc.table,
+        }
+      : null
 
     useLayoutEffect(() => {
       if (tableDoc) {
@@ -313,6 +423,20 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       lastSerialized.current = nextSerialized
       onChange(nextSerialized)
     }
+
+    // Автолечение уже сохранённого дубля preamble (ABC\\nABC → ABC).
+    useLayoutEffect(() => {
+      if (!parsedTableDoc) return
+      const collapsed = collapseDuplicatedPlainText(parsedTableDoc.text)
+      if (collapsed === parsedTableDoc.text) return
+      commitValue(
+        serializeDocWithTable({
+          text: collapsed,
+          table: parsedTableDoc.table,
+        }),
+      )
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- heal once per corrupted value
+    }, [value])
 
     const commitTableFromHost = (): boolean => {
       const host = tableHostRef.current
@@ -413,20 +537,15 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       },
       insertTable(rows, cols) {
         if (rows < 1 || cols < 1) return false
-        // Не сплющиваем старую таблицу в preamble (tableDocToPlainText) —
-        // иначе текст дублируется при повторной вставке / уже существующей таблице.
-        let preamble: string
-        if (tableDoc) {
-          const host = tableHostRef.current
-          preamble = host
-            ? readTableDocFromHost(host, tableDoc.table).text
-            : tableDoc.text
-        } else {
-          const element = elementRef.current
-          preamble = element
-            ? displayCellText(serializeEditableCell(element, cellStyleRef.current))
-            : displayCellText(value)
-        }
+        // Один раз берём preamble и сразу пишем tablejson — без flatten старой таблицы
+        // и без повторного commitPending (он давал гонку с blur при размонтировании).
+        const preamble = resolvePreambleForNewTable(
+          tableDoc,
+          tableHostRef.current,
+          elementRef.current,
+          value,
+          lastSerialized.current,
+        )
         const table = createEmbeddedTable(rows, cols)
         commitValue(serializeDocWithTable({ text: preamble, table }))
         return true
@@ -668,6 +787,11 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         }}
         onFocus={onFocus}
         onBlur={(event) => {
+          // Не затираем только что вставленный tablejson plain-текстом при unmount.
+          if (lastSerialized.current && parseEmbeddedTableDoc(lastSerialized.current)) {
+            onBlur?.()
+            return
+          }
           const serialized = serializeEditableCell(event.currentTarget, cellStyleRef.current)
           lastSerialized.current = serialized
           onChange(serialized)
