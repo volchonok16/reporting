@@ -74,9 +74,16 @@ export function preambleFromCellValue(value: string): string {
   return displayCellText(value)
 }
 
-export function readTableDocFromHost(host: HTMLElement, table: EmbeddedTable): EmbeddedTableDoc {
+function readPreambleFromHost(host: HTMLElement): string {
   const preambleEl = host.querySelector('.product-status-inline-table-preamble')
-  const text = preambleEl?.textContent ?? ''
+  if (preambleEl instanceof HTMLTextAreaElement) {
+    return preambleEl.value
+  }
+  return preambleEl?.textContent ?? ''
+}
+
+export function readTableDocFromHost(host: HTMLElement, table: EmbeddedTable): EmbeddedTableDoc {
+  const text = readPreambleFromHost(host)
   const nextCells: string[][] = []
   host.querySelectorAll('.product-status-inline-table tbody tr').forEach((rowElement) => {
     const row: string[] = []

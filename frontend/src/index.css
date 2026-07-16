@@ -2416,27 +2416,33 @@ body {
 
 .product-status-inline-table-host {
   cursor: default;
+  -webkit-user-modify: read-only;
 }
 
 .product-status-inline-table-preamble {
+  display: block;
   width: 100%;
-  min-height: 1.35em;
+  min-height: 2.7em;
+  margin: 0 0 4px;
   padding: 0;
-  margin-bottom: 4px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  resize: vertical;
   box-sizing: border-box;
   outline: none;
   white-space: pre-wrap;
   word-break: break-word;
   cursor: text;
   pointer-events: auto;
+  field-sizing: content;
 }
 
 .product-status-inline-table-preamble:focus {
   outline: none;
-}
-
-.product-status-inline-table-preamble:empty {
-  min-height: 1.35em;
 }
 
 .product-status-inline-table {

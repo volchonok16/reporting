@@ -122,17 +122,6 @@ function inlineTableCellIsEditing(
   return active === element || (active instanceof Node && element.contains(active))
 }
 
-function focusInlineTableCellEnd(element: HTMLElement) {
-  element.focus()
-  const selection = window.getSelection()
-  if (!selection) return
-  const range = document.createRange()
-  range.selectNodeContents(element)
-  range.collapse(false)
-  selection.removeAllRanges()
-  selection.addRange(range)
-}
-
 function InlineTableCell({
   value,
   placeholder,
@@ -141,15 +130,16 @@ function InlineTableCell({
   onFocus,
 }: InlineTableCellProps) {
   const elementRef = useRef<HTMLDivElement>(null)
-  const lastCommitted = useRef(value)
+  /** null until first DOM sync — otherwise mount skips writing value into an empty div */
+  const lastSynced = useRef<string | null>(null)
   const isFocusedRef = useRef(false)
 
   useLayoutEffect(() => {
     const element = elementRef.current
     if (!element || inlineTableCellIsEditing(element, isFocusedRef)) return
-    if (value === lastCommitted.current) return
+    if (lastSynced.current === value && element.textContent === value) return
     element.textContent = value
-    lastCommitted.current = value
+    lastSynced.current = value
   }, [value])
 
   return (
@@ -163,9 +153,6 @@ function InlineTableCell({
       data-placeholder={placeholder}
       onMouseDown={(event) => {
         event.stopPropagation()
-        if (document.activeElement !== event.currentTarget) {
-          event.currentTarget.focus()
-        }
       }}
       onFocus={() => {
         isFocusedRef.current = true
@@ -174,14 +161,47 @@ function InlineTableCell({
       onBlur={(event) => {
         isFocusedRef.current = false
         const next = event.currentTarget.textContent ?? ''
-        if (next === lastCommitted.current) return
-        lastCommitted.current = next
-        onCommit(next)
+        lastSynced.current = next
+        if (next !== value) onCommit(next)
       }}
       onInput={(event) => {
         isFocusedRef.current = true
-        lastCommitted.current = event.currentTarget.textContent ?? ''
+        lastSynced.current = event.currentTarget.textContent ?? ''
       }}
+    />
+  )
+}
+
+type PreambleEditorProps = {
+  value: string
+  className?: string
+  onChange: (value: string) => void
+  onFocus?: () => void
+  autoFocus?: boolean
+}
+
+function PreambleEditor({ value, className, onChange, onFocus, autoFocus }: PreambleEditorProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useLayoutEffect(() => {
+    if (!autoFocus) return
+    const el = textareaRef.current
+    if (!el) return
+    el.focus()
+    const end = el.value.length
+    el.setSelectionRange(end, end)
+  }, [autoFocus])
+
+  return (
+    <textarea
+      ref={textareaRef}
+      className={className}
+      value={value}
+      rows={Math.min(8, Math.max(2, value.split('\n').length + 1))}
+      onMouseDown={(event) => event.stopPropagation()}
+      onFocus={onFocus}
+      onChange={(event) => onChange(event.target.value)}
+      onKeyDown={(event) => event.stopPropagation()}
     />
   )
 }
@@ -198,12 +218,19 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
     const shouldFocusPreambleRef = useRef(false)
 
     const tableDoc = parseEmbeddedTableDoc(value)
+    const focusPreamble = shouldFocusPreambleRef.current && Boolean(tableDoc)
 
     useLayoutEffect(() => {
       if (tableDoc) {
         lastSerialized.current = value
       }
     }, [tableDoc, value])
+
+    useLayoutEffect(() => {
+      if (focusPreamble) {
+        shouldFocusPreambleRef.current = false
+      }
+    }, [focusPreamble])
 
     const commitValue = (nextSerialized: string) => {
       lastSerialized.current = nextSerialized
@@ -248,16 +275,6 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       host.addEventListener('focusout', handleFocusOut)
       return () => host.removeEventListener('focusout', handleFocusOut)
     }, [onBlur, tableDoc])
-
-    useLayoutEffect(() => {
-      if (!tableDoc || !shouldFocusPreambleRef.current) return
-      const host = tableHostRef.current
-      if (!host) return
-      shouldFocusPreambleRef.current = false
-      const preamble = host.querySelector<HTMLElement>('.product-status-inline-table-preamble')
-      if (!preamble) return
-      focusInlineTableCellEnd(preamble)
-    }, [tableDoc, value])
 
     useLayoutEffect(() => {
       const element = elementRef.current
@@ -360,6 +377,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         if (!payload) return false
         const doc = parseEmbeddedTableDoc(payload)
         if (!doc) return false
+        shouldFocusPreambleRef.current = true
         commitValue(serializeDocWithTable(cloneEmbeddedTableDoc(doc)))
         return true
       },
@@ -412,17 +430,17 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
           cells: current.table.cells.map((items) => [...items]),
         }
         nextTable.cells[rowIndex][colIndex] = cellValue
-        commitValue(serializeDocWithTable({ text: current.text, table: nextTable }))
+        commitValue(serializeDocWithTable({ text: current.text || tableDoc.text, table: nextTable }))
       }
 
       const updateTable = (nextTable: EmbeddedTable) => {
         const current = readCurrentDoc()
-        commitValue(serializeDocWithTable({ text: current.text, table: nextTable }))
+        commitValue(serializeDocWithTable({ text: current.text || tableDoc.text, table: nextTable }))
       }
 
       const removeTableKeepText = () => {
-        commitTableFromHost()
-        const text = readCurrentDoc().text || tableDoc.text
+        const current = readCurrentDoc()
+        const text = current.text || tableDoc.text
         commitValue(text)
       }
 
@@ -439,12 +457,20 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       return (
         <div
           ref={tableHostRef}
+          contentEditable={false}
           className={[className, 'product-status-inline-table-host'].filter(Boolean).join(' ')}
           onFocusCapture={() => onFocus?.()}
           onCopy={(event) => {
-            if (selectionIsInside(tableHostRef.current)) return
-            event.preventDefault()
             const host = tableHostRef.current
+            const active = document.activeElement
+            if (
+              active instanceof HTMLTextAreaElement ||
+              (active instanceof HTMLElement && active.isContentEditable)
+            ) {
+              if (host?.contains(active)) return
+            }
+            if (selectionIsInside(host)) return
+            event.preventDefault()
             const doc = host
               ? readTableDocFromHost(host, tableDoc.table)
               : cloneEmbeddedTableDoc(tableDoc)
@@ -454,6 +480,17 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
             event.clipboardData.setData('text/tab-separated-values', tableToTsv(doc.table))
           }}
           onPaste={(event) => {
+            const active = document.activeElement
+            if (
+              active instanceof HTMLTextAreaElement ||
+              (active instanceof HTMLElement && active.isContentEditable)
+            ) {
+              if (tableHostRef.current?.contains(active)) {
+                const raw = event.clipboardData.getData('text/plain')
+                // В textarea/ячейке обычный текст вставляем как есть; tablejson — как таблицу.
+                if (!extractEmbeddedTablePayload(raw)) return
+              }
+            }
             const raw = event.clipboardData.getData('text/plain')
             if (applyPastedTablePayload(raw)) {
               event.preventDefault()
@@ -462,8 +499,13 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
           onKeyDown={(event) => {
             const primary = event.ctrlKey || event.metaKey
             if (!primary || event.altKey) return
+            const active = document.activeElement
+            const editingInside =
+              (active instanceof HTMLTextAreaElement ||
+                (active instanceof HTMLElement && active.isContentEditable)) &&
+              Boolean(tableHostRef.current?.contains(active))
             const key = event.key.toLowerCase()
-            if (key === 'c' && !selectionIsInside(tableHostRef.current)) {
+            if (key === 'c' && !editingInside && !selectionIsInside(tableHostRef.current)) {
               event.preventDefault()
               copyCurrentTable()
               return
@@ -476,11 +518,12 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
             }
           }}
         >
-          <InlineTableCell
+          <PreambleEditor
             value={tableDoc.text}
             className="product-status-inline-table-preamble"
             onFocus={onFocus}
-            onCommit={updateFreeText}
+            onChange={updateFreeText}
+            autoFocus={focusPreamble}
           />
           <div className="product-status-inline-table-toolbar">
             <button
