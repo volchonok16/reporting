@@ -1,4 +1,5 @@
-FROM node:22-alpine
+# Production image: static build + nginx (без Vite dev и проверки Host).
+FROM node:22-alpine AS build
 
 WORKDIR /app
 
@@ -11,6 +12,13 @@ COPY package*.json ./
 RUN npm ci --no-fund --no-audit
 
 COPY . .
+RUN npx vite build && test -f dist/index.html
+
+FROM nginx:1.27-alpine
+
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY docker/nginx-frontend.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 5173
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+
+CMD ["nginx", "-g", "daemon off;"]
