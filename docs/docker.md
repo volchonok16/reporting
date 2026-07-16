@@ -40,9 +40,14 @@ scp dist/reporting-offline.tar root@SERVER:/tmp/
 bash scripts/offline-deploy.sh /tmp/reporting-offline.tar
 # с туннелем PostgreSQL для DBeaver:
 bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel
+# + nginx и попытка Let's Encrypt (нужен root):
+sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel --with-nginx
 ```
 
-Compose-файлы: `docker-compose.prod.yml` + `docker-compose.offline.yml` (`pull_policy: never`, фиксированные теги).
+`--with-nginx` вызывает `deploy/setup-nginx-ssl.sh` (те же nginx/certbot, что у `production.sh`).  
+Let's Encrypt сработает только при публичном DNS и доступе к LE; на закрытом corp-сервере nginx поднимется на HTTP, HTTPS — через корпоративный сертификат вручную.
+
+Compose-файлы: `docker-compose.prod.yml` + `docker-compose.offline.yml` (фиксированные теги `reporting/*`).
 
 Обновление версии: заново `offline-bundle.sh` на машине с интернетом → `scp` → `offline-deploy.sh` на сервере.
 

@@ -3,15 +3,21 @@
 #
 #   bash scripts/offline-deploy.sh /tmp/reporting-offline.tar
 #   bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel
+#   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel --with-nginx
+#
+# --with-nginx: ставит/настраивает nginx + пытается Let's Encrypt (нужен root).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+ROOT="$(pwd)"
 
 TAR="${1:-}"
 TUNNEL=0
+WITH_NGINX=0
 shift || true
 for arg in "$@"; do
   case "$arg" in
     --tunnel) TUNNEL=1 ;;
+    --with-nginx) WITH_NGINX=1 ;;
     *)
       echo "Неизвестный аргумент: $arg" >&2
       exit 1
@@ -20,7 +26,12 @@ for arg in "$@"; do
 done
 
 if [[ -z "$TAR" || ! -f "$TAR" ]]; then
-  echo "Использование: bash scripts/offline-deploy.sh /path/to/reporting-offline.tar [--tunnel]" >&2
+  echo "Использование: bash scripts/offline-deploy.sh /path/to/reporting-offline.tar [--tunnel] [--with-nginx]" >&2
+  exit 1
+fi
+
+if [[ "$WITH_NGINX" -eq 1 && "${EUID:-0}" -ne 0 ]]; then
+  echo "Ошибка: --with-nginx требует root: sudo bash scripts/offline-deploy.sh … --with-nginx" >&2
   exit 1
 fi
 
@@ -34,6 +45,11 @@ MODE=offline
 
 # shellcheck source=resolve-compose.sh
 source "$(dirname "$0")/resolve-compose.sh" "$MODE"
+
+if [[ "$WITH_NGINX" -eq 1 ]]; then
+  echo "==> Nginx + SSL…"
+  bash "$ROOT/deploy/setup-nginx-ssl.sh" || echo "Предупреждение: nginx/ssl не настроены полностью" >&2
+fi
 
 echo "==> docker load ← ${TAR}"
 docker load -i "$TAR"
@@ -71,3 +87,8 @@ echo "==> Статус контейнеров"
 
 echo ""
 echo "Готово (offline deploy)."
+if [[ "$WITH_NGINX" -eq 0 ]]; then
+  echo "Nginx/SSL не трогали. Чтобы настроить:"
+  echo "  sudo bash scripts/offline-deploy.sh $TAR --tunnel --with-nginx"
+  echo "  или отдельно: sudo bash deploy/setup-nginx-ssl.sh"
+fi

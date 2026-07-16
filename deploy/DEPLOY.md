@@ -27,9 +27,14 @@ bash scripts/offline-bundle.sh dist/reporting-offline.tar linux/amd64
 scp dist/reporting-offline.tar user@SERVER:/tmp/
 
 # сервер
-cd ~/app/database/b2bproduct   # путь к репозиторию
+cd /var/database/b2bproduct
 git pull
+# только Docker:
 bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel
+# Docker + nginx (+ Let's Encrypt, если доступен):
+sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel --with-nginx
+# только nginx/SSL отдельно:
+sudo bash deploy/setup-nginx-ssl.sh
 ```
 
 Подробнее: [docs/docker.md](../docs/docker.md#закрытый-сервер-без-docker-hub).
