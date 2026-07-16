@@ -8,7 +8,8 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
-    // corp/production: Vite dev в Docker; nginx ставит Host localhost, corp-direct — реальный Host
+    // Corp/nginx: Host или X-Forwarded-Host = публичный домен — разрешаем все.
+    // (список allowedHosts не ловит X-Forwarded-Host от nginx)
     allowedHosts: true,
     proxy: {
       '/api': {
