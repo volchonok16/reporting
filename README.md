@@ -107,6 +107,23 @@ reporting/
 | FineBI | views `v_*` из PostgreSQL |
 | Production HTTPS | nginx + certbot (домены из `.env`) |
 
+## Git: GitHub + TFS
+
+| Remote | Ветка | URL |
+|--------|-------|-----|
+| `origin` | `main` | GitHub |
+| `tfs` | **`master`** (default в Azure DevOps) | `tfs.t2.ru/.../b2bproduct` |
+
+После коммита на `main`:
+
+```bash
+bash scripts/push-all.sh
+```
+
+Или вручную: `git push origin main && git push tfs main:master`
+
+На corp-сервере: `git pull` в ветке **`master`**.
+
 ## Правила для Cursor (AI)
 
 В `.cursor/rules/glossary-and-git.mdc`: при изменениях БД агент дополняет **глоссарий** и связанные docs, затем делает **commit + push** в GitHub.
