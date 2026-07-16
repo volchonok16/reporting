@@ -203,3 +203,28 @@ def test_display_cell_text_flattens_embedded_table() -> None:
         + ">>"
     )
     assert display_cell_text(token) == "A1 | A2\nB1 | B2"
+
+
+def test_parse_embedded_table_doc_keeps_structure() -> None:
+    import base64
+    import json
+
+    from app.product_status_rich_text import parse_embedded_table_doc
+
+    payload = {
+        "text": "Преамбула",
+        "table": {
+            "rows": 2,
+            "cols": 2,
+            "cells": [["A1", "A2"], ["B1", "B2"]],
+        },
+    }
+    token = (
+        "<<tablejson:"
+        + base64.b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
+        + ">>"
+    )
+    parsed = parse_embedded_table_doc(token)
+    assert parsed is not None
+    assert parsed.text == "Преамбула"
+    assert parsed.cells == (("A1", "A2"), ("B1", "B2"))

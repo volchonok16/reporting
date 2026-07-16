@@ -13,6 +13,7 @@ import {
   type CellStyle,
   type TextStyleSegment,
 } from './productStatusRichText'
+import { notifySuccess, notifyWarning } from './toast'
 
 export type ProductStatusCellHandle = {
   applyTextStyle: (patch: Partial<TextStyleSegment>) => boolean
@@ -20,6 +21,9 @@ export type ProductStatusCellHandle = {
   clearFormatting: () => boolean
   insertText: (text: string) => boolean
   insertTable: (rows: number, cols: number) => boolean
+  copyTable: () => Promise<boolean>
+  pasteTable: () => Promise<boolean>
+  hasEmbeddedTable: () => boolean
   commitPending: () => boolean
 }
 
@@ -88,6 +92,77 @@ function serializeDocWithTable(doc: EmbeddedTableDoc): string {
   })
 }
 
+function cloneEmbeddedTable(table: EmbeddedTable): EmbeddedTable {
+  return {
+    rows: table.rows,
+    cols: table.cols,
+    cells: table.cells.map((row) => [...row]),
+  }
+}
+
+function cloneEmbeddedTableDoc(doc: EmbeddedTableDoc): EmbeddedTableDoc {
+  return {
+    text: doc.text,
+    table: cloneEmbeddedTable(doc.table),
+  }
+}
+
+/** Fallback, если браузер не дал доступ к системному буферу. */
+let lastCopiedEmbeddedTable: string | null = null
+
+function extractEmbeddedTablePayload(raw: string): string | null {
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  if (parseEmbeddedTableDoc(trimmed)) return trimmed
+  const start = trimmed.indexOf(TABLE_TOKEN_PREFIX)
+  const end = trimmed.lastIndexOf(TABLE_TOKEN_SUFFIX)
+  if (start < 0 || end <= start) return null
+  const candidate = trimmed.slice(start, end + TABLE_TOKEN_SUFFIX.length)
+  return parseEmbeddedTableDoc(candidate) ? candidate : null
+}
+
+async function writeEmbeddedTableClipboard(serialized: string): Promise<boolean> {
+  lastCopiedEmbeddedTable = serialized
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(serialized)
+      return true
+    }
+  } catch {
+    /* permission / insecure context — остаётся in-memory fallback */
+  }
+  return true
+}
+
+async function readEmbeddedTableClipboard(): Promise<string | null> {
+  try {
+    if (navigator.clipboard?.readText) {
+      const fromSystem = extractEmbeddedTablePayload(await navigator.clipboard.readText())
+      if (fromSystem) {
+        lastCopiedEmbeddedTable = fromSystem
+        return fromSystem
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return lastCopiedEmbeddedTable && parseEmbeddedTableDoc(lastCopiedEmbeddedTable)
+    ? lastCopiedEmbeddedTable
+    : null
+}
+
+function tableToTsv(table: EmbeddedTable): string {
+  return table.cells.map((row) => row.join('\t')).join('\n')
+}
+
+function selectionIsInside(root: HTMLElement | null): boolean {
+  if (!root) return false
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return false
+  const node = selection.anchorNode
+  return Boolean(node && root.contains(node))
+}
+
 function applyCellStyle(element: HTMLElement, cellStyle: CellStyle) {
   element.style.backgroundColor = cellStyle.bg ? `#${cellStyle.bg}` : ''
   element.style.border = cellStyle.border ? `2px solid #${cellStyle.border}` : ''
@@ -133,10 +208,6 @@ function insertTextAtSelection(root: HTMLElement, text: string): boolean {
   return true
 }
 
-function tableDocToPlainText(doc: EmbeddedTableDoc): string {
-  return formatEmbeddedTableDoc({ text: doc.text, table: doc.table })
-}
-
 function readTableDocFromHost(
   host: HTMLElement,
   table: EmbeddedTable,
@@ -164,19 +235,6 @@ function readTableDocFromHost(
       cells: nextCells,
     },
   }
-}
-
-function formatEmbeddedTableDoc(parsed: { text?: string; table: EmbeddedTable }): string {
-  const lines: string[] = []
-  const text = (parsed.text ?? '').trim()
-  if (text) lines.push(text)
-  for (const row of parsed.table.cells) {
-    const rowText = row.map((cell) => cell.trim()).join(' | ')
-    if (rowText.replace(/\|/g, '').trim()) {
-      lines.push(rowText)
-    }
-  }
-  return lines.join('\n')
 }
 
 type InlineTableCellProps = {
@@ -355,10 +413,43 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       },
       insertTable(rows, cols) {
         if (rows < 1 || cols < 1) return false
-        const baseText = tableDoc ? tableDocToPlainText(tableDoc) : displayCellText(value)
+        // Не сплющиваем старую таблицу в preamble (tableDocToPlainText) —
+        // иначе текст дублируется при повторной вставке / уже существующей таблице.
+        let preamble: string
+        if (tableDoc) {
+          const host = tableHostRef.current
+          preamble = host
+            ? readTableDocFromHost(host, tableDoc.table).text
+            : tableDoc.text
+        } else {
+          const element = elementRef.current
+          preamble = element
+            ? displayCellText(serializeEditableCell(element, cellStyleRef.current))
+            : displayCellText(value)
+        }
         const table = createEmbeddedTable(rows, cols)
-        commitValue(serializeDocWithTable({ text: baseText, table }))
+        commitValue(serializeDocWithTable({ text: preamble, table }))
         return true
+      },
+      async copyTable() {
+        if (!tableDoc) return false
+        const host = tableHostRef.current
+        const doc = host
+          ? readTableDocFromHost(host, tableDoc.table)
+          : cloneEmbeddedTableDoc(tableDoc)
+        await writeEmbeddedTableClipboard(serializeDocWithTable(doc))
+        return true
+      },
+      async pasteTable() {
+        const payload = await readEmbeddedTableClipboard()
+        if (!payload) return false
+        const doc = parseEmbeddedTableDoc(payload)
+        if (!doc) return false
+        commitValue(serializeDocWithTable(cloneEmbeddedTableDoc(doc)))
+        return true
+      },
+      hasEmbeddedTable() {
+        return Boolean(tableDoc)
       },
       commitPending() {
         if (tableDoc) {
@@ -374,6 +465,15 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         return true
       },
     }), [tableDoc, value])
+
+    const applyPastedTablePayload = (raw: string): boolean => {
+      const payload = extractEmbeddedTablePayload(raw)
+      if (!payload) return false
+      const doc = parseEmbeddedTableDoc(payload)
+      if (!doc) return false
+      commitValue(serializeDocWithTable(cloneEmbeddedTableDoc(doc)))
+      return true
+    }
 
     if (tableDoc) {
       const readCurrentPreamble = (): string => {
@@ -400,11 +500,58 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         commitValue(serializeDocWithTable({ text: readCurrentPreamble(), table: nextTable }))
       }
 
+      const copyCurrentTable = () => {
+        const host = tableHostRef.current
+        const doc = host
+          ? readTableDocFromHost(host, tableDoc.table)
+          : cloneEmbeddedTableDoc(tableDoc)
+        void writeEmbeddedTableClipboard(serializeDocWithTable(doc)).then(() => {
+          notifySuccess('Таблица скопирована')
+        })
+      }
+
       return (
         <div
           ref={tableHostRef}
           className={[className, 'product-status-inline-table-host'].filter(Boolean).join(' ')}
           onFocusCapture={() => onFocus?.()}
+          onCopy={(event) => {
+            if (selectionIsInside(tableHostRef.current)) return
+            event.preventDefault()
+            const host = tableHostRef.current
+            const doc = host
+              ? readTableDocFromHost(host, tableDoc.table)
+              : cloneEmbeddedTableDoc(tableDoc)
+            const serialized = serializeDocWithTable(doc)
+            lastCopiedEmbeddedTable = serialized
+            event.clipboardData.setData('text/plain', serialized)
+            event.clipboardData.setData('text/tab-separated-values', tableToTsv(doc.table))
+          }}
+          onPaste={(event) => {
+            const raw = event.clipboardData.getData('text/plain')
+            if (applyPastedTablePayload(raw)) {
+              event.preventDefault()
+            }
+          }}
+          onKeyDown={(event) => {
+            const primary = event.ctrlKey || event.metaKey
+            if (!primary || event.altKey) return
+            const key = event.key.toLowerCase()
+            if (key === 'c' && !selectionIsInside(tableHostRef.current)) {
+              event.preventDefault()
+              copyCurrentTable()
+              return
+            }
+            if (key === 'v') {
+              // Нативный paste обработает onPaste; Shift+V — явная вставка таблицы из fallback.
+              if (event.shiftKey) {
+                event.preventDefault()
+                void readEmbeddedTableClipboard().then((payload) => {
+                  if (payload) applyPastedTablePayload(payload)
+                })
+              }
+            }
+          }}
         >
           <InlineTableCell
             value={tableDoc.text}
@@ -440,6 +587,34 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
               }}
             >
               + Столбец
+            </button>
+            <button
+              type="button"
+              className="btn-secondary product-status-inline-table-btn"
+              title="Скопировать таблицу (Ctrl/Cmd+C без выделения текста)"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                copyCurrentTable()
+              }}
+            >
+              Копировать
+            </button>
+            <button
+              type="button"
+              className="btn-secondary product-status-inline-table-btn"
+              title="Вставить таблицу из буфера"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                void readEmbeddedTableClipboard().then((payload) => {
+                  if (!payload || !applyPastedTablePayload(payload)) {
+                    notifyWarning('В буфере нет скопированной таблицы')
+                    return
+                  }
+                  notifySuccess('Таблица вставлена')
+                })
+              }}
+            >
+              Вставить
             </button>
             <button
               type="button"
@@ -485,6 +660,12 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         className={className}
         data-placeholder={placeholder}
         onKeyDown={handleFormattingShortcut}
+        onPaste={(event) => {
+          const raw = event.clipboardData.getData('text/plain')
+          if (applyPastedTablePayload(raw)) {
+            event.preventDefault()
+          }
+        }}
         onFocus={onFocus}
         onBlur={(event) => {
           const serialized = serializeEditableCell(event.currentTarget, cellStyleRef.current)

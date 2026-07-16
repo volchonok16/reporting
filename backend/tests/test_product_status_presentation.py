@@ -1076,3 +1076,63 @@ def test_generate_presentation_fills_notes_for_legacy_sheet(mock_load) -> None:
     assert "CORE" in notes
     assert "Полный статус" in notes
     assert "Полный зачем" in notes
+
+
+@patch("app.product_status_presentation.load_b2b_product_status")
+def test_generate_presentation_embeds_grid_table_with_borders(mock_load) -> None:
+    import base64
+    import json
+
+    payload = {
+        "text": "Договор с РТК",
+        "table": {
+            "rows": 2,
+            "cols": 2,
+            "cells": [["A1", "A2"], ["B1", "B2"]],
+        },
+    }
+    token = (
+        "<<tablejson:"
+        + base64.b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
+        + ">>"
+    )
+    mock_load.return_value = ProductStatusB2BOut(
+        title="Статус продукта B2B",
+        sheets=[
+            ProductStatusSheetOut(
+                gid="0",
+                name="Продуктовый офис: CORE",
+                columns=[
+                    "Идет в презентацию",
+                    "Дата запуска",
+                    "Проект",
+                    "Описание проекта и статус",
+                    "Зачем и для чего делаем",
+                ],
+                rows=[
+                    {
+                        "Идет в презентацию": "Да",
+                        "Дата запуска": "09.06",
+                        "Проект": "РТК",
+                        "Описание проекта и статус": token,
+                        "Зачем и для чего делаем": "Контракт",
+                    }
+                ],
+                totalShown=1,
+            )
+        ],
+    )
+
+    content, _ = generate_b2b_product_status_presentation()
+    prs = Presentation(io.BytesIO(content))
+    content_slide = prs.slides[FIXED_SLIDE_COUNT]
+    tables = [shape.table for shape in content_slide.shapes if shape.has_table]
+    assert len(tables) >= 2
+    main_table = max(tables, key=lambda item: len(item.rows) * len(item.columns))
+    nested = min(tables, key=lambda item: len(item.rows) * len(item.columns))
+    assert "Договор с РТК" in main_table.rows[1].cells[2].text
+    assert nested.rows[0].cells[0].text.strip() == "A1"
+    assert nested.rows[1].cells[1].text.strip() == "B2"
+    xml = content_slide.part.blob.decode()
+    assert xml.count("<a:tbl>") >= 2
+    assert 'srgbClr val="7F7F7F"' in xml

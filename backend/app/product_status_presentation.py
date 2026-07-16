@@ -26,7 +26,7 @@ from app.product_status_slides_template import fetch_google_slides_pptx
 from app.product_status_rich_text import (
     CellStyle,
     display_cell_text,
-    embedded_table_inner_to_plain,
+    parse_embedded_table_doc,
     split_cell_wrapper,
     split_style_segments,
 )
@@ -72,6 +72,8 @@ LINE_HEIGHT_DENSE_EMU = int(LINE_HEIGHT_EMU * TABLE_FONT_SIZE_DENSE.pt / TABLE_F
 CELL_TEXT_MARGIN_EMU = int(Pt(6).emu)
 HEADER_ROW_HEIGHT_EMU = 320000
 MIN_ROW_HEIGHT_EMU = LINE_HEIGHT_EMU + CELL_TEXT_MARGIN_EMU
+EMBEDDED_TABLE_MARGIN_EMU = int(Pt(3).emu)
+EMBEDDED_TABLE_ROW_PAD_EMU = int(Pt(2).emu)
 BODY_HEIGHT_EMU = 3_408_600
 BODY_WIDTH_EMU = 8_900_700
 COLUMN_WIDTH_RATIOS = (0.10, 0.14, 0.46, 0.30)
@@ -680,7 +682,44 @@ def _estimate_text_lines(text: str, chars_per_line: int) -> int:
     return total
 
 
+def _estimate_embedded_table_height(
+    preamble: str,
+    cells: tuple[tuple[str, ...], ...],
+    col_index: int,
+    col_chars_per_line: tuple[int, ...],
+) -> int:
+    chars_per_line = col_chars_per_line[col_index] if col_index < len(col_chars_per_line) else 40
+    line_height = LINE_HEIGHT_DENSE_EMU if col_index == WHY_COLUMN_INDEX else LINE_HEIGHT_EMU
+    preamble_lines = _estimate_text_lines(preamble, chars_per_line) if preamble.strip() else 0
+    cols = max((len(row) for row in cells), default=1)
+    cell_chars = max(4, chars_per_line // max(cols, 1))
+    table_lines = 0
+    for row in cells:
+        row_lines = 1
+        for cell_text in row:
+            row_lines = max(row_lines, max(1, _estimate_text_lines(cell_text, cell_chars)))
+        table_lines += row_lines
+    return (
+        preamble_lines * line_height
+        + table_lines * line_height
+        + len(cells) * EMBEDDED_TABLE_ROW_PAD_EMU
+        + CELL_TEXT_MARGIN_EMU
+        + EMBEDDED_TABLE_MARGIN_EMU * 2
+    )
+
+
 def _estimate_cell_height(text: str, col_index: int, col_chars_per_line: tuple[int, ...]) -> int:
+    embedded = parse_embedded_table_doc(text)
+    if embedded is not None:
+        return max(
+            MIN_ROW_HEIGHT_EMU,
+            _estimate_embedded_table_height(
+                embedded.text,
+                embedded.cells,
+                col_index,
+                col_chars_per_line,
+            ),
+        )
     chars_per_line = col_chars_per_line[col_index] if col_index < len(col_chars_per_line) else 40
     lines = _estimate_text_lines(text, chars_per_line)
     if not lines:
@@ -1185,10 +1224,47 @@ def _fill_white_cell(
     col_index: int,
     bold: bool = False,
     default_text_color: RGBColor = TEXT_COLOR,
-) -> None:
+) -> tuple[str, tuple[tuple[str, ...], ...]] | None:
+    """Заполняет ячейку. Если внутри есть вложенная таблица — пишет только preamble
+    и возвращает (preamble, cells) для последующего overlay с разлиновкой."""
     cell_style, inner = split_cell_wrapper(value)
-    table_plain = embedded_table_inner_to_plain(inner)
-    sanitized = _sanitize_cell_text(table_plain if table_plain is not None else inner)
+    embedded = parse_embedded_table_doc(value)
+    if embedded is not None:
+        sanitized = _sanitize_cell_text(embedded.text)
+        font_size, _ = _cell_font_size(col_index, sanitized)
+        frame = cell.text_frame
+        frame.clear()
+        frame.word_wrap = True
+        frame.vertical_anchor = MSO_VERTICAL_ANCHOR.TOP
+        frame.margin_left = Pt(3)
+        frame.margin_right = Pt(3)
+        frame.margin_top = Pt(3)
+        frame.margin_bottom = Pt(3)
+        lines = sanitized.split("\n") if sanitized else [""]
+        non_empty_lines = [line for line in lines if line.strip()]
+        if not non_empty_lines and not sanitized:
+            non_empty_lines = [""]
+        if sanitized:
+            for output_index, line in enumerate(non_empty_lines):
+                paragraph = frame.paragraphs[0] if output_index == 0 else frame.add_paragraph()
+                paragraph.alignment = PP_ALIGN.LEFT
+                paragraph.space_before = CELL_PARAGRAPH_SPACE_BEFORE if output_index > 0 else Pt(0)
+                paragraph.space_after = (
+                    CELL_PARAGRAPH_SPACE_AFTER if output_index < len(non_empty_lines) - 1 else Pt(0)
+                )
+                run = paragraph.add_run()
+                run.text = line
+                run.font.name = TABLE_FONT_NAME
+                run.font.size = font_size
+                run.font.bold = bold
+                run.font.italic = False
+                run.font.color.rgb = default_text_color
+        if not cell_style.bg:
+            _set_cell_fill(cell, "FFFFFF")
+        _apply_cell_container_style(cell, cell_style)
+        return embedded.text, embedded.cells
+
+    sanitized = _sanitize_cell_text(inner)
     font_size, _ = _cell_font_size(col_index, sanitized)
     frame = cell.text_frame
     frame.clear()
@@ -1211,15 +1287,6 @@ def _fill_white_cell(
         paragraph.space_after = (
             CELL_PARAGRAPH_SPACE_AFTER if output_index < len(non_empty_lines) - 1 else Pt(0)
         )
-        if table_plain is not None:
-            run = paragraph.add_run()
-            run.text = line
-            run.font.name = TABLE_FONT_NAME
-            run.font.size = font_size
-            run.font.bold = bold
-            run.font.italic = False
-            run.font.color.rgb = default_text_color
-            continue
         for segment in split_style_segments(line):
             if not segment.text:
                 continue
@@ -1237,6 +1304,103 @@ def _fill_white_cell(
     if not cell_style.bg:
         _set_cell_fill(cell, "FFFFFF")
     _apply_cell_container_style(cell, cell_style)
+    return None
+
+
+def _preamble_height_emu(preamble: str, col_index: int, cell_width: int) -> int:
+    if not preamble.strip():
+        return 0
+    chars = max(8, int(cell_width / CHAR_WIDTH_EMU))
+    if col_index == WHY_COLUMN_INDEX:
+        dense_scale = TABLE_FONT_SIZE.pt / TABLE_FONT_SIZE_DENSE.pt
+        chars = max(8, int(chars * dense_scale))
+    lines = _estimate_text_lines(preamble, chars)
+    line_height = LINE_HEIGHT_DENSE_EMU if col_index == WHY_COLUMN_INDEX else LINE_HEIGHT_EMU
+    return lines * line_height + EMBEDDED_TABLE_MARGIN_EMU
+
+
+def _fill_nested_table_cell(cell, text: str, *, col_index: int, default_text_color: RGBColor) -> None:
+    sanitized = _sanitize_cell_text(text)
+    font_size, _ = _cell_font_size(col_index, sanitized)
+    frame = cell.text_frame
+    frame.clear()
+    frame.word_wrap = True
+    frame.vertical_anchor = MSO_VERTICAL_ANCHOR.TOP
+    frame.margin_left = Pt(2)
+    frame.margin_right = Pt(2)
+    frame.margin_top = Pt(1)
+    frame.margin_bottom = Pt(1)
+    paragraph = frame.paragraphs[0]
+    paragraph.alignment = PP_ALIGN.LEFT
+    run = paragraph.add_run()
+    run.text = sanitized
+    run.font.name = TABLE_FONT_NAME
+    run.font.size = font_size
+    run.font.bold = False
+    run.font.italic = False
+    run.font.color.rgb = default_text_color
+    _set_cell_fill(cell, "FFFFFF")
+
+
+def _overlay_embedded_tables(
+    slide,
+    table_shape,
+    overlays: list[tuple[int, int, str, tuple[tuple[str, ...], ...], RGBColor]],
+) -> None:
+    if not overlays:
+        return
+    table = table_shape.table
+    col_widths = [table.columns[index].width for index in range(len(table.columns))]
+    row_heights = [table.rows[index].height for index in range(len(table.rows))]
+
+    for row_index, col_index, preamble, cells, text_color in overlays:
+        if row_index >= len(row_heights) or col_index >= len(col_widths):
+            continue
+        cell_left = table_shape.left + sum(col_widths[:col_index])
+        cell_top = table_shape.top + sum(row_heights[:row_index])
+        cell_width = col_widths[col_index]
+        cell_height = row_heights[row_index]
+        preamble_h = _preamble_height_emu(preamble, col_index, cell_width)
+        nested_left = cell_left + EMBEDDED_TABLE_MARGIN_EMU
+        nested_top = cell_top + preamble_h + EMBEDDED_TABLE_MARGIN_EMU
+        nested_width = max(int(Pt(20).emu), cell_width - EMBEDDED_TABLE_MARGIN_EMU * 2)
+        nested_height = max(
+            int(Pt(14).emu) * max(len(cells), 1),
+            cell_height - preamble_h - EMBEDDED_TABLE_MARGIN_EMU * 2,
+        )
+        if nested_top + nested_height > cell_top + cell_height:
+            nested_height = max(int(Pt(14).emu), cell_top + cell_height - nested_top)
+
+        nrows = len(cells)
+        ncols = max((len(row) for row in cells), default=1)
+        if nrows < 1 or ncols < 1:
+            continue
+        nested_shape = slide.shapes.add_table(
+            nrows,
+            ncols,
+            nested_left,
+            nested_top,
+            nested_width,
+            nested_height,
+        )
+        nested = nested_shape.table
+        _strip_table_style(nested)
+        col_w = nested_width // ncols
+        for index in range(ncols):
+            nested.columns[index].width = col_w if index < ncols - 1 else nested_width - col_w * (ncols - 1)
+        row_h = nested_height // nrows
+        for index in range(nrows):
+            nested.rows[index].height = row_h if index < nrows - 1 else nested_height - row_h * (nrows - 1)
+        for r_index, row in enumerate(cells):
+            for c_index in range(ncols):
+                cell_text = row[c_index] if c_index < len(row) else ""
+                _fill_nested_table_cell(
+                    nested.rows[r_index].cells[c_index],
+                    cell_text,
+                    col_index=col_index,
+                    default_text_color=text_color,
+                )
+        _apply_table_grid(nested)
 
 
 def _apply_table_column_widths(table, total_width: int) -> None:
@@ -1308,19 +1472,24 @@ def _fill_content_slide(
     for col_index, header in enumerate(mapped_headers):
         _fill_white_cell(table.rows[0].cells[col_index], header, col_index=col_index, bold=True)
 
+    overlays: list[tuple[int, int, str, tuple[tuple[str, ...], ...], RGBColor]] = []
     for row_index, row in enumerate(rows, start=1):
         values = _row_values(row, columns, COLUMN_COUNT)
         row_text_color = ATTENTION_TEXT_COLOR if _is_attention_row(row, columns) else TEXT_COLOR
         for col_index, value in enumerate(values):
-            _fill_white_cell(
+            embedded = _fill_white_cell(
                 table.rows[row_index].cells[col_index],
                 value,
                 col_index=col_index,
                 default_text_color=row_text_color,
             )
+            if embedded is not None:
+                preamble, cells = embedded
+                overlays.append((row_index, col_index, preamble, cells, row_text_color))
 
     _apply_table_grid(table)
     _layout_table_rows(table, rows, columns, body_shape.height)
+    _overlay_embedded_tables(slide, table_shape, overlays)
 
     _fill_slide_notes(slide, rows, columns)
 

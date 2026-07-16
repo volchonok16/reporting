@@ -10,6 +10,7 @@ type ProductStatusFormatToolbarProps = {
   onTextStyle: (patch: Partial<TextStyleSegment>) => void
   onClearFormatting: () => void
   onInsertTable: (rows: number, cols: number) => void
+  onPasteTable?: () => void
 }
 
 type PresetButton = {
@@ -76,6 +77,7 @@ export default function ProductStatusFormatToolbar({
   onTextStyle,
   onClearFormatting,
   onInsertTable,
+  onPasteTable,
 }: ProductStatusFormatToolbarProps) {
   const [open, setOpen] = useState(readFormatToolbarOpen)
   const [tablePickerOpen, setTablePickerOpen] = useState(false)
@@ -224,6 +226,7 @@ export default function ProductStatusFormatToolbar({
                           className={`product-status-table-picker-cell${
                             selected ? ' product-status-table-picker-cell-selected' : ''
                           }`}
+                          onMouseDown={(event) => event.preventDefault()}
                           onMouseEnter={() => setTableHover({ rows, cols })}
                           onFocus={() => setTableHover({ rows, cols })}
                           onClick={() => {
@@ -239,6 +242,18 @@ export default function ProductStatusFormatToolbar({
               </div>
             ) : null}
           </div>
+          {onPasteTable ? (
+            <button
+              type="button"
+              className="btn-secondary product-status-format-btn"
+              disabled={inactive}
+              title="Вставить скопированную таблицу в текущую ячейку"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={onPasteTable}
+            >
+              Вставить таблицу
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>

@@ -211,6 +211,12 @@ def split_cell_wrapper(text: str) -> tuple[CellStyle, str]:
     )
 
 
+@dataclass(frozen=True)
+class EmbeddedTableDoc:
+    text: str
+    cells: tuple[tuple[str, ...], ...]
+
+
 def format_embedded_table_doc(parsed: object) -> str:
     if not isinstance(parsed, dict):
         return ""
@@ -231,6 +237,52 @@ def format_embedded_table_doc(parsed: object) -> str:
         if row_text.replace("|", "").strip():
             lines.append(row_text)
     return "\n".join(lines)
+
+
+def _normalize_embedded_table_cells(raw_cells: object, rows: int, cols: int) -> tuple[tuple[str, ...], ...]:
+    source = raw_cells if isinstance(raw_cells, list) else []
+    normalized: list[tuple[str, ...]] = []
+    for row_index in range(max(rows, 0)):
+        row = source[row_index] if row_index < len(source) and isinstance(source[row_index], list) else []
+        normalized.append(
+            tuple(str(row[col_index]) if col_index < len(row) else "" for col_index in range(max(cols, 0)))
+        )
+    return tuple(normalized)
+
+
+def parse_embedded_table_doc(text: str) -> EmbeddedTableDoc | None:
+    _, inner = split_cell_wrapper(text or "")
+    if not inner.startswith(TABLE_TOKEN_PREFIX) or not inner.endswith(TABLE_TOKEN_SUFFIX):
+        return None
+    encoded = inner[len(TABLE_TOKEN_PREFIX): -len(TABLE_TOKEN_SUFFIX)]
+    try:
+        raw = base64.b64decode(encoded).decode("utf-8")
+        parsed = json.loads(raw)
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    table = parsed.get("table") if isinstance(parsed.get("table"), dict) else parsed
+    if not isinstance(table, dict):
+        return None
+    cells_raw = table.get("cells")
+    if not isinstance(cells_raw, list):
+        return None
+    try:
+        rows = int(table.get("rows") or len(cells_raw) or 0)
+        cols = int(
+            table.get("cols")
+            or max((len(row) for row in cells_raw if isinstance(row, list)), default=0)
+        )
+    except (TypeError, ValueError):
+        return None
+    if rows < 1 or cols < 1:
+        return None
+    preamble = str(parsed.get("text") or "")
+    return EmbeddedTableDoc(
+        text=preamble,
+        cells=_normalize_embedded_table_cells(cells_raw, rows, cols),
+    )
 
 
 def embedded_table_inner_to_plain(inner: str) -> str | None:

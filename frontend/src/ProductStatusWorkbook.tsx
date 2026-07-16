@@ -333,6 +333,81 @@ function collectSheetUpdates(
   return { updates, deletedRows, rowOrder }
 }
 
+/**
+ * Накладывает локальные правки (относительно oldBaseline) поверх remote.
+ * Baseline после rebase должен стать remote — тогда повторный save отправит
+ * только реальные локальные изменения и не затрёт чужие ячейки.
+ */
+function rebaseLocalSheetOnRemote(
+  local: ProductStatusSheet,
+  oldBaseline: ProductStatusSheet,
+  remote: ProductStatusSheet,
+): ProductStatusSheet {
+  const dirtyUpdates = diffSheetToUpdates(oldBaseline, local)
+  const deleted = collectDeletedRows(oldBaseline, local)
+  const deletedIds = new Set(deleted.map((item) => String(item.rowId)))
+
+  const rowsById = new Map<string, Record<string, string>>()
+  const mergedRows: Record<string, string>[] = []
+  for (const row of remote.rows) {
+    const rowId = row[PRODUCT_STATUS_ROW_ID_KEY]
+    if (rowId && deletedIds.has(rowId)) {
+      continue
+    }
+    const clone = { ...row }
+    if (rowId) {
+      rowsById.set(rowId, clone)
+    }
+    mergedRows.push(clone)
+  }
+
+  for (const update of dirtyUpdates) {
+    if (update.rowId == null || !update.column) continue
+    const row = rowsById.get(String(update.rowId))
+    if (!row) continue
+    row[update.column] = update.value
+  }
+
+  for (const row of local.rows) {
+    if (row[PRODUCT_STATUS_ROW_ID_KEY]) continue
+    mergedRows.push({ ...row })
+  }
+
+  const localOrder = collectRowOrderChange(oldBaseline, local)
+  if (localOrder && localOrder.length > 0) {
+    const byId = new Map(
+      mergedRows
+        .filter((row) => row[PRODUCT_STATUS_ROW_ID_KEY])
+        .map((row) => [row[PRODUCT_STATUS_ROW_ID_KEY], row]),
+    )
+    const ordered: Record<string, string>[] = []
+    const used = new Set<string>()
+    for (const id of localOrder) {
+      const key = String(id)
+      const row = byId.get(key)
+      if (!row) continue
+      ordered.push(row)
+      used.add(key)
+    }
+    for (const row of mergedRows) {
+      const rowId = row[PRODUCT_STATUS_ROW_ID_KEY]
+      if (rowId && used.has(rowId)) continue
+      ordered.push(row)
+    }
+    return {
+      ...remote,
+      columns: [...remote.columns],
+      rows: ordered,
+    }
+  }
+
+  return {
+    ...remote,
+    columns: [...remote.columns],
+    rows: mergedRows,
+  }
+}
+
 function isPresentationFlagColumn(column: string): boolean {
   return column.trim().toLowerCase().includes('идет в презентацию')
 }
@@ -486,7 +561,10 @@ export default function ProductStatusWorkbook({
   }, [])
 
   const loadSheetData = useCallback(
-    async (gid: string, options?: { refresh?: boolean; baselineOnly?: boolean }) => {
+    async (
+      gid: string,
+      options?: { refresh?: boolean; baselineOnly?: boolean; rebaseLocal?: boolean },
+    ) => {
       const params = new URLSearchParams({ gid })
       if (options?.refresh) {
         params.set('refresh', 'true')
@@ -496,6 +574,28 @@ export default function ProductStatusWorkbook({
       if (!sheet) {
         throw new Error('Лист пустой или не удалось загрузить данные')
       }
+
+      if (options?.rebaseLocal) {
+        const local = sheetsRef.current.find((item) => item.gid === gid)
+        const oldBaseline = baselineByGidRef.current.get(gid)
+        if (local && oldBaseline && oldBaseline.columns.length > 0) {
+          const merged = rebaseLocalSheetOnRemote(local, oldBaseline, sheet)
+          rememberBaseline(sheet)
+          setSheets((current) =>
+            current.map((item) => (item.gid === gid ? cloneSheet(merged) : item)),
+          )
+          setLoadedGids((current) => new Set(current).add(gid))
+          setData((current) => ({
+            title: payload.title ?? current?.title ?? defaultTitle,
+            sourceUrl: payload.sourceUrl ?? current?.sourceUrl,
+            presentationReferenceUrl:
+              payload.presentationReferenceUrl ?? current?.presentationReferenceUrl,
+            sheets: current?.sheets ?? payload.sheets,
+          }))
+          return
+        }
+      }
+
       rememberBaseline(sheet)
       if (options?.baselineOnly) {
         return
@@ -723,7 +823,7 @@ export default function ProductStatusWorkbook({
         if (response.status === 409) {
           for (const gid of gidsToReload) {
             if (loadedGids.has(gid)) {
-              await loadSheetData(gid, { refresh: true, baselineOnly: true })
+              await loadSheetData(gid, { refresh: true, rebaseLocal: true })
             }
           }
           throw new HttpError(message, response.status)
@@ -743,7 +843,7 @@ export default function ProductStatusWorkbook({
       if (err instanceof HttpError && err.status === 409) {
         notifyProblem(
           err,
-          'Конфликт версий: ваши правки на экране сохранены. Сверьте изменения и нажмите «Сохранить» снова.',
+          'Конфликт версий: ваши правки сохранены на экране и наложены на актуальные данные. Проверьте ячейки и нажмите «Сохранить» снова.',
           toastId,
         )
       } else {
@@ -1155,22 +1255,37 @@ export default function ProductStatusWorkbook({
 
   useEffect(() => {
     return subscribeProductStatusLive(apiBase, (event) => {
+      const loaded = loadedGidsRef.current
+      const targets = [
+        ...new Set(
+          event.gids.filter(
+            (gid) => loaded.has(gid) || gid === activeGidRef.current,
+          ),
+        ),
+      ]
+      if (targets.length === 0) return
+
+      // Есть локальные правки / открыта ячейка — подтягиваем remote и накладываем
+      // свои изменения поверх, чтобы чужие ячейки не затирались при следующем save.
       if (shouldBlockRemoteSync()) {
-        const who = event.changedBy ? ` (${event.changedBy})` : ''
-        notifyWarning(
-          `На сервере сохранены изменения${who}. Завершите правку ячейки или нажмите «Обновить» после сохранения.`,
-        )
+        const reload = async () => {
+          for (const gid of targets) {
+            try {
+              await loadSheetDataRef.current(gid, { refresh: true, rebaseLocal: true })
+            } catch (err) {
+              notifyProblem(err, 'Не удалось подтянуть изменения с сервера')
+              return
+            }
+          }
+          const who = event.changedBy ? ` (${event.changedBy})` : ''
+          notifyWarning(
+            `На сервере есть новые изменения${who}. Ваши правки сохранены на экране — не забудьте нажать «Сохранить».`,
+          )
+        }
+        void reload()
         return
       }
       const reload = async () => {
-        const loaded = loadedGidsRef.current
-        const targets = [
-          ...new Set(
-            event.gids.filter(
-              (gid) => loaded.has(gid) || gid === activeGidRef.current,
-            ),
-          ),
-        ]
         for (const gid of targets) {
           try {
             await loadSheetDataRef.current(gid, { refresh: true })
@@ -1360,10 +1475,27 @@ export default function ProductStatusWorkbook({
       notifyWarning('Некорректный размер таблицы')
       return
     }
+    flushSync(() => {
+      activeCellRef.current?.commitPending()
+    })
     const inserted = activeCellRef.current?.insertTable(rows, cols)
     if (!inserted) {
       notifyWarning('Сначала выберите ячейку для вставки таблицы')
     }
+  }, [])
+
+  const pasteConfluenceTable = useCallback(() => {
+    flushSync(() => {
+      activeCellRef.current?.commitPending()
+    })
+    void (async () => {
+      const pasted = await activeCellRef.current?.pasteTable()
+      if (!pasted) {
+        notifyWarning('В буфере нет скопированной таблицы. Сначала нажмите «Копировать» у таблицы.')
+      } else {
+        notifySuccess('Таблица вставлена')
+      }
+    })()
   }, [])
 
   const backToTable = useCallback(() => {
@@ -1580,6 +1712,7 @@ export default function ProductStatusWorkbook({
           onTextStyle={applyTextStyle}
           onClearFormatting={clearFormatting}
           onInsertTable={insertConfluenceTable}
+          onPasteTable={pasteConfluenceTable}
         />
       ) : null}
 
