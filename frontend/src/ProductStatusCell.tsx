@@ -1,4 +1,4 @@
-import { forwardRef, memo, useEffect, useImperativeHandle, useLayoutEffect, useRef, type KeyboardEvent } from 'react'
+import { forwardRef, memo, useEffect, useImperativeHandle, useLayoutEffect, useRef, type KeyboardEvent, type RefObject } from 'react'
 import {
   applyCellStylePatch,
   applyStyleToCellOrSelection,
@@ -25,6 +25,7 @@ import {
   tableToTsv,
   writeEmbeddedTableClipboard,
   type EmbeddedTable,
+  type EmbeddedTableDoc,
 } from './productStatusEmbeddedTable'
 import { notifySuccess, notifyWarning } from './toast'
 
@@ -111,6 +112,27 @@ type InlineTableCellProps = {
   onFocus?: () => void
 }
 
+function inlineTableCellIsEditing(
+  element: HTMLDivElement | null,
+  isFocusedRef: RefObject<boolean>,
+): boolean {
+  if (!element) return false
+  if (isFocusedRef.current) return true
+  const active = document.activeElement
+  return active === element || (active instanceof Node && element.contains(active))
+}
+
+function focusInlineTableCellEnd(element: HTMLElement) {
+  element.focus()
+  const selection = window.getSelection()
+  if (!selection) return
+  const range = document.createRange()
+  range.selectNodeContents(element)
+  range.collapse(false)
+  selection.removeAllRanges()
+  selection.addRange(range)
+}
+
 function InlineTableCell({
   value,
   placeholder,
@@ -124,7 +146,7 @@ function InlineTableCell({
 
   useLayoutEffect(() => {
     const element = elementRef.current
-    if (!element || isFocusedRef.current) return
+    if (!element || inlineTableCellIsEditing(element, isFocusedRef)) return
     if (value === lastCommitted.current) return
     element.textContent = value
     lastCommitted.current = value
@@ -139,6 +161,12 @@ function InlineTableCell({
       suppressContentEditableWarning
       className={className}
       data-placeholder={placeholder}
+      onMouseDown={(event) => {
+        event.stopPropagation()
+        if (document.activeElement !== event.currentTarget) {
+          event.currentTarget.focus()
+        }
+      }}
       onFocus={() => {
         isFocusedRef.current = true
         onFocus?.()
@@ -149,6 +177,10 @@ function InlineTableCell({
         if (next === lastCommitted.current) return
         lastCommitted.current = next
         onCommit(next)
+      }}
+      onInput={(event) => {
+        isFocusedRef.current = true
+        lastCommitted.current = event.currentTarget.textContent ?? ''
       }}
     />
   )
@@ -163,6 +195,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
     const tableHostRef = useRef<HTMLDivElement>(null)
     const lastSerialized = useRef<string | null>(null)
     const cellStyleRef = useRef<CellStyle>({ bg: null, border: null })
+    const shouldFocusPreambleRef = useRef(false)
 
     const tableDoc = parseEmbeddedTableDoc(value)
 
@@ -215,6 +248,16 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       host.addEventListener('focusout', handleFocusOut)
       return () => host.removeEventListener('focusout', handleFocusOut)
     }, [onBlur, tableDoc])
+
+    useLayoutEffect(() => {
+      if (!tableDoc || !shouldFocusPreambleRef.current) return
+      const host = tableHostRef.current
+      if (!host) return
+      shouldFocusPreambleRef.current = false
+      const preamble = host.querySelector<HTMLElement>('.product-status-inline-table-preamble')
+      if (!preamble) return
+      focusInlineTableCellEnd(preamble)
+    }, [tableDoc, value])
 
     useLayoutEffect(() => {
       const element = elementRef.current
@@ -294,6 +337,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
           tableHost: tableHostRef.current,
           serializedPlain: serialized,
         })
+        shouldFocusPreambleRef.current = true
         commitValue(
           serializeDocWithTable({
             text: preamble,
@@ -347,35 +391,38 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
     }
 
     if (tableDoc) {
-      const readCurrentPreamble = (): string => {
+      const readCurrentDoc = (): EmbeddedTableDoc => {
         const host = tableHostRef.current
         if (host) {
-          return readTableDocFromHost(host, tableDoc.table).text
+          return readTableDocFromHost(host, tableDoc.table)
         }
-        return tableDoc.text
+        return tableDoc
       }
 
       const updateFreeText = (nextText: string) => {
-        commitValue(serializeDocWithTable({ text: nextText, table: tableDoc.table }))
+        const current = readCurrentDoc()
+        commitValue(serializeDocWithTable({ text: nextText, table: current.table }))
       }
 
       const updateTableCell = (rowIndex: number, colIndex: number, cellValue: string) => {
+        const current = readCurrentDoc()
         const nextTable: EmbeddedTable = {
-          rows: tableDoc.table.rows,
-          cols: tableDoc.table.cols,
-          cells: tableDoc.table.cells.map((items) => [...items]),
+          rows: current.table.rows,
+          cols: current.table.cols,
+          cells: current.table.cells.map((items) => [...items]),
         }
         nextTable.cells[rowIndex][colIndex] = cellValue
-        commitValue(serializeDocWithTable({ text: readCurrentPreamble(), table: nextTable }))
+        commitValue(serializeDocWithTable({ text: current.text, table: nextTable }))
       }
 
       const updateTable = (nextTable: EmbeddedTable) => {
-        commitValue(serializeDocWithTable({ text: readCurrentPreamble(), table: nextTable }))
+        const current = readCurrentDoc()
+        commitValue(serializeDocWithTable({ text: current.text, table: nextTable }))
       }
 
       const removeTableKeepText = () => {
         commitTableFromHost()
-        const text = readCurrentPreamble() || tableDoc.text
+        const text = readCurrentDoc().text || tableDoc.text
         commitValue(text)
       }
 
