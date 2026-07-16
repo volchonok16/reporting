@@ -1475,8 +1475,9 @@ export default function ProductStatusWorkbook({
       notifyWarning('Некорректный размер таблицы')
       return
     }
-    // insertTable сам забирает текст из DOM — отдельный commitPending не нужен
-    // (двойной commit + blur при размонтировании дублировали preamble).
+    flushSync(() => {
+      activeCellRef.current?.commitPending()
+    })
     const inserted = activeCellRef.current?.insertTable(rows, cols)
     if (!inserted) {
       notifyWarning('Сначала выберите ячейку для вставки таблицы')
@@ -1484,6 +1485,9 @@ export default function ProductStatusWorkbook({
   }, [])
 
   const pasteConfluenceTable = useCallback(() => {
+    flushSync(() => {
+      activeCellRef.current?.commitPending()
+    })
     void (async () => {
       const pasted = await activeCellRef.current?.pasteTable()
       if (!pasted) {
