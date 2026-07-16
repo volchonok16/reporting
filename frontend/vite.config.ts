@@ -8,21 +8,8 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
-    // nginx / corp-direct проксирует с Host = публичный домен
-    allowedHosts: [
-      'localhost',
-      '127.0.0.1',
-      'pallink.fun',
-      'www.pallink.fun',
-      'api.pallink.fun',
-      'taskatestovaya.ru',
-      'www.taskatestovaya.ru',
-      'api.taskatestovaya.ru',
-      'minio.taskatestovaya.ru',
-      'minio-console.taskatestovaya.ru',
-      '.pallink.fun',
-      '.taskatestovaya.ru',
-    ],
+    // corp/production: Vite dev в Docker; nginx ставит Host localhost, corp-direct — реальный Host
+    allowedHosts: true,
     proxy: {
       '/api': {
         target: apiProxyTarget,
