@@ -54,6 +54,13 @@ fi
 echo "==> docker load ← ${TAR}"
 docker load -i "$TAR"
 
+# shellcheck source=compose-v1-purge.sh
+source "$(dirname "$0")/compose-v1-purge.sh"
+if [[ "$COMPOSE_CMD" == "docker-compose" ]]; then
+  purge_reporting_containers_v1
+  echo "==> docker-compose v1: после purge — up -d --no-build"
+fi
+
 # Compose v1 (docker-compose) не знает --pull never / pull_policy.
 # v2 (docker compose): --pull never — не ходить в Docker Hub.
 UP_ARGS=(up -d --no-build)

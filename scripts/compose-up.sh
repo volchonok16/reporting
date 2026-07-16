@@ -34,18 +34,8 @@ uses_compose_v1() {
   [[ "$COMPOSE_CMD" == "docker-compose" ]]
 }
 
-# Удаляет все контейнеры, в имени которых есть pattern
-# (reporting-frontend, ba5e359e8f7c_reporting-frontend и т.д.)
-purge_containers_by_name() {
-  local pattern="$1"
-  local ids
-  ids="$(docker ps -aq --filter "name=${pattern}" 2>/dev/null || true)"
-  if [[ -n "${ids//[[:space:]]/}" ]]; then
-    echo "    docker rm -f ${ids//$'\n'/ }"
-    # shellcheck disable=SC2086
-    docker rm -f $ids 2>/dev/null || true
-  fi
-}
+# shellcheck source=compose-v1-purge.sh
+source "$(dirname "$0")/compose-v1-purge.sh"
 
 purge_service() {
   local svc="$1"
@@ -53,22 +43,21 @@ purge_service() {
     postgres) purge_containers_by_name "reporting-postgres" ;;
     backend) purge_containers_by_name "reporting-backend" ;;
     frontend) purge_containers_by_name "reporting-frontend" ;;
+    minio) purge_containers_by_name "reporting-minio" ;;
+    minio-init) purge_containers_by_name "reporting-minio-init" ;;
   esac
 }
 
 if uses_compose_v1; then
-  echo "==> docker-compose v1: очистка старых контейнеров…"
   if [[ ${#SERVICES[@]} -eq 0 ]]; then
-    purge_service postgres
-    purge_service backend
-    purge_service frontend
+    purge_reporting_containers_v1
   else
+    echo "==> docker-compose v1: очистка выбранных сервисов…"
     for svc in "${SERVICES[@]}"; do
       purge_service "$svc"
     done
   fi
-
-  echo "==> docker-compose v1: после purge используем up -d (без create/start)"
+  echo "==> docker-compose v1: после purge используем up -d"
 fi
 
 ARGS=(up -d)
