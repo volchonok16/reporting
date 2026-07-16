@@ -73,11 +73,16 @@ echo "    Cert:  $CERT_DIR"
 
 if ! command -v nginx >/dev/null 2>&1; then
   echo "==> Установка nginx…"
-  if ! apt-get update -qq; then
-    echo "Предупреждение: apt-get update не удался (нет интернета?). Установите nginx вручную." >&2
+  if apt-get update -qq 2>/dev/null; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nginx
+  else
+    echo "Предупреждение: apt-get update не удался." >&2
+    echo "  1) Отключите сломанный repo (zabbix): sudo mv /etc/apt/sources.list.d/*zabbix* /tmp/" >&2
+    echo "  2) sudo apt-get update && sudo apt-get install -y nginx" >&2
+    echo "  3) sudo bash deploy/setup-nginx-ssl.sh" >&2
+    echo "  Временно без nginx: bash scripts/corp-direct-up.sh" >&2
     exit 1
   fi
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nginx
 fi
 
 mkdir -p /var/www/certbot
