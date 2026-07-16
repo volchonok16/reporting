@@ -43,6 +43,15 @@ from app.product_status_service import load_b2b_product_status
 from app.product_status_excel import generate_b2b_product_status_excel
 from app.revenue_activities_excel import generate_revenue_activities_excel
 from app.product_status_presentation import generate_b2b_product_status_presentation
+from app.product_status_live import (
+    WORKBOOK_B2B,
+    WORKBOOK_B2B_NEWS,
+    WORKBOOK_REVENUE_ACTIVITIES,
+    gids_from_save_payload,
+    notify_product_status_saved,
+    set_main_event_loop as set_product_status_live_event_loop,
+)
+from app.product_status_live_routes import router as product_status_live_router
 from app.report_service import export_csv, load_change_requests, load_change_requests_by_numbers
 from app.business_value_service import update_business_value
 from app.roadmap_priority_service import update_roadmap_comment, update_roadmap_priority
@@ -90,7 +99,9 @@ app.add_middleware(
 async def startup() -> None:
     from app.youjail_terminal import set_main_event_loop
 
-    set_main_event_loop(asyncio.get_running_loop())
+    loop = asyncio.get_running_loop()
+    set_main_event_loop(loop)
+    set_product_status_live_event_loop(loop)
     ensure_startup_schema()
     purge_stale_b2b_audit_records()
 
@@ -99,6 +110,14 @@ app.include_router(org_router)
 app.include_router(profile_router)
 app.include_router(users_router)
 app.include_router(youjail_router)
+app.include_router(product_status_live_router)
+
+
+def _live_changed_by(meta: dict) -> str | None:
+    login = meta.get("app_login")
+    if isinstance(login, str) and login.strip():
+        return login.strip()
+    return None
 
 
 def require_pat(x_session_id: str | None = Header(default=None, alias="X-Session-Id")) -> str:
@@ -476,10 +495,17 @@ def product_status_b2b_save(
     payload: ProductStatusSaveIn,
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
     _: None = Depends(require_full_app_access),
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     save_b2b_product_status_to_db(db, payload, meta=meta)
+    notify_product_status_saved(
+        workbook=WORKBOOK_B2B,
+        gids=gids_from_save_payload(payload),
+        changed_by=_live_changed_by(meta),
+        origin_connection_id=x_live_connection_id,
+    )
     return {"status": "ok"}
 
 
@@ -489,10 +515,17 @@ def product_status_b2b_delete_row(
     gid: str = Query(...),
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
     _: None = Depends(require_full_app_access),
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     delete_b2b_product_status_row(db, gid=gid, row_id=row_id, meta=meta)
+    notify_product_status_saved(
+        workbook=WORKBOOK_B2B,
+        gids=[gid],
+        changed_by=_live_changed_by(meta),
+        origin_connection_id=x_live_connection_id,
+    )
     return {"status": "ok"}
 
 
@@ -522,10 +555,17 @@ def product_status_b2b_restore_snapshot(
     gid: str = Query(...),
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
     _: None = Depends(require_org_manage_access),
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     restore_b2b_product_status_snapshot(db, snapshot_id=snapshot_id, gid=gid, meta=meta)
+    notify_product_status_saved(
+        workbook=WORKBOOK_B2B,
+        gids=[gid],
+        changed_by=_live_changed_by(meta),
+        origin_connection_id=x_live_connection_id,
+    )
     return {"status": "ok"}
 
 
@@ -550,10 +590,17 @@ def b2b_news_save(
     payload: ProductStatusSaveIn,
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
     _: None = Depends(require_full_app_access),
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     save_b2b_news_to_db(db, payload, meta=meta)
+    notify_product_status_saved(
+        workbook=WORKBOOK_B2B_NEWS,
+        gids=gids_from_save_payload(payload),
+        changed_by=_live_changed_by(meta),
+        origin_connection_id=x_live_connection_id,
+    )
     return {"status": "ok"}
 
 
@@ -563,10 +610,17 @@ def b2b_news_delete_row(
     gid: str = Query(...),
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
     _: None = Depends(require_full_app_access),
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     delete_b2b_news_row(db, gid=gid, row_id=row_id, meta=meta)
+    notify_product_status_saved(
+        workbook=WORKBOOK_B2B_NEWS,
+        gids=[gid],
+        changed_by=_live_changed_by(meta),
+        origin_connection_id=x_live_connection_id,
+    )
     return {"status": "ok"}
 
 
@@ -596,10 +650,17 @@ def b2b_news_restore_snapshot(
     gid: str = Query(...),
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
     _: None = Depends(require_full_app_access),
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     restore_b2b_news_snapshot(db, snapshot_id=snapshot_id, gid=gid, meta=meta)
+    notify_product_status_saved(
+        workbook=WORKBOOK_B2B_NEWS,
+        gids=[gid],
+        changed_by=_live_changed_by(meta),
+        origin_connection_id=x_live_connection_id,
+    )
     return {"status": "ok"}
 
 
@@ -650,10 +711,17 @@ def revenue_activities_save(
     payload: ProductStatusSaveIn,
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
     _: None = Depends(require_full_app_access),
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     save_revenue_activities_to_db(db, payload, meta=meta)
+    notify_product_status_saved(
+        workbook=WORKBOOK_REVENUE_ACTIVITIES,
+        gids=gids_from_save_payload(payload),
+        changed_by=_live_changed_by(meta),
+        origin_connection_id=x_live_connection_id,
+    )
     return {"status": "ok"}
 
 
@@ -663,10 +731,17 @@ def revenue_activities_delete_row(
     gid: str = Query(...),
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
     _: None = Depends(require_full_app_access),
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     delete_revenue_activity_row(db, gid=gid, row_id=row_id, meta=meta)
+    notify_product_status_saved(
+        workbook=WORKBOOK_REVENUE_ACTIVITIES,
+        gids=[gid],
+        changed_by=_live_changed_by(meta),
+        origin_connection_id=x_live_connection_id,
+    )
     return {"status": "ok"}
 
 
@@ -696,10 +771,17 @@ def revenue_activities_restore_snapshot(
     gid: str = Query(...),
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
     _: None = Depends(require_org_manage_access),
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     restore_revenue_activity_snapshot(db, snapshot_id=snapshot_id, gid=gid, meta=meta)
+    notify_product_status_saved(
+        workbook=WORKBOOK_REVENUE_ACTIVITIES,
+        gids=[gid],
+        changed_by=_live_changed_by(meta),
+        origin_connection_id=x_live_connection_id,
+    )
     return {"status": "ok"}
 
 

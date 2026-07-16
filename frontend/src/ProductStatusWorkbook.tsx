@@ -12,12 +12,11 @@ import {
 } from './productStatusZni'
 import { resolveBooleanColors } from './productStatusBoolean'
 import { displayCellText, type TextStyleSegment } from './productStatusRichText'
-import {
-  clearProductStatusCache,
-  readProductStatusCache,
-  writeProductStatusCache,
-} from './productStatusClientCache'
 import { formatProductStatusColumnHeader } from './productStatusColumns'
+import {
+  productStatusLiveHeaders,
+  subscribeProductStatusLive,
+} from './productStatusLiveSync'
 import { computeRevenueColumnTotals, withRevenueResult } from './revenueActivitiesColumns'
 import ProductStatusColumnFilter, { rowMatchesColumnFilters } from './ProductStatusColumnFilter'
 import type { ChangeRequest, TaskLookupResponse } from './zniTypes'
@@ -456,6 +455,27 @@ export default function ProductStatusWorkbook({
   const blurTimerRef = useRef<number | null>(null)
   const tableScrollRef = useRef<HTMLDivElement | null>(null)
   const baselineByGidRef = useRef<Map<string, ProductStatusSheet>>(new Map())
+  const dirtyRef = useRef(dirty)
+  dirtyRef.current = dirty
+  const savingRef = useRef(saving)
+  savingRef.current = saving
+  const activeGidRef = useRef(activeGid)
+  activeGidRef.current = activeGid
+  const loadedGidsRef = useRef(loadedGids)
+  loadedGidsRef.current = loadedGids
+  const loadingRef = useRef(loading)
+  loadingRef.current = loading
+  const activeCellPositionRef = useRef<ActiveCell | null>(null)
+  activeCellPositionRef.current = activeCell
+  const lastVisibilityRefreshAtRef = useRef(0)
+
+  const shouldBlockRemoteSync = useCallback((): boolean => {
+    return (
+      dirtyRef.current
+      || savingRef.current
+      || activeCellPositionRef.current !== null
+    )
+  }, [])
 
   const rememberBaseline = useCallback((sheet: ProductStatusSheet) => {
     baselineByGidRef.current.set(sheet.gid, cloneSheet(sheet))
@@ -466,40 +486,22 @@ export default function ProductStatusWorkbook({
   }, [])
 
   const loadSheetData = useCallback(
-    async (gid: string, options?: { refresh?: boolean }) => {
-      if (!options?.refresh) {
-        const cached = readProductStatusCache(apiBase, { gid })
-        if (cached) {
-          const sheet = cached.sheets.find((item) => item.gid === gid && item.columns.length > 0)
-          if (sheet) {
-            setSheets((current) => current.map((item) => (item.gid === gid ? cloneSheet(sheet) : item)))
-            setLoadedGids((current) => new Set(current).add(gid))
-            rememberBaseline(sheet)
-            setData((current) => ({
-              title: cached.title ?? current?.title ?? defaultTitle,
-              sourceUrl: cached.sourceUrl ?? current?.sourceUrl,
-              presentationReferenceUrl:
-                cached.presentationReferenceUrl ?? current?.presentationReferenceUrl,
-              sheets: current?.sheets ?? cached.sheets,
-            }))
-            return
-          }
-        }
-      }
-
+    async (gid: string, options?: { refresh?: boolean; baselineOnly?: boolean }) => {
       const params = new URLSearchParams({ gid })
       if (options?.refresh) {
         params.set('refresh', 'true')
       }
       const payload = await getJson<ProductStatusData>(`${apiBase}?${params}`)
-      writeProductStatusCache(apiBase, payload, { gid })
       const sheet = payload.sheets.find((item) => item.gid === gid && item.columns.length > 0)
       if (!sheet) {
         throw new Error('Лист пустой или не удалось загрузить данные')
       }
+      rememberBaseline(sheet)
+      if (options?.baselineOnly) {
+        return
+      }
       setSheets((current) => current.map((item) => (item.gid === gid ? cloneSheet(sheet) : item)))
       setLoadedGids((current) => new Set(current).add(gid))
-      rememberBaseline(sheet)
       setData((current) => ({
         title: payload.title ?? current?.title ?? defaultTitle,
         sourceUrl: payload.sourceUrl ?? current?.sourceUrl,
@@ -585,44 +587,15 @@ export default function ProductStatusWorkbook({
 
       try {
         if (options?.refresh) {
-          clearProductStatusCache(apiBase)
           resetBaselines()
         }
 
         if (lazySheets) {
-          if (!options?.refresh) {
-            const cachedMeta = readProductStatusCache(apiBase, { metaOnly: true })
-            if (cachedMeta) {
-              setData(cachedMeta)
-              setSheets(cloneSheets(cachedMeta.sheets))
-              setLoadedGids(new Set())
-              resetBaselines()
-              setDirty(false)
-
-              const savedGid = loadGid()
-              const initialGid =
-                savedGid && cachedMeta.sheets.some((sheet) => sheet.gid === savedGid)
-                  ? savedGid
-                  : cachedMeta.sheets[0]?.gid ?? null
-              setActiveGid(initialGid)
-              if (initialGid) {
-                setSheetLoadingGid(initialGid)
-              }
-              setLoading(false)
-
-              if (initialGid) {
-                await loadSheetQuiet(initialGid, options)
-              }
-              return
-            }
-          }
-
           const params = new URLSearchParams({ meta_only: 'true' })
           if (options?.refresh) {
             params.set('refresh', 'true')
           }
           const meta = await getJson<ProductStatusData>(`${apiBase}?${params}`)
-          writeProductStatusCache(apiBase, meta, { metaOnly: true })
           setData(meta)
           setSheets(cloneSheets(meta.sheets))
           setLoadedGids(new Set())
@@ -647,37 +620,8 @@ export default function ProductStatusWorkbook({
           return
         }
 
-        if (!options?.refresh) {
-          const cached = readProductStatusCache(apiBase)
-          if (cached) {
-            setData(cached)
-            setSheets(cloneSheets(cached.sheets))
-            setLoadedGids(new Set(cached.sheets.map((sheet) => sheet.gid)))
-            resetBaselines()
-            for (const sheet of cached.sheets) {
-              if (sheet.columns.length > 0) {
-                rememberBaseline(sheet)
-              }
-            }
-            setDirty(false)
-            setActiveGid((current) => {
-              const savedGid = loadGid()
-              if (savedGid && cached.sheets.some((sheet) => sheet.gid === savedGid)) {
-                return savedGid
-              }
-              if (current && cached.sheets.some((sheet) => sheet.gid === current)) {
-                return current
-              }
-              return cached.sheets[0]?.gid ?? null
-            })
-            completeMainToast()
-            return
-          }
-        }
-
         const url = options?.refresh ? `${apiBase}?refresh=true` : apiBase
         const payload = await getJson<ProductStatusData>(url)
-        writeProductStatusCache(apiBase, payload)
         setData(payload)
         setSheets(cloneSheets(payload.sheets))
         setLoadedGids(new Set(payload.sheets.map((sheet) => sheet.gid)))
@@ -768,22 +712,27 @@ export default function ProductStatusWorkbook({
     try {
       const response = await apiFetch(`${apiBase}/save`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...productStatusLiveHeaders(apiBase),
+        },
         body: JSON.stringify(payload),
       })
       if (!response.ok) {
         const message = await readApiError(response)
         if (response.status === 409) {
-          clearProductStatusCache(apiBase)
-          await reloadSheetsAfterSave(gidsToReload)
+          for (const gid of gidsToReload) {
+            if (loadedGids.has(gid)) {
+              await loadSheetData(gid, { refresh: true, baselineOnly: true })
+            }
+          }
           throw new HttpError(message, response.status)
         }
         throw new Error(message)
       }
-      setDirty(false)
       setActiveCell(null)
-      clearProductStatusCache(apiBase)
       await reloadSheetsAfterSave(gidsToReload)
+      setDirty(false)
       if (enableHistory && activeGid && viewMode === 'history') {
         void loadHistory(activeGid)
         void loadSnapshots(activeGid)
@@ -791,7 +740,15 @@ export default function ProductStatusWorkbook({
       notifySuccess(commitOnRefresh ? 'Изменения применены' : 'Сохранено', toastId)
       return true
     } catch (err) {
-      notifyProblem(err, 'Ошибка сохранения', toastId)
+      if (err instanceof HttpError && err.status === 409) {
+        notifyProblem(
+          err,
+          'Конфликт версий: ваши правки на экране сохранены. Сверьте изменения и нажмите «Сохранить» снова.',
+          toastId,
+        )
+      } else {
+        notifyProblem(err, 'Ошибка сохранения', toastId)
+      }
       return false
     } finally {
       setSaving(false)
@@ -807,6 +764,7 @@ export default function ProductStatusWorkbook({
     reloadSheetsAfterSave,
     sheets,
     viewMode,
+    loadSheetData,
   ])
 
   const handleRevert = useCallback(() => {
@@ -851,12 +809,14 @@ export default function ProductStatusWorkbook({
       try {
         const response = await apiFetch(
           `${apiBase}/snapshots/${snapshotId}/restore?${new URLSearchParams({ gid: activeGid })}`,
-          { method: 'POST' },
+          {
+            method: 'POST',
+            headers: productStatusLiveHeaders(apiBase),
+          },
         )
         if (!response.ok) {
           throw new Error(await readApiError(response))
         }
-        clearProductStatusCache(apiBase)
         if (loadedGids.has(activeGid)) {
           await loadSheetData(activeGid, { refresh: true })
         }
@@ -1120,6 +1080,7 @@ export default function ProductStatusWorkbook({
       window.clearTimeout(blurTimerRef.current)
       blurTimerRef.current = null
     }
+    activeCellPositionRef.current = cell
     setActiveCell(cell)
   }, [])
 
@@ -1164,15 +1125,23 @@ export default function ProductStatusWorkbook({
   const handleRefresh = useCallback(async () => {
     if (commitOnRefresh) {
       if (dirty) {
-        await handleSave()
+        const saved = await handleSave()
+        if (!saved) return
+        return
       }
+      if (lazySheets && activeGid) {
+        await loadSheetQuiet(activeGid, { refresh: true })
+      } else {
+        await loadData({ refresh: true })
+      }
+      notifySuccess('Данные обновлены')
       return
     }
     if (dirty && !window.confirm('Есть несохранённые изменения. Обновить данные?')) {
       return
     }
     void loadData({ refresh: true })
-  }, [commitOnRefresh, dirty, handleSave, loadData])
+  }, [activeGid, commitOnRefresh, dirty, handleSave, lazySheets, loadData, loadSheetQuiet])
 
   const loadDataRef = useRef(loadData)
   loadDataRef.current = loadData
@@ -1180,6 +1149,61 @@ export default function ProductStatusWorkbook({
   useEffect(() => {
     void loadDataRef.current()
   }, [apiBase])
+
+  const loadSheetDataRef = useRef(loadSheetData)
+  loadSheetDataRef.current = loadSheetData
+
+  useEffect(() => {
+    return subscribeProductStatusLive(apiBase, (event) => {
+      if (shouldBlockRemoteSync()) {
+        const who = event.changedBy ? ` (${event.changedBy})` : ''
+        notifyWarning(
+          `На сервере сохранены изменения${who}. Завершите правку ячейки или нажмите «Обновить» после сохранения.`,
+        )
+        return
+      }
+      const reload = async () => {
+        const loaded = loadedGidsRef.current
+        const targets = [
+          ...new Set(
+            event.gids.filter(
+              (gid) => loaded.has(gid) || gid === activeGidRef.current,
+            ),
+          ),
+        ]
+        for (const gid of targets) {
+          try {
+            await loadSheetDataRef.current(gid, { refresh: true })
+          } catch (err) {
+            notifyProblem(err, 'Не удалось подтянуть изменения с сервера')
+            return
+          }
+        }
+        if (targets.length > 0) {
+          const who = event.changedBy ? ` (${event.changedBy})` : ''
+          notifySuccess(`Подтянуты изменения с сервера${who}`)
+        }
+      }
+      void reload()
+    })
+  }, [apiBase, shouldBlockRemoteSync])
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      if (loadingRef.current || shouldBlockRemoteSync()) return
+      const gid = activeGidRef.current
+      if (!gid) return
+      const now = Date.now()
+      if (now - lastVisibilityRefreshAtRef.current < 2000) return
+      lastVisibilityRefreshAtRef.current = now
+      void loadSheetDataRef.current(gid, { refresh: true }).catch((err) => {
+        notifyProblem(err, 'Не удалось обновить данные')
+      })
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [shouldBlockRemoteSync])
 
   useEffect(() => {
     if (activeGid) {
@@ -1472,13 +1496,9 @@ export default function ProductStatusWorkbook({
                 .filter(Boolean)
                 .join(' ')}
               onClick={() => void handleRefresh()}
-              disabled={
-                toolbarBusy
-                || sheets.length === 0
-                || (commitOnRefresh && !dirty)
-              }
+              disabled={toolbarBusy || sheets.length === 0}
             >
-              {commitOnRefresh ? 'Сохранить' : 'Обновить'}
+              {commitOnRefresh ? (dirty ? 'Сохранить' : 'Обновить') : 'Обновить'}
             </button>
           </div>
         </div>
