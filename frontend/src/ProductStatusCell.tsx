@@ -19,6 +19,8 @@ import {
   parseEmbeddedTableDoc,
   readEmbeddedTableClipboard,
   readTableDocFromHost,
+  collapseExactDuplicatePreamble,
+  preambleFromCellValue,
   resolvePreambleForTableInsert,
   serializeDocWithTable,
   setLastCopiedEmbeddedTable,
@@ -232,6 +234,25 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       }
     }, [focusPreamble])
 
+    // Imperative text nodes from the plain contentEditable can survive React reuse.
+    // Strip anything that isn't part of the controlled table UI.
+    useLayoutEffect(() => {
+      const host = tableHostRef.current
+      if (!host || !tableDoc) return
+      Array.from(host.childNodes).forEach((node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          host.removeChild(node)
+          return
+        }
+        if (!(node instanceof HTMLElement)) return
+        const keep =
+          node.classList.contains('product-status-inline-table-preamble') ||
+          node.classList.contains('product-status-inline-table-toolbar') ||
+          node.classList.contains('product-status-inline-table')
+        if (!keep) host.removeChild(node)
+      })
+    }, [tableDoc, value])
+
     const commitValue = (nextSerialized: string) => {
       lastSerialized.current = nextSerialized
       onChange(nextSerialized)
@@ -250,18 +271,6 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
     }
     const commitTableFromHostRef = useRef(commitTableFromHost)
     commitTableFromHostRef.current = commitTableFromHost
-
-    const readSerializedPlain = (): string => {
-      if (tableDoc && tableHostRef.current) {
-        commitTableFromHost()
-        return lastSerialized.current ?? value
-      }
-      const element = elementRef.current
-      if (element) {
-        return serializeEditableCell(element, cellStyleRef.current)
-      }
-      return lastSerialized.current ?? value
-    }
 
     useEffect(() => {
       const host = tableHostRef.current
@@ -348,12 +357,29 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       },
       insertTable(rows, cols) {
         if (rows < 1 || cols < 1) return false
-        const serialized = readSerializedPlain()
-        const preamble = resolvePreambleForTableInsert({
-          tableDoc,
-          tableHost: tableHostRef.current,
-          serializedPlain: serialized,
-        })
+        let preamble: string
+        if (tableDoc) {
+          preamble = resolvePreambleForTableInsert({
+            tableDoc,
+            tableHost: tableHostRef.current,
+            serializedPlain: lastSerialized.current ?? value,
+          })
+        } else {
+          const element = elementRef.current
+          // Текст в plain-ячейке пишется императивно (не через React children).
+          // Перед сменой разметки читаем DOM и очищаем его — иначе React переиспользует
+          // тот же div и orphan-текст останется рядом с textarea (= визуальный дубль).
+          if (element) {
+            preamble = collapseExactDuplicatePreamble(
+              preambleFromCellValue(serializeEditableCell(element, cellStyleRef.current)),
+            )
+            element.replaceChildren()
+          } else {
+            preamble = collapseExactDuplicatePreamble(
+              preambleFromCellValue(lastSerialized.current ?? value),
+            )
+          }
+        }
         shouldFocusPreambleRef.current = true
         commitValue(
           serializeDocWithTable({
@@ -456,6 +482,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
 
       return (
         <div
+          key="product-status-cell-with-table"
           ref={tableHostRef}
           contentEditable={false}
           className={[className, 'product-status-inline-table-host'].filter(Boolean).join(' ')}
@@ -616,6 +643,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
 
     return (
       <div
+        key="product-status-cell-plain"
         ref={elementRef}
         role="textbox"
         aria-label={ariaLabel}

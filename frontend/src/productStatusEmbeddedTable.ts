@@ -159,16 +159,49 @@ export function setLastCopiedEmbeddedTable(serialized: string): void {
   lastCopiedEmbeddedTable = serialized
 }
 
+/**
+ * Если preamble — точный дубль (ABC+ABC или ABC\\nABC), оставляем одну копию.
+ * Защита на случай orphan-текста в contentEditable при вставке таблицы.
+ */
+export function collapseExactDuplicatePreamble(text: string): string {
+  const normalized = text.replace(/\r\n/g, '\n').replace(/\u00a0/g, ' ')
+  const trimmed = normalized.replace(/^\n+|\n+$/g, '')
+  if (trimmed.length < 2) return text
+
+  if (trimmed.length % 2 === 0) {
+    const half = trimmed.slice(0, trimmed.length / 2)
+    if (half.length > 0 && half + half === trimmed) return half
+  }
+
+  const nl = trimmed.indexOf('\n')
+  if (nl > 0) {
+    const withoutBlank = trimmed.replace(/\n\n+/g, '\n')
+    const parts = withoutBlank.split('\n')
+    if (parts.length >= 2 && parts.length % 2 === 0) {
+      const halfLen = parts.length / 2
+      const first = parts.slice(0, halfLen).join('\n')
+      const second = parts.slice(halfLen).join('\n')
+      if (first && first === second) return first
+    }
+    const doubled = trimmed.match(/^([\s\S]+)\n\n?\1$/)
+    if (doubled?.[1]) return doubled[1]
+  }
+
+  return text
+}
+
 /** Preamble из contentEditable (после commitPending) или из table-host. */
 export function resolvePreambleForTableInsert(options: {
   tableDoc: EmbeddedTableDoc | null
   tableHost: HTMLElement | null
   serializedPlain: string
 }): string {
+  let preamble: string
   if (options.tableDoc && options.tableHost) {
-    return readTableDocFromHost(options.tableHost, options.tableDoc.table).text
+    preamble = readTableDocFromHost(options.tableHost, options.tableDoc.table).text
+  } else {
+    const embedded = parseEmbeddedTableDoc(options.serializedPlain)
+    preamble = embedded ? embedded.text : displayCellText(options.serializedPlain)
   }
-  const embedded = parseEmbeddedTableDoc(options.serializedPlain)
-  if (embedded) return embedded.text
-  return displayCellText(options.serializedPlain)
+  return collapseExactDuplicatePreamble(preamble)
 }
