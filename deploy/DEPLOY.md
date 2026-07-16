@@ -1,11 +1,26 @@
-# Деплой на pallink.fun
+# Деплой на pallink.fun / taskatestovaya.ru
 
 ## Требования
 
-- Ubuntu/Debian VPS
+- Ubuntu/Debian VPS или corp Linux-сервер
 - Docker + Docker Compose (`docker compose` или `docker-compose`)
-- DNS: `pallink.fun`, `www.pallink.fun`, `api.pallink.fun` → IP сервера
+- DNS на IP сервера (см. таблицу ниже)
 - Порты `8000` и `5173` на localhost свободны (backend и frontend)
+
+### DNS (оба домена на одном сервере)
+
+| Хост | Назначение |
+|------|------------|
+| `taskatestovaya.ru` | UI (corp) |
+| `www.taskatestovaya.ru` | → редирект на apex |
+| `api.taskatestovaya.ru` | API |
+| `minio.taskatestovaya.ru` | MinIO S3 |
+| `minio-console.taskatestovaya.ru` | MinIO Console |
+| `pallink.fun` | UI (legacy VPS) |
+| `www.pallink.fun` | → редирект |
+| `api.pallink.fun` | API |
+
+Nginx: `deploy/nginx/reporting.conf` — **оба домена параллельно**, pallink не отключается.
 
 > На том же сервере не должно работать другое приложение на `:8000` / `:5173` (например, старый roadmap).
 
@@ -174,10 +189,12 @@ sudo bash scripts/production.sh
 
 ## URL
 
-| Сервис | URL |
-|--------|-----|
-| UI | https://pallink.fun |
-| API | https://api.pallink.fun |
+| Сервис | Corp (taskatestovaya.ru) | VPS (pallink.fun) |
+|--------|--------------------------|-------------------|
+| UI | https://taskatestovaya.ru | https://pallink.fun |
+| API | https://api.taskatestovaya.ru | https://api.pallink.fun |
+| MinIO | https://minio.taskatestovaya.ru | — |
+| MinIO Console | https://minio-console.taskatestovaya.ru | — |
 
 ## Локальная разработка
 
@@ -214,6 +231,9 @@ sudo systemctl reload nginx
 
 ```bash
 sudo certbot certonly --webroot -w /var/www/certbot \
+  --cert-name reporting \
+  -d taskatestovaya.ru -d www.taskatestovaya.ru \
+  -d api.taskatestovaya.ru -d minio.taskatestovaya.ru -d minio-console.taskatestovaya.ru \
   -d pallink.fun -d www.pallink.fun -d api.pallink.fun
 sudo bash scripts/production.sh
 ```

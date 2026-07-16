@@ -55,9 +55,13 @@ read_env() {
   echo "$default"
 }
 
-APP_PUBLIC_URL="$(read_env APP_PUBLIC_URL https://pallink.fun)"
-API_PUBLIC_URL="$(read_env API_PUBLIC_URL https://api.pallink.fun)"
-CERT_DIR="/etc/letsencrypt/live/pallink.fun"
+APP_PUBLIC_URL="$(read_env APP_PUBLIC_URL https://taskatestovaya.ru)"
+API_PUBLIC_URL="$(read_env API_PUBLIC_URL https://api.taskatestovaya.ru)"
+CERTBOT_CERT_NAME="$(read_env CERTBOT_CERT_NAME reporting)"
+CERT_DIR="/etc/letsencrypt/live/${CERTBOT_CERT_NAME}"
+if [[ ! -f "$CERT_DIR/fullchain.pem" && -f /etc/letsencrypt/live/pallink.fun/fullchain.pem ]]; then
+  CERT_DIR="/etc/letsencrypt/live/pallink.fun"
+fi
 
 chmod +x db/init-users.sh 2>/dev/null || true
 
@@ -88,6 +92,8 @@ echo "Frontend :5173 → HTTP $HTTP_CODE"
 if [[ -f "$CERT_DIR/fullchain.pem" ]]; then
   echo ""
   echo "==> HTTPS"
+  curl -sI --resolve taskatestovaya.ru:443:127.0.0.1 https://taskatestovaya.ru/ | head -3 || true
+  curl -sf --resolve api.taskatestovaya.ru:443:127.0.0.1 https://api.taskatestovaya.ru/api/health && echo "" || true
   curl -sI --resolve pallink.fun:443:127.0.0.1 https://pallink.fun/ | head -3 || true
   curl -sf --resolve api.pallink.fun:443:127.0.0.1 https://api.pallink.fun/api/health && echo "" || true
 fi

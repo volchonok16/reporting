@@ -44,8 +44,10 @@ bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel
 sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel --with-nginx
 ```
 
-`--with-nginx` вызывает `deploy/setup-nginx-ssl.sh` (те же nginx/certbot, что у `production.sh`).  
-Let's Encrypt сработает только при публичном DNS и доступе к LE; на закрытом corp-сервере nginx поднимется на HTTP, HTTPS — через корпоративный сертификат вручную.
+`--with-nginx` вызывает `deploy/setup-nginx-ssl.sh`: nginx для **taskatestovaya.ru** (api, minio, minio-console, www) и **pallink.fun** (api, www) параллельно.  
+Let's Encrypt — только при публичном DNS и доступе к LE; на corp-сервере — корпоративный сертификат в `/etc/letsencrypt/live/reporting/`.
+
+Перед offline-сборкой на Mac/Windows задайте в `.env`: `VITE_API_URL=https://api.taskatestovaya.ru` — URL API вшивается в frontend при `docker compose build`.
 
 Compose-файлы: `docker-compose.prod.yml` + `docker-compose.offline.yml` (фиксированные теги `reporting/*`).
 

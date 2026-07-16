@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Сборка offline-bundle для закрытого сервера (без доступа к Docker Hub).
 #
-# На Mac/CI с интернетом:
+# На Mac/CI с интернетом (перед сборкой задайте VITE_API_URL в .env!):
+#   echo 'VITE_API_URL=https://api.taskatestovaya.ru' >> .env
 #   bash scripts/offline-bundle.sh
 #   bash scripts/offline-bundle.sh dist/reporting-offline.tar linux/amd64
 #

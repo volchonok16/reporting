@@ -4,14 +4,12 @@
 #
 #   sudo bash deploy/setup-nginx-ssl.sh
 #
-# Требует root. Читает .env: CERTBOT_EMAIL, CERTBOT_DOMAINS, APP_PUBLIC_URL.
-# Конфиги сейчас заточены под pallink.fun (deploy/nginx/*).
+# Домены: taskatestovaya.ru (+ api, minio, minio-console, www) и pallink.fun (+ api, www).
+# Читает .env: CERTBOT_EMAIL, CERTBOT_CERT_NAME, CERTBOT_DOMAINS, APP_PUBLIC_URL.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-
-CERT_DIR="/etc/letsencrypt/live/pallink.fun"
 
 if [[ "${EUID:-0}" -ne 0 ]]; then
   echo "Запустите с sudo: sudo bash deploy/setup-nginx-ssl.sh" >&2
@@ -32,14 +30,46 @@ read_env() {
   echo "$default"
 }
 
-APP_PUBLIC_URL="$(read_env APP_PUBLIC_URL https://pallink.fun)"
-API_PUBLIC_URL="$(read_env API_PUBLIC_URL https://api.pallink.fun)"
+APP_PUBLIC_URL="$(read_env APP_PUBLIC_URL https://taskatestovaya.ru)"
+API_PUBLIC_URL="$(read_env API_PUBLIC_URL https://api.taskatestovaya.ru)"
+MINIO_PUBLIC_URL="$(read_env MINIO_PUBLIC_URL https://minio.taskatestovaya.ru)"
 CERTBOT_EMAIL="$(read_env CERTBOT_EMAIL "")"
-CERTBOT_DOMAINS="$(read_env CERTBOT_DOMAINS pallink.fun,www.pallink.fun,api.pallink.fun)"
+CERTBOT_CERT_NAME="$(read_env CERTBOT_CERT_NAME reporting)"
+CERTBOT_DOMAINS="$(read_env CERTBOT_DOMAINS \
+  "taskatestovaya.ru,www.taskatestovaya.ru,api.taskatestovaya.ru,minio.taskatestovaya.ru,minio-console.taskatestovaya.ru,pallink.fun,www.pallink.fun,api.pallink.fun")"
+
+resolve_cert_dir() {
+  local dir="/etc/letsencrypt/live/${CERTBOT_CERT_NAME}"
+  if [[ -f "${dir}/fullchain.pem" && -f "${dir}/privkey.pem" ]]; then
+    echo "$dir"
+    return
+  fi
+  # Legacy: сертификат только под pallink.fun
+  if [[ -f /etc/letsencrypt/live/pallink.fun/fullchain.pem ]]; then
+    echo "/etc/letsencrypt/live/pallink.fun"
+    return
+  fi
+  echo "$dir"
+}
+
+CERT_DIR="$(resolve_cert_dir)"
+
+write_ssl_snippet() {
+  cat > /etc/nginx/snippets/ssl-reporting.conf <<EOF
+ssl_certificate ${CERT_DIR}/fullchain.pem;
+ssl_certificate_key ${CERT_DIR}/privkey.pem;
+ssl_session_timeout 1d;
+ssl_session_cache shared:SSL:10m;
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_prefer_server_ciphers off;
+EOF
+}
 
 echo "==> Nginx + SSL ($ROOT)"
-echo "    UI:  $APP_PUBLIC_URL"
-echo "    API: $API_PUBLIC_URL"
+echo "    UI:    $APP_PUBLIC_URL"
+echo "    API:   $API_PUBLIC_URL"
+echo "    MinIO: $MINIO_PUBLIC_URL"
+echo "    Cert:  $CERT_DIR"
 
 if ! command -v nginx >/dev/null 2>&1; then
   echo "==> Установка nginx…"
@@ -53,18 +83,18 @@ fi
 mkdir -p /var/www/certbot
 mkdir -p /etc/nginx/snippets
 cp -f "$ROOT/deploy/nginx/snippets/proxy-common.conf" /etc/nginx/snippets/
-cp -f "$ROOT/deploy/nginx/snippets/ssl-pallink.conf" /etc/nginx/snippets/
 
 install_nginx_config() {
   if [[ -f "$CERT_DIR/fullchain.pem" && -f "$CERT_DIR/privkey.pem" ]]; then
-    echo "==> SSL найден — HTTPS-конфиг."
-    cp -f "$ROOT/deploy/nginx/pallink.conf" /etc/nginx/sites-available/pallink-reporting.conf
+    echo "==> SSL найден — HTTPS (reporting.conf)."
+    write_ssl_snippet
+    cp -f "$ROOT/deploy/nginx/reporting.conf" /etc/nginx/sites-available/reporting.conf
   else
-    echo "==> SSL нет — HTTP bootstrap (для certbot / внутренняя сеть)."
-    cp -f "$ROOT/deploy/nginx/pallink.certbot-bootstrap.conf" /etc/nginx/sites-available/pallink-reporting.conf
+    echo "==> SSL нет — HTTP bootstrap."
+    cp -f "$ROOT/deploy/nginx/reporting.certbot-bootstrap.conf" /etc/nginx/sites-available/reporting.conf
   fi
-  ln -sf /etc/nginx/sites-available/pallink-reporting.conf /etc/nginx/sites-enabled/pallink-reporting.conf
-  rm -f /etc/nginx/sites-enabled/default
+  ln -sf /etc/nginx/sites-available/reporting.conf /etc/nginx/sites-enabled/reporting.conf
+  rm -f /etc/nginx/sites-enabled/pallink-reporting.conf /etc/nginx/sites-enabled/default
   nginx -t
   systemctl enable nginx 2>/dev/null || true
   systemctl reload nginx
@@ -123,7 +153,7 @@ issue_certificate() {
     return 1
   fi
 
-  echo "==> Certbot: выпуск сертификата ($CERTBOT_DOMAINS)…"
+  echo "==> Certbot: выпуск ($CERTBOT_CERT_NAME, $CERTBOT_DOMAINS)…"
   ensure_certbot || return 1
 
   local -a domain_args=()
@@ -134,14 +164,16 @@ issue_certificate() {
   done
 
   if ! certbot certonly --webroot -w /var/www/certbot \
+    --cert-name "$CERTBOT_CERT_NAME" \
     --email "$CERTBOT_EMAIL" --agree-tos --no-eff-email \
     "${domain_args[@]}"; then
     echo "Предупреждение: certbot не выпустил сертификат." >&2
-    echo "  Нужны: публичный DNS → этот сервер, порты 80/443, интернет до Let's Encrypt." >&2
-    echo "  На закрытом corp-сервере используйте корпоративный сертификат вручную." >&2
+    echo "  Нужны: DNS → сервер, порты 80/443, интернет до Let's Encrypt." >&2
+    echo "  Corp: положите fullchain.pem + privkey.pem в /etc/letsencrypt/live/${CERTBOT_CERT_NAME}/" >&2
     return 1
   fi
 
+  CERT_DIR="/etc/letsencrypt/live/${CERTBOT_CERT_NAME}"
   install_nginx_config
 }
 
@@ -154,6 +186,7 @@ fi
 
 if [[ ! -f "$CERT_DIR/fullchain.pem" ]]; then
   issue_certificate || true
+  CERT_DIR="$(resolve_cert_dir)"
 fi
 
 ensure_certbot 2>/dev/null || true
@@ -161,10 +194,11 @@ setup_certbot_auto_renewal
 
 echo ""
 if [[ -f "$CERT_DIR/fullchain.pem" ]]; then
-  echo "HTTPS готов: $APP_PUBLIC_URL / $API_PUBLIC_URL"
-  echo "Проверка renew: sudo certbot renew --dry-run"
+  echo "HTTPS готов."
+  echo "  taskatestovaya.ru + pallink.fun (оба активны)"
+  echo "  Проверка renew: sudo certbot renew --dry-run"
 else
   echo "Nginx на HTTP (bootstrap). HTTPS пока нет."
-  echo "  Let's Encrypt: CERTBOT_EMAIL + DNS + интернет → sudo bash deploy/setup-nginx-ssl.sh"
-  echo "  Corp-сертификат: положите fullchain/privkey в $CERT_DIR и снова запустите скрипт."
+  echo "  Let's Encrypt: CERTBOT_EMAIL + DNS + интернет"
+  echo "  Corp-сертификат: /etc/letsencrypt/live/${CERTBOT_CERT_NAME}/fullchain.pem + privkey.pem"
 fi
