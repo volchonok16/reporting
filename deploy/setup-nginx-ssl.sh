@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Установка nginx + (опционально) Let's Encrypt certbot.
-# Вызывается из production.sh и offline-deploy.sh --with-nginx.
+# Вызывается из production.sh и offline-deploy.sh --with-ssl.
 #
 #   sudo bash deploy/setup-nginx-ssl.sh
+# Закрытый контур без SSL: sudo bash deploy/setup-nginx-http.sh
+#   или: sudo bash scripts/offline-deploy.sh TAR --with-nginx
 #
 # Домены: taskatestovaya.ru (+ api, minio, minio-console, www) и pallink.fun (+ api, www).
 # Читает .env: CERTBOT_EMAIL, CERTBOT_CERT_NAME, CERTBOT_DOMAINS, APP_PUBLIC_URL.

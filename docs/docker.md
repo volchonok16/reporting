@@ -37,21 +37,25 @@ scp dist/reporting-offline.tar root@SERVER:/tmp/
 **Деплой на сервере** (после `git pull` и `.env`):
 
 ```bash
+# Рекомендуется для закрытого контура: образы + HTTP nginx (/api/ → backend)
+sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx
+
+# только контейнеры (без nginx):
 bash scripts/offline-deploy.sh /tmp/reporting-offline.tar
-# с туннелем PostgreSQL для DBeaver:
+# + туннель PostgreSQL для DBeaver:
 bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel
-# + nginx и попытка Let's Encrypt (нужен root):
-sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel --with-nginx
+# nginx + SSL (corp-сертификат или Let's Encrypt):
+sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-ssl
 ```
 
-`--with-nginx` вызывает `deploy/setup-nginx-ssl.sh`: nginx для **taskatestovaya.ru** (api, minio, minio-console, www) и **pallink.fun** (api, www) параллельно.  
-Let's Encrypt — только при публичном DNS и доступе к LE; на corp-сервере — корпоративный сертификат в `/etc/letsencrypt/live/reporting/`.
+`--with-nginx` → `deploy/setup-nginx-http.sh`: HTTP без certbot, `/api/` на backend, UI на frontend.  
+`--with-ssl` → `deploy/setup-nginx-ssl.sh` (нужен сертификат в `/etc/letsencrypt/live/reporting/` или доступ к LE).
 
-Перед offline-сборкой на Mac/Windows задайте в `.env`: `VITE_API_URL=https://api.taskatestovaya.ru` — URL API вшивается в frontend при `docker compose build`.
+UI на **taskatestovaya.ru** ходит в API same-origin (`/api/…`); отдельный `api.*` и `VITE_API_URL` для corp не нужны.
 
 Compose-файлы: `docker-compose.prod.yml` + `docker-compose.offline.yml` (фиксированные теги `reporting/*`).
 
-Обновление версии: заново `offline-bundle.sh` на машине с интернетом → `scp` → `offline-deploy.sh` на сервере.
+Обновление: `offline-bundle.sh` на Mac → `scp` tar → на сервере `git pull` + `sudo bash scripts/offline-deploy.sh … --with-nginx`.
 
 ## Полный стек вручную (dev)
 

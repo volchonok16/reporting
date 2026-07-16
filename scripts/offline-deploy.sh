@@ -3,35 +3,62 @@
 #
 #   bash scripts/offline-deploy.sh /tmp/reporting-offline.tar
 #   bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel
-#   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel --with-nginx
+#   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx
 #
-# --with-nginx: ставит/настраивает nginx + пытается Let's Encrypt (нужен root).
+# --with-nginx: HTTP nginx (без certbot) — /api/ → backend, / → frontend
+# --with-ssl:   nginx + попытка Let's Encrypt / corp-сертификат (нужен root)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 
-TAR="${1:-}"
+# shellcheck source=lib-read-env.sh
+if [[ -f "$(dirname "$0")/lib-read-env.sh" ]]; then
+  source "$(dirname "$0")/lib-read-env.sh"
+else
+  read_env() { echo "${2:-}"; }
+fi
+
+TAR=""
 TUNNEL=0
 WITH_NGINX=0
-shift || true
+WITH_SSL=0
+
 for arg in "$@"; do
   case "$arg" in
     --tunnel) TUNNEL=1 ;;
     --with-nginx) WITH_NGINX=1 ;;
-    *)
+    --with-ssl) WITH_SSL=1; WITH_NGINX=1 ;;
+    --*)
       echo "Неизвестный аргумент: $arg" >&2
       exit 1
+      ;;
+    *)
+      if [[ -z "$TAR" ]]; then
+        TAR="$arg"
+      else
+        echo "Неизвестный аргумент: $arg" >&2
+        exit 1
+      fi
       ;;
   esac
 done
 
+if [[ -z "$TAR" ]]; then
+  TAR="$(read_env OFFLINE_BUNDLE_PATH artifacts/reporting-offline.tar)"
+  if [[ ! -f "$TAR" && -f dist/reporting-offline.tar ]]; then
+    TAR="dist/reporting-offline.tar"
+  fi
+fi
+
 if [[ -z "$TAR" || ! -f "$TAR" ]]; then
-  echo "Использование: bash scripts/offline-deploy.sh /path/to/reporting-offline.tar [--tunnel] [--with-nginx]" >&2
+  echo "Использование: bash scripts/offline-deploy.sh [/path/to/reporting-offline.tar] [--tunnel] [--with-nginx] [--with-ssl]" >&2
+  echo "Bundle не найден: ${TAR:-<пусто>}" >&2
   exit 1
 fi
 
 if [[ "$WITH_NGINX" -eq 1 && "${EUID:-0}" -ne 0 ]]; then
-  echo "Ошибка: --with-nginx требует root: sudo bash scripts/offline-deploy.sh … --with-nginx" >&2
+  echo "Ошибка: --with-nginx / --with-ssl требуют root:" >&2
+  echo "  sudo bash scripts/offline-deploy.sh $TAR --with-nginx" >&2
   exit 1
 fi
 
@@ -46,11 +73,6 @@ MODE=offline
 # shellcheck source=resolve-compose.sh
 source "$(dirname "$0")/resolve-compose.sh" "$MODE"
 
-if [[ "$WITH_NGINX" -eq 1 ]]; then
-  echo "==> Nginx + SSL…"
-  bash "$ROOT/deploy/setup-nginx-ssl.sh" || echo "Предупреждение: nginx/ssl не настроены полностью" >&2
-fi
-
 echo "==> docker load ← ${TAR}"
 docker load -i "$TAR"
 
@@ -61,8 +83,6 @@ if [[ "$COMPOSE_CMD" == "docker-compose" ]]; then
   echo "==> docker-compose v1: после purge — up -d --no-build"
 fi
 
-# Compose v1 (docker-compose) не знает --pull never / pull_policy.
-# v2 (docker compose): --pull never — не ходить в Docker Hub.
 UP_ARGS=(up -d --no-build)
 if [[ "$COMPOSE_CMD" != "docker-compose" ]]; then
   UP_ARGS+=(--pull never)
@@ -88,6 +108,29 @@ for i in $(seq 1 20); do
   sleep 2
 done
 
+if [[ "$WITH_NGINX" -eq 1 ]]; then
+  echo ""
+  if [[ "$WITH_SSL" -eq 1 ]]; then
+    echo "==> Nginx + SSL…"
+    bash "$ROOT/deploy/setup-nginx-ssl.sh" || echo "Предупреждение: nginx/ssl не настроены полностью" >&2
+  else
+    echo "==> Nginx HTTP (закрытый контур, без certbot)…"
+    bash "$ROOT/deploy/setup-nginx-http.sh" || echo "Предупреждение: nginx HTTP не настроен" >&2
+  fi
+
+  echo ""
+  echo "==> Проверка через nginx…"
+  sleep 1
+  code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/ 2>/dev/null || echo 000)"
+  echo "    GET / → HTTP ${code}"
+  health="$(curl -sf http://127.0.0.1/api/health 2>/dev/null || true)"
+  if [[ -n "$health" ]]; then
+    echo "    GET /api/health → ${health}"
+  else
+    echo "    GET /api/health → нет ответа (проверьте: curl http://taskatestovaya.ru/api/health)" >&2
+  fi
+fi
+
 echo ""
 echo "==> Статус контейнеров"
 "${COMPOSE[@]}" ps
@@ -95,7 +138,9 @@ echo "==> Статус контейнеров"
 echo ""
 echo "Готово (offline deploy)."
 if [[ "$WITH_NGINX" -eq 0 ]]; then
-  echo "Nginx/SSL не трогали. Чтобы настроить:"
-  echo "  sudo bash scripts/offline-deploy.sh $TAR --tunnel --with-nginx"
-  echo "  или отдельно: sudo bash deploy/setup-nginx-ssl.sh"
+  echo "Nginx не трогали. Для HTTP на corp (рекомендуется):"
+  echo "  sudo bash scripts/offline-deploy.sh $TAR --with-nginx"
+  echo "С SSL (corp-сертификат или LE):"
+  echo "  sudo bash scripts/offline-deploy.sh $TAR --with-ssl"
 fi
+echo "UI: http://taskatestovaya.ru/  (не https, пока нет сертификата)"

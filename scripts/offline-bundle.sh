@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Сборка offline-bundle для закрытого сервера (без доступа к Docker Hub).
 #
-# На Mac/CI с интернетом (перед сборкой задайте VITE_API_URL в .env!):
-#   echo 'VITE_API_URL=https://api.taskatestovaya.ru' >> .env
+# На Mac/CI с интернетом:
 #   bash scripts/offline-bundle.sh
 #   bash scripts/offline-bundle.sh dist/reporting-offline.tar linux/amd64
+#
+# Frontend на taskatestovaya.ru ходит в /api/ same-origin — VITE_API_URL не обязателен.
+# На сервере (образы + HTTP nginx одной командой):
+#   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx
 #
 # Архив копируют на сервер (scp), в git не кладут — см. dist/.gitkeep
 set -euo pipefail
@@ -96,6 +99,8 @@ echo "Готово:"
 echo "  ${OUTPUT}"
 echo "  ${MANIFEST}"
 echo ""
-echo "На сервер:"
+echo "На сервер (образы + HTTP nginx автоматически):"
 echo "  scp ${OUTPUT} root@SERVER:/tmp/"
-echo "  bash scripts/offline-deploy.sh /tmp/$(basename "$OUTPUT")"
+echo "  # на сервере нужен актуальный git (nginx-конфиги + scripts)"
+echo "  sudo bash scripts/offline-deploy.sh /tmp/$(basename "$OUTPUT") --with-nginx"
+echo "  # открывать: http://taskatestovaya.ru/"
