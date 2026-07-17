@@ -9,7 +9,6 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-import httpx
 from fastapi import HTTPException
 from pptx import Presentation
 from pptx.dml.color import RGBColor
@@ -22,7 +21,6 @@ from pptx.util import Pt
 
 from app.b2b_news_service import load_b2b_news
 from app.config import settings
-from app.product_status_slides_template import fetch_google_slides_pptx
 from app.product_status_rich_text import (
     CellStyle,
     display_cell_text,
@@ -186,19 +184,14 @@ def _bundled_template_path() -> Path:
     return Path(__file__).resolve().parent.parent / "assets" / "Status.pptx"
 
 
-def _google_http_client() -> httpx.Client:
-    proxy = settings.outbound_http_proxy.strip() or None
-    return httpx.Client(timeout=60.0, follow_redirects=True, proxy=proxy)
-
-
 def _open_template_presentation() -> Presentation:
-    """Открыть PPTX-шаблон: сначала локальный файл, Google — только если локального нет."""
+    """Открыть локальный PPTX-шаблон (Status.pptx). Без запросов в Google."""
     configured = settings.b2b_product_status_presentation_template.strip()
     if configured:
         if _looks_like_url(configured):
             logger.warning(
-                "product_status_template_url_in_template_setting — "
-                "используйте B2B_PRODUCT_STATUS_PRESENTATION_REFERENCE_URL"
+                "product_status_template_url_ignored — нужен локальный путь к PPTX, "
+                "не URL (эталон: backend/assets/Status.pptx)"
             )
         else:
             path = Path(configured)
@@ -211,28 +204,6 @@ def _open_template_presentation() -> Presentation:
     if default.is_file():
         logger.info("product_status_template_bundled path=%s", default)
         return Presentation(str(default))
-
-    # Запасной вариант: сеть до Google может быть закрыта — поэтому локальный файл выше.
-    reference_url = settings.b2b_product_status_presentation_reference_url.strip()
-    if reference_url and _looks_like_url(reference_url):
-        try:
-            with _google_http_client() as client:
-                pptx_bytes = fetch_google_slides_pptx(reference_url=reference_url, client=client)
-            prs = Presentation(io.BytesIO(pptx_bytes))
-            if len(prs.slides) >= FIXED_SLIDE_COUNT + 1:
-                logger.info("product_status_template_from_google slides=%s", len(prs.slides))
-                return prs
-            logger.warning(
-                "google_slides_template_too_short slides=%s url=%s",
-                len(prs.slides),
-                reference_url,
-            )
-        except (httpx.HTTPError, ValueError, OSError) as exc:
-            logger.warning(
-                "google_slides_template_fetch_failed url=%s err=%s",
-                reference_url,
-                exc,
-            )
 
     raise HTTPException(
         status_code=503,

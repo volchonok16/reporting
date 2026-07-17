@@ -128,20 +128,13 @@ class Settings(BaseSettings):
     b2b_product_status_presentation_template: str = Field(
         default="",
         alias="B2B_PRODUCT_STATUS_PRESENTATION_TEMPLATE",
-        description=(
-            "Локальный путь к PPTX-эталону. Пусто — backend/assets/Status.pptx. "
-            "Google используется только если локального файла нет."
-        ),
+        description="Локальный путь к PPTX-эталону. Пусто — backend/assets/Status.pptx.",
     )
     b2b_product_status_presentation_reference_url: str = Field(
-        default=(
-            "https://docs.google.com/presentation/d/"
-            "1EDejas495X7XC3-pOW9QID_ooECrqNRYJBfrUpApCx4/edit"
-        ),
+        default="",
         alias="B2B_PRODUCT_STATUS_PRESENTATION_REFERENCE_URL",
         description=(
-            "Ссылка «Эталон в Google Slides» в UI. Для генерации PPTX не нужна, "
-            "если есть локальный шаблон в assets/."
+            "Опциональная внешняя ссылка на эталон в UI. Генерация PPTX всегда из локального файла."
         ),
     )
     b2b_news_spreadsheet_id: str = Field(

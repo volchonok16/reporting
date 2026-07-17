@@ -1543,7 +1543,7 @@ export default function ProductStatusWorkbook({
                   target="_blank"
                   rel="noreferrer"
                 >
-                  Эталон в Google Slides
+                  Эталон презентации
                 </a>
               ) : null}
               {data?.presentationReferenceUrl && enableHistory ? ' · ' : null}
