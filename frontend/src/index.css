@@ -2415,15 +2415,31 @@ body {
 }
 
 .product-status-inline-table-host {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
   cursor: default;
   -webkit-user-modify: read-only;
+}
+
+.product-status-inline-table-text-block {
+  order: 1;
+  flex: 0 0 auto;
+  width: 100%;
+}
+
+.product-status-inline-table-block {
+  order: 2;
+  flex: 0 0 auto;
+  width: 100%;
 }
 
 .product-status-inline-table-preamble {
   display: block;
   width: 100%;
   min-height: 2.7em;
-  margin: 0 0 4px;
+  margin: 0;
   padding: 0;
   border: none;
   border-radius: 0;
@@ -2446,7 +2462,7 @@ body {
 }
 
 .product-status-inline-table {
-  margin-top: 6px;
+  margin-top: 0;
   width: 100%;
   border-collapse: collapse;
 }

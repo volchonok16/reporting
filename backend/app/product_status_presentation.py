@@ -1320,9 +1320,10 @@ def _preamble_height_emu(preamble: str, col_index: int, cell_width: int) -> int:
     if col_index == WHY_COLUMN_INDEX:
         dense_scale = TABLE_FONT_SIZE.pt / TABLE_FONT_SIZE_DENSE.pt
         chars = max(8, int(chars * dense_scale))
-    lines = _estimate_text_lines(preamble, chars)
+    lines = max(1, _estimate_text_lines(preamble, chars))
     line_height = LINE_HEIGHT_DENSE_EMU if col_index == WHY_COLUMN_INDEX else LINE_HEIGHT_EMU
-    return lines * line_height + EMBEDDED_TABLE_MARGIN_EMU
+    # Запас, чтобы вложенная таблица в PPTX не наезжала на preamble.
+    return lines * line_height + CELL_TEXT_MARGIN_EMU + EMBEDDED_TABLE_MARGIN_EMU * 2
 
 
 def _fill_nested_table_cell(cell, text: str, *, col_index: int, default_text_color: RGBColor) -> None:
@@ -1368,11 +1369,12 @@ def _overlay_embedded_tables(
         cell_height = row_heights[row_index]
         preamble_h = _preamble_height_emu(preamble, col_index, cell_width)
         nested_left = cell_left + EMBEDDED_TABLE_MARGIN_EMU
-        nested_top = cell_top + preamble_h + EMBEDDED_TABLE_MARGIN_EMU
+        # Таблица всегда ниже preamble, не поверх текста.
+        nested_top = cell_top + preamble_h
         nested_width = max(int(Pt(20).emu), cell_width - EMBEDDED_TABLE_MARGIN_EMU * 2)
         nested_height = max(
             int(Pt(14).emu) * max(len(cells), 1),
-            cell_height - preamble_h - EMBEDDED_TABLE_MARGIN_EMU * 2,
+            cell_height - preamble_h - EMBEDDED_TABLE_MARGIN_EMU,
         )
         if nested_top + nested_height > cell_top + cell_height:
             nested_height = max(int(Pt(14).emu), cell_top + cell_height - nested_top)

@@ -246,6 +246,8 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         }
         if (!(node instanceof HTMLElement)) return
         const keep =
+          node.classList.contains('product-status-inline-table-text-block') ||
+          node.classList.contains('product-status-inline-table-block') ||
           node.classList.contains('product-status-inline-table-preamble') ||
           node.classList.contains('product-status-inline-table-toolbar') ||
           node.classList.contains('product-status-inline-table')
@@ -545,98 +547,102 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
             }
           }}
         >
-          <PreambleEditor
-            value={tableDoc.text}
-            className="product-status-inline-table-preamble"
-            onFocus={onFocus}
-            onChange={updateFreeText}
-            autoFocus={focusPreamble}
-          />
-          <div className="product-status-inline-table-toolbar">
-            <button
-              type="button"
-              className="btn-secondary product-status-inline-table-btn"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => {
-                updateTable({
-                  rows: tableDoc.table.rows + 1,
-                  cols: tableDoc.table.cols,
-                  cells: [
-                    ...tableDoc.table.cells.map((items) => [...items]),
-                    Array.from({ length: tableDoc.table.cols }, () => ''),
-                  ],
-                })
-              }}
-            >
-              + Строка
-            </button>
-            <button
-              type="button"
-              className="btn-secondary product-status-inline-table-btn"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => {
-                updateTable({
-                  rows: tableDoc.table.rows,
-                  cols: tableDoc.table.cols + 1,
-                  cells: tableDoc.table.cells.map((items) => [...items, '']),
-                })
-              }}
-            >
-              + Столбец
-            </button>
-            <button
-              type="button"
-              className="btn-secondary product-status-inline-table-btn"
-              title="Скопировать таблицу (Ctrl/Cmd+C без выделения текста)"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={copyCurrentTable}
-            >
-              Копировать
-            </button>
-            <button
-              type="button"
-              className="btn-secondary product-status-inline-table-btn"
-              title="Вставить таблицу из буфера"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => {
-                void readEmbeddedTableClipboard().then((payload) => {
-                  if (!payload || !applyPastedTablePayload(payload)) {
-                    notifyWarning('В буфере нет скопированной таблицы')
-                    return
-                  }
-                  notifySuccess('Таблица вставлена')
-                })
-              }}
-            >
-              Вставить
-            </button>
-            <button
-              type="button"
-              className="btn-secondary product-status-inline-table-btn"
-              title="Удалить таблицу, оставить текст над ней"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={removeTableKeepText}
-            >
-              Удалить таблицу
-            </button>
+          <div className="product-status-inline-table-text-block">
+            <PreambleEditor
+              value={tableDoc.text}
+              className="product-status-inline-table-preamble"
+              onFocus={onFocus}
+              onChange={updateFreeText}
+              autoFocus={focusPreamble}
+            />
           </div>
-          <table className="product-status-inline-table">
-            <tbody>
-              {tableDoc.table.cells.map((row, rowIndex) => (
-                <tr key={rowIndex}>
-                  {row.map((cell, colIndex) => (
-                    <td key={colIndex}>
-                      <InlineTableCell
-                        value={cell}
-                        onFocus={onFocus}
-                        onCommit={(nextValue) => updateTableCell(rowIndex, colIndex, nextValue)}
-                      />
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="product-status-inline-table-block">
+            <div className="product-status-inline-table-toolbar">
+              <button
+                type="button"
+                className="btn-secondary product-status-inline-table-btn"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  updateTable({
+                    rows: tableDoc.table.rows + 1,
+                    cols: tableDoc.table.cols,
+                    cells: [
+                      ...tableDoc.table.cells.map((items) => [...items]),
+                      Array.from({ length: tableDoc.table.cols }, () => ''),
+                    ],
+                  })
+                }}
+              >
+                + Строка
+              </button>
+              <button
+                type="button"
+                className="btn-secondary product-status-inline-table-btn"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  updateTable({
+                    rows: tableDoc.table.rows,
+                    cols: tableDoc.table.cols + 1,
+                    cells: tableDoc.table.cells.map((items) => [...items, '']),
+                  })
+                }}
+              >
+                + Столбец
+              </button>
+              <button
+                type="button"
+                className="btn-secondary product-status-inline-table-btn"
+                title="Скопировать таблицу (Ctrl/Cmd+C без выделения текста)"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={copyCurrentTable}
+              >
+                Копировать
+              </button>
+              <button
+                type="button"
+                className="btn-secondary product-status-inline-table-btn"
+                title="Вставить таблицу из буфера"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  void readEmbeddedTableClipboard().then((payload) => {
+                    if (!payload || !applyPastedTablePayload(payload)) {
+                      notifyWarning('В буфере нет скопированной таблицы')
+                      return
+                    }
+                    notifySuccess('Таблица вставлена')
+                  })
+                }}
+              >
+                Вставить
+              </button>
+              <button
+                type="button"
+                className="btn-secondary product-status-inline-table-btn"
+                title="Удалить таблицу, оставить текст над ней"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={removeTableKeepText}
+              >
+                Удалить таблицу
+              </button>
+            </div>
+            <table className="product-status-inline-table">
+              <tbody>
+                {tableDoc.table.cells.map((row, rowIndex) => (
+                  <tr key={rowIndex}>
+                    {row.map((cell, colIndex) => (
+                      <td key={colIndex}>
+                        <InlineTableCell
+                          value={cell}
+                          onFocus={onFocus}
+                          onCommit={(nextValue) => updateTableCell(rowIndex, colIndex, nextValue)}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )
     }
