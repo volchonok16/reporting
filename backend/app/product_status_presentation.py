@@ -183,7 +183,7 @@ def _looks_like_url(value: str) -> bool:
 
 
 def _bundled_template_path() -> Path:
-    return Path(__file__).resolve().parent.parent / "assets" / "b2b_product_status_template.pptx"
+    return Path(__file__).resolve().parent.parent / "assets" / "Status.pptx"
 
 
 def _google_http_client() -> httpx.Client:
@@ -238,7 +238,7 @@ def _open_template_presentation() -> Presentation:
         status_code=503,
         detail=(
             "Шаблон презентации не найден. Положите PPTX в "
-            "backend/assets/b2b_product_status_template.pptx "
+            "backend/assets/Status.pptx "
             "или укажите B2B_PRODUCT_STATUS_PRESENTATION_TEMPLATE."
         ),
     )

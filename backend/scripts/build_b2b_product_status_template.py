@@ -12,8 +12,8 @@ from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SOURCE = ROOT / "assets" / "b2b_product_status_template.pptx"
-DEFAULT_OUTPUT = ROOT / "assets" / "b2b_product_status_template.pptx"
+DEFAULT_SOURCE = ROOT / "assets" / "Status.pptx"
+DEFAULT_OUTPUT = ROOT / "assets" / "Status.pptx"
 COVER_SLIDE_INDEX = 0
 MIN_ROW_HEIGHT_EMU = 396000
 

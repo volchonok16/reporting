@@ -42,7 +42,7 @@ from app.schemas import ProductStatusB2BOut, ProductStatusSheetOut
 TEMPLATE_PATH = (
     __import__("pathlib").Path(__file__).resolve().parents[1]
     / "assets"
-    / "b2b_product_status_template.pptx"
+    / "Status.pptx"
 )
 
 

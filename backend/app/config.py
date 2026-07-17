@@ -129,7 +129,7 @@ class Settings(BaseSettings):
         default="",
         alias="B2B_PRODUCT_STATUS_PRESENTATION_TEMPLATE",
         description=(
-            "Локальный путь к PPTX-эталону. Пусто — backend/assets/b2b_product_status_template.pptx. "
+            "Локальный путь к PPTX-эталону. Пусто — backend/assets/Status.pptx. "
             "Google используется только если локального файла нет."
         ),
     )
