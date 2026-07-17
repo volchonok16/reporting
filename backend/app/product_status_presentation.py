@@ -192,6 +192,7 @@ def _google_http_client() -> httpx.Client:
 
 
 def _open_template_presentation() -> Presentation:
+    """Открыть PPTX-шаблон: сначала локальный файл, Google — только если локального нет."""
     configured = settings.b2b_product_status_presentation_template.strip()
     if configured:
         if _looks_like_url(configured):
@@ -202,9 +203,16 @@ def _open_template_presentation() -> Presentation:
         else:
             path = Path(configured)
             if path.is_file():
+                logger.info("product_status_template_local path=%s", path)
                 return Presentation(str(path))
             logger.warning("product_status_template_missing path=%s", configured)
 
+    default = _bundled_template_path()
+    if default.is_file():
+        logger.info("product_status_template_bundled path=%s", default)
+        return Presentation(str(default))
+
+    # Запасной вариант: сеть до Google может быть закрыта — поэтому локальный файл выше.
     reference_url = settings.b2b_product_status_presentation_reference_url.strip()
     if reference_url and _looks_like_url(reference_url):
         try:
@@ -212,28 +220,26 @@ def _open_template_presentation() -> Presentation:
                 pptx_bytes = fetch_google_slides_pptx(reference_url=reference_url, client=client)
             prs = Presentation(io.BytesIO(pptx_bytes))
             if len(prs.slides) >= FIXED_SLIDE_COUNT + 1:
+                logger.info("product_status_template_from_google slides=%s", len(prs.slides))
                 return prs
             logger.warning(
                 "google_slides_template_too_short slides=%s url=%s",
                 len(prs.slides),
                 reference_url,
             )
-        except (httpx.HTTPError, ValueError, OSError):
+        except (httpx.HTTPError, ValueError, OSError) as exc:
             logger.warning(
-                "google_slides_template_fetch_failed url=%s",
+                "google_slides_template_fetch_failed url=%s err=%s",
                 reference_url,
-                exc_info=True,
+                exc,
             )
-
-    default = _bundled_template_path()
-    if default.is_file():
-        return Presentation(str(default))
 
     raise HTTPException(
         status_code=503,
         detail=(
-            "Шаблон презентации не найден. Проверьте доступ к эталону Google Slides "
-            "или положите PPTX в backend/assets/b2b_product_status_template.pptx."
+            "Шаблон презентации не найден. Положите PPTX в "
+            "backend/assets/b2b_product_status_template.pptx "
+            "или укажите B2B_PRODUCT_STATUS_PRESENTATION_TEMPLATE."
         ),
     )
 

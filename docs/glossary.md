@@ -608,7 +608,7 @@
 | minio-init | one-shot `mc` | Создание bucket + anonymous download |
 | `YOUJAIL_WORKSPACE_DIR` | диск backend | Вложения / worktree доски |
 | `ORG_UPLOADS_DIR` | `/app/uploads` | Fallback фото без MinIO |
-| PPTX template | `assets/Status.pptx` | Генерация презентаций B2B |
+| PPTX template | `backend/assets/b2b_product_status_template.pptx` | Локальный эталон для «Скачать презентацию» B2B (без Google). Переопределение: `B2B_PRODUCT_STATUS_PRESENTATION_TEMPLATE` |
 | nginx | `deploy/nginx/` | HTTPS, reverse proxy на :5173 и :8000 |
 | certbot | `scripts/production.sh` | Let's Encrypt (`CERTBOT_DOMAINS`) |
 | FineBI | JDBC → Postgres | Views `v_*` |

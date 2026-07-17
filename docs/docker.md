@@ -138,6 +138,8 @@ Docker Compose подхватывает `.env` автоматически для
 
 Переменные `B2B_PRODUCT_STATUS_*`, `B2B_NEWS_*`, `GOOGLE_SHEETS_API_KEY`, `GOOGLE_SHEETS_WORKBOOK_CACHE_TTL_SECONDS` (по умолчанию 300 с — in-memory кеш листов на backend) и `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` пробрасываются в контейнер `backend` через `docker-compose.yml`.
 
+**Презентация B2B:** шаблон — локальный файл `backend/assets/b2b_product_status_template.pptx` (копируется в образ). Приоритет: `B2B_PRODUCT_STATUS_PRESENTATION_TEMPLATE` → bundled assets → только если файла нет, попытка export из `B2B_PRODUCT_STATUS_PRESENTATION_REFERENCE_URL`. На контуре без Google локальный PPTX обязателен (уже в репозитории). Ссылка REFERENCE_URL остаётся для кнопки «Эталон в Google Slides» в UI.
+
 Вкладка **«Новости»** читает отдельную Google Sheets-таблицу: задайте `B2B_NEWS_SPREADSHEET_ID`, `B2B_NEWS_SHEET_URL` и при необходимости `B2B_NEWS_SHEET_PUBLIC_URL`. Список листов — в `B2B_NEWS_SHEETS` (как у `B2B_PRODUCT_STATUS_SHEETS`); пусто — автоопределение.
 
 > Init-скрипты выполняются только при **пустом** томе. Пересоздание: `docker compose down -v && docker compose up -d`

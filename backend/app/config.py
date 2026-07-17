@@ -129,8 +129,8 @@ class Settings(BaseSettings):
         default="",
         alias="B2B_PRODUCT_STATUS_PRESENTATION_TEMPLATE",
         description=(
-            "Локальный путь к PPTX-шаблону (опционально). Пусто — экспорт эталона "
-            "из B2B_PRODUCT_STATUS_PRESENTATION_REFERENCE_URL, затем assets/."
+            "Локальный путь к PPTX-эталону. Пусто — backend/assets/b2b_product_status_template.pptx. "
+            "Google используется только если локального файла нет."
         ),
     )
     b2b_product_status_presentation_reference_url: str = Field(
@@ -140,7 +140,8 @@ class Settings(BaseSettings):
         ),
         alias="B2B_PRODUCT_STATUS_PRESENTATION_REFERENCE_URL",
         description=(
-            "Эталон Google Slides: ссылка в UI и PPTX-шаблон для «Скачать презентацию»."
+            "Ссылка «Эталон в Google Slides» в UI. Для генерации PPTX не нужна, "
+            "если есть локальный шаблон в assets/."
         ),
     )
     b2b_news_spreadsheet_id: str = Field(
