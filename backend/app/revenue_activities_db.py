@@ -75,12 +75,83 @@ _COLUMN_SOURCE_KEYS: dict[str, tuple[str, ...]] = {
 
 _TITLE = "Активности по выручкам"
 
+_PRIMARY_SECTION_GIDS: tuple[str, ...] = ("base", "revenue")
+
 
 def columns_for_section_gid(gid: str) -> tuple[str, ...]:
     columns = REVENUE_ACTIVITY_SECTION_COLUMNS.get(gid)
     if columns is None:
         raise HTTPException(status_code=404, detail=f"Вкладка gid={gid} не найдена.")
     return columns
+
+
+def _ensure_base_revenue_sections(db: Session) -> None:
+    """Гарантирует вкладки base/revenue (как миграция 036), даже если SQL ещё не применили."""
+    existing = {
+        str(row._mapping["gid"]): bool(row._mapping["is_active"])
+        for row in db.execute(
+            text(
+                """
+                SELECT gid, is_active
+                FROM revenue_activity_section
+                WHERE gid IN ('main', 'base', 'revenue')
+                """
+            )
+        )
+    }
+    if existing.get("base") and existing.get("revenue") and not existing.get("main", False):
+        return
+
+    db.execute(
+        text(
+            """
+            INSERT INTO revenue_activity_section (gid, name, sort_order) VALUES
+                ('base', 'Влияние по базе', 10),
+                ('revenue', 'Влияние по выручке', 20)
+            ON CONFLICT (gid) DO UPDATE SET
+                name = EXCLUDED.name,
+                sort_order = EXCLUDED.sort_order,
+                is_active = TRUE
+            """
+        )
+    )
+
+    for target_gid in _PRIMARY_SECTION_GIDS:
+        db.execute(
+            text(
+                """
+                INSERT INTO revenue_activity_row (section_id, sort_order, cells, created_at, updated_at)
+                SELECT
+                    target.id,
+                    src.sort_order,
+                    src.cells,
+                    NOW(),
+                    NOW()
+                FROM revenue_activity_row src
+                JOIN revenue_activity_section main_sec
+                    ON main_sec.id = src.section_id AND main_sec.gid = 'main'
+                JOIN revenue_activity_section target
+                    ON target.gid = :target_gid
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM revenue_activity_row existing
+                    WHERE existing.section_id = target.id
+                )
+                """
+            ),
+            {"target_gid": target_gid},
+        )
+
+    db.execute(
+        text(
+            """
+            UPDATE revenue_activity_section
+            SET is_active = FALSE,
+                name = 'Активности по выручкам (архив)'
+            WHERE gid = 'main' AND is_active = TRUE
+            """
+        )
+    )
+    db.commit()
 
 
 def _empty_cells(columns: tuple[str, ...]) -> dict[str, str]:
@@ -293,7 +364,10 @@ def load_revenue_activities_from_db(
     gid: str | None = None,
     meta_only: bool = False,
 ) -> ProductStatusB2BOut:
+    _ensure_base_revenue_sections(db)
     sections = _load_sections(db)
+    # В UI показываем только base/revenue; архивный main скрыт
+    sections = [section for section in sections if str(section["gid"]) in _PRIMARY_SECTION_GIDS]
     if not sections:
         raise HTTPException(
             status_code=503,
