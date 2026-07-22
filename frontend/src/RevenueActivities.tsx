@@ -13,6 +13,7 @@ export default function RevenueActivities({ canManageOrg = false }: RevenueActiv
       defaultTitle="Активности по выручкам"
       loadGid={loadRevenueActivitiesGid}
       saveGid={saveRevenueActivitiesGid}
+      sheetNavStyle="title"
       lazySheets
       fixedColumns
       enableRowDelete

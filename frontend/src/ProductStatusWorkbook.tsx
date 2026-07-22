@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { getJson, apiFetch, postJson, readApiError, HttpError } from './api'
 import { dismissToast, notifyLoading, notifyProblem, notifySuccess, notifyWarning } from './toast'
@@ -113,6 +113,12 @@ export type ProductStatusWorkbookConfig = {
   enableColumnFilters?: boolean
   /** Компактные строки и уменьшенные кнопки действий */
   compactRows?: boolean
+  /**
+   * Как показывать переключение листов:
+   * - tabs — кнопки под шапкой (офисы B2B)
+   * - title — ссылки в заголовке, как «Статус продукта B2B · Новости и запуски»
+   */
+  sheetNavStyle?: 'tabs' | 'title'
 }
 
 const ADMIN_ONLY_COLUMNS = new Set<string>()
@@ -498,12 +504,14 @@ export default function ProductStatusWorkbook({
   showTotalsRow = false,
   enableColumnFilters = false,
   compactRows = false,
+  sheetNavStyle = 'tabs',
 }: ProductStatusWorkbookConfig) {
   const isSection = variant === 'section'
   const RootTag = isSection ? 'section' : 'div'
   const rootClassName = isSection ? 'product-status-section' : 'product-status'
   const titleClassName = isSection ? 'product-status-section-title' : 'product-status-title'
   const TitleTag = isSection ? 'h2' : 'h1'
+  const useTitleSheetNav = sheetNavStyle === 'title'
   const [data, setData] = useState<ProductStatusData | null>(null)
   const [sheets, setSheets] = useState<ProductStatusSheet[]>([])
   const sheetsRef = useRef(sheets)
@@ -1520,12 +1528,92 @@ export default function ProductStatusWorkbook({
     setViewMode('history')
   }, [activeGid, commitOnRefresh, dirty, loadHistory, loadSnapshots])
 
+  const selectSheet = useCallback(
+    (gid: string) => {
+      if (gid === activeGid) return
+      if (dirty && commitOnRefresh) {
+        if (
+          !window.confirm(
+            useTitleSheetNav
+              ? 'Есть неприменённые изменения. Переключить таблицу без применения?'
+              : 'Есть неприменённые изменения. Переключить офис без применения?',
+          )
+        ) {
+          return
+        }
+      } else if (
+        dirty &&
+        !window.confirm(
+          useTitleSheetNav
+            ? 'Есть несохранённые изменения. Переключить таблицу?'
+            : 'Есть несохранённые изменения. Переключить лист?',
+        )
+      ) {
+        return
+      }
+      const needsLoad =
+        lazySheets &&
+        (!loadedGids.has(gid) || !sheets.find((item) => item.gid === gid && item.columns.length > 0))
+      if (needsLoad) {
+        setSheetLoadingGid(gid)
+      }
+      setActiveGid(gid)
+      if (lazySheets) {
+        void ensureSheetLoaded(gid)
+      }
+      if (enableHistory && viewMode === 'history') {
+        void loadHistory(gid)
+        void loadSnapshots(gid)
+      }
+    },
+    [
+      activeGid,
+      commitOnRefresh,
+      dirty,
+      enableHistory,
+      ensureSheetLoaded,
+      lazySheets,
+      loadHistory,
+      loadSnapshots,
+      loadedGids,
+      sheets,
+      useTitleSheetNav,
+      viewMode,
+    ],
+  )
+
+  const titleSheetSwitcher =
+    useTitleSheetNav && sheets.length > 1 ? (
+      <div className="product-status-title-switcher" role="tablist" aria-label="Таблицы">
+        {sheets.map((sheet, index) => (
+          <Fragment key={sheet.gid}>
+            {index > 0 ? (
+              <span className="product-status-title-sep" aria-hidden="true">
+                ·
+              </span>
+            ) : null}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeGid === sheet.gid}
+              className={`product-status-title-tab${
+                index > 0 ? ' product-status-title-tab-alt' : ''
+              }${activeGid === sheet.gid ? ' product-status-title-tab-active' : ''}`}
+              onClick={() => selectSheet(sheet.gid)}
+            >
+              {sheet.name}
+            </button>
+          </Fragment>
+        ))}
+      </div>
+    ) : null
+
   return (
     <RootTag className={rootClassName}>
       <ZniDetailModal item={zniModalItem} onClose={closeZniModal} />
       <header className="product-status-toolbar">
         <div className="product-status-toolbar-left">
-          {headerTitle ?? (
+          {headerTitle ?? titleSheetSwitcher ?? (
             <TitleTag className={titleClassName}>{data?.title ?? defaultTitle}</TitleTag>
           )}
           {(data?.sourceUrl || data?.presentationReferenceUrl || enableHistory) && (
@@ -1638,8 +1726,8 @@ export default function ProductStatusWorkbook({
 
       {afterHeader}
 
-      {sheets.length > 1 && viewMode === 'table' ? (
-        <nav className="product-status-sheet-tabs" aria-label="Продуктовые офисы">
+      {!useTitleSheetNav && sheets.length > 1 && viewMode === 'table' ? (
+        <nav className="product-status-sheet-tabs" aria-label="Таблицы">
           <div className="product-status-sheet-tabs-list">
             {sheets.map((sheet) => (
               <button
@@ -1648,30 +1736,7 @@ export default function ProductStatusWorkbook({
                 className={`product-status-sheet-tab${
                   activeSheet?.gid === sheet.gid ? ' product-status-sheet-tab-active' : ''
                 }`}
-                onClick={() => {
-                  if (dirty && commitOnRefresh) {
-                    if (
-                      !window.confirm(
-                        'Есть неприменённые изменения. Переключить офис без применения?',
-                      )
-                    ) {
-                      return
-                    }
-                  } else if (dirty && !window.confirm('Есть несохранённые изменения. Переключить лист?')) {
-                    return
-                  }
-                  const needsLoad =
-                    lazySheets &&
-                    (!loadedGids.has(sheet.gid) ||
-                      !sheets.find((item) => item.gid === sheet.gid && item.columns.length > 0))
-                  if (needsLoad) {
-                    setSheetLoadingGid(sheet.gid)
-                  }
-                  setActiveGid(sheet.gid)
-                  if (lazySheets) {
-                    void ensureSheetLoaded(sheet.gid)
-                  }
-                }}
+                onClick={() => selectSheet(sheet.gid)}
                 aria-selected={activeSheet?.gid === sheet.gid}
               >
                 {sheet.name}
@@ -1681,8 +1746,8 @@ export default function ProductStatusWorkbook({
         </nav>
       ) : null}
 
-      {viewMode === 'history' && enableHistory && sheets.length > 1 ? (
-        <nav className="product-status-sheet-tabs product-status-sheet-tabs-compact" aria-label="Офис для истории">
+      {!useTitleSheetNav && viewMode === 'history' && enableHistory && sheets.length > 1 ? (
+        <nav className="product-status-sheet-tabs product-status-sheet-tabs-compact" aria-label="Таблица для истории">
           <div className="product-status-sheet-tabs-list">
             {sheets.map((sheet) => (
               <button
