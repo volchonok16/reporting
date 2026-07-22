@@ -36,6 +36,16 @@ REVENUE_NUMERIC_COLUMNS: tuple[str, ...] = (
 )
 
 REVENUE_ACTIVITY_SECTION_COLUMNS: dict[str, tuple[str, ...]] = {
+    # Архивная вкладка (до миграции 036); оставляем, чтобы meta_only не падал с 404
+    "main": (
+        "Активность",
+        "Статус F2 2026",
+        "Ответственный",
+        "Влияние на базу, тыс",
+        "Влияние на выручку, млн",
+        "Влияние на gmc, млн",
+        "Комментарий",
+    ),
     "base": (
         "Активность",
         "Статус F2 2026",
@@ -298,7 +308,10 @@ def load_revenue_activities_from_db(
     sheets: list[ProductStatusSheetOut] = []
     for section in sections:
         section_gid = str(section["gid"])
-        columns = columns_for_section_gid(section_gid)
+        columns = REVENUE_ACTIVITY_SECTION_COLUMNS.get(section_gid)
+        if columns is None:
+            # Неизвестная вкладка в БД — не валим весь список (meta_only / UI).
+            continue
         if meta_only:
             sheets.append(
                 ProductStatusSheetOut(
@@ -318,6 +331,12 @@ def load_revenue_activities_from_db(
                 columns=columns,
                 rows=rows,
             )
+        )
+
+    if not sheets:
+        raise HTTPException(
+            status_code=503,
+            detail="Таблицы «Активности по выручкам» не инициализированы.",
         )
 
     return ProductStatusB2BOut(
