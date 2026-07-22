@@ -65,30 +65,31 @@ export default function RevenueActivities({ canManageOrg = false }: RevenueActiv
   )
 
   return (
-    <ProductStatusWorkbook
-      key={panel}
-      apiBase="/api/revenue-activities"
-      defaultTitle="Активности по выручкам"
-      loadGid={() => panel}
-      saveGid={(gid) => {
-        if (gid === 'base' || gid === 'revenue') {
-          setPanel(gid)
-        }
-      }}
-      headerTitle={renderTitleSwitcher()}
-      lazySheets
-      fixedColumns
-      enableRowDelete
-      enableRowReorder
-      enableHistory={canManageOrg}
-      commitOnRefresh
-      enableExcelExport
-      excelFromClientPayload
-      excelFilename="aktivnosti-po-vyruchkam.xlsx"
-      numericColumns={REVENUE_NUMERIC_COLUMNS}
-      showTotalsRow
-      enableColumnFilters
-      compactRows
-    />
+    <div className="revenue-activities">
+      <ProductStatusWorkbook
+        key={panel}
+        apiBase="/api/revenue-activities"
+        defaultTitle="Активности по выручкам"
+        loadGid={() => panel}
+        saveGid={(gid) => {
+          if (gid === 'base' || gid === 'revenue') {
+            setPanel(gid)
+          }
+        }}
+        headerTitle={renderTitleSwitcher()}
+        lazySheets
+        fixedColumns
+        enableRowDelete
+        enableRowReorder
+        enableHistory={canManageOrg}
+        commitOnRefresh
+        enableExcelExport
+        excelFromClientPayload
+        excelFilename="aktivnosti-po-vyruchkam.xlsx"
+        numericColumns={REVENUE_NUMERIC_COLUMNS}
+        showTotalsRow
+        enableColumnFilters
+      />
+    </div>
   )
 }

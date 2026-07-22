@@ -141,7 +141,7 @@
 | `b2b_news_history` | История изменений новостей и запусков |
 | `b2b_news_snapshot` | Снимки версий вкладки для отката |
 | `revenue_activity_section` | Вкладки «Влияние по базе» (`base`) и «Влияние по выручке» (`revenue`) |
-| `revenue_activity_row` | Строки таблицы активностей (`cells` по вкладке: база или выручка/Маржа + gmc, Комментарий) |
+| `revenue_activity_row` | Строки таблицы активностей (`cells` по вкладке: база или выручка + gmc, Комментарий) |
 | `revenue_activity_history` | История изменений активностей по выручкам |
 | `revenue_activity_snapshot` | Снимки версий для отката |
 | `schema_migration` | Журнал применённых SQL-миграций (`ensure_startup_schema`) |

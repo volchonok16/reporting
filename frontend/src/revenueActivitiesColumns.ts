@@ -14,7 +14,6 @@ export const REVENUE_ACTIVITY_REVENUE_COLUMNS = [
   'Статус F2 2026',
   'Ответственный',
   'Влияние на выручку, млн',
-  'Маржа',
   'Влияние на gmc, млн',
   'Комментарий',
 ] as const
@@ -26,7 +25,6 @@ export const REVENUE_ACTIVITY_COLUMNS = [
   'Ответственный',
   'Влияние на базу, тыс',
   'Влияние на выручку, млн',
-  'Маржа',
   'Влияние на gmc, млн',
   'Комментарий',
 ] as const
@@ -34,7 +32,6 @@ export const REVENUE_ACTIVITY_COLUMNS = [
 export const REVENUE_NUMERIC_COLUMNS = [
   'Влияние на базу, тыс',
   'Влияние на выручку, млн',
-  'Маржа',
   'Влияние на gmc, млн',
 ] as const
 

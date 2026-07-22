@@ -199,7 +199,7 @@
 | Таблица | Ключевые поля | Назначение |
 |---------|---------------|------------|
 | `revenue_activity_section` | `gid`, `name`, `sort_order` | Вкладки `base` / `revenue` («Влияние по базе» / «Влияние по выручке») |
-| `revenue_activity_row` | `section_id`, `sort_order`, `cells` | Строки; общие поля + «Влияние на базу, тыс» (`base`) или «Влияние на выручку, млн» / «Маржа» (`revenue`), «Влияние на gmc, млн», «Комментарий» |
+| `revenue_activity_row` | `section_id`, `sort_order`, `cells` | Строки; общие поля + «Влияние на базу, тыс» (`base`) или «Влияние на выручку, млн» (`revenue`), «Влияние на gmc, млн», «Комментарий» |
 | `revenue_activity_history` | `section_id`, `row_id`, `action` | Журнал create/update/delete/restore |
 | `revenue_activity_snapshot` | `section_id`, `rows`, `changed_by` | Снимок для отката версии |
 

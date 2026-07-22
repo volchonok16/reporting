@@ -2857,3 +2857,31 @@ body.product-status-row-drag-active {
     grid-template-columns: 1fr;
   }
 }
+
+/* Активности по выручкам — крупнее заголовок и ячейки */
+.revenue-activities .product-status-title-tab,
+.revenue-activities .product-status-title-sep {
+  font-size: 30px;
+  line-height: 1.25;
+}
+
+.revenue-activities .product-status-table thead th {
+  font-size: 14px;
+  padding: 12px 14px;
+}
+
+.revenue-activities .product-status-table tbody td {
+  font-size: 15px;
+  padding: 10px 12px;
+  line-height: 1.5;
+}
+
+.revenue-activities .product-status-table tfoot td {
+  font-size: 15px;
+}
+
+.revenue-activities .product-status-cell-input,
+.revenue-activities .product-status-numeric-input {
+  font-size: 15px;
+}
+

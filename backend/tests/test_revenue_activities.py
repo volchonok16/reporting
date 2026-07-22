@@ -29,19 +29,17 @@ def test_revenue_section_columns() -> None:
         "Статус F2 2026",
         "Ответственный",
         "Влияние на выручку, млн",
-        "Маржа",
         "Влияние на gmc, млн",
         "Комментарий",
     )
     assert "Влияние на выручку, млн" not in REVENUE_ACTIVITY_SECTION_COLUMNS["base"]
     assert "Влияние на базу, тыс" not in REVENUE_ACTIVITY_SECTION_COLUMNS["revenue"]
-    assert "Маржа" not in REVENUE_ACTIVITY_SECTION_COLUMNS["base"]
+    assert "Маржа" not in REVENUE_ACTIVITY_SECTION_COLUMNS["revenue"]
     assert columns_for_section_gid("base")[0] == "Активность"
     assert "Результат" not in REVENUE_ACTIVITY_SECTION_COLUMNS["base"]
     assert REVENUE_NUMERIC_COLUMNS == (
         "Влияние на базу, тыс",
         "Влияние на выручку, млн",
-        "Маржа",
         "Влияние на gmc, млн",
     )
 

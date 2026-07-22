@@ -43,7 +43,6 @@ def test_revenue_excel_exports_numbers_as_numeric_cells() -> None:
                     "Статус F2 2026",
                     "Ответственный",
                     "Влияние на выручку, млн",
-                    "Маржа",
                     "Влияние на gmc, млн",
                     "Комментарий",
                 ],
@@ -53,7 +52,6 @@ def test_revenue_excel_exports_numbers_as_numeric_cells() -> None:
                         "Статус F2 2026": "В работе",
                         "Ответственный": "Иванов",
                         "Влияние на выручку, млн": "2,5",
-                        "Маржа": "0,4",
                         "Влияние на gmc, млн": "1",
                         "Комментарий": "ок",
                     }
@@ -82,12 +80,11 @@ def test_revenue_excel_exports_numbers_as_numeric_cells() -> None:
 
     revenue_sheet = workbook["Влияние по выручке"]
     assert revenue_sheet["D1"].value == "Влияние на выручку, млн"
-    assert revenue_sheet["E1"].value == "Маржа"
+    assert revenue_sheet["E1"].value == "Влияние на gmc, млн"
     assert revenue_sheet["D2"].value == 2.5
-    assert revenue_sheet["E2"].value == 0.4
-    assert revenue_sheet["F2"].value == 1
+    assert revenue_sheet["E2"].value == 1
     assert revenue_sheet["D3"].value == 2.5
-    assert revenue_sheet["E3"].value == 0.4
+    assert revenue_sheet["E3"].value == 1
 
 
 def test_revenue_excel_keeps_non_numeric_influence_as_text() -> None:
