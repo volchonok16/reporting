@@ -82,7 +82,7 @@
 | POST | `/api/sync` | Запуск синхронизации доски |
 | GET | `/api/export` | Экспорт ЗНИ + ошибки (CSV) |
 | GET/POST | `/api/product-status/b2b/presentation` | Генерация PPTX |
-| GET/POST | `/api/revenue-activities` | Активности по выручкам (Активность / влияния / Комментарий / Результат) |
+| GET/POST | `/api/revenue-activities` | Активности по выручкам (вкладки «Влияние по базе» / «Влияние по выручке») |
 | GET/POST | `/api/revenue-activities/excel` | Экспорт в Excel (числа как number) |
 | * | `/api/org/*` | Staffing: отпуска, бронь, офис, сотрудники |
 | * | `/api/youjail/*` | Доска YouJail |
@@ -140,8 +140,8 @@
 | `b2b_news_row` | Строки таблицы новостей/запусков (`cells` jsonb) |
 | `b2b_news_history` | История изменений новостей и запусков |
 | `b2b_news_snapshot` | Снимки версий вкладки для отката |
-| `revenue_activity_section` | Вкладка «Активности по выручкам» |
-| `revenue_activity_row` | Строки таблицы активностей (`cells`: Активность, Статус F2 2026, Ответственный, влияния тыс/млн, Комментарий) |
+| `revenue_activity_section` | Вкладки «Влияние по базе» (`base`) и «Влияние по выручке» (`revenue`) |
+| `revenue_activity_row` | Строки таблицы активностей (`cells` по вкладке: база или выручка/Маржа + gmc, Комментарий) |
 | `revenue_activity_history` | История изменений активностей по выручкам |
 | `revenue_activity_snapshot` | Снимки версий для отката |
 | `schema_migration` | Журнал применённых SQL-миграций (`ensure_startup_schema`) |

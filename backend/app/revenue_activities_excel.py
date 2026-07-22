@@ -85,7 +85,9 @@ def _column_totals(sheet: ProductStatusSheetOut, columns: list[str]) -> dict[str
 
 
 def _write_revenue_sheet(worksheet: Worksheet, sheet: ProductStatusSheetOut) -> None:
-    columns = list(sheet.columns) or list(REVENUE_ACTIVITY_SECTION_COLUMNS["main"])
+    columns = list(sheet.columns) or list(
+        REVENUE_ACTIVITY_SECTION_COLUMNS.get(sheet.gid, REVENUE_ACTIVITY_SECTION_COLUMNS["base"])
+    )
     for col_index, column_name in enumerate(columns, start=1):
         cell = worksheet.cell(row=1, column=col_index, value=column_name)
         cell.fill = _HEADER_FILL
@@ -144,13 +146,13 @@ def generate_revenue_activities_excel(data: ProductStatusB2BOut) -> tuple[bytes,
 
     sheets = data.sheets or []
     if not sheets:
-        worksheet = workbook.create_sheet(title="Активности по выручкам")
+        worksheet = workbook.create_sheet(title="Влияние по базе")
         _write_revenue_sheet(
             worksheet,
             ProductStatusSheetOut(
-                gid="main",
-                name="Активности по выручкам",
-                columns=list(REVENUE_ACTIVITY_SECTION_COLUMNS["main"]),
+                gid="base",
+                name="Влияние по базе",
+                columns=list(REVENUE_ACTIVITY_SECTION_COLUMNS["base"]),
                 rows=[],
                 totalShown=0,
             ),

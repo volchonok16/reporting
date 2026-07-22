@@ -13,14 +13,13 @@ def test_revenue_excel_exports_numbers_as_numeric_cells() -> None:
         title="Активности по выручкам",
         sheets=[
             ProductStatusSheetOut(
-                gid="main",
-                name="Активности по выручкам",
+                gid="base",
+                name="Влияние по базе",
                 columns=[
                     "Активность",
                     "Статус F2 2026",
                     "Ответственный",
                     "Влияние на базу, тыс",
-                    "Влияние на выручку, млн",
                     "Влияние на gmc, млн",
                     "Комментарий",
                 ],
@@ -30,13 +29,37 @@ def test_revenue_excel_exports_numbers_as_numeric_cells() -> None:
                         "Статус F2 2026": "В работе",
                         "Ответственный": "Иванов",
                         "Влияние на базу, тыс": "10",
-                        "Влияние на выручку, млн": "2,5",
                         "Влияние на gmc, млн": "1",
                         "Комментарий": "ок",
                     }
                 ],
                 totalShown=1,
-            )
+            ),
+            ProductStatusSheetOut(
+                gid="revenue",
+                name="Влияние по выручке",
+                columns=[
+                    "Активность",
+                    "Статус F2 2026",
+                    "Ответственный",
+                    "Влияние на выручку, млн",
+                    "Маржа",
+                    "Влияние на gmc, млн",
+                    "Комментарий",
+                ],
+                rows=[
+                    {
+                        "Активность": "Пилот",
+                        "Статус F2 2026": "В работе",
+                        "Ответственный": "Иванов",
+                        "Влияние на выручку, млн": "2,5",
+                        "Маржа": "0,4",
+                        "Влияние на gmc, млн": "1",
+                        "Комментарий": "ок",
+                    }
+                ],
+                totalShown=1,
+            ),
         ],
     )
 
@@ -45,19 +68,26 @@ def test_revenue_excel_exports_numbers_as_numeric_cells() -> None:
     assert filename.endswith(".xlsx")
 
     workbook = load_workbook(io.BytesIO(content))
-    sheet = workbook["Активности по выручкам"]
-    assert sheet["A1"].value == "Активность"
-    assert sheet["B1"].value == "Статус F2 2026"
-    assert sheet["D1"].value == "Влияние на базу, тыс"
-    assert sheet["A2"].value == "Пилот"
-    assert sheet["D2"].value == 10
-    assert sheet["E2"].value == 2.5
-    assert sheet["F2"].value == 1
-    assert sheet["G2"].value == "ок"
-    assert sheet["A3"].value == "Итого"
-    assert sheet["D3"].value == 10
-    assert sheet["E3"].value == 2.5
-    assert sheet["F3"].value == 1
+    base_sheet = workbook["Влияние по базе"]
+    assert base_sheet["A1"].value == "Активность"
+    assert base_sheet["B1"].value == "Статус F2 2026"
+    assert base_sheet["D1"].value == "Влияние на базу, тыс"
+    assert base_sheet["A2"].value == "Пилот"
+    assert base_sheet["D2"].value == 10
+    assert base_sheet["E2"].value == 1
+    assert base_sheet["F2"].value == "ок"
+    assert base_sheet["A3"].value == "Итого"
+    assert base_sheet["D3"].value == 10
+    assert base_sheet["E3"].value == 1
+
+    revenue_sheet = workbook["Влияние по выручке"]
+    assert revenue_sheet["D1"].value == "Влияние на выручку, млн"
+    assert revenue_sheet["E1"].value == "Маржа"
+    assert revenue_sheet["D2"].value == 2.5
+    assert revenue_sheet["E2"].value == 0.4
+    assert revenue_sheet["F2"].value == 1
+    assert revenue_sheet["D3"].value == 2.5
+    assert revenue_sheet["E3"].value == 0.4
 
 
 def test_revenue_excel_keeps_non_numeric_influence_as_text() -> None:
@@ -65,8 +95,8 @@ def test_revenue_excel_keeps_non_numeric_influence_as_text() -> None:
         title="Активности по выручкам",
         sheets=[
             ProductStatusSheetOut(
-                gid="main",
-                name="Активности по выручкам",
+                gid="base",
+                name="Влияние по базе",
                 columns=["Активность", "Влияние на базу, тыс", "Комментарий"],
                 rows=[
                     {
