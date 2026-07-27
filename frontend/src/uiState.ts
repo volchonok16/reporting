@@ -34,6 +34,8 @@ export type RoadmapUiState = {
 
 export type B2bPanelId = 'status' | 'news'
 
+export type RevenueRowNumberDirection = 'top' | 'bottom'
+
 export type DashboardUiState = {
   boardCode: string
   search: string
@@ -55,6 +57,7 @@ type UiState = {
   productStatusB2bGid?: string | null
   b2bNewsGid?: string | null
   revenueActivitiesGid?: string | null
+  revenueActivitiesRowNumberDirection?: RevenueRowNumberDirection
   b2bPanel?: B2bPanelId
   org?: Partial<OrgUiState>
 }
@@ -184,6 +187,14 @@ export function loadRevenueActivitiesGid(): string | null {
 
 export function saveRevenueActivitiesGid(gid: string | null): void {
   writeUiState({ revenueActivitiesGid: gid })
+}
+
+export function loadRevenueActivitiesRowNumberDirection(): RevenueRowNumberDirection {
+  return readUiState().revenueActivitiesRowNumberDirection === 'bottom' ? 'bottom' : 'top'
+}
+
+export function saveRevenueActivitiesRowNumberDirection(direction: RevenueRowNumberDirection): void {
+  writeUiState({ revenueActivitiesRowNumberDirection: direction })
 }
 
 export function loadB2bPanel(): B2bPanelId {

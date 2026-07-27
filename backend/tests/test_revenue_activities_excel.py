@@ -17,20 +17,20 @@ def test_revenue_excel_exports_numbers_as_numeric_cells() -> None:
                 name="Влияние по базе",
                 columns=[
                     "Активность",
-                    "Статус F2 2026",
-                    "Ответственный",
                     "Влияние на базу, тыс",
                     "Влияние на gmc, млн",
                     "Комментарий",
+                    "Статус F2 2026",
+                    "Ответственный",
                 ],
                 rows=[
                     {
                         "Активность": "Пилот",
-                        "Статус F2 2026": "В работе",
-                        "Ответственный": "Иванов",
                         "Влияние на базу, тыс": "10",
                         "Влияние на gmc, млн": "1",
                         "Комментарий": "ок",
+                        "Статус F2 2026": "В работе",
+                        "Ответственный": "Иванов",
                     }
                 ],
                 totalShown=1,
@@ -40,20 +40,20 @@ def test_revenue_excel_exports_numbers_as_numeric_cells() -> None:
                 name="Влияние по выручке",
                 columns=[
                     "Активность",
-                    "Статус F2 2026",
-                    "Ответственный",
                     "Влияние на выручку, млн",
                     "Влияние на gmc, млн",
                     "Комментарий",
+                    "Статус F2 2026",
+                    "Ответственный",
                 ],
                 rows=[
                     {
                         "Активность": "Пилот",
-                        "Статус F2 2026": "В работе",
-                        "Ответственный": "Иванов",
                         "Влияние на выручку, млн": "2,5",
                         "Влияние на gmc, млн": "1",
                         "Комментарий": "ок",
+                        "Статус F2 2026": "В работе",
+                        "Ответственный": "Иванов",
                     }
                 ],
                 totalShown=1,
@@ -68,23 +68,25 @@ def test_revenue_excel_exports_numbers_as_numeric_cells() -> None:
     workbook = load_workbook(io.BytesIO(content))
     base_sheet = workbook["Влияние по базе"]
     assert base_sheet["A1"].value == "Активность"
-    assert base_sheet["B1"].value == "Статус F2 2026"
-    assert base_sheet["D1"].value == "Влияние на базу, тыс"
+    assert base_sheet["B1"].value == "Влияние на базу, тыс"
+    assert base_sheet["E1"].value == "Статус F2 2026"
+    assert base_sheet["F1"].value == "Ответственный"
     assert base_sheet["A2"].value == "Пилот"
-    assert base_sheet["D2"].value == 10
-    assert base_sheet["E2"].value == 1
-    assert base_sheet["F2"].value == "ок"
+    assert base_sheet["B2"].value == 10
+    assert base_sheet["C2"].value == 1
+    assert base_sheet["D2"].value == "ок"
     assert base_sheet["A3"].value == "Итого"
-    assert base_sheet["D3"].value == 10
-    assert base_sheet["E3"].value == 1
+    assert base_sheet["B3"].value == 10
+    assert base_sheet["C3"].value == 1
 
     revenue_sheet = workbook["Влияние по выручке"]
-    assert revenue_sheet["D1"].value == "Влияние на выручку, млн"
-    assert revenue_sheet["E1"].value == "Влияние на gmc, млн"
-    assert revenue_sheet["D2"].value == 2.5
-    assert revenue_sheet["E2"].value == 1
-    assert revenue_sheet["D3"].value == 2.5
-    assert revenue_sheet["E3"].value == 1
+    assert revenue_sheet["B1"].value == "Влияние на выручку, млн"
+    assert revenue_sheet["C1"].value == "Влияние на gmc, млн"
+    assert revenue_sheet["E1"].value == "Статус F2 2026"
+    assert revenue_sheet["B2"].value == 2.5
+    assert revenue_sheet["C2"].value == 1
+    assert revenue_sheet["B3"].value == 2.5
+    assert revenue_sheet["C3"].value == 1
 
 
 def test_revenue_excel_keeps_non_numeric_influence_as_text() -> None:

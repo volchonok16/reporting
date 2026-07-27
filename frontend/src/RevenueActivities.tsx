@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import ProductStatusWorkbook from './ProductStatusWorkbook'
 import { REVENUE_NUMERIC_COLUMNS } from './revenueActivitiesColumns'
-import { loadRevenueActivitiesGid, saveRevenueActivitiesGid } from './uiState'
+import {
+  loadRevenueActivitiesGid,
+  loadRevenueActivitiesRowNumberDirection,
+  saveRevenueActivitiesGid,
+  saveRevenueActivitiesRowNumberDirection,
+  type RevenueRowNumberDirection,
+} from './uiState'
 
 type RevenueActivitiesProps = {
   canManageOrg?: boolean
@@ -54,10 +60,17 @@ function RevenueTitleSwitcher({
 
 export default function RevenueActivities({ canManageOrg = false }: RevenueActivitiesProps) {
   const [panel, setPanel] = useState<RevenuePanelId>(() => loadRevenuePanel())
+  const [rowNumberDirection, setRowNumberDirection] = useState<RevenueRowNumberDirection>(
+    () => loadRevenueActivitiesRowNumberDirection(),
+  )
 
   useEffect(() => {
     saveRevenueActivitiesGid(panel)
   }, [panel])
+
+  useEffect(() => {
+    saveRevenueActivitiesRowNumberDirection(rowNumberDirection)
+  }, [rowNumberDirection])
 
   const renderTitleSwitcher = useCallback(
     () => <RevenueTitleSwitcher panel={panel} onPanelChange={setPanel} />,
@@ -89,6 +102,9 @@ export default function RevenueActivities({ canManageOrg = false }: RevenueActiv
         numericColumns={REVENUE_NUMERIC_COLUMNS}
         showTotalsRow
         enableColumnFilters
+        showRowNumbers
+        rowNumberDirection={rowNumberDirection}
+        onRowNumberDirectionChange={setRowNumberDirection}
       />
     </div>
   )

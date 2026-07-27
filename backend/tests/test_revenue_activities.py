@@ -18,19 +18,19 @@ from app.revenue_activities_db import (
 def test_revenue_section_columns() -> None:
     assert REVENUE_ACTIVITY_SECTION_COLUMNS["base"] == (
         "Активность",
-        "Статус F2 2026",
-        "Ответственный",
         "Влияние на базу, тыс",
         "Влияние на gmc, млн",
         "Комментарий",
+        "Статус F2 2026",
+        "Ответственный",
     )
     assert REVENUE_ACTIVITY_SECTION_COLUMNS["revenue"] == (
         "Активность",
-        "Статус F2 2026",
-        "Ответственный",
         "Влияние на выручку, млн",
         "Влияние на gmc, млн",
         "Комментарий",
+        "Статус F2 2026",
+        "Ответственный",
     )
     assert "Влияние на выручку, млн" not in REVENUE_ACTIVITY_SECTION_COLUMNS["base"]
     assert "Влияние на базу, тыс" not in REVENUE_ACTIVITY_SECTION_COLUMNS["revenue"]

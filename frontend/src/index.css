@@ -1761,7 +1761,7 @@ body {
 }
 
 .product-status-table col.col-numeric {
-  width: 110px;
+  width: 140px;
 }
 
 .product-status-table col.col-activity {
@@ -2883,5 +2883,45 @@ body.product-status-row-drag-active {
 .revenue-activities .product-status-cell-input,
 .revenue-activities .product-status-numeric-input {
   font-size: 15px;
+}
+
+.revenue-activities .product-status-table tbody td.product-status-numeric-cell,
+.revenue-activities .product-status-table tfoot td.product-status-numeric-cell,
+.revenue-activities .product-status-numeric-input,
+.revenue-activities .product-status-table td.product-status-numeric-cell .product-status-cell-readonly-value {
+  font-size: 30px;
+  line-height: 1.2;
+  font-weight: 600;
+}
+
+.product-status-table col.col-row-number {
+  width: 44px;
+}
+
+.product-status-row-number,
+.product-status-row-number-header {
+  text-align: center;
+  vertical-align: middle;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  user-select: none;
+}
+
+.product-status-row-number-direction {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.product-status-row-number-direction select {
+  font-size: 13px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
 }
 

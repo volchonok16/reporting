@@ -113,6 +113,15 @@ export type ProductStatusWorkbookConfig = {
   enableColumnFilters?: boolean
   /** Компактные строки и уменьшенные кнопки действий */
   compactRows?: boolean
+  /** Колонка №: 1, 2, 3… по порядку строк */
+  showRowNumbers?: boolean
+  /**
+   * Направление нумерации (и куда добавлять новую строку):
+   * - top — 1 сверху, новые строки в начало (по умолчанию)
+   * - bottom — 1 снизу, новые строки в конец
+   */
+  rowNumberDirection?: 'top' | 'bottom'
+  onRowNumberDirectionChange?: (direction: 'top' | 'bottom') => void
   /**
    * Как показывать переключение листов:
    * - tabs — кнопки под шапкой (офисы B2B)
@@ -504,6 +513,9 @@ export default function ProductStatusWorkbook({
   showTotalsRow = false,
   enableColumnFilters = false,
   compactRows = false,
+  showRowNumbers = false,
+  rowNumberDirection = 'top',
+  onRowNumberDirectionChange,
   sheetNavStyle = 'tabs',
 }: ProductStatusWorkbookConfig) {
   const isSection = variant === 'section'
@@ -1148,14 +1160,16 @@ export default function ProductStatusWorkbook({
   const addRow = useCallback(() => {
     if (!activeGid) return
     setDirty(true)
+    const prepend = rowNumberDirection !== 'bottom'
     setSheets((current) =>
       current.map((sheet) => {
         if (sheet.gid !== activeGid) return sheet
         const emptyRow = Object.fromEntries(sheet.columns.map((column) => [column, '']))
-        return { ...sheet, rows: [emptyRow, ...sheet.rows], totalShown: sheet.rows.length + 1 }
+        const rows = prepend ? [emptyRow, ...sheet.rows] : [...sheet.rows, emptyRow]
+        return { ...sheet, rows, totalShown: sheet.rows.length + 1 }
       }),
     )
-  }, [activeGid, sheets])
+  }, [activeGid, rowNumberDirection])
 
   const addColumn = useCallback(() => {
     if (!activeGid) return
@@ -1922,6 +1936,23 @@ export default function ProductStatusWorkbook({
             )}
           </p>
           <div className="product-status-table-toolbar-actions">
+            {showRowNumbers ? (
+              <label className="product-status-row-number-direction">
+                Нумерация
+                <select
+                  value={rowNumberDirection}
+                  disabled={toolbarBusy}
+                  onChange={(event) => {
+                    const next = event.target.value === 'bottom' ? 'bottom' : 'top'
+                    onRowNumberDirectionChange?.(next)
+                  }}
+                  aria-label="Направление нумерации строк"
+                >
+                  <option value="top">сверху</option>
+                  <option value="bottom">снизу</option>
+                </select>
+              </label>
+            ) : null}
             <button
               type="button"
               className="btn-secondary"
@@ -1964,6 +1995,7 @@ export default function ProductStatusWorkbook({
               >
                 <colgroup>
                   {enableRowDelete ? <col className="col-row-actions" /> : null}
+                  {showRowNumbers ? <col className="col-row-number" /> : null}
                   {activeSheet!.columns.map((column, index) => (
                     <col key={index} className={resolveColumnClass(column)} />
                   ))}
@@ -1972,6 +2004,11 @@ export default function ProductStatusWorkbook({
                   <tr>
                     {enableRowDelete ? (
                       <th className="product-status-row-actions-header" aria-label="Действия" />
+                    ) : null}
+                    {showRowNumbers ? (
+                      <th className="product-status-row-number-header" title="Номер">
+                        №
+                      </th>
                     ) : null}
                     {activeSheet!.columns.map((column) => (
                       <th
@@ -2041,6 +2078,14 @@ export default function ProductStatusWorkbook({
                         isDraggingRow={draggingRowIndex === rowIndex}
                         isDragOverRow={dragOverRowIndex === rowIndex && draggingRowIndex !== rowIndex}
                         onRowPointerDragStart={handleRowPointerDragStart}
+                        showRowNumber={showRowNumbers}
+                        rowNumber={
+                          showRowNumbers
+                            ? rowNumberDirection === 'bottom'
+                              ? activeSheet!.rows.length - rowIndex
+                              : rowIndex + 1
+                            : undefined
+                        }
                       />
                     )
                   })}
@@ -2050,6 +2095,9 @@ export default function ProductStatusWorkbook({
                     <tr className="product-status-totals-row">
                       {enableRowDelete ? (
                         <td className="product-status-row-actions" aria-hidden="true" />
+                      ) : null}
+                      {showRowNumbers ? (
+                        <td className="product-status-row-number" aria-hidden="true" />
                       ) : null}
                       {activeSheet!.columns.map((column, index) => {
                         const isNumeric =

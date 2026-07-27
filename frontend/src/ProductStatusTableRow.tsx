@@ -47,6 +47,8 @@ type ProductStatusTableRowProps = {
     event: ReactPointerEvent<HTMLButtonElement>,
     rowElement: HTMLTableRowElement,
   ) => void
+  showRowNumber?: boolean
+  rowNumber?: number
 }
 
 function booleanCellValue(value: string): string {
@@ -118,6 +120,8 @@ function ProductStatusTableRow({
   isDraggingRow = false,
   isDragOverRow = false,
   onRowPointerDragStart,
+  showRowNumber = false,
+  rowNumber,
 }: ProductStatusTableRowProps) {
   const rowRef = useRef<HTMLTableRowElement>(null)
   const cellHandleRef = useRef<ProductStatusCellHandle | null>(null)
@@ -199,6 +203,11 @@ function ProductStatusTableRow({
               </>
             ) : null}
           </div>
+        </td>
+      ) : null}
+      {showRowNumber ? (
+        <td className="product-status-row-number" title={`№ ${rowNumber ?? ''}`}>
+          {rowNumber ?? ''}
         </td>
       ) : null}
       {columns.map((column) => {
@@ -402,6 +411,8 @@ export default memo(ProductStatusTableRow, (prev, next) => {
   if (prev.zniLookup !== next.zniLookup) return false
   if (prev.enableRowDelete !== next.enableRowDelete) return false
   if (prev.enableRowReorder !== next.enableRowReorder) return false
+  if (prev.showRowNumber !== next.showRowNumber) return false
+  if (prev.rowNumber !== next.rowNumber) return false
   if (prev.rowCount !== next.rowCount) return false
   if (prev.isDraggingRow !== next.isDraggingRow) return false
   if (prev.isDragOverRow !== next.isDragOverRow) return false
