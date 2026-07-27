@@ -33,11 +33,16 @@ alwaysApply: true
 
 1. `git add` — только релевантные файлы
 2. `git commit` — краткое сообщение (что и зачем)
-3. `git push` — **всегда**, если push не заблокирован (нет явного «не пушить» от пользователя)
+3. Push — **всегда**, если push не заблокирован (нет явного «не пушить» от пользователя):
+   - `bash scripts/push-all.sh` — GitHub `main` + TFS `master`
+   - либо отдельно: `git push origin main`
 
 Не коммитить: `.env`, секреты, локальные артефакты.
 
-Репозиторий: `https://github.com/volchonok16/reporting.git`, ветка `main`.
+Репозиторий GitHub: `https://github.com/volchonok16/reporting.git`, ветка `main`.  
+Remote TFS: `tfs` → `https://tfs.t2.ru/tfs/Main/Tele2/_git/b2bproduct`, ветка `master`.
+
+Учётка TFS для push уже в **macOS Keychain** (`credential.helper=osxkeychain`, host `tfs.t2.ru`, user `alexander.taraskin@t2.ru`). Пароль в правила/репозиторий не писать; при сбое auth — спросить пользователя, не хардкодить.
 
 ## Миграции
 
