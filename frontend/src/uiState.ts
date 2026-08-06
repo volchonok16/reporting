@@ -1,6 +1,6 @@
 const STORAGE_KEY = 'reporting.uiState'
 
-export type SheetId = 'zni' | 'product-status-b2b' | 'roadmap' | 'departments' | 'diagrams'
+export type SheetId = 'zni' | 'product-status-b2b' | 'roadmap' | 'departments' | 'diagrams' | 'planning'
 
 export type OrgPanelId =
   | 'roster'
@@ -41,6 +41,11 @@ export type DashboardUiState = {
   metricFilter: string
 }
 
+export type PlanningUiState = {
+  panel: import('./planning/types').PlanningPanelId
+  selectedProjectId: number | null
+}
+
 type UiState = {
   activeSheet?: SheetId
   dashboard?: Partial<DashboardUiState>
@@ -49,6 +54,7 @@ type UiState = {
   b2bNewsGid?: string | null
   b2bPanel?: B2bPanelId
   org?: Partial<OrgUiState>
+  planning?: Partial<PlanningUiState>
 }
 
 function readUiState(): UiState {
@@ -66,7 +72,7 @@ function writeUiState(patch: UiState): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...patch }))
 }
 
-const WORKBOOK_SHEETS: SheetId[] = ['zni', 'product-status-b2b', 'roadmap', 'departments', 'diagrams']
+const WORKBOOK_SHEETS: SheetId[] = ['zni', 'product-status-b2b', 'roadmap', 'departments', 'diagrams', 'planning']
 
 const ORG_PANELS: OrgPanelId[] = [
   'roster',
@@ -143,6 +149,15 @@ export function saveDashboardUiState(state: DashboardUiState): void {
   writeUiState({ dashboard: state })
 }
 
+export function saveDashboardSearch(search: string): void {
+  writeUiState({
+    dashboard: {
+      ...loadDashboardUiState(),
+      search,
+    } as DashboardUiState,
+  })
+}
+
 export function loadProductStatusB2bGid(): string | null {
   const gid = readUiState().productStatusB2bGid
   return typeof gid === 'string' && gid ? gid : null
@@ -182,4 +197,29 @@ export function loadRoadmapUiState(): Partial<RoadmapUiState> {
 
 export function saveRoadmapUiState(state: RoadmapUiState): void {
   writeUiState({ roadmap: state })
+}
+
+export function loadPlanningUiState(): PlanningUiState {
+  const planning = readUiState().planning as Partial<PlanningUiState> | undefined
+  const panel =
+    planning?.panel === 'projects' ||
+    planning?.panel === 'allocations' ||
+    planning?.panel === 'workload' ||
+    planning?.panel === 'directories'
+      ? planning.panel
+      : 'projects'
+  const selectedProjectId =
+    typeof planning?.selectedProjectId === 'number' ? planning.selectedProjectId : null
+  return { panel, selectedProjectId }
+}
+
+export function savePlanningUiState(patch: Partial<PlanningUiState>): void {
+  const current = loadPlanningUiState()
+  writeUiState({
+    planning: {
+      panel: patch.panel ?? current.panel,
+      selectedProjectId:
+        patch.selectedProjectId !== undefined ? patch.selectedProjectId : current.selectedProjectId,
+    },
+  })
 }

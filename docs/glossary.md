@@ -907,3 +907,130 @@ API: `GET /api/b2b-news`, `POST /api/b2b-news/save`, `GET /api/b2b-news/history?
 | Сотрудники в офисе | `GET /api/org/workspace/presence?year=&month=`; учитывает `workspace_booking`, `employee_office_day` и `employee_time_off_day` |
 | Личный кабинет | `GET/PATCH /api/profile`, `POST /api/profile/password` |
 | Личный кабинет — дни в офисе | `GET /api/profile/office-days?year=&month=`, `PUT /api/profile/office-days/range` (только для привязанного сотрудника) |
+
+---
+
+## planning_project_complexity — сложность проекта
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `name` | varchar(255) | Название уровня сложности |
+| `sort_order` | int | Порядок в справочнике |
+| `is_active` | boolean | Активна ли запись |
+
+Seed: Низкая, Средняя, Высокая, Критическая.
+
+---
+
+## production_calendar_day — производственный календарь
+
+Переопределения рабочих/нерабочих дней. Если записи нет — используются выходные (сб/вс) и праздники РФ (логика backend `planning_calendar.py`, как во вкладке отпусков).
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `day` | date | PK, календарный день |
+| `is_working_day` | boolean | Рабочий (`true`) или нерабочий (`false`) |
+| `title` | varchar(255) | Подпись (праздник, перенос) |
+| `note` | text | Комментарий |
+
+---
+
+## planning_project — проект планирования
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `request_number` | varchar(64) | Номер запроса |
+| `request_name` | varchar(512) | Наименование запроса |
+| `request_url` | varchar(1024) | Ссылка на запрос |
+| `complexity_id` | bigint | FK → `planning_project_complexity` |
+| `customer_employee_id` | bigint | FK → `employee` (исполнитель из справочника) |
+| `customer_name` | varchar(255) | Заказчик текстом |
+| `customer_department_id` | bigint | FK → `planning_customer_department` (департамент заказчика, не Staffing) |
+| `planned_start_date` | date | Плановая дата старта |
+| `actual_start_date` | date | Фактическая дата старта |
+| `planned_end_date` | date | Плановая дата завершения |
+| `actual_end_date` | date | Фактическая дата завершения |
+| `status` | varchar(32) | Статус: `new` (Новый), `in_progress` (В работе), `completed` (Завершен); при заполнении `actual_end_date` автоматически `completed`. При статусе «Завершен» выделенные часы после `actual_end_date` очищаются. |
+| `notes` | text | Примечание |
+| `created_by_org_user_id` | bigint | FK → `org_user`, кто создал запись |
+| `created_by_label` | varchar(255) | Отображаемое имя создателя |
+
+Исполнители: таблица `planning_project_executor` (M:N) + API-поля `executorIds`, `executors`; сотрудники с плановыми часами в выделениях добавляются автоматически.
+
+---
+
+## planning_customer_department — департамент заказчика (справочник планирования)
+
+Отдельный справочник для поля «Департамент заказчика» на проекте планирования. **Не связан** с `department` (Staffing).
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `name` | varchar(255) | Название |
+| `sort_order` | int | Порядок в списках |
+| `is_active` | boolean | Активен ли для выбора в форме проекта |
+| `created_at` | timestamptz | Создание |
+| `updated_at` | timestamptz | Обновление |
+
+Уникальность имени без учёта регистра. API: `GET/POST /api/planning/customer-departments`, `PATCH/DELETE /api/planning/customer-departments/{id}`.
+
+---
+
+## planning_project_executor — исполнители проекта
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `project_id` | bigint | FK → `planning_project` |
+| `employee_id` | bigint | FK → `employee` |
+| `created_at` | timestamptz | Когда назначен |
+
+Уникальность: `(project_id, employee_id)`.
+
+---
+
+## planning_allocation — выделение ресурса
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `project_id` | bigint | FK → `planning_project` |
+| `employee_id` | bigint | FK → `employee` |
+| `allocation_start_date` | date | Дата начала выделения |
+| `allocation_end_date` | date | Дата окончания выделения |
+| `booking_mode` | varchar(16) | `period` — часы на весь период по рабочим дням; `daily` — подневная сетка |
+| `planned_hours_per_day` | numeric(5,2) | Плановые часы в день (режим `period`) |
+| `created_by_org_user_id` | bigint | FK → `org_user` |
+| `created_by_label` | varchar(255) | Кто создал выделение |
+
+---
+
+## planning_allocation_day — подневная занятость
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `allocation_id` | bigint | FK → `planning_allocation` |
+| `day` | date | Календарный день |
+| `planned_hours` | numeric(5,2) | Плановая занятость, ч (не создаётся на дни `employee_time_off_day` и нерабочие дни) |
+| `actual_hours` | numeric(5,2) | Фактически затраченное время, ч |
+
+Уникальность: `(allocation_id, day)`.
+
+---
+
+## Вкладка «Планирование» (UI)
+
+| Раздел | API |
+|--------|-----|
+| Проекты | `GET/POST/PATCH/DELETE /api/planning/projects` |
+| Сложность | `GET/POST /api/planning/complexities` |
+| Ресурсы на проект | `GET/POST /api/planning/projects/{id}/allocations`, `PATCH/DELETE /api/planning/allocations/{id}` |
+| Исполнители | `executorIds` / `executors` в проекте; автодобавление при выделении с плановыми часами |
+| Подневные часы | `PUT /api/planning/allocations/{id}/days` (режим `daily`) |
+| Загрузка сотрудников | `GET /api/planning/workload?dateFrom=&dateTo=` — ёмкость, план, факт, свободное время; учитывает `employee_time_off_day`, календарь и экспертизу |
+| Календарь | `GET /api/planning/calendar?year=`, `PUT /api/planning/calendar` (админ) |
+
+Справочник сотрудников и экспертиз — `employee`, `employee_expertise`, `expertise_direction` (см. [teams.md](teams.md)).

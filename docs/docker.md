@@ -205,7 +205,7 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 
 Дополнительные рабочие места для брони — `db/migrations/012_workspace_places_99_106.sql`: в справочник `workspace_place` добавляются места **99–106** (без дубликатов, если номер уже есть).
 
-Статус продукта B2B в PostgreSQL — `db/migrations/013_b2b_product_status.sql`: таблицы `b2b_product_status_office`, `b2b_product_status_row`, `b2b_product_status_history` и seed вкладок офисов; `db/migrations/014_b2b_product_status_snapshots.sql` — снимки версий для отката; `db/migrations/015_b2b_news.sql` — «Новости и запуски» в БД. Миграции также подхватываются при старте backend (`ensure_startup_schema`).
+Статус продукта B2B в PostgreSQL — `db/migrations/013_b2b_product_status.sql`: таблицы `b2b_product_status_office`, `b2b_product_status_row`, `b2b_product_status_history` и seed вкладок офисов; `db/migrations/014_b2b_product_status_snapshots.sql` — снимки версий для отката; `db/migrations/015_b2b_news.sql` — «Новости и запуски» в БД; `db/migrations/016_planning.sql` — планирование ресурсов (`planning_project`, `planning_allocation`, `production_calendar_day` и др.); `db/migrations/017_planning_project_executors.sql` — исполнители проекта (`planning_project_executor`); `db/migrations/018_planning_project_status.sql` — статус проекта (`planning_project.status`); `db/migrations/019_planning_customer_department.sql` — справочник департаментов заказчика (`planning_customer_department`). Миграции также подхватываются при старте backend (`ensure_startup_schema`).
 
 Если права нужно обновить вручную (новые таблицы org/vacation, backend создал таблицы от alex):
 

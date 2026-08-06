@@ -23,6 +23,7 @@ const WARNING_MESSAGE_PATTERNS = [
   /редактирование доступно/i,
   /нет изменений/i,
   /нет данных для сохранения/i,
+  /превышена доступная загрузка/i,
 ]
 
 export function isWarningMessage(message: string): boolean {

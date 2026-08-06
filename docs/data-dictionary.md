@@ -193,3 +193,17 @@
 | `b2b_news_snapshot` | `section_id`, `rows`, `changed_by` | Снимок для отката версии |
 
 Колонка «Проект координация» в `cells` доступна на запись только админам (`canManageOrg`).
+
+## planning_* — планирование ресурсов
+
+| Таблица | Ключевые поля | Назначение |
+|---------|---------------|------------|
+| `planning_project_complexity` | `name`, `sort_order` | Справочник сложности |
+| `production_calendar_day` | `day`, `is_working_day` | Переопределения производственного календаря |
+| `planning_project` | `request_number`, `request_name`, `status`, даты план/факт, заказчик | Проект/запрос; номер связан с `task.external_id` (ЗНИ) |
+| `planning_customer_department` | `name`, `sort_order`, `is_active` | Справочник «Департамент заказчика» (не Staffing) |
+| `planning_allocation` | `project_id`, `employee_id`, `booking_mode`, период | Выделение сотрудника |
+| `planning_allocation_day` | `allocation_id`, `day`, `planned_hours`, `actual_hours` | Подневная занятость и факт |
+| `planning_project_executor` | `project_id`, `employee_id` | Исполнители проекта |
+
+Загрузка сотрудника (вкладка «Нагрузка»): `employee.daily_work_hours` минус `employee_time_off_day` минус сумма `planned_hours` по проектам; API `GET /api/planning/workload`.

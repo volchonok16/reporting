@@ -764,3 +764,109 @@ CREATE TABLE b2b_news_snapshot (
 );
 
 CREATE INDEX idx_b2b_news_snapshot_section ON b2b_news_snapshot (section_id, created_at DESC, id DESC);
+
+-- -----------------------------------------------------------------------------
+-- Планирование ресурсов
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE planning_project_complexity (
+    id              BIGSERIAL PRIMARY KEY,
+    name            VARCHAR(255) NOT NULL,
+    sort_order      INT          NOT NULL DEFAULT 0,
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE planning_customer_department (
+    id              BIGSERIAL PRIMARY KEY,
+    name            VARCHAR(255) NOT NULL,
+    sort_order      INT          NOT NULL DEFAULT 0,
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX uq_planning_customer_department_name
+    ON planning_customer_department (lower(name));
+
+CREATE TABLE production_calendar_day (
+    day             DATE         PRIMARY KEY,
+    is_working_day  BOOLEAN      NOT NULL,
+    title           VARCHAR(255),
+    note            TEXT,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE planning_project (
+    id                      BIGSERIAL PRIMARY KEY,
+    request_number          VARCHAR(64)   NOT NULL,
+    request_name            VARCHAR(512)  NOT NULL,
+    request_url             VARCHAR(1024),
+    complexity_id           BIGINT        REFERENCES planning_project_complexity(id) ON DELETE SET NULL,
+    customer_employee_id    BIGINT        REFERENCES employee(id) ON DELETE SET NULL,
+    customer_name           VARCHAR(255),
+    customer_department_id  BIGINT        REFERENCES planning_customer_department(id) ON DELETE SET NULL,
+    planned_start_date      DATE,
+    actual_start_date       DATE,
+    planned_end_date        DATE,
+    actual_end_date         DATE,
+    status                  VARCHAR(32)   NOT NULL DEFAULT 'new'
+        CHECK (status IN ('new', 'in_progress', 'completed')),
+    notes                   TEXT,
+    created_by_org_user_id  BIGINT        REFERENCES org_user(id) ON DELETE SET NULL,
+    created_by_label        VARCHAR(255),
+    created_at              TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_planning_project_request_number ON planning_project (request_number);
+CREATE INDEX idx_planning_project_status ON planning_project (status);
+CREATE INDEX idx_planning_project_customer_department ON planning_project (customer_department_id);
+CREATE INDEX idx_planning_project_dates ON planning_project (planned_start_date, planned_end_date);
+
+CREATE TABLE planning_allocation (
+    id                      BIGSERIAL PRIMARY KEY,
+    project_id              BIGINT        NOT NULL REFERENCES planning_project(id) ON DELETE CASCADE,
+    employee_id             BIGINT        NOT NULL REFERENCES employee(id) ON DELETE CASCADE,
+    allocation_start_date   DATE          NOT NULL,
+    allocation_end_date     DATE          NOT NULL,
+    booking_mode            VARCHAR(16)   NOT NULL DEFAULT 'period'
+        CHECK (booking_mode IN ('daily', 'period')),
+    planned_hours_per_day   NUMERIC(5, 2),
+    created_by_org_user_id  BIGINT        REFERENCES org_user(id) ON DELETE SET NULL,
+    created_by_label        VARCHAR(255),
+    created_at              TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    CHECK (allocation_end_date >= allocation_start_date)
+);
+
+CREATE INDEX idx_planning_allocation_project ON planning_allocation (project_id);
+CREATE INDEX idx_planning_allocation_employee ON planning_allocation (employee_id);
+CREATE INDEX idx_planning_allocation_dates ON planning_allocation (allocation_start_date, allocation_end_date);
+
+CREATE TABLE planning_allocation_day (
+    id              BIGSERIAL PRIMARY KEY,
+    allocation_id   BIGINT        NOT NULL REFERENCES planning_allocation(id) ON DELETE CASCADE,
+    day             DATE          NOT NULL,
+    planned_hours   NUMERIC(5, 2) NOT NULL DEFAULT 0,
+    actual_hours    NUMERIC(5, 2) NOT NULL DEFAULT 0,
+    created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    UNIQUE (allocation_id, day)
+);
+
+CREATE INDEX idx_planning_allocation_day_day ON planning_allocation_day (day);
+
+CREATE TABLE planning_project_executor (
+    id              BIGSERIAL PRIMARY KEY,
+    project_id      BIGINT       NOT NULL REFERENCES planning_project(id) ON DELETE CASCADE,
+    employee_id     BIGINT       NOT NULL REFERENCES employee(id) ON DELETE CASCADE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE (project_id, employee_id)
+);
+
+CREATE INDEX idx_planning_project_executor_project ON planning_project_executor (project_id);
+CREATE INDEX idx_planning_project_executor_employee ON planning_project_executor (employee_id);
+

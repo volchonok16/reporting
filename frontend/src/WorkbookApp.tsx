@@ -5,11 +5,12 @@ import DiagramBuilder from './DiagramBuilder'
 import ProductStatusB2B from './ProductStatusB2B'
 import Roadmap from './Roadmap'
 import Departments from './org/Departments'
+import Planning from './planning/Planning'
 import EmployeeProfile from './org/EmployeeProfile'
 import OrgPhoto from './org/OrgPhoto'
 import ThemeToggle from './ThemeToggle'
 import type { AppRole } from './App'
-import { loadActiveSheet, saveActiveSheet, type SheetId } from './uiState'
+import { loadActiveSheet, saveActiveSheet, saveDashboardSearch, type SheetId } from './uiState'
 
 type SheetTab = {
   id: SheetId
@@ -22,6 +23,7 @@ const SHEETS: SheetTab[] = [
   { id: 'roadmap', label: 'Планы Digital' },
   { id: 'departments', label: 'Staffing' },
   { id: 'diagrams', label: 'Диаграммы' },
+  { id: 'planning', label: 'Планирование' },
 ]
 
 type WorkbookAppProps = {
@@ -145,6 +147,15 @@ export default function WorkbookApp({
           </div>
         ) : activeSheet === 'diagrams' ? (
           <DiagramBuilder />
+        ) : activeSheet === 'planning' ? (
+          <div className="app">
+            <Planning
+              onNavigateToZni={(requestNumber) => {
+                saveDashboardSearch(requestNumber)
+                setActiveSheet('zni')
+              }}
+            />
+          </div>
         ) : (
           <div className="app">
             <ProductStatusB2B canManageOrg={canManageOrg} />

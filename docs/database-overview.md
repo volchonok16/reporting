@@ -113,6 +113,13 @@
 | `b2b_news_row` | Строки таблицы новостей/запусков (`cells` jsonb) |
 | `b2b_news_history` | История изменений новостей и запусков |
 | `b2b_news_snapshot` | Снимки версий вкладки для отката |
+| `planning_project_complexity` | Справочник сложности проектов планирования |
+| `production_calendar_day` | Производственный календарь (переопределения рабочих дней) |
+| `planning_project` | Проекты/запросы планирования ресурсов |
+| `planning_customer_department` | Справочник департаментов заказчика (планирование) |
+| `planning_allocation` | Выделение сотрудника на проект |
+| `planning_allocation_day` | Подневная занятость и факт по выделению |
+| `planning_project_executor` | Исполнители проекта (M:N project ↔ employee) |
 | `person` | Человек |
 | `person_external` | ID пользователя в Jira/TFS/Trello |
 
