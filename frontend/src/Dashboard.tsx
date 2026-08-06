@@ -2,38 +2,10 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefO
 import { apiFetch, getJson } from './api'
 import { notifyError, notifyLoading, notifyProblem, notifySuccess, notifyWarning, updateLoading } from './toast'
 import { loadDashboardUiState, saveDashboardUiState } from './uiState'
+import { boardNameLabel, setBoardDisplayLabels } from './zniDisplay'
 
 const ALL_BOARDS = 'all'
 const DIGITAL_BOARD = 'digital_streams_b2b'
-
-const BOARD_LABELS: Record<string, string> = {
-  all: 'Все доски',
-  digital_streams_b2b: 'Digital',
-  tele2_products: 'Продукты',
-  reports: 'Reports',
-  b2b_product_core: 'CORE',
-  b2b_product_partners: 'КАТС',
-  b2b_voice_products: 'Голосовые продукты',
-  b2b_m2m_platform: 'М2М / IoT',
-  b2b_sms_target: 'SMS',
-  b2b_solar: 'Solar',
-  b2b_umnico: 'Umnico',
-  be_t2_team: 'Bercut',
-  esb_analytics: 'ESB',
-}
-
-function boardButtonLabel(code: string, fallback?: string): string {
-  return BOARD_LABELS[code] ?? fallback ?? code
-}
-
-function boardNameLabel(name?: string | null, code?: string | null): string {
-  if (code && BOARD_LABELS[code]) return BOARD_LABELS[code]
-  if (name && BOARD_LABELS[name]) return BOARD_LABELS[name]
-  if (name === 'Digital Streams B2b') return 'Digital'
-  if (name === 'BE Analytics') return 'Bercut'
-  if (name === 'ESB Analytics') return 'ESB'
-  return name || '—'
-}
 
 type Board = {
   code: string
@@ -505,7 +477,10 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
 
   useEffect(() => {
     void getJson<Board[]>('/api/boards')
-      .then((items) => setBoards(items))
+      .then((items) => {
+        setBoardDisplayLabels(items)
+        setBoards(items)
+      })
       .catch((err) => notifyError(err, 'Ошибка загрузки досок'))
   }, [])
 
@@ -755,7 +730,7 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
   }
 
   const selectedBoard = boards.find((b) => b.code === boardCode)
-  const boardLabel = boardButtonLabel(boardCode, selectedBoard?.displayName)
+  const boardLabel = selectedBoard?.displayName || boardNameLabel(null, boardCode) || boardCode
   const activeFilterCount = [
     search.trim(),
     dateFrom !== defaultQuarter.from ? dateFrom : '',
@@ -780,7 +755,7 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
                 className={`board-filter-btn${boardCode === board.code ? ' board-filter-btn-active' : ''}`}
                 onClick={() => setBoardCode(board.code)}
               >
-                {boardButtonLabel(board.code, board.displayName)}
+                {board.displayName}
               </button>
             ))}
           </div>

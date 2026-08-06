@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { apiFetch, clearSessionId } from './api'
+import { apiFetch, clearSessionId, getJson } from './api'
 import Dashboard from './Dashboard'
 import DiagramBuilder from './DiagramBuilder'
 import ProductStatusB2B from './ProductStatusB2B'
@@ -13,6 +13,7 @@ import OrgPhoto from './org/OrgPhoto'
 import ThemeToggle from './ThemeToggle'
 import type { AppRole } from './App'
 import { loadActiveSheet, saveActiveSheet, saveDashboardSearch, type SheetId } from './uiState'
+import { setBoardDisplayLabels } from './zniDisplay'
 
 type SheetTab = {
   id: SheetId
@@ -90,6 +91,14 @@ export default function WorkbookApp({
   useEffect(() => {
     saveActiveSheet(activeSheet)
   }, [activeSheet])
+
+  useEffect(() => {
+    void getJson<Array<{ code: string; name: string; displayName: string }>>('/api/boards')
+      .then((items) => setBoardDisplayLabels(items))
+      .catch(() => {
+        /* подписи досок подтянутся при открытии вкладки ЗНИ */
+      })
+  }, [])
 
   const handleLogout = async () => {
     await apiFetch('/api/auth/logout', { method: 'POST' })

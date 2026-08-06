@@ -47,22 +47,24 @@
 
 ### Доски TFS
 
-| Код | AreaPath | Теги ЗНИ | Теги ошибок | Отображаемое имя |
-|-----|----------|----------|-------------|------------------|
-| `digital_streams_b2b` | `Tele2\Digital\Streams\B2b` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | Digital |
-| `tele2_products` | `Tele2\Продукты` | `b2b_product` (без `EFO`) | без фильтра по тегам (без `EFO`) | Продукты |
-| `reports` | `Tele2\Reports\Team A` | `b2b_product` (без `EFO`) | без фильтра по тегам (без `EFO`) | Reports |
-| `b2b_product_core` | `Tele2\B2B Product` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | CORE |
-| `b2b_product_partners` | `Tele2\B2B Product Partners` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | КАТС |
-| `b2b_voice_products` | `Tele2\B2B Product\B2B Voice Products` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | Голосовые продукты |
-| `b2b_m2m_platform` | `Tele2\B2B Product\M2M Platform` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | М2М / IoT |
-| `b2b_sms_target` | `Tele2\B2B Product\SMS-Target` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | SMS |
-| `b2b_solar` | `Tele2\B2B Product\Solar` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | Solar |
-| `b2b_umnico` | `Tele2\B2B Product\Umnico` | — (без `EFO`) | `FE B2B`, `microservice` (без `EFO`) | Umnico |
-| `be_t2_team` | `BE-T2\BE Analytics` | `b2b_product` | `FE B2B`, `microservice` | BE Analytics (без статуса `Rejected`) |
-| `esb_analytics` | `BE-T2\ESB\ESB Analytics` | `b2b_product` | `FE B2B`, `microservice` | ESB (без статуса `Rejected`) |
+Конфиг хранится в таблице `zni_board` (миграция `043_zni_boards.sql`), не в коде. Backend читает активные строки при старте и синке.
 
-Фильтр «Все доски» — объединение всех досок.
+| Код | AreaPath | Теги ЗНИ | Теги ошибок | Алиас (UI) |
+|-----|----------|----------|-------------|------------|
+| `digital_streams_b2b` | `Tele2\Digital\Streams\B2b` | — (без `EFO`/`not_product`) | — | Digital |
+| `tele2_products` | `Tele2\Продукты` | `b2b_product` | — | Продукты |
+| `reports` | `Tele2\Reports\Team A` | `b2b_product` | — | Reports |
+| `b2b_product_core` | `Tele2\B2B Product` | — | — | CORE |
+| `b2b_product_partners` | `Tele2\B2B Product Partners` | — | — | КАТС |
+| `b2b_voice_products` | `Tele2\B2B Product\B2B Voice Products` | — | — | Голосовые продукты |
+| `b2b_m2m_platform` | `Tele2\B2B Product\M2M Platform` | — | — | М2М / IoT |
+| `b2b_sms_target` | `Tele2\B2B Product\SMS-Target` | — | — | SMS |
+| `b2b_solar` | `Tele2\B2B Product\Solar` | — | — | Solar |
+| `b2b_umnico` | `Tele2\B2B Product\Umnico` | — | — | Umnico |
+| `be_t2_team` | `BE-T2\BE Analytics` | `b2b_product` | `FE B2B`, `microservice` | Bercut |
+| `esb_analytics` | `BE-T2\ESB\ESB Analytics` | `b2b_product` | `FE B2B`, `microservice` | ESB |
+
+Фильтр «Все доски» — объединение всех активных досок из `zni_board`.
 
 ### Метрики дашборда (ЗНИ)
 
@@ -100,7 +102,8 @@
 | `source_status_mapping` | Статус источника → канонический статус |
 | `source_team_mapping` | Признак источника → команда (`team_id`) |
 | `field_mapping` | Поле источника → поле `task` |
-| `team` | Канонические команды (коды досок из `boards.py`, напр. `digital_streams_b2b`, `b2b_product_core`, `be_t2_team`) |
+| `team` | Канонические команды (коды досок из `zni_board`, напр. `digital_streams_b2b`, `b2b_product_core`, `be_t2_team`) |
+| `zni_board` | Конфиг досок ЗНИ: alias, board_name, area_path, теги, TFS project/team, метрики |
 | `auth_session` | Сессии PAT для веб-приложения |
 | `org_user` | Учётные записи сотрудников (email/пароль) |
 | `job_position` | Справочник должностей |
@@ -132,7 +135,7 @@
 | `youjail_attachment` | Вложения карточек |
 | `youjail_execution` | Запуски исполнителя |
 | `youjail_execution_log` | Лог stdout/stderr/system |
-| `b2b_product_status_office` | Продуктовые офисы B2B (вкладки статуса: SMS, VOICE, CORE, Аналитики, Проекты и др.) |
+| `b2b_product_status_office` | Продуктовые офисы B2B (вкладки статуса: SMS, VOICE, CORE, Аналитики: планирование / бизнес-анализа, Проекты и др.) |
 | `b2b_product_status_row` | Строки таблицы «Статус продукта B2B» (`cells` jsonb) |
 | `b2b_product_status_history` | История изменений строк статуса продукта B2B |
 | `b2b_product_status_snapshot` | Снимки версий офиса для отката к сохранённому состоянию |

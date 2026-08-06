@@ -140,6 +140,31 @@
 
 ---
 
+## zni_board — конфиг досок ЗНИ
+
+Список досок для синка TFS и UI. Seed: `db/migrations/043_zni_boards.sql`. Backend загружает активные строки в кэш при старте (`load_boards`).
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `code` | varchar(64) PK | Стабильный ключ (`digital_streams_b2b`, `b2b_product_core`, …) |
+| `alias` | varchar(255) | Короткое имя в UI: Digital, CORE, Bercut, ESB… (`BoardOut.displayName`) |
+| `board_name` | varchar(255) | Имя доски / значение `task.source_team` |
+| `area_path` | varchar(500) | `System.AreaPath` для WIQL |
+| `sync_tags` | text | Теги синка ЗНИ через запятую |
+| `other_tags` | text | Другие теги (алиасы тегов) через запятую |
+| `exclude_sync_tags` | text | Исключающие теги через запятую (`EFO,not_product`) |
+| `exclude_sync_states` | text | Исключающие статусы через запятую |
+| `error_sync_tags` | text | Теги ошибок через запятую |
+| `project` / `project_id` / `team_id` | varchar | TFS Team Project и GUID |
+| `launching_soon_states` / `launched_states` / `in_progress_states` | text | Статусы метрик через запятую |
+| `launching_soon_triage_values` | text | Значения Triage для «Скоро запуск» |
+| `incident_error_area_path` | varchar | Area инцидентов (Bercut) |
+| `incident_error_sync_tags` | text | Теги инцидентов через запятую |
+| `sort_order` | int | Порядок в селекте досок |
+| `is_active` | boolean | Участвует в синке и UI |
+
+---
+
 ## person — человек (исполнитель, автор)
 
 Единый профиль человека независимо от учёток в Jira/TFS/Trello.
@@ -435,7 +460,7 @@
 
 **Планируемая дата** — из листа `System.IterationPath`: `2026.08.11.0-R` → `2026-08-11`; если в пути есть **TBD** — в UI выводится `TBD`; если дата из итерации не определена — подставляется **Целевая дата** (`Microsoft.VSTS.Scheduling.TargetDate`, поле `task.release_date`, напр. ЗНИ 1071033 → `03.12.2025`). **План квартала** — `Q3 2026` или `TBD`; фильтр `quarter` в API (`TBD`, `2026-Q3`, …). В выпадающем списке фильтра — только кварталы **текущего года** плюс отдельные пункты TBD и «Без квартала». **Плановый релиз** — из `Logrocon.FoundinRelease` или `Logrocon.Release`, если поле проставлено или релиз привязан; колонка «План. релиз» в дашборде и CSV. **Бронь ресурса ЕЦТ** — `ДА` / `НЕТ`: прямая Related-связь ЗНИ с элементом «Бронь ресурсов» (`TFS_RESOURCE_RESERVATION_TYPE_VALUES`, по умолчанию `Бронь ресурсов`).
 
-**Доски приложения:** Digital Streams B2b (`Tele2\Digital\Streams\B2b`, в UI — «Digital»); Продукты (`Tele2\Продукты`, в UI — «Продукты», ЗНИ с `b2b_product`, метрики как у Digital); Reports (`Tele2\Reports\Team A`, в UI — «Reports», ЗНИ с `b2b_product`, метрики как у Digital); B2B Product — CORE, КАТС, Голосовые продукты, М2М / IoT, SMS, Solar, Umnico (area path `Tele2\B2B Product…`, те же правила синка и метрик, что у Digital: исключение тегов `EFO` / `not_product`, ошибки без фильтра по тегам, «Скоро запуск» — `UAT`, «Запущено» — `Pilot`); BE Analytics (`BE-T2\BE Analytics`, ЗНИ с `b2b_product`); ESB (`BE-T2\ESB\ESB Analytics`, в UI — «ESB», те же теги и метрики, что у BE Analytics).
+**Доски приложения** хранятся в таблице `zni_board` (не в коде): Digital (`Tele2\Digital\Streams\B2b`); Продукты (`Tele2\Продукты`, ЗНИ с `b2b_product`); Reports (`Tele2\Reports\Team A`, `b2b_product`); CORE / КАТС / Голосовые продукты / М2М / IoT / SMS / Solar / Umnico (area `Tele2\B2B Product…`, exclude `EFO`/`not_product`, метрики UAT/Pilot); Bercut (`BE-T2\BE Analytics`, `b2b_product`); ESB (`BE-T2\ESB\ESB Analytics`). Поля: `alias` (UI), `board_name`, `area_path`, `sync_tags`, `other_tags` («другие теги»), exclude/error-теги, GUID проекта/команды, статусы метрик. Seed — `db/migrations/043_zni_boards.sql`.
 
 **Фильтр области (дашборд):** доска **Digital** — `newlk`, `site`, `eshop_b2b`; **остальные доски** (кроме «Все доски») — `eshop`. В UI — «Область»; query-параметр `tag_group` (можно несколько). Группы в `backend/app/tag_filters.py`:
 
@@ -1003,7 +1028,7 @@ API: префикс `/api/youjail/*`. `DELETE /api/youjail/boards/{id}`, `POST /
 
 Вкладки экрана «Статус продукта B2B» (SMS, VOICE, CORE, Аналитики, Проекты и т.д.). Данные таблицы хранятся в PostgreSQL, без Google Sheets.
 
-Seed: миграция `013_b2b_product_status.sql` — SMS, VOICE, Перспективные продукты, M2M / IoT, Продуктовый маркетинг, CORE, CORE (операционка); `030_b2b_product_status_offices_analytics_projects.sql` — Аналитики (`gid=analytics`), Проекты (Саша и Ваня) (`gid=projects`).
+Seed: миграция `013_b2b_product_status.sql` — SMS, VOICE, Перспективные продукты, M2M / IoT, Продуктовый маркетинг, CORE, CORE (операционка); `030_b2b_product_status_offices_analytics_projects.sql` — Проекты (Саша и Ваня) (`gid=projects`); `044_b2b_product_status_analytics_split.sql` — Аналитики: планирование (`gid=analytics_planning`), Аналитики: бизнес-анализа (`gid=analytics_business`); старая вкладка Аналитики (`gid=analytics`) деактивирована.
 
 | Поле | Тип | Описание |
 |------|-----|----------|

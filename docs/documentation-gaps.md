@@ -19,7 +19,7 @@
 ## Что документировано хорошо
 
 - **Ядро задач** — `task`, команды, статусы, views `v_*`, синхронизация TFS, маппинг полей ЗНИ → `extra_json`: [glossary.md](glossary.md).
-- **Доски и метрики ЗНИ** — `boards.py`, `board_metrics.py`, фильтры `tag_group`: glossary + [database-overview.md](database-overview.md).
+- **Доски и метрики ЗНИ** — таблица `zni_board`, `board_metrics.py`, фильтры `tag_group`: glossary + [database-overview.md](database-overview.md).
 - **Org-модуль (БД)** — таблицы `org_user` … `workspace_booking`, `org_chart_layout`, `business_trip`: glossary (по отдельным разделам).
 - **Docker / production** — [docker.md](docker.md), [deploy/DEPLOY.md](../deploy/DEPLOY.md).
 - **Команды (концепция ETL)** — [teams.md](teams.md).

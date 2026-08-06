@@ -33,6 +33,33 @@ class Team(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class ZniBoard(Base):
+    __tablename__ = "zni_board"
+
+    code: Mapped[str] = mapped_column(String(64), primary_key=True)
+    alias: Mapped[str] = mapped_column(String(255), nullable=False)
+    board_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    area_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    sync_tags: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    other_tags: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    exclude_sync_tags: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    exclude_sync_states: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    error_sync_tags: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    project: Mapped[str] = mapped_column(String(128), nullable=False)
+    project_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    team_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    launching_soon_states: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    launching_soon_triage_values: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    launched_states: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    in_progress_states: Mapped[str] = mapped_column(Text, nullable=False, default="Development")
+    incident_error_area_path: Mapped[str | None] = mapped_column(String(500))
+    incident_error_sync_tags: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Project(Base):
     __tablename__ = "project"
 

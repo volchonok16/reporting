@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.app_access import can_manage_org, is_roadmap_role, sync_board_denied_reason
 from app.auth_service import login_with_app_user, login_with_pat
 from app.auth_sessions import delete_session, get_session, get_session_with_meta
-from app.boards import ALL_BOARDS_CODE, BOARDS, boards_for_sync
+from app.boards import ALL_BOARDS_CODE, boards_for_sync, default_board, ensure_boards_loaded
 from app.config import settings
 from app.db import close_db_session, ensure_startup_schema, get_db, purge_stale_b2b_audit_records
 from app.org_photo_service import photo_public_url
@@ -104,6 +104,11 @@ async def startup() -> None:
     set_main_event_loop(loop)
     set_product_status_live_event_loop(loop)
     ensure_startup_schema()
+    db = next(get_db())
+    try:
+        ensure_boards_loaded(db)
+    finally:
+        close_db_session(db)
     purge_stale_b2b_audit_records()
 
 
@@ -170,8 +175,9 @@ def health() -> dict[str, str]:
 
 
 @app.get("/api/auth/defaults", response_model=AuthDefaultsOut)
-def auth_defaults() -> AuthDefaultsOut:
-    board = BOARDS[0]
+def auth_defaults(db: Session = Depends(get_db)) -> AuthDefaultsOut:
+    boards = ensure_boards_loaded(db)
+    board = default_board(boards)
     return AuthDefaultsOut(
         baseUrl=settings.tfs_base_url,
         project=board.project,
@@ -252,12 +258,13 @@ def auth_logout(x_session_id: str | None = Header(default=None, alias="X-Session
 
 
 @app.get("/api/boards", response_model=list[BoardOut])
-def list_boards() -> list[BoardOut]:
+def list_boards(db: Session = Depends(get_db)) -> list[BoardOut]:
+    boards = ensure_boards_loaded(db)
     items = [
         BoardOut(code=ALL_BOARDS_CODE, name="Все доски", displayName="Все доски", project=""),
     ]
     items.extend(
-        BoardOut(code=b.code, name=b.name, displayName=b.display_name, project=b.project) for b in BOARDS
+        BoardOut(code=b.code, name=b.name, displayName=b.display_name, project=b.project) for b in boards
     )
     return items
 
@@ -834,7 +841,7 @@ async def start_sync(
     if tfs is None:
         raise HTTPException(status_code=500, detail="source_system tfs not found")
 
-    target_boards = boards_for_sync(board)
+    target_boards = boards_for_sync(board, ensure_boards_loaded(db))
     sync_run = SyncRun(
         source_system_id=tfs.id,
         status="running",

@@ -9,7 +9,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.boards import board_by_code
+from app.boards import board_by_code, ensure_boards_loaded
 from app.models import Task
 from app.schemas import ChangeRequestOut, DigitalPlanOut
 from app.tag_filters import DIGITAL_BOARD_CODE
@@ -118,6 +118,9 @@ def load_digital_plan(
     )
 
     board = board_by_code(DIGITAL_BOARD_CODE)
+    if board is None:
+        ensure_boards_loaded(db)
+        board = board_by_code(DIGITAL_BOARD_CODE)
     if board is None:
         raise ValueError("Доска Digital Streams B2b не найдена")
 

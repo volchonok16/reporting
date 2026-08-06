@@ -60,15 +60,6 @@ def _resolve_manager_id(
     return None
 
 
-def _has_manager_in_department(
-    member: DepartmentMember,
-    head_member: DepartmentMember | None,
-    by_employee_id: dict[int, DepartmentMember],
-) -> bool:
-    manager_id = _resolve_manager_id(member, head_member)
-    return manager_id is not None and manager_id in by_employee_id
-
-
 def _resolve_head_member(
     department: Department,
     members: list[DepartmentMember],
@@ -104,10 +95,12 @@ def _build_node(
     is_head: bool = False,
 ) -> OrgChartNode:
     attached[member.employee_id] = True
-    children = [
-        _build_node(child, children_by_manager, attached)
-        for child in children_by_manager.get(member.employee_id, [])
-    ]
+    children: list[OrgChartNode] = []
+    for child in children_by_manager.get(member.employee_id, []):
+        # Защита от циклов manager↔подчинённый — иначе рекурсия не завершится.
+        if child.employee_id in attached:
+            continue
+        children.append(_build_node(child, children_by_manager, attached))
     children.sort(key=lambda n: n.person.fullName.casefold())
     return OrgChartNode(
         memberId=member.id or None,
@@ -154,11 +147,12 @@ def build_department_tree(
 
     attached: dict[int, bool] = {}
     root = _build_node(head_member, children_by_manager, attached, is_head=True)
-    for member in members:
+    # Всех, кто не попал в дерево от руководителя (внешний manager, цикл и т.п.),
+    # всё равно показываем в пирамиде отдела — иначе сотрудник есть в карточке, но не на схеме.
+    for member in sorted(members, key=lambda m: _member_name(m).casefold()):
         if member.employee_id in attached:
             continue
-        if not _has_manager_in_department(member, head_member, by_employee_id):
-            root.children.append(_build_node(member, children_by_manager, attached))
+        root.children.append(_build_node(member, children_by_manager, attached))
     root.children.sort(key=lambda n: n.person.fullName.casefold())
     return [root]
 
@@ -210,20 +204,29 @@ def _build_unassigned_roots(unassigned: list[Employee]) -> list[OrgChartNode]:
             children_by_manager.setdefault(emp.manager_id, []).append(emp)
 
     created: dict[int, OrgChartNode] = {}
+    building: set[int] = set()
 
     def build_node(emp: Employee) -> OrgChartNode:
         if emp.id in created:
             return created[emp.id]
+        if emp.id in building:
+            # Цикл в manager-связях — возвращаем узел без повторного обхода детей.
+            node = node_for_employee(emp)
+            created[emp.id] = node
+            return node
+        building.add(emp.id)
         children = [
             build_node(child)
             for child in sorted(
                 children_by_manager.get(emp.id, []),
                 key=lambda item: item.full_name.casefold(),
             )
+            if child.id not in building
         ]
         node = node_for_employee(emp)
         node.children = children
         created[emp.id] = node
+        building.discard(emp.id)
         return node
 
     roots = [

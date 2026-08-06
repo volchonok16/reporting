@@ -63,6 +63,10 @@ const MIN_DEPARTMENT_HEIGHT = DEPARTMENT_TITLE_HEIGHT + DEPARTMENT_PADDING * 2 +
 type Point = { x: number; y: number }
 type EdgeAnchor = 'top' | 'bottom'
 
+function employeeNodeKey(node: OrgChartNode): string {
+  return node.person.publicId || String(node.person.employeeId)
+}
+
 function employeeNodeId(publicId: string): string {
   return `employee:${publicId}`
 }
@@ -121,7 +125,7 @@ function flattenDepartments(
       parentId,
     }
     const employeeItems: ChartItem[] = uniqueEmployees(block.roots).map((node) => ({
-      id: departmentEmployeeNodeId(block.departmentId, node.person.publicId),
+      id: departmentEmployeeNodeId(block.departmentId, employeeNodeKey(node)),
       kind: 'employee',
       refId: node.person.employeeId,
       node,
@@ -140,7 +144,7 @@ function buildStandaloneItems(
   organizationHead?: OrgChartNode | null,
 ): ChartItem[] {
   const build = (node: OrgChartNode, parentId: string | null): ChartItem[] => {
-    const id = employeeNodeId(node.person.publicId)
+    const id = employeeNodeId(employeeNodeKey(node))
     return [
       {
         id,
@@ -152,7 +156,7 @@ function buildStandaloneItems(
       ...node.children.flatMap((child) => build(child, id)),
     ]
   }
-  const rootParent = organizationHead ? employeeNodeId(organizationHead.person.publicId) : null
+  const rootParent = organizationHead ? employeeNodeId(employeeNodeKey(organizationHead)) : null
   return roots.flatMap((root) => build(root, rootParent))
 }
 
@@ -163,14 +167,14 @@ function buildChartItems(
 ): ChartItem[] {
   const headItem: ChartItem[] = organizationHead
     ? [{
-        id: employeeNodeId(organizationHead.person.publicId),
+        id: employeeNodeId(employeeNodeKey(organizationHead)),
         kind: 'employee',
         refId: organizationHead.person.employeeId,
         node: organizationHead,
         parentId: null,
       }]
     : []
-  const topParent = organizationHead ? employeeNodeId(organizationHead.person.publicId) : null
+  const topParent = organizationHead ? employeeNodeId(employeeNodeKey(organizationHead)) : null
   return [
     ...headItem,
     ...flattenDepartments(departments, topParent),
@@ -266,11 +270,13 @@ function reconcileLayout(saved: OrgChartLayoutData | null, items: ChartItem[]): 
     const item = itemById.get(generatedNode.id)
     const savedNode = savedById.get(generatedNode.id)
     if (!item) return generatedNode
+    // Высота/ширина отдела должна вмещать всех текущих сотрудников,
+    // даже если сохранённая схема была нарисована до их появления.
     const width = item.kind === 'department'
-      ? Math.max(MIN_DEPARTMENT_WIDTH, savedNode?.width ?? DEPARTMENT_NODE_WIDTH)
+      ? Math.max(MIN_DEPARTMENT_WIDTH, DEPARTMENT_NODE_WIDTH, savedNode?.width ?? 0)
       : EMPLOYEE_NODE_WIDTH
     const height = item.kind === 'department'
-      ? Math.max(MIN_DEPARTMENT_HEIGHT, savedNode?.height ?? departmentHeight(item.block))
+      ? Math.max(MIN_DEPARTMENT_HEIGHT, departmentHeight(item.block), savedNode?.height ?? 0)
       : EMPLOYEE_NODE_HEIGHT
     if (!savedNode) {
       if (generatedNode.parentNodeId) {
@@ -281,10 +287,12 @@ function reconcileLayout(saved: OrgChartLayoutData | null, items: ChartItem[]): 
             ...generatedNode,
             x: savedParent.x + (generatedNode.x - generatedParent.x),
             y: savedParent.y + (generatedNode.y - generatedParent.y),
+            width,
+            height,
           }
         }
       }
-      return generatedNode
+      return { ...generatedNode, width, height }
     }
     return {
       ...savedNode,

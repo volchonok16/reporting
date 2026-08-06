@@ -7,7 +7,7 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.boards import BOARDS, BoardConfig, boards_for_sync
+from app.boards import BoardConfig, boards_for_sync, ensure_boards_loaded, get_boards
 from app.config import settings
 from app.db import SessionLocal, close_db_session
 from app.json_utils import as_work_item_list
@@ -201,17 +201,20 @@ def ensure_reference_data(db: Session) -> tuple[int, dict[str, int], dict[str, i
         raise RuntimeError("source_system 'tfs' not found")
     source_system_id = tfs.id
 
+    boards = ensure_boards_loaded(db)
     team_ids: dict[str, int] = {}
-    for board in BOARDS:
+    for board in boards:
         row = db.scalar(select(Team).where(Team.code == board.code))
         if row is None:
             row = Team(code=board.code, name=board.display_name, is_active=True)
             db.add(row)
             db.flush()
+        elif row.name != board.display_name:
+            row.name = board.display_name
         team_ids[board.code] = row.id
 
     project_ids: dict[str, int] = {}
-    for board in BOARDS:
+    for board in boards:
         row = db.scalar(
             select(Project).where(
                 Project.source_system_id == source_system_id,
@@ -677,10 +680,10 @@ async def run_sync(
     sync_run_id: int | None = None,
     board_code: str | None = None,
 ) -> SyncRun:
-    boards = boards_for_sync(board_code)
     db = SessionLocal()
     try:
         source_system_id, project_ids, team_ids = ensure_reference_data(db)
+        boards = boards_for_sync(board_code, get_boards())
 
         sync_run: SyncRun
         if sync_run_id:

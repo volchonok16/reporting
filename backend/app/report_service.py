@@ -5,7 +5,15 @@ from datetime import date, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.boards import ALL_BOARDS_CODE, BOARDS, BoardConfig, board_by_code, is_all_boards
+from app.boards import (
+    ALL_BOARDS_CODE,
+    BoardConfig,
+    board_by_code,
+    default_board,
+    ensure_boards_loaded,
+    get_boards,
+    is_all_boards,
+)
 from app.board_metrics import (
     active_errors,
     board_for_task,
@@ -343,7 +351,8 @@ def load_change_requests_by_numbers(db: Session, numbers: list[str]) -> list[Cha
     if not normalized:
         return []
 
-    board_names = [board.name for board in BOARDS]
+    boards = ensure_boards_loaded(db)
+    board_names = [board.name for board in boards]
     rows = list(
         db.scalars(
             select(Task).where(
@@ -481,7 +490,7 @@ def _sort_key(task: Task, sort: str):
 def _board_name_by_code(code: str | None) -> str | None:
     if not code:
         return None
-    for board in BOARDS:
+    for board in get_boards():
         if board.code == code:
             return board.display_name
     return None
@@ -652,8 +661,9 @@ def load_change_requests(
     metric: str | None = None,
     tag_groups: list[str] | None = None,
 ) -> DashboardOut:
+    boards = ensure_boards_loaded(db)
     all_boards = is_all_boards(board_code)
-    board = board_by_code(board_code)
+    board = board_by_code(board_code, boards)
     selected_tag_groups = (
         normalize_tag_group_keys(tag_groups, board_code)
         if tag_filter_supported_for_board(board_code)
@@ -661,7 +671,7 @@ def load_change_requests(
     )
 
     if all_boards:
-        board_names = [b.name for b in BOARDS]
+        board_names = [b.name for b in boards]
         zni_query = select(Task).where(
             Task.task_type == "change_request",
             Task.source_team.in_(board_names),
@@ -672,7 +682,7 @@ def load_change_requests(
         )
     else:
         if board is None:
-            board = BOARDS[0]
+            board = default_board(boards)
         zni_query = select(Task).where(
             Task.task_type == "change_request",
             Task.source_team == board.name,
@@ -775,9 +785,10 @@ def load_change_requests(
 
 
 def _boards_for_export(board_code: str | None) -> list[BoardConfig]:
+    boards = get_boards()
     if is_all_boards(board_code) or not board_code:
-        return list(BOARDS)
-    board = board_by_code(board_code)
+        return list(boards)
+    board = board_by_code(board_code, boards)
     return [board] if board else []
 
 
@@ -805,6 +816,7 @@ def _write_export_rows(writer: csv.writer, items: list[ChangeRequestOut]) -> Non
 
 
 def export_csv(db: Session, *, board_code: str | None = None) -> str:
+    ensure_boards_loaded(db)
     boards_to_export = _boards_for_export(board_code)
 
     output = io.StringIO()

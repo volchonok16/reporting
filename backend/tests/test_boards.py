@@ -1,4 +1,18 @@
-from app.boards import BOARDS, ALL_BOARDS_CODE, boards_for_sync, is_all_boards
+from app.boards import (
+    ALL_BOARDS_CODE,
+    board_by_code,
+    boards_for_sync,
+    get_boards,
+    is_all_boards,
+    parse_csv_tags,
+)
+
+
+def test_parse_csv_tags() -> None:
+    assert parse_csv_tags("") == ()
+    assert parse_csv_tags(None) == ()
+    assert parse_csv_tags("a, b") == ("a", "b")
+    assert parse_csv_tags("EFO,not_product") == ("EFO", "not_product")
 
 
 def test_is_all_boards() -> None:
@@ -9,14 +23,16 @@ def test_is_all_boards() -> None:
 
 def test_boards_for_sync_all() -> None:
     boards = boards_for_sync(ALL_BOARDS_CODE)
-    assert len(boards) == len(BOARDS)
-    assert {board.code for board in boards} == {board.code for board in BOARDS}
+    cached = get_boards()
+    assert len(boards) == len(cached)
+    assert {board.code for board in boards} == {board.code for board in cached}
 
 
 def test_boards_for_sync_single() -> None:
     boards = boards_for_sync("b2b_product_core")
     assert len(boards) == 1
     assert boards[0].code == "b2b_product_core"
+    assert boards[0].display_name == "CORE"
 
 
 def test_tele2_products_board() -> None:
@@ -35,3 +51,10 @@ def test_reports_board() -> None:
     assert board.display_name == "Reports"
     assert board.area_path == r"Tele2\Reports\Team A"
     assert board.sync_tags == ("b2b_product",)
+
+
+def test_aliases() -> None:
+    assert board_by_code("digital_streams_b2b").display_name == "Digital"
+    assert board_by_code("be_t2_team").display_name == "Bercut"
+    assert board_by_code("esb_analytics").display_name == "ESB"
+    assert board_by_code("b2b_product_core").display_name == "CORE"

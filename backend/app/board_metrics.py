@@ -3,24 +3,29 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from app.boards import BOARDS, BoardConfig
+from app.boards import BoardConfig, get_boards
 from app.config import settings
 from app.models import Task
 from app.completed_metrics import count_completed_rows, is_completed
 from app.pilot_metrics import pilot_entered_in_period
 
-_BOARDS_BY_CODE = {board.code: board for board in BOARDS}
-_BOARDS_BY_NAME = {board.name: board for board in BOARDS}
-_BOARDS_BY_DISPLAY = {board.display_name: board for board in BOARDS}
+
+def _boards_index() -> tuple[dict[str, BoardConfig], dict[str, BoardConfig], dict[str, BoardConfig]]:
+    boards = get_boards()
+    by_code = {board.code: board for board in boards}
+    by_name = {board.name: board for board in boards}
+    by_display = {board.display_name: board for board in boards}
+    return by_code, by_name, by_display
 
 
 def board_for_task(task: Task) -> BoardConfig | None:
+    by_code, by_name, by_display = _boards_index()
     extra = task.extra_json if isinstance(task.extra_json, dict) else {}
     code = extra.get("board_code")
-    if isinstance(code, str) and code in _BOARDS_BY_CODE:
-        return _BOARDS_BY_CODE[code]
+    if isinstance(code, str) and code in by_code:
+        return by_code[code]
     team = task.source_team or ""
-    return _BOARDS_BY_NAME.get(team) or _BOARDS_BY_DISPLAY.get(team)
+    return by_name.get(team) or by_display.get(team)
 
 
 def task_status_tokens(task: Task) -> set[str]:

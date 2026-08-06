@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.boards import board_by_code
+from app.boards import board_by_code, ensure_boards_loaded
 from app.models import Task
 from app.tfs_client import TfsClient, build_business_value_patch
 
@@ -26,6 +26,7 @@ async def update_business_value(
     if task is None:
         raise ValueError("ЗНИ не найден")
 
+    ensure_boards_loaded(db)
     board_code = _extra(task).get("board_code")
     board = board_by_code(str(board_code)) if board_code else None
     if board is None:

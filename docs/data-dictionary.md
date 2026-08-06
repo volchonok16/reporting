@@ -25,6 +25,22 @@
 | priority | Приоритет правила |
 | notes | Комментарий |
 
+## zni_board — конфиг досок ЗНИ
+
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| code | varchar PK | Стабильный ключ (`digital_streams_b2b`, …) |
+| alias | varchar | Короткое имя в UI (Digital, CORE, Bercut…) |
+| board_name | varchar | Имя доски / `task.source_team` |
+| area_path | varchar | AreaPath TFS для WIQL |
+| sync_tags | text | Теги синка через запятую |
+| other_tags | text | Другие теги (алиасы) через запятую |
+| exclude_sync_tags / exclude_sync_states / error_sync_tags | text | Фильтры через запятую |
+| project / project_id / team_id | varchar | TFS project и GUID команды |
+| launching_soon_states / launched_states / in_progress_states | text | Статусы метрик через запятую |
+| sort_order | int | Порядок в селекте |
+| is_active | boolean | Участвует в синке и UI |
+
 ## task — основная сущность
 
 | Колонка | Тип | Описание |
@@ -178,7 +194,7 @@
 
 | Таблица | Ключевые поля | Назначение |
 |---------|---------------|------------|
-| `b2b_product_status_office` | `gid`, `name`, `sort_order` | Вкладки офисов (SMS, VOICE, CORE, Аналитики, Проекты…) |
+| `b2b_product_status_office` | `gid`, `name`, `sort_order` | Вкладки офисов (SMS, VOICE, CORE, Аналитики: планирование / бизнес-анализа, Проекты…) |
 | `b2b_product_status_row` | `office_id`, `sort_order`, `cells` | Строки таблицы; `cells` — jsonb с колонками и rich-text |
 | `b2b_product_status_history` | `office_id`, `row_id`, `action`, `field_name` | Журнал create/update/delete/restore |
 | `b2b_product_status_snapshot` | `office_id`, `rows`, `changed_by` | Снимок всех строк офиса после сохранения |

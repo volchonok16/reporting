@@ -1,7 +1,17 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from app.config import settings
+from app.models import ZniBoard
 from app.tfs_auth import TfsAuth
+
+ALL_BOARDS_CODE = "all"
+
+_boards_cache: list[BoardConfig] | None = None
 
 
 @dataclass(frozen=True)
@@ -14,6 +24,7 @@ class BoardConfig:
     team_id: str
     area_path: str
     sync_tags: tuple[str, ...] = ()
+    other_tags: tuple[str, ...] = ()
     error_sync_tags: tuple[str, ...] = ()
     exclude_sync_tags: tuple[str, ...] = ()
     exclude_sync_states: tuple[str, ...] = ()
@@ -34,154 +45,101 @@ class BoardConfig:
         )
 
 
-ALL_BOARDS_CODE = "all"
+def parse_csv_tags(value: str | None) -> tuple[str, ...]:
+    if not value or not str(value).strip():
+        return ()
+    return tuple(part.strip() for part in str(value).split(",") if part.strip())
 
-_TELE2_PROJECT = "Tele2"
-_TELE2_PROJECT_ID = "c56fb5fe-9752-462a-82ae-0b9e10364510"
-_TELE2_TEAM_ID = "95d94210-a12e-4b11-b13b-4bbbc698d30b"
 
-
-def _tele2_digital_style_board(
-    *,
-    code: str,
-    name: str,
-    display_name: str,
-    area_path: str,
-    sync_tags: tuple[str, ...] = (),
-) -> BoardConfig:
+def board_config_from_row(row: ZniBoard) -> BoardConfig:
+    in_progress = parse_csv_tags(row.in_progress_states)
     return BoardConfig(
-        code=code,
-        name=name,
-        display_name=display_name,
-        project=_TELE2_PROJECT,
-        project_id=_TELE2_PROJECT_ID,
-        team_id=_TELE2_TEAM_ID,
-        area_path=area_path,
-        sync_tags=sync_tags,
-        exclude_sync_tags=("EFO", "not_product"),
-        launching_soon_states=("UAT",),
-        launched_states=("Pilot", "Пилот"),
+        code=row.code,
+        name=row.board_name,
+        display_name=row.alias,
+        project=row.project,
+        project_id=row.project_id,
+        team_id=row.team_id,
+        area_path=row.area_path,
+        sync_tags=parse_csv_tags(row.sync_tags),
+        other_tags=parse_csv_tags(row.other_tags),
+        error_sync_tags=parse_csv_tags(row.error_sync_tags),
+        exclude_sync_tags=parse_csv_tags(row.exclude_sync_tags),
+        exclude_sync_states=parse_csv_tags(row.exclude_sync_states),
+        launching_soon_states=parse_csv_tags(row.launching_soon_states),
+        launching_soon_triage_values=parse_csv_tags(row.launching_soon_triage_values),
+        launched_states=parse_csv_tags(row.launched_states),
+        in_progress_states=in_progress or ("Development",),
+        incident_error_area_path=row.incident_error_area_path or None,
+        incident_error_sync_tags=parse_csv_tags(row.incident_error_sync_tags),
     )
 
 
-BOARDS: list[BoardConfig] = [
-    _tele2_digital_style_board(
-        code="digital_streams_b2b",
-        name="Digital Streams B2b",
-        display_name="Digital Streams B2b",
-        area_path=r"Tele2\Digital\Streams\B2b",
-    ),
-    _tele2_digital_style_board(
-        code="tele2_products",
-        name="Продукты",
-        display_name="Продукты",
-        area_path=r"Tele2\Продукты",
-        sync_tags=("b2b_product",),
-    ),
-    _tele2_digital_style_board(
-        code="reports",
-        name="Reports",
-        display_name="Reports",
-        area_path=r"Tele2\Reports\Team A",
-        sync_tags=("b2b_product",),
-    ),
-    _tele2_digital_style_board(
-        code="b2b_product_core",
-        name="B2B Product",
-        display_name="CORE",
-        area_path=r"Tele2\B2B Product",
-    ),
-    _tele2_digital_style_board(
-        code="b2b_product_partners",
-        name="B2B Product Partners",
-        display_name="КАТС",
-        area_path=r"Tele2\B2B Product Partners",
-    ),
-    _tele2_digital_style_board(
-        code="b2b_voice_products",
-        name="B2B Voice Products",
-        display_name="Голосовые продукты",
-        area_path=r"Tele2\B2B Product\B2B Voice Products",
-    ),
-    _tele2_digital_style_board(
-        code="b2b_m2m_platform",
-        name="M2M Platform",
-        display_name="М2М / IoT",
-        area_path=r"Tele2\B2B Product\M2M Platform",
-    ),
-    _tele2_digital_style_board(
-        code="b2b_sms_target",
-        name="SMS-Target",
-        display_name="SMS",
-        area_path=r"Tele2\B2B Product\SMS-Target",
-    ),
-    _tele2_digital_style_board(
-        code="b2b_solar",
-        name="Solar",
-        display_name="Solar",
-        area_path=r"Tele2\B2B Product\Solar",
-    ),
-    _tele2_digital_style_board(
-        code="b2b_umnico",
-        name="Umnico",
-        display_name="Umnico",
-        area_path=r"Tele2\B2B Product\Umnico",
-    ),
-    BoardConfig(
-        code="be_t2_team",
-        name="BE Analytics",
-        display_name="BE Analytics",
-        project="BE-T2",
-        project_id="03cc4df6-e5d2-43a6-9f9a-024573edff5a",
-        team_id="cbc10e7f-8dfa-479f-9a31-0fa6258a1f9f",
-        area_path=r"BE-T2\BE Analytics",
-        sync_tags=("b2b_product",),
-        error_sync_tags=("FE B2B", "microservice"),
-        exclude_sync_states=("Rejected",),
-        launching_soon_states=("UAT Prod", "Implementation Prod"),
-        launching_soon_triage_values=("в Работе",),
-        launched_states=("Closed",),
-        incident_error_area_path=r"BE-T2\Incident management",
-        incident_error_sync_tags=("b2b_product",),
-    ),
-    BoardConfig(
-        code="esb_analytics",
-        name="ESB Analytics",
-        display_name="ESB",
-        project="BE-T2",
-        project_id="03cc4df6-e5d2-43a6-9f9a-024573edff5a",
-        team_id="69adf97c-07fc-4f05-98ad-3fa9c77b56d0",
-        area_path=r"BE-T2\ESB\ESB Analytics",
-        sync_tags=("b2b_product",),
-        error_sync_tags=("FE B2B", "microservice"),
-        exclude_sync_states=("Rejected",),
-        launching_soon_states=("UAT Prod", "Implementation Prod"),
-        launching_soon_triage_values=("в Работе",),
-        launched_states=("Closed",),
-    ),
-]
+def set_boards_cache(boards: list[BoardConfig]) -> None:
+    global _boards_cache
+    _boards_cache = list(boards)
+
+
+def clear_boards_cache() -> None:
+    global _boards_cache
+    _boards_cache = None
+
+
+def load_boards(db: Session) -> list[BoardConfig]:
+    rows = list(
+        db.scalars(
+            select(ZniBoard)
+            .where(ZniBoard.is_active.is_(True))
+            .order_by(ZniBoard.sort_order, ZniBoard.code)
+        )
+    )
+    boards = [board_config_from_row(row) for row in rows]
+    set_boards_cache(boards)
+    return boards
+
+
+def get_boards() -> list[BoardConfig]:
+    if _boards_cache is not None:
+        return list(_boards_cache)
+    return []
+
+
+def ensure_boards_loaded(db: Session) -> list[BoardConfig]:
+    if _boards_cache is not None:
+        return list(_boards_cache)
+    return load_boards(db)
 
 
 def is_all_boards(code: str | None) -> bool:
     return (code or "").strip().lower() == ALL_BOARDS_CODE
 
 
-def board_by_code(code: str | None) -> BoardConfig | None:
+def board_by_code(
+    code: str | None,
+    boards: list[BoardConfig] | None = None,
+) -> BoardConfig | None:
     if not code or is_all_boards(code):
         return None
     normalized = code.strip().lower()
-    for board in BOARDS:
+    for board in boards if boards is not None else get_boards():
         if board.code == normalized:
             return board
     return None
 
 
-def boards_for_sync(board_code: str | None) -> list[BoardConfig]:
+def boards_for_sync(
+    board_code: str | None,
+    boards: list[BoardConfig] | None = None,
+) -> list[BoardConfig]:
+    source = boards if boards is not None else get_boards()
     if is_all_boards(board_code) or not board_code:
-        return list(BOARDS)
-    board = board_by_code(board_code)
-    return [board] if board else list(BOARDS)
+        return list(source)
+    board = board_by_code(board_code, source)
+    return [board] if board else list(source)
 
 
-def default_board() -> BoardConfig:
-    return BOARDS[0]
+def default_board(boards: list[BoardConfig] | None = None) -> BoardConfig:
+    source = boards if boards is not None else get_boards()
+    if not source:
+        raise RuntimeError("Список досок ЗНИ пуст: выполните миграцию 043_zni_boards.sql")
+    return source[0]
