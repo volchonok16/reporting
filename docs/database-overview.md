@@ -145,6 +145,13 @@
 | `revenue_activity_history` | История изменений активностей по выручкам |
 | `revenue_activity_snapshot` | Снимки версий для отката |
 | `schema_migration` | Журнал применённых SQL-миграций (`ensure_startup_schema`) |
+| `planning_project_complexity` | Справочник сложности проектов планирования |
+| `production_calendar_day` | Производственный календарь (переопределения рабочих дней) |
+| `planning_project` | Проекты/запросы планирования ресурсов |
+| `planning_customer_department` | Справочник департаментов заказчика (планирование) |
+| `planning_allocation` | Выделение сотрудника на проект |
+| `planning_allocation_day` | Подневная занятость и факт по выделению |
+| `planning_project_executor` | Исполнители проекта (M:N project ↔ employee) |
 | `person` | Человек |
 | `person_external` | ID пользователя в Jira/TFS/Trello |
 

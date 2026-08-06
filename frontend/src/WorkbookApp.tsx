@@ -7,11 +7,12 @@ import RevenueActivities from './RevenueActivities'
 import Roadmap from './Roadmap'
 import YouJailBoard from './YouJailBoard'
 import Departments from './org/Departments'
+import Planning from './planning/Planning'
 import EmployeeProfile from './org/EmployeeProfile'
 import OrgPhoto from './org/OrgPhoto'
 import ThemeToggle from './ThemeToggle'
 import type { AppRole } from './App'
-import { loadActiveSheet, saveActiveSheet, type SheetId } from './uiState'
+import { loadActiveSheet, saveActiveSheet, saveDashboardSearch, type SheetId } from './uiState'
 
 type SheetTab = {
   id: SheetId
@@ -26,6 +27,7 @@ const SHEETS: SheetTab[] = [
   { id: 'youjail-board', label: 'Доска' },
   { id: 'departments', label: 'Staffing' },
   { id: 'diagrams', label: 'Диаграммы' },
+  { id: 'planning', label: 'Планирование' },
 ]
 
 type WorkbookAppProps = {
@@ -160,6 +162,15 @@ export default function WorkbookApp({
         ) : activeSheet === 'revenue-activities' ? (
           <div className="app">
             <RevenueActivities canManageOrg={canManageOrg} />
+          </div>
+        ) : activeSheet === 'planning' ? (
+          <div className="app">
+            <Planning
+              onNavigateToZni={(requestNumber) => {
+                saveDashboardSearch(requestNumber)
+                setActiveSheet('zni')
+              }}
+            />
           </div>
         ) : (
           <div className="app">

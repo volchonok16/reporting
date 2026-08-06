@@ -190,6 +190,14 @@ def ensure_startup_schema() -> None:
         "033_revenue_activities_gmc.sql",
         "034_revenue_activities_status_owner.sql",
         "035_revenue_activities_filters_columns.sql",
+        "036_revenue_activities_base_revenue_sections.sql",
+        "037_revenue_activities_margin_column.sql",
+        "038_revenue_activities_drop_margin.sql",
+        "039_planning.sql",
+        "040_planning_project_executors.sql",
+        "041_planning_project_status.sql",
+        "042_planning_customer_department.sql",
+        "043_zni_boards.sql",
     )
 
     auth_session_sql = """

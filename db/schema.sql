@@ -82,6 +82,40 @@ CREATE UNIQUE INDEX uq_source_team_mapping
 
 COMMENT ON TABLE source_team_mapping IS 'Маппинг признака источника → команда; приоритет priority (больше = важнее)';
 
+-- Конфиг досок ЗНИ (синк TFS + UI-алиасы); seed в migrations/043_zni_boards.sql
+CREATE TABLE zni_board (
+    code                            VARCHAR(64)  PRIMARY KEY,
+    alias                           VARCHAR(255) NOT NULL,
+    board_name                      VARCHAR(255) NOT NULL,
+    area_path                       VARCHAR(500) NOT NULL,
+    sync_tags                       TEXT         NOT NULL DEFAULT '',
+    other_tags                      TEXT         NOT NULL DEFAULT '',
+    exclude_sync_tags               TEXT         NOT NULL DEFAULT '',
+    exclude_sync_states             TEXT         NOT NULL DEFAULT '',
+    error_sync_tags                 TEXT         NOT NULL DEFAULT '',
+    project                         VARCHAR(128) NOT NULL,
+    project_id                      VARCHAR(64)  NOT NULL,
+    team_id                         VARCHAR(64)  NOT NULL,
+    launching_soon_states           TEXT         NOT NULL DEFAULT '',
+    launching_soon_triage_values    TEXT         NOT NULL DEFAULT '',
+    launched_states                 TEXT         NOT NULL DEFAULT '',
+    in_progress_states              TEXT         NOT NULL DEFAULT 'Development',
+    incident_error_area_path        VARCHAR(500),
+    incident_error_sync_tags        TEXT         NOT NULL DEFAULT '',
+    sort_order                      INT          NOT NULL DEFAULT 0,
+    is_active                       BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at                      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at                      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE zni_board IS 'Конфиг досок ЗНИ для синка TFS и UI (алиасы, area, теги)';
+COMMENT ON COLUMN zni_board.code IS 'Стабильный ключ доски (digital_streams_b2b, …)';
+COMMENT ON COLUMN zni_board.alias IS 'Короткое имя в UI: Digital, CORE, Bercut…';
+COMMENT ON COLUMN zni_board.board_name IS 'Имя доски / task.source_team';
+COMMENT ON COLUMN zni_board.area_path IS 'System.AreaPath для WIQL';
+COMMENT ON COLUMN zni_board.sync_tags IS 'Теги синка ЗНИ через запятую';
+COMMENT ON COLUMN zni_board.other_tags IS 'Другие теги (алиасы тегов) через запятую';
+
 CREATE TABLE person (
     id              BIGSERIAL PRIMARY KEY,
     email           VARCHAR(255),
@@ -1108,6 +1142,111 @@ CREATE INDEX idx_revenue_activity_snapshot_section
     ON revenue_activity_snapshot (section_id, created_at DESC, id DESC);
 
 -- -----------------------------------------------------------------------------
+-- Планирование ресурсов
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE planning_project_complexity (
+    id              BIGSERIAL PRIMARY KEY,
+    name            VARCHAR(255) NOT NULL,
+    sort_order      INT          NOT NULL DEFAULT 0,
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE planning_customer_department (
+    id              BIGSERIAL PRIMARY KEY,
+    name            VARCHAR(255) NOT NULL,
+    sort_order      INT          NOT NULL DEFAULT 0,
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX uq_planning_customer_department_name
+    ON planning_customer_department (lower(name));
+
+CREATE TABLE production_calendar_day (
+    day             DATE         PRIMARY KEY,
+    is_working_day  BOOLEAN      NOT NULL,
+    title           VARCHAR(255),
+    note            TEXT,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE planning_project (
+    id                      BIGSERIAL PRIMARY KEY,
+    request_number          VARCHAR(64)   NOT NULL,
+    request_name            VARCHAR(512)  NOT NULL,
+    request_url             VARCHAR(1024),
+    complexity_id           BIGINT        REFERENCES planning_project_complexity(id) ON DELETE SET NULL,
+    customer_employee_id    BIGINT        REFERENCES employee(id) ON DELETE SET NULL,
+    customer_name           VARCHAR(255),
+    customer_department_id  BIGINT        REFERENCES planning_customer_department(id) ON DELETE SET NULL,
+    planned_start_date      DATE,
+    actual_start_date       DATE,
+    planned_end_date        DATE,
+    actual_end_date         DATE,
+    status                  VARCHAR(32)   NOT NULL DEFAULT 'new'
+        CHECK (status IN ('new', 'in_progress', 'completed')),
+    notes                   TEXT,
+    created_by_org_user_id  BIGINT        REFERENCES org_user(id) ON DELETE SET NULL,
+    created_by_label        VARCHAR(255),
+    created_at              TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_planning_project_request_number ON planning_project (request_number);
+CREATE INDEX idx_planning_project_status ON planning_project (status);
+CREATE INDEX idx_planning_project_customer_department ON planning_project (customer_department_id);
+CREATE INDEX idx_planning_project_dates ON planning_project (planned_start_date, planned_end_date);
+
+CREATE TABLE planning_allocation (
+    id                      BIGSERIAL PRIMARY KEY,
+    project_id              BIGINT        NOT NULL REFERENCES planning_project(id) ON DELETE CASCADE,
+    employee_id             BIGINT        NOT NULL REFERENCES employee(id) ON DELETE CASCADE,
+    allocation_start_date   DATE          NOT NULL,
+    allocation_end_date     DATE          NOT NULL,
+    booking_mode            VARCHAR(16)   NOT NULL DEFAULT 'period'
+        CHECK (booking_mode IN ('daily', 'period')),
+    planned_hours_per_day   NUMERIC(5, 2),
+    created_by_org_user_id  BIGINT        REFERENCES org_user(id) ON DELETE SET NULL,
+    created_by_label        VARCHAR(255),
+    created_at              TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    CHECK (allocation_end_date >= allocation_start_date)
+);
+
+CREATE INDEX idx_planning_allocation_project ON planning_allocation (project_id);
+CREATE INDEX idx_planning_allocation_employee ON planning_allocation (employee_id);
+CREATE INDEX idx_planning_allocation_dates ON planning_allocation (allocation_start_date, allocation_end_date);
+
+CREATE TABLE planning_allocation_day (
+    id              BIGSERIAL PRIMARY KEY,
+    allocation_id   BIGINT        NOT NULL REFERENCES planning_allocation(id) ON DELETE CASCADE,
+    day             DATE          NOT NULL,
+    planned_hours   NUMERIC(5, 2) NOT NULL DEFAULT 0,
+    actual_hours    NUMERIC(5, 2) NOT NULL DEFAULT 0,
+    created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    UNIQUE (allocation_id, day)
+);
+
+CREATE INDEX idx_planning_allocation_day_day ON planning_allocation_day (day);
+
+CREATE TABLE planning_project_executor (
+    id              BIGSERIAL PRIMARY KEY,
+    project_id      BIGINT       NOT NULL REFERENCES planning_project(id) ON DELETE CASCADE,
+    employee_id     BIGINT       NOT NULL REFERENCES employee(id) ON DELETE CASCADE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE (project_id, employee_id)
+);
+
+CREATE INDEX idx_planning_project_executor_project ON planning_project_executor (project_id);
+CREATE INDEX idx_planning_project_executor_employee ON planning_project_executor (employee_id);
+
+-- -----------------------------------------------------------------------------
 -- Журнал миграций schema
 -- -----------------------------------------------------------------------------
 
@@ -1115,4 +1254,3 @@ CREATE TABLE schema_migration (
     name         VARCHAR(255) PRIMARY KEY,
     applied_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
-

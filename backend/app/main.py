@@ -81,6 +81,7 @@ from app.sync_service import run_sync
 from app.tfs_auth import TfsAuth, build_tfs_auth
 from app.org_routes import profile_router, router as org_router, users_router
 from app.youjail_routes import router as youjail_router
+from app.planning_routes import router as planning_router
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +112,7 @@ app.include_router(profile_router)
 app.include_router(users_router)
 app.include_router(youjail_router)
 app.include_router(product_status_live_router)
+app.include_router(planning_router)
 
 
 def _live_changed_by(meta: dict) -> str | None:

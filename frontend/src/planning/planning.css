@@ -1,0 +1,375 @@
+/* Дополнения к org.css — только специфика планирования */
+
+.planning-table-scroll {
+  overflow: auto;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 12px);
+  background: var(--surface-1);
+}
+
+.planning-row-selected td {
+  background: var(--brand-accent-soft);
+}
+
+.planning-multi-select {
+  position: relative;
+}
+
+.planning-multi-select-trigger {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 8px 32px 8px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.planning-multi-select-trigger::after {
+  content: '▾';
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.planning-multi-select.is-open .planning-multi-select-trigger,
+.planning-multi-select-trigger:hover {
+  border-color: var(--brand, var(--t2-lime-border));
+  background: var(--bg-hover);
+}
+
+.planning-multi-select-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 14rem;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--menu-bg, var(--surface-1));
+  box-shadow: var(--shadow-md, 0 8px 24px rgba(0, 0, 0, 0.12));
+}
+
+.planning-multi-select-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.planning-multi-select-option:hover,
+.planning-multi-select-option.is-selected {
+  background: var(--bg-hover);
+}
+
+.planning-multi-select-option input {
+  width: auto;
+  margin: 0;
+}
+
+.planning-daily-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.planning-daily-cell {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-1);
+  box-sizing: border-box;
+}
+
+.planning-daily-cell-date {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.planning-daily-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.planning-daily-field-label {
+  line-height: 1;
+}
+
+.planning-daily-field input {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+
+.planning-daily-off {
+  background: var(--surface-2, var(--bg-muted));
+  border-style: dashed;
+  color: var(--text-muted);
+  align-content: start;
+}
+
+.planning-workload-list {
+  display: grid;
+  gap: 14px;
+}
+
+.planning-workload-employee-block {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 12px);
+  background: var(--surface-1);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--text-muted) 12%, transparent);
+  overflow: hidden;
+}
+
+.planning-workload-employee-block + .planning-workload-employee-block {
+  border-top-width: 1px;
+}
+
+.planning-workload-employee-header {
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--surface-2, var(--bg-muted)) 82%, var(--brand, transparent) 18%);
+  border-bottom: 1px solid var(--border);
+}
+
+.planning-workload-expand,
+.planning-workload-employee-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  width: 100%;
+  text-align: left;
+}
+
+.planning-workload-expand {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.planning-workload-expand:hover .planning-workload-employee-name {
+  text-decoration: underline;
+}
+
+.planning-workload-expand-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 1.1rem;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.planning-workload-employee-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.planning-workload-employee-meta,
+.planning-workload-row-title {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.planning-workload-row-title {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.planning-workload-scroll {
+  overflow: auto;
+  max-width: 100%;
+  max-height: min(420px, calc(100vh - 280px));
+  background: var(--surface-1);
+}
+
+.planning-workload-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: max-content;
+  min-width: 100%;
+}
+
+.planning-workload-table th,
+.planning-workload-table td {
+  border: 1px solid var(--border);
+  padding: 4px 6px;
+  min-width: 2rem;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.planning-workload-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--table-head-bg, var(--surface-2));
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.planning-workload-table th.sticky-col,
+.planning-workload-table td.sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  min-width: 14rem;
+  max-width: 18rem;
+  text-align: left;
+  padding: 8px 10px;
+  background: var(--surface-1);
+  box-shadow: 1px 0 0 var(--border);
+}
+
+.planning-workload-table thead th.sticky-col {
+  z-index: 4;
+  background: var(--table-head-bg, var(--surface-2));
+}
+
+.planning-workload-summary-row td.sticky-col {
+  background: color-mix(in srgb, var(--surface-2, var(--bg-muted)) 70%, transparent);
+}
+
+.planning-workload-project-row td.sticky-col {
+  padding-left: 22px;
+  background: var(--surface-1);
+}
+
+.planning-workload-project-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.planning-cell-muted {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.planning-cell-free {
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+}
+
+.planning-cell-busy {
+  background: color-mix(in srgb, var(--error) 16%, transparent);
+}
+
+.planning-cell-partial {
+  background: color-mix(in srgb, var(--warning, #bf8700) 16%, transparent);
+}
+
+.planning-cell-off {
+  background: var(--surface-2, color-mix(in srgb, var(--text-muted) 10%, transparent));
+  color: var(--text-muted);
+}
+
+.planning-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.planning-filter-bar label {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.planning-filter-bar input,
+.planning-filter-bar select {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  min-width: 10rem;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.planning-allocation-form {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.planning-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.planning-status-new {
+  background: color-mix(in srgb, var(--text-muted) 14%, transparent);
+  color: var(--text-muted);
+}
+
+.planning-status-in-progress {
+  background: color-mix(in srgb, var(--brand, #5b8def) 16%, transparent);
+  color: var(--text-primary);
+}
+
+.planning-status-completed {
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--text-primary);
+}
+
+.planning-project-name-links {
+  display: inline;
+}
+
+.planning-directory-form {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
