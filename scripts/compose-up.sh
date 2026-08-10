@@ -45,6 +45,8 @@ purge_service() {
     frontend) purge_containers_by_name "reporting-frontend" ;;
     minio) purge_containers_by_name "reporting-minio" ;;
     minio-init) purge_containers_by_name "reporting-minio-init" ;;
+    voice-api) purge_containers_by_name "reporting-voice-api" ;;
+    voice-web) purge_containers_by_name "reporting-voice-web" ;;
   esac
 }
 

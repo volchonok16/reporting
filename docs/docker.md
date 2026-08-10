@@ -197,9 +197,14 @@ bash scripts/up.sh prod
 Если `ContainerConfig` / `KeyError` при `up` — обход вручную (данные в томе сохраняются):
 
 ```bash
-docker ps -aq --filter "name=reporting-postgres" | xargs -r docker rm -f
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.db-tunnel.yml up -d postgres
+# Все reporting-контейнеры (в т.ч. Voice) — лучше через скрипт:
+bash scripts/compose-up.sh offline
+# или точечно:
+docker rm -f reporting-voice-api reporting-voice-web
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.offline.yml up -d --no-build voice-api voice-web
 ```
+
+Offline-образы Voice дополнительно flatten’ятся в `offline-bundle.sh` (без attestation), иначе docker-compose 1.29 падает на `voice-api`.
 
 **2. В DBeaver**
 

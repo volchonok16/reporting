@@ -20,4 +20,6 @@ purge_reporting_containers_v1() {
   purge_containers_by_name "reporting-frontend"
   purge_containers_by_name "reporting-minio"
   purge_containers_by_name "reporting-minio-init"
+  purge_containers_by_name "reporting-voice-api"
+  purge_containers_by_name "reporting-voice-web"
 }

@@ -39,13 +39,23 @@ flatten_image() {
   local upstream="$1"
   local target="$2"
   echo "    flatten ${upstream} → ${target}"
-  docker buildx build --platform "$PLATFORM" -t "$target" --load -f- . <<EOF
+  # Без attestations — иначе docker-compose 1.29 падает с KeyError ContainerConfig.
+  docker buildx build \
+    --platform "$PLATFORM" \
+    --provenance=false \
+    --sbom=false \
+    -t "$target" \
+    --load \
+    -f- . <<EOF
 FROM ${upstream}
 EOF
 }
 
 # shellcheck source=resolve-compose.sh
 source "$(dirname "$0")/resolve-compose.sh" offline
+
+# Compose/buildx на новых Docker иначе клеит attestation-манифесты.
+export BUILDX_NO_DEFAULT_ATTESTATIONS=1
 
 echo "==> Платформа: ${PLATFORM}"
 echo "==> Pull upstream-образов…"
@@ -60,6 +70,14 @@ flatten_image "$MC_UPSTREAM" "$MC_IMAGE"
 
 echo "==> Сборка backend, frontend, voice (${PLATFORM})…"
 DOCKER_DEFAULT_PLATFORM="$PLATFORM" "${COMPOSE[@]}" build backend frontend voice-api voice-web
+
+echo "==> Flatten app-образов (docker-compose 1.29 / ContainerConfig)…"
+for img in "$BACKEND_IMAGE" "$FRONTEND_IMAGE" "$VOICE_API_IMAGE" "$VOICE_WEB_IMAGE"; do
+  flat_tmp="${img}-flat"
+  flatten_image "$img" "$flat_tmp"
+  docker tag "$flat_tmp" "$img"
+  docker rmi "$flat_tmp" >/dev/null 2>&1 || true
+done
 
 echo "==> Проверка тегов…"
 for img in "$POSTGRES_IMAGE" "$MINIO_IMAGE" "$MC_IMAGE" "$BACKEND_IMAGE" "$FRONTEND_IMAGE" "$VOICE_API_IMAGE" "$VOICE_WEB_IMAGE"; do

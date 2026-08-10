@@ -11,6 +11,16 @@ function isBrowserOnLocalHost(): boolean {
   return /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)
 }
 
+/** Reporting оказался внутри iframe — значит /voice/ отдал SPA, а не voice-web. */
+function isNestedReportingFrame(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    return window.self !== window.top
+  } catch {
+    return true
+  }
+}
+
 function resolveVoiceAppUrl(): string {
   const fromEnv = (import.meta.env.VITE_VOICE_APP_URL as string | undefined)?.trim()
   // В docker-dev оставляем localhost:3100; на сервере localhost из .env игнорируем.
@@ -49,6 +59,13 @@ export default function Voice() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (isNestedReportingFrame()) {
+      setError(
+        'Voice недоступен: /voice/ открыл reporting вместо voice-web. ' +
+          'Проверьте, что контейнер reporting-voice-web запущен и nginx проксирует /voice/.',
+      )
+      return
+    }
     let cancelled = false
     void (async () => {
       try {
