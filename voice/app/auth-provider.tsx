@@ -22,6 +22,7 @@ export type AuthUser = {
 type AuthContextValue = {
   user: AuthUser | null;
   loading: boolean;
+  embedded: boolean;
   authorizedFetch: (path: string, init?: RequestInit) => Promise<Response>;
   completeLogin: (token: string, user: AuthUser) => void;
   refreshUser: () => Promise<void>;
@@ -32,6 +33,7 @@ const API_BASE = (
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 ).replace(/\/$/, "");
 const TOKEN_KEY = "carousel-auth-token";
+const EMBED_KEY = "carousel-reporting-embed";
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function storedToken() {
@@ -40,11 +42,40 @@ function storedToken() {
     : localStorage.getItem(TOKEN_KEY) || "";
 }
 
+function readEmbedFlag() {
+  if (typeof window === "undefined") return false;
+  if (window.sessionStorage.getItem(EMBED_KEY) === "1") return true;
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+}
+
+function takeReportingSsoFromUrl(): string {
+  if (typeof window === "undefined") return "";
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get("reportingSso") || "";
+  if (params.get("embed") === "1") {
+    window.sessionStorage.setItem(EMBED_KEY, "1");
+  }
+  if (token) {
+    params.delete("reportingSso");
+    const next = `${window.location.pathname}${
+      params.toString() ? `?${params.toString()}` : ""
+    }${window.location.hash}`;
+    window.history.replaceState({}, "", next);
+  }
+  return token;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [embedded, setEmbedded] = useState(false);
+  const [ssoError, setSsoError] = useState<string | null>(null);
 
   const authorizedFetch = useCallback(
     async (path: string, init: RequestInit = {}) => {
@@ -61,15 +92,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ...init,
         headers,
       });
-      if (response.status === 401 && !path.endsWith("/auth/login")) {
+      if (
+        response.status === 401 &&
+        !path.endsWith("/auth/login") &&
+        !path.endsWith("/auth/reporting-sso")
+      ) {
         localStorage.removeItem(TOKEN_KEY);
         setUser(null);
-        router.replace("/login");
+        if (!readEmbedFlag()) router.replace("/login");
       }
       return response;
     },
     [router],
   );
+
+  const completeLogin = useCallback((token: string, nextUser: AuthUser) => {
+    localStorage.setItem(TOKEN_KEY, token);
+    setUser(nextUser);
+    setLoading(false);
+    setSsoError(null);
+  }, []);
 
   const refreshUser = useCallback(async () => {
     const token = storedToken();
@@ -94,25 +136,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [authorizedFetch]);
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => void refreshUser(), 0);
-    return () => window.clearTimeout(timeout);
-  }, [refreshUser]);
+    setEmbedded(readEmbedFlag());
+    const ssoToken = takeReportingSsoFromUrl();
+    setEmbedded(readEmbedFlag());
+
+    let cancelled = false;
+    const boot = async () => {
+      if (ssoToken) {
+        setLoading(true);
+        try {
+          const response = await fetch(`${API_BASE}/api/auth/reporting-sso`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token: ssoToken }),
+          });
+          const payload = await response.json().catch(() => null);
+          if (!response.ok) {
+            const message =
+              payload?.detail?.message ||
+              payload?.detail ||
+              "Не удалось войти через reporting";
+            if (!cancelled) {
+              setSsoError(String(message));
+              setUser(null);
+              setLoading(false);
+            }
+            return;
+          }
+          if (!cancelled) {
+            completeLogin(payload.token as string, payload.user as AuthUser);
+            if (window.location.pathname === "/login") router.replace("/");
+          }
+          return;
+        } catch {
+          if (!cancelled) {
+            setSsoError("Сервер Voice недоступен");
+            setLoading(false);
+          }
+          return;
+        }
+      }
+      await refreshUser();
+    };
+
+    void boot();
+    return () => {
+      cancelled = true;
+    };
+  }, [completeLogin, refreshUser, router]);
 
   useEffect(() => {
     if (loading) return;
+    if (embedded) return;
     if (pathname !== "/login" && !user) {
       router.replace("/login");
       return;
     }
     if (pathname === "/master" && user && !user.canAccessMaster)
       router.replace("/account");
-  }, [loading, pathname, router, user]);
-
-  const completeLogin = useCallback((token: string, nextUser: AuthUser) => {
-    localStorage.setItem(TOKEN_KEY, token);
-    setUser(nextUser);
-    setLoading(false);
-  }, []);
+  }, [embedded, loading, pathname, router, user]);
 
   const logout = useCallback(async () => {
     try {
@@ -120,7 +202,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       localStorage.removeItem(TOKEN_KEY);
       setUser(null);
-      router.replace("/login");
+      if (readEmbedFlag()) {
+        setSsoError("Сессия Voice завершена. Выйдите и войдите снова в reporting.");
+      } else {
+        router.replace("/login");
+      }
     }
   }, [authorizedFetch, router]);
 
@@ -128,6 +214,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       loading,
+      embedded,
       authorizedFetch,
       completeLogin,
       refreshUser,
@@ -136,6 +223,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [
       authorizedFetch,
       completeLogin,
+      embedded,
       loading,
       logout,
       refreshUser,
@@ -147,6 +235,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const masterDenied =
     pathname === "/master" && user && !user.canAccessMaster;
 
+  if (ssoError && embedded) {
+    return (
+      <main className="auth-loading">
+        <span className="brand-mark" aria-hidden="true">
+          t2
+        </span>
+        <strong>Voice</strong>
+        <p>{ssoError}</p>
+        <p>Откройте вкладку Voice заново из reporting.</p>
+      </main>
+    );
+  }
+
   return (
     <AuthContext.Provider value={value}>
       {protectedPath && (loading || !user || masterDenied) ? (
@@ -155,7 +256,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             t2
           </span>
           <strong>
-            {masterDenied ? "Проверяем доступ…" : "Проверяем авторизацию…"}
+            {masterDenied
+              ? "Проверяем доступ…"
+              : embedded
+                ? "Входим через reporting…"
+                : "Проверяем авторизацию…"}
           </strong>
         </main>
       ) : (

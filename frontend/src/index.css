@@ -330,6 +330,14 @@ body {
   background: #fff;
 }
 
+.voice-embed-status {
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+}
+
 .app-roadmap {
   flex: 1;
   min-height: 0;

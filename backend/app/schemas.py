@@ -26,6 +26,11 @@ class AuthDefaultsOut(BaseModel):
     projectId: str | None = None
 
 
+class VoiceSsoTokenOut(BaseModel):
+    token: str
+    expiresIn: int = 120
+
+
 class TfsAuthStatusOut(BaseModel):
     authenticated: bool
     baseUrl: str | None = None

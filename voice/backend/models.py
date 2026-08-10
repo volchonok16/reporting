@@ -395,6 +395,12 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=8, max_length=256)
 
 
+class ReportingSsoRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=16, max_length=4096)
+
+
 class UserCreateRequest(LoginRequest):
     role: Literal["superuser", "standard"] = "standard"
     canAccessMaster: bool = False

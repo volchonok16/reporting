@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     app_public_url: str = Field(default="http://localhost:5173", alias="APP_PUBLIC_URL")
     api_public_url: str = Field(default="http://localhost:8000", alias="API_PUBLIC_URL")
     cors_allow_origins: str = Field(default="", alias="CORS_ALLOW_ORIGINS")
+    voice_sso_secret: str = Field(
+        default="reporting-voice-sso-dev-secret",
+        alias="VOICE_SSO_SECRET",
+        description="Общий секрет HMAC для SSO во вкладку Voice (должен совпадать с voice-api).",
+    )
     tfs_sync_pat: str = Field(
         default="",
         alias="TFS_SYNC_PAT",

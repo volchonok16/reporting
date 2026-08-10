@@ -32,6 +32,7 @@ services:
     volumes:
       - ./secrets:/app/secrets:ro
     environment:
+      VOICE_SSO_SECRET: ${VOICE_SSO_SECRET:-reporting-voice-sso-dev-secret}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://alex:alex@postgres:5432/reporting}
       TFS_BASE_URL: ${TFS_BASE_URL:-https://tfs.t2.ru/tfs/Main}
       TFS_VERIFY_TLS: ${TFS_VERIFY_TLS:-true}
@@ -143,8 +144,10 @@ services:
       CAROUSEL_AUTH_BOOTSTRAP_EMAIL: ${CAROUSEL_AUTH_BOOTSTRAP_EMAIL:-admin@t2.local}
       CAROUSEL_AUTH_BOOTSTRAP_PASSWORD: ${CAROUSEL_AUTH_BOOTSTRAP_PASSWORD:-T2-Admin-2026!}
       CAROUSEL_AUTH_SESSION_SECONDS: ${CAROUSEL_AUTH_SESSION_SECONDS:-43200}
+      VOICE_SSO_SECRET: ${VOICE_SSO_SECRET:-reporting-voice-sso-dev-secret}
     volumes:
       - ./voice/data:/data
+      - ./voice/backend:/srv/carousel/backend:ro
     healthcheck:
       test:
         - CMD

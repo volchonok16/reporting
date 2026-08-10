@@ -12,7 +12,7 @@ type AppHeaderProps = {
 export function AppHeader({ onBeforeNavigate }: AppHeaderProps = {}) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, logout, embedded } = useAuth();
 
   const navigateAfterCleanup =
     (href: string) => async (event: MouseEvent<HTMLAnchorElement>) => {
@@ -81,20 +81,27 @@ export function AppHeader({ onBeforeNavigate }: AppHeaderProps = {}) {
             Личный кабинет
           </Link>
         </nav>
-        <button
-          className="account-logout"
-          type="button"
-          onClick={() =>
-            void (async () => {
-              const canLeave = await onBeforeNavigate?.();
-              if (canLeave === false) return;
-              await logout();
-            })()
-          }
-        >
-          <span>{user?.email}</span>
-          Выйти
-        </button>
+        {embedded ? (
+          <div className="account-logout" aria-label="Пользователь reporting">
+            <span>{user?.email}</span>
+            <span>через reporting</span>
+          </div>
+        ) : (
+          <button
+            className="account-logout"
+            type="button"
+            onClick={() =>
+              void (async () => {
+                const canLeave = await onBeforeNavigate?.();
+                if (canLeave === false) return;
+                await logout();
+              })()
+            }
+          >
+            <span>{user?.email}</span>
+            Выйти
+          </button>
+        )}
       </div>
     </header>
   );

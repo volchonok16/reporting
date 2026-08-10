@@ -77,7 +77,9 @@ from app.schemas import (
     TaskLookupOut,
     TfsAuthIn,
     TfsAuthStatusOut,
+    VoiceSsoTokenOut,
 )
+from app.voice_sso import issue_voice_sso_token
 from app.sync_service import run_sync
 from app.tfs_auth import TfsAuth, build_tfs_auth
 from app.org_routes import profile_router, router as org_router, users_router
@@ -177,6 +179,26 @@ def _can_sync_tfs(auth: TfsAuth | None, meta: dict) -> bool:
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/api/voice/sso-token", response_model=VoiceSsoTokenOut)
+def voice_sso_token(
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+) -> VoiceSsoTokenOut:
+    """Короткий SSO-токен для вкладки Voice (без второго логина)."""
+    auth, meta = get_session_with_meta(x_session_id)
+    if auth is None:
+        raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
+    login = (meta.get("app_login") or "").strip()
+    if not login:
+        login = "user@reporting.local"
+    if "@" not in login:
+        login = f"{login}@reporting.local"
+    is_admin = meta.get("org_user_role") == "admin" or meta.get("auth_mode") == "pat"
+    # Voice-only и обычные пользователи получают полный функционал карусели;
+    # суперюзер карусели — только админы reporting.
+    token = issue_voice_sso_token(email=login, is_admin=bool(is_admin), display_name=login)
+    return VoiceSsoTokenOut(token=token, expiresIn=120)
 
 
 @app.get("/api/auth/defaults", response_model=AuthDefaultsOut)

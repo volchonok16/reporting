@@ -162,6 +162,25 @@ class AuthService:
                 ),
             )
 
+    def _issue_session(self, connection: sqlite3.Connection, user_id: str) -> tuple[str, float]:
+        token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        now = time.time()
+        expires_at = now + self.config.auth_session_seconds
+        connection.execute(
+            """
+            INSERT INTO auth_sessions(
+                token_hash, user_id, created_at, last_seen_at, expires_at
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (token_hash, user_id, now, now, expires_at),
+        )
+        connection.execute(
+            "DELETE FROM auth_sessions WHERE expires_at <= ?",
+            (now,),
+        )
+        return token, expires_at
+
     def login(self, email: str, password: str) -> dict[str, Any]:
         normalized_email = _normalize_email(email)
         with self._lock, self._connect() as connection:
@@ -186,30 +205,72 @@ class AuthService:
                     "Неверная почта или пароль",
                     status_code=401,
                 )
-            token = secrets.token_urlsafe(32)
-            token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-            now = time.time()
-            connection.execute(
-                """
-                INSERT INTO auth_sessions(
-                    token_hash, user_id, created_at, last_seen_at, expires_at
-                ) VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    token_hash,
-                    str(row["id"]),
-                    now,
-                    now,
-                    now + self.config.auth_session_seconds,
-                ),
-            )
-            connection.execute(
-                "DELETE FROM auth_sessions WHERE expires_at <= ?",
-                (now,),
-            )
+            token, expires_at = self._issue_session(connection, str(row["id"]))
             return {
                 "token": token,
-                "expiresAt": now + self.config.auth_session_seconds,
+                "expiresAt": expires_at,
+                "user": self._user_from_row(row).payload(),
+            }
+
+    def login_with_reporting_sso(self, *, email: str, is_admin: bool) -> dict[str, Any]:
+        """Вход по SSO reporting: один логин, без пароля карусели."""
+        normalized_email = _normalize_email(email)
+        role = "superuser" if is_admin else "standard"
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM auth_users WHERE email = ?",
+                (normalized_email,),
+            ).fetchone()
+            now = time.time()
+            if row is None:
+                salt = secrets.token_bytes(16)
+                # Пароль случайный — вход только через reporting SSO
+                random_password = secrets.token_urlsafe(24) + "Aa1"
+                user_id = opaque_id()
+                connection.execute(
+                    """
+                    INSERT INTO auth_users(
+                        id, email, password_hash, password_salt, role,
+                        can_access_master, is_active, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?)
+                    """,
+                    (
+                        user_id,
+                        normalized_email,
+                        _password_hash(random_password, salt),
+                        salt.hex(),
+                        role,
+                        now,
+                        now,
+                    ),
+                )
+            else:
+                user_id = str(row["id"])
+                if not bool(row["is_active"]):
+                    raise AppError(
+                        "INVALID_CREDENTIALS",
+                        "Учётная запись отключена",
+                        status_code=401,
+                    )
+                connection.execute(
+                    """
+                    UPDATE auth_users
+                    SET role = ?,
+                        can_access_master = 1,
+                        updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (role, now, user_id),
+                )
+            row = connection.execute(
+                "SELECT * FROM auth_users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+            assert row is not None
+            token, expires_at = self._issue_session(connection, user_id)
+            return {
+                "token": token,
+                "expiresAt": expires_at,
                 "user": self._user_from_row(row).payload(),
             }
 

@@ -37,9 +37,11 @@ from .models import (
     MasterRecordRequest,
     MappingOptionsRequest,
     PasswordChangeRequest,
+    ReportingSsoRequest,
     UserCreateRequest,
     UserUpdateRequest,
 )
+from .reporting_sso import verify_reporting_sso_token
 from .security import validate_session_id
 from .storage import (
     JobRecord,
@@ -216,6 +218,18 @@ def health() -> dict[str, str]:
 @app.post("/api/auth/login")
 def login(body: LoginRequest) -> dict[str, Any]:
     return auth_service.login(body.email, body.password)
+
+
+@app.post("/api/auth/reporting-sso")
+def reporting_sso_login(body: ReportingSsoRequest) -> dict[str, Any]:
+    try:
+        claims = verify_reporting_sso_token(body.token)
+    except ValueError as exc:
+        raise AppError("INVALID_SSO", str(exc), status_code=401) from exc
+    return auth_service.login_with_reporting_sso(
+        email=str(claims["email"]),
+        is_admin=bool(claims["admin"]),
+    )
 
 
 @app.get("/api/auth/me")
