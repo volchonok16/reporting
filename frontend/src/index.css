@@ -307,7 +307,13 @@ body {
   background: var(--surface-2);
 }
 
-.workbook-content:has(.voice-embed) {
+.workbook-voice-title {
+  cursor: default;
+  pointer-events: none;
+}
+
+.workbook-content:has(.voice-embed),
+.workbook-voice-only .workbook-content {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;

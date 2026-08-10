@@ -40,6 +40,20 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      '/voice-api': {
+        target: process.env.VITE_VOICE_API_PROXY_TARGET ?? 'http://127.0.0.1:8100',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/voice-api/, ''),
+      },
+      '/voice': {
+        target: process.env.VITE_VOICE_WEB_PROXY_TARGET ?? 'http://127.0.0.1:3100',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/voice/, '') || '/',
+      },
+      '/_next': {
+        target: process.env.VITE_VOICE_WEB_PROXY_TARGET ?? 'http://127.0.0.1:3100',
+        changeOrigin: true,
+      },
     },
   },
 })

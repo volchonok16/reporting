@@ -115,13 +115,12 @@ services:
       context: ./frontend
       args:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
-        VITE_VOICE_APP_URL: ${VITE_VOICE_APP_URL:-http://localhost:3100}
     container_name: reporting-frontend
     restart: unless-stopped
     depends_on:
       - backend
-    environment:
-      VITE_VOICE_APP_URL: ${VITE_VOICE_APP_URL:-http://localhost:3100}
+      - voice-web
+      - voice-api
 
   voice-api:
     build:
@@ -131,7 +130,7 @@ services:
     restart: unless-stopped
     environment:
       CAROUSEL_DATA_DIR: /data
-      CAROUSEL_CORS_ORIGINS: ${CAROUSEL_CORS_ORIGINS:-http://localhost:3100,http://localhost:5173}
+      CAROUSEL_CORS_ORIGINS: ${CAROUSEL_CORS_ORIGINS:-http://localhost:3100,http://localhost:5173,http://127.0.0.1:5173}
       CAROUSEL_MAX_UPLOAD_BYTES: ${CAROUSEL_MAX_UPLOAD_BYTES:-8589934592}
       CAROUSEL_MAX_MASTER_ROWS: ${CAROUSEL_MAX_MASTER_ROWS:-20000000}
       CAROUSEL_MAX_ARCHIVE_MEMBERS: ${CAROUSEL_MAX_ARCHIVE_MEMBERS:-20000}
@@ -165,7 +164,7 @@ services:
       context: ./voice
       dockerfile: Dockerfile.web
       args:
-        NEXT_PUBLIC_API_URL: ${VOICE_API_PUBLIC_URL:-http://localhost:8100}
+        NEXT_PUBLIC_API_URL: ${VOICE_API_PUBLIC_URL:-}
     container_name: reporting-voice-web
     restart: unless-stopped
     environment:

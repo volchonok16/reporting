@@ -1501,7 +1501,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                       Voice сервисы
                     </label>
                     <p className="org-hint">
-                      С галочкой «Voice сервисы» пользователь видит только вкладку Voice.
+                      С галочкой «Voice сервисы» пользователь видит только Voice; без галочки вкладка Voice скрыта.
                     </p>
                   </section>
                 ) : editingEmployee ? (

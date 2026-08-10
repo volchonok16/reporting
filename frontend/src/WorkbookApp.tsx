@@ -57,6 +57,7 @@ export default function WorkbookApp({
   onLogout,
 }: WorkbookAppProps) {
   const visibleSheets = useMemo(() => {
+    // «Voice сервисы»: только вкладка Voice. Без флага — Voice скрыта.
     if (voiceOnly) {
       return SHEETS.filter((sheet) => sheet.id === 'voice')
     }
@@ -66,10 +67,9 @@ export default function WorkbookApp({
             (sheet) =>
               sheet.id === 'roadmap' ||
               sheet.id === 'youjail-board' ||
-              sheet.id === 'departments' ||
-              sheet.id === 'voice',
+              sheet.id === 'departments',
           )
-        : SHEETS
+        : SHEETS.filter((sheet) => sheet.id !== 'voice')
     if (!canSyncTfs) {
       sheets = sheets.filter((sheet) => sheet.id !== 'roadmap')
     }
@@ -82,10 +82,9 @@ export default function WorkbookApp({
     if (voiceOnly) {
       candidate = 'voice'
     } else if (appRole === 'roadmap') {
-      candidate =
-        saved === 'departments' || saved === 'youjail-board' || saved === 'voice' ? saved : 'roadmap'
+      candidate = saved === 'departments' || saved === 'youjail-board' ? saved : 'roadmap'
     } else {
-      candidate = saved
+      candidate = saved === 'voice' ? 'zni' : saved
     }
     if (candidate === 'roadmap' && !canSyncTfs) {
       candidate = appRole === 'roadmap' ? 'departments' : 'zni'
@@ -120,20 +119,26 @@ export default function WorkbookApp({
   }
 
   return (
-    <div className="workbook">
+    <div className={`workbook${voiceOnly ? ' workbook-voice-only' : ''}`}>
       <header className="workbook-header">
         <nav className="workbook-tabs" aria-label="Вкладки книги">
-          {visibleSheets.map((sheet) => (
-            <button
-              key={sheet.id}
-              type="button"
-              className={`workbook-tab${activeSheet === sheet.id ? ' workbook-tab-active' : ''}`}
-              onClick={() => setActiveSheet(sheet.id)}
-              aria-selected={activeSheet === sheet.id}
-            >
-              {sheet.label}
-            </button>
-          ))}
+          {voiceOnly ? (
+            <span className="workbook-tab workbook-tab-active workbook-voice-title" aria-current="page">
+              Voice
+            </span>
+          ) : (
+            visibleSheets.map((sheet) => (
+              <button
+                key={sheet.id}
+                type="button"
+                className={`workbook-tab${activeSheet === sheet.id ? ' workbook-tab-active' : ''}`}
+                onClick={() => setActiveSheet(sheet.id)}
+                aria-selected={activeSheet === sheet.id}
+              >
+                {sheet.label}
+              </button>
+            ))
+          )}
           <div className="workbook-header-tools">
             <ThemeToggle compact />
             <div className="workbook-header-account">

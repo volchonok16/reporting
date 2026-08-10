@@ -2,41 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { apiFetch } from './api'
 import { resolveTheme, THEME_CHANGE_EVENT, type Theme } from './theme'
 
-function isLocalHostUrl(value: string): boolean {
-  return /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(value)
-}
-
-function isBrowserOnLocalHost(): boolean {
-  if (typeof window === 'undefined') return false
-  return /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)
-}
-
-/** Reporting оказался внутри iframe — значит /voice/ отдал SPA, а не voice-web. */
-function isNestedReportingFrame(): boolean {
-  if (typeof window === 'undefined') return false
-  try {
-    return window.self !== window.top
-  } catch {
-    return true
-  }
-}
-
+/** Voice всегда same-origin: /voice/ → nginx frontend → voice-web. */
 function resolveVoiceAppUrl(): string {
-  const fromEnv = (import.meta.env.VITE_VOICE_APP_URL as string | undefined)?.trim()
-  // В docker-dev оставляем localhost:3100; на сервере localhost из .env игнорируем.
-  if (fromEnv) {
-    if (!isLocalHostUrl(fromEnv) || isBrowserOnLocalHost()) {
-      return fromEnv.replace(/\/$/, '') + '/'
-    }
-  }
-  if (typeof window !== 'undefined') {
-    if (isBrowserOnLocalHost()) {
-      return `${window.location.protocol}//${window.location.hostname}:3100/`
-    }
-    // Same-origin через nginx: /voice/ → voice-web :3100
-    return `${window.location.origin}/voice/`
-  }
-  return 'http://localhost:3100/'
+  if (typeof window === 'undefined') return '/voice/'
+  return `${window.location.origin}/voice/`
 }
 
 function currentTheme(): Theme {
@@ -53,19 +22,23 @@ function buildVoiceSrc(token: string, theme: Theme): string {
   return url.toString()
 }
 
+function iframeLooksLikeReporting(frame: HTMLIFrameElement): boolean {
+  try {
+    const doc = frame.contentDocument
+    if (!doc) return false
+    return Boolean(doc.querySelector('.workbook-header, .workbook-tabs'))
+  } catch {
+    // cross-origin = скорее всего настоящий Voice на другом origin
+    return false
+  }
+}
+
 export default function Voice() {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [iframeSrc, setIframeSrc] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (isNestedReportingFrame()) {
-      setError(
-        'Voice недоступен: /voice/ открыл reporting вместо voice-web. ' +
-          'Проверьте, что контейнер reporting-voice-web запущен и nginx проксирует /voice/.',
-      )
-      return
-    }
     let cancelled = false
     void (async () => {
       try {
@@ -101,10 +74,22 @@ export default function Voice() {
     return () => window.removeEventListener(THEME_CHANGE_EVENT, onThemeChange)
   }, [])
 
+  const handleIframeLoad = () => {
+    const frame = iframeRef.current
+    if (!frame) return
+    if (iframeLooksLikeReporting(frame)) {
+      setIframeSrc(null)
+      setError(
+        'Voice не поднялся: /voice/ отдал reporting. Перезапустите voice-web ' +
+          'или проверьте nginx frontend (прокси на voice-web).',
+      )
+    }
+  }
+
   if (error) {
     return (
       <div className="voice-embed voice-embed-status">
-        <p>Не удалось войти в Voice через reporting.</p>
+        <p>Не удалось открыть Voice.</p>
         <p className="org-hint">{error}</p>
       </div>
     )
@@ -126,6 +111,7 @@ export default function Voice() {
         title="Voice"
         src={iframeSrc}
         allow="clipboard-read; clipboard-write"
+        onLoad={handleIframeLoad}
       />
     </div>
   )
