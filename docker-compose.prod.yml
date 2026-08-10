@@ -29,3 +29,19 @@ services:
     ports:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
+
+  voice-api:
+    ports:
+      - "127.0.0.1:8100:8000"
+    environment:
+      VOICE_SSO_SECRET: ${VOICE_SSO_SECRET:-reporting-voice-sso-dev-secret}
+      CAROUSEL_CORS_ORIGINS: ${CAROUSEL_CORS_ORIGINS:-https://taskatestovaya.ru,https://www.taskatestovaya.ru,https://pallink.fun,https://www.pallink.fun,http://localhost:5173,http://localhost:3100}
+
+  voice-web:
+    ports:
+      - "127.0.0.1:3100:3000"
+    build:
+      context: ./voice
+      dockerfile: Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: ${VOICE_API_PUBLIC_URL:-http://127.0.0.1:8100}

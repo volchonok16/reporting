@@ -27,3 +27,17 @@ services:
 
   minio-init:
     image: reporting/minio-mc:2025-04-08
+
+  voice-api:
+    image: reporting/voice-api:offline
+    build:
+      context: ./voice
+      dockerfile: Dockerfile.api
+
+  voice-web:
+    image: reporting/voice-web:offline
+    build:
+      context: ./voice
+      dockerfile: Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: ${VOICE_API_PUBLIC_URL:-http://127.0.0.1:8100}

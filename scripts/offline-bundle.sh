@@ -25,6 +25,8 @@ MINIO_IMAGE="reporting/minio:2025-04-22"
 MC_IMAGE="reporting/minio-mc:2025-04-08"
 BACKEND_IMAGE="reporting/backend:offline"
 FRONTEND_IMAGE="reporting/frontend:offline"
+VOICE_API_IMAGE="reporting/voice-api:offline"
+VOICE_WEB_IMAGE="reporting/voice-web:offline"
 
 mkdir -p dist
 
@@ -56,11 +58,11 @@ flatten_image "$POSTGRES_UPSTREAM" "$POSTGRES_IMAGE"
 flatten_image "$MINIO_UPSTREAM" "$MINIO_IMAGE"
 flatten_image "$MC_UPSTREAM" "$MC_IMAGE"
 
-echo "==> Сборка backend и frontend (${PLATFORM})…"
-DOCKER_DEFAULT_PLATFORM="$PLATFORM" "${COMPOSE[@]}" build backend frontend
+echo "==> Сборка backend, frontend, voice (${PLATFORM})…"
+DOCKER_DEFAULT_PLATFORM="$PLATFORM" "${COMPOSE[@]}" build backend frontend voice-api voice-web
 
 echo "==> Проверка тегов…"
-for img in "$POSTGRES_IMAGE" "$MINIO_IMAGE" "$MC_IMAGE" "$BACKEND_IMAGE" "$FRONTEND_IMAGE"; do
+for img in "$POSTGRES_IMAGE" "$MINIO_IMAGE" "$MC_IMAGE" "$BACKEND_IMAGE" "$FRONTEND_IMAGE" "$VOICE_API_IMAGE" "$VOICE_WEB_IMAGE"; do
   if ! docker image inspect "$img" >/dev/null 2>&1; then
     echo "Ошибка: образ не найден: $img" >&2
     exit 1
@@ -74,6 +76,8 @@ docker save \
   "$MC_IMAGE" \
   "$BACKEND_IMAGE" \
   "$FRONTEND_IMAGE" \
+  "$VOICE_API_IMAGE" \
+  "$VOICE_WEB_IMAGE" \
   -o "$OUTPUT"
 
 MANIFEST="${OUTPUT%.tar}.manifest.txt"
@@ -86,6 +90,8 @@ MANIFEST="${OUTPUT%.tar}.manifest.txt"
   echo "  ${MC_IMAGE}"
   echo "  ${BACKEND_IMAGE}"
   echo "  ${FRONTEND_IMAGE}"
+  echo "  ${VOICE_API_IMAGE}"
+  echo "  ${VOICE_WEB_IMAGE}"
   if command -v shasum >/dev/null 2>&1; then
     echo "sha256=$(shasum -a 256 "$OUTPUT" | awk '{print $1}')"
   elif command -v sha256sum >/dev/null 2>&1; then

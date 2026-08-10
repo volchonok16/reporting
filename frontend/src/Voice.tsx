@@ -1,8 +1,14 @@
 import { useEffect, useState } from 'react'
 import { apiFetch } from './api'
 
-const VOICE_APP_URL =
-  (import.meta.env.VITE_VOICE_APP_URL as string | undefined)?.trim() || 'http://localhost:3100'
+const VOICE_APP_URL = (() => {
+  const fromEnv = (import.meta.env.VITE_VOICE_APP_URL as string | undefined)?.trim()
+  if (fromEnv) return fromEnv
+  if (typeof window !== 'undefined') {
+    return `${window.location.protocol}//${window.location.hostname}:3100`
+  }
+  return 'http://localhost:3100'
+})()
 
 export default function Voice() {
   const [iframeSrc, setIframeSrc] = useState<string | null>(null)
