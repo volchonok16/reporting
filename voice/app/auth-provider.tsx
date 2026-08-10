@@ -211,6 +211,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [completeLogin, refreshUser, router]);
 
   useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data;
+      if (!data || typeof data !== "object") return;
+      if (data.type !== "reporting-theme") return;
+      if (data.theme !== "dark" && data.theme !== "light") return;
+      window.sessionStorage.setItem(THEME_KEY, data.theme);
+      applyTheme(data.theme);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
+  useEffect(() => {
     if (loading) return;
     if (embedded) return;
     if (pathname !== "/login" && !user) {
