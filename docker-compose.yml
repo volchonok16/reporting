@@ -146,8 +146,9 @@ services:
       CAROUSEL_AUTH_SESSION_SECONDS: ${CAROUSEL_AUTH_SESSION_SECONDS:-43200}
       VOICE_SSO_SECRET: ${VOICE_SSO_SECRET:-reporting-voice-sso-dev-secret}
     volumes:
+      # Только данные. Код — из образа (bind ./voice/backend ломает offline/prod,
+      # если на хосте пустой/устаревший каталог). Live-reload — в docker-compose.dev.yml.
       - ./voice/data:/data
-      - ./voice/backend:/srv/carousel/backend:ro
     healthcheck:
       test:
         - CMD
@@ -155,9 +156,9 @@ services:
         - -c
         - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2).read()
       interval: 15s
-      timeout: 3s
-      start_period: 10s
-      retries: 5
+      timeout: 5s
+      start_period: 30s
+      retries: 8
 
   voice-web:
     build:
@@ -172,17 +173,17 @@ services:
       PORT: 3000
     depends_on:
       voice-api:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test:
         - CMD
         - node
         - -e
-        - fetch('http://127.0.0.1:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+        - fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))
       interval: 15s
       timeout: 5s
-      start_period: 30s
-      retries: 5
+      start_period: 60s
+      retries: 8
 
 volumes:
   reporting_pgdata:

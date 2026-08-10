@@ -79,6 +79,11 @@ source "$(dirname "$0")/resolve-compose.sh" "$MODE"
 echo "==> docker load ← ${TAR}"
 docker load -i "$TAR"
 
+# Voice SQLite (UID 10001 в образе). Пустой каталог создаёт compose, но права
+# от root часто ломают healthcheck voice-api → затем падает voice-web.
+mkdir -p voice/data
+chmod 777 voice/data 2>/dev/null || true
+
 # shellcheck source=compose-v1-purge.sh
 source "$(dirname "$0")/compose-v1-purge.sh"
 if [[ "$COMPOSE_CMD" == "docker-compose" ]]; then

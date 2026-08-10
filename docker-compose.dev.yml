@@ -28,6 +28,9 @@ services:
   voice-api:
     ports:
       - "${VOICE_API_PORT:-8100}:8000"
+    volumes:
+      - ./voice/data:/data
+      - ./voice/backend:/srv/carousel/backend:ro
 
   voice-web:
     ports:
