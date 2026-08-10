@@ -327,7 +327,7 @@ body {
   width: 100%;
   min-height: 0;
   border: 0;
-  background: #fff;
+  background: var(--surface-2, #fff);
 }
 
 .voice-embed-status {

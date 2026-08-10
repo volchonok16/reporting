@@ -168,6 +168,7 @@ class EmployeeOut(BaseModel):
     dailyWorkHours: Decimal
     isActive: bool
     isOrganizationHead: bool
+    hideFromPyramid: bool = False
     user: OrgUserBriefOut | None = None
     expertises: list[EmployeeExpertiseOut] = Field(default_factory=list)
     departments: list[EmployeeDepartmentBriefOut] = Field(default_factory=list)
@@ -208,6 +209,7 @@ class EmployeeIn(BaseModel):
     dailyWorkHours: Decimal = Decimal("8")
     isActive: bool = True
     isOrganizationHead: bool = False
+    hideFromPyramid: bool = False
     createUserAccount: bool = False
     userPassword: str | None = None
     userIsAdmin: bool = False
@@ -223,6 +225,7 @@ class EmployeeUpdateIn(BaseModel):
     dailyWorkHours: Decimal | None = None
     isActive: bool | None = None
     isOrganizationHead: bool | None = None
+    hideFromPyramid: bool | None = None
     userIsAdmin: bool | None = None
     userVoiceOnly: bool | None = None
     userPassword: str | None = None

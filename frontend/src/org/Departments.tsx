@@ -95,6 +95,7 @@ const EMPTY_EMPLOYEE = {
   dailyWorkHours: '8',
   isActive: true,
   isOrganizationHead: false,
+  hideFromPyramid: false,
   createUserAccount: true,
   userPassword: '12345678',
   userIsAdmin: false,
@@ -514,6 +515,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       dailyWorkHours: String(emp.dailyWorkHours),
       isActive: emp.isActive,
       isOrganizationHead: emp.isOrganizationHead,
+      hideFromPyramid: Boolean(emp.hideFromPyramid),
       createUserAccount: false,
       userPassword: '',
       userIsAdmin: emp.user?.role === 'admin',
@@ -569,6 +571,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       dailyWorkHours: Number(employeeForm.dailyWorkHours),
       isActive: employeeForm.isActive,
       isOrganizationHead: employeeForm.isOrganizationHead,
+      hideFromPyramid: employeeForm.hideFromPyramid,
       createUserAccount: true,
       userPassword: '12345678',
       userIsAdmin: employeeForm.userIsAdmin,
@@ -587,6 +590,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
           dailyWorkHours: body.dailyWorkHours,
           isActive: body.isActive,
           isOrganizationHead: body.isOrganizationHead,
+          hideFromPyramid: body.hideFromPyramid,
           userIsAdmin: body.userIsAdmin,
           userVoiceOnly: body.userVoiceOnly,
           userPassword: employeeForm.userPassword.trim() || undefined,
@@ -1456,6 +1460,16 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                         }
                       />
                       Директор организации
+                    </label>
+                    <label className="org-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={employeeForm.hideFromPyramid}
+                        onChange={(e) =>
+                          setEmployeeForm({ ...employeeForm, hideFromPyramid: e.target.checked })
+                        }
+                      />
+                      Не отображать в пирамиде
                     </label>
                   </div>
                 </section>

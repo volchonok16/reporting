@@ -390,6 +390,7 @@ CREATE TABLE employee (
     daily_work_hours        NUMERIC(4, 2) NOT NULL DEFAULT 8,
     is_active               BOOLEAN      NOT NULL DEFAULT TRUE,
     is_organization_head    BOOLEAN      NOT NULL DEFAULT FALSE,
+    hide_from_pyramid       BOOLEAN      NOT NULL DEFAULT FALSE,
     created_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );

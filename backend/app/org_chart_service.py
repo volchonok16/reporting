@@ -60,6 +60,12 @@ def _resolve_manager_id(
     return None
 
 
+def _employee_visible_in_pyramid(employee: Employee | None) -> bool:
+    if employee is None:
+        return False
+    return bool(employee.is_active) and not bool(employee.hide_from_pyramid)
+
+
 def _resolve_head_member(
     department: Department,
     members: list[DepartmentMember],
@@ -70,7 +76,7 @@ def _resolve_head_member(
     for member in members:
         if member.employee_id == head_id:
             return member
-    if department.head is not None:
+    if department.head is not None and _employee_visible_in_pyramid(department.head):
         synthetic = DepartmentMember(
             id=0,
             department_id=department.id,

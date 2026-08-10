@@ -85,6 +85,7 @@ class Employee(Base):
     daily_work_hours: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=Decimal("8"), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_organization_head: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    hide_from_pyramid: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 

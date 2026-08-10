@@ -29,17 +29,59 @@ type AuthContextValue = {
   logout: () => Promise<void>;
 };
 
-const API_BASE = (
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
-).replace(/\/$/, "");
+const API_BASE = (() => {
+  const fromEnv = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
+  if (fromEnv && !/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(fromEnv)) {
+    return fromEnv;
+  }
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/voice-api`;
+  }
+  return "http://127.0.0.1:8100";
+})();
 const TOKEN_KEY = "carousel-auth-token";
 const EMBED_KEY = "carousel-reporting-embed";
+const THEME_KEY = "carousel-reporting-theme";
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function storedToken() {
   return typeof localStorage === "undefined"
     ? ""
     : localStorage.getItem(TOKEN_KEY) || "";
+}
+
+function applyTheme(theme: "light" | "dark") {
+  if (typeof document === "undefined") return;
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = theme;
+}
+
+function takeReportingBootstrapFromUrl(): { sso: string; theme: "light" | "dark" | null } {
+  if (typeof window === "undefined") return { sso: "", theme: null };
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get("reportingSso") || "";
+  const themeParam = params.get("theme");
+  const theme =
+    themeParam === "dark" || themeParam === "light" ? themeParam : null;
+  if (params.get("embed") === "1") {
+    window.sessionStorage.setItem(EMBED_KEY, "1");
+  }
+  if (theme) {
+    window.sessionStorage.setItem(THEME_KEY, theme);
+    applyTheme(theme);
+  } else {
+    const stored = window.sessionStorage.getItem(THEME_KEY);
+    if (stored === "dark" || stored === "light") applyTheme(stored);
+  }
+  if (token || theme || params.get("embed") === "1") {
+    params.delete("reportingSso");
+    params.delete("theme");
+    const next = `${window.location.pathname}${
+      params.toString() ? `?${params.toString()}` : ""
+    }${window.location.hash}`;
+    window.history.replaceState({}, "", next);
+  }
+  return { sso: token, theme };
 }
 
 function readEmbedFlag() {
@@ -50,23 +92,6 @@ function readEmbedFlag() {
   } catch {
     return true;
   }
-}
-
-function takeReportingSsoFromUrl(): string {
-  if (typeof window === "undefined") return "";
-  const params = new URLSearchParams(window.location.search);
-  const token = params.get("reportingSso") || "";
-  if (params.get("embed") === "1") {
-    window.sessionStorage.setItem(EMBED_KEY, "1");
-  }
-  if (token) {
-    params.delete("reportingSso");
-    const next = `${window.location.pathname}${
-      params.toString() ? `?${params.toString()}` : ""
-    }${window.location.hash}`;
-    window.history.replaceState({}, "", next);
-  }
-  return token;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -137,7 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setEmbedded(readEmbedFlag());
-    const ssoToken = takeReportingSsoFromUrl();
+    const { sso: ssoToken } = takeReportingBootstrapFromUrl();
     setEmbedded(readEmbedFlag());
 
     let cancelled = false;

@@ -697,7 +697,7 @@
 
 Связь: `employee.user_id` → `org_user.id`. Вход по email/паролю через `POST /api/auth/login` (режим app_user).
 
-Вкладка **Voice** (`SheetId = voice`) доступна всем авторизованным пользователям и встраивает приложение карусели (`voice/`, Docker-сервисы `voice-api` / `voice-web`, URL `VITE_VOICE_APP_URL`, по умолчанию `http://localhost:3100`). Пользователи с `voice_only = true` видят только эту вкладку.
+Вкладка **Voice** (`SheetId = voice`) доступна всем авторизованным пользователям и встраивает приложение карусели (`voice/`, Docker-сервисы `voice-api` / `voice-web`). URL: `VITE_VOICE_APP_URL` или same-origin `/voice/` (nginx → `:3100`); API Voice — `/voice-api/` (→ `:8100`). Тема iframe синхронизируется с reporting (`?theme=light|dark`). Пользователи с `voice_only = true` видят только эту вкладку.
 
 Авторизация единая: reporting выдаёт короткий SSO-токен (`POST /api/voice/sso-token`, секрет `VOICE_SSO_SECRET`), Voice обменивает его на свою сессию (`POST /api/auth/reporting-sso`) — отдельный логин карусели не нужен.
 
@@ -719,6 +719,7 @@
 | `daily_work_hours` | numeric(4,2) | Рабочих часов в день (по умолчанию 8) |
 | `is_active` | boolean | Активен |
 | `is_organization_head` | boolean | Директор организации (вершина пирамиды) |
+| `hide_from_pyramid` | boolean | Если true — не показывать в пирамиде (Staffing → «Не отображать в пирамиде») |
 
 ---
 

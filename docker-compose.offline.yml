@@ -40,4 +40,4 @@ services:
       context: ./voice
       dockerfile: Dockerfile.web
       args:
-        NEXT_PUBLIC_API_URL: ${VOICE_API_PUBLIC_URL:-http://127.0.0.1:8100}
+        NEXT_PUBLIC_API_URL: ${VOICE_API_PUBLIC_URL:-}

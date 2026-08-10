@@ -145,6 +145,7 @@ def _employee_out(db: Session, emp: Employee) -> EmployeeOut:
         dailyWorkHours=emp.daily_work_hours,
         isActive=emp.is_active,
         isOrganizationHead=emp.is_organization_head,
+        hideFromPyramid=bool(emp.hide_from_pyramid),
         user=user_out,
         expertises=expertises,
         departments=departments,
@@ -470,6 +471,7 @@ def create_employee(db: Session, data: EmployeeIn) -> EmployeeOut:
         daily_work_hours=data.dailyWorkHours,
         is_active=data.isActive,
         is_organization_head=data.isOrganizationHead,
+        hide_from_pyramid=bool(data.hideFromPyramid),
     )
     _sync_position_name(db, emp)
     db.add(emp)
@@ -517,6 +519,8 @@ def update_employee(db: Session, employee_ref: str, data: EmployeeUpdateIn) -> E
         emp.is_organization_head = data.isOrganizationHead
         if data.isOrganizationHead:
             _ensure_single_org_head(db, employee_id)
+    if data.hideFromPyramid is not None:
+        emp.hide_from_pyramid = bool(data.hideFromPyramid)
     if data.userIsAdmin is not None and emp.user:
         emp.user.role = ORG_USER_ROLE_ADMIN if data.userIsAdmin else ORG_USER_ROLE_USER
     if data.userVoiceOnly is not None and emp.user:
@@ -746,7 +750,7 @@ def delete_department_member(db: Session, department_id: int, member_id: int) ->
 
 
 def _load_members_for_department(db: Session, department_id: int) -> list[DepartmentMember]:
-    return list(
+    members = list(
         db.scalars(
             select(DepartmentMember)
             .options(
@@ -757,6 +761,13 @@ def _load_members_for_department(db: Session, department_id: int) -> list[Depart
             .where(DepartmentMember.department_id == department_id)
         ).unique().all()
     )
+    return [
+        member
+        for member in members
+        if member.employee is not None
+        and member.employee.is_active
+        and not member.employee.hide_from_pyramid
+    ]
 
 
 def get_org_chart(db: Session, department_id: int | None = None) -> OrgChartOut:
@@ -773,7 +784,11 @@ def get_org_chart(db: Session, department_id: int | None = None) -> OrgChartOut:
     org_head = db.scalar(
         select(Employee)
         .options(joinedload(Employee.job_position))
-        .where(Employee.is_organization_head.is_(True), Employee.is_active.is_(True))
+        .where(
+            Employee.is_organization_head.is_(True),
+            Employee.is_active.is_(True),
+            Employee.hide_from_pyramid.is_(False),
+        )
     )
     departments = list(
         db.scalars(
@@ -797,6 +812,7 @@ def get_org_chart(db: Session, department_id: int | None = None) -> OrgChartOut:
             select(Employee)
             .options(joinedload(Employee.job_position))
             .where(Employee.is_active.is_(True))
+            .where(Employee.hide_from_pyramid.is_(False))
             .where(Employee.is_organization_head.is_(False))
             .where(
                 Employee.id.not_in(assigned_employee_ids) if assigned_employee_ids else Employee.id.isnot(None)
@@ -812,6 +828,7 @@ def get_org_chart(db: Session, department_id: int | None = None) -> OrgChartOut:
             select(Employee)
             .options(joinedload(Employee.job_position))
             .where(Employee.is_active.is_(True))
+            .where(Employee.hide_from_pyramid.is_(False))
         ).unique().all()
     }
     chart = build_company_chart(

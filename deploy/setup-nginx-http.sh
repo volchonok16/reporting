@@ -56,6 +56,7 @@ fi
 mkdir -p /var/www/certbot
 mkdir -p /etc/nginx/snippets
 cp -f "$ROOT/deploy/nginx/snippets/proxy-common.conf" /etc/nginx/snippets/
+cp -f "$ROOT/deploy/nginx/snippets/voice-proxy.conf" /etc/nginx/snippets/
 cp -f "$CONF_SRC" /etc/nginx/sites-available/reporting.conf
 ln -sf /etc/nginx/sites-available/reporting.conf /etc/nginx/sites-enabled/reporting.conf
 rm -f /etc/nginx/sites-enabled/pallink-reporting.conf /etc/nginx/sites-enabled/default
@@ -68,4 +69,5 @@ echo ""
 echo "HTTP nginx готов (без SSL, site=$SITE)."
 echo "  UI:  $UI_HINT"
 echo "  API: $API_HINT"
+echo "  Voice: ${UI_HINT%/}/voice/"
 echo "  Проверка: curl -s http://127.0.0.1/api/health"

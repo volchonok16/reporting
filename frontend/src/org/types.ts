@@ -115,6 +115,7 @@ export type Employee = {
   dailyWorkHours: number
   isActive: boolean
   isOrganizationHead: boolean
+  hideFromPyramid?: boolean
   user?: OrgUserBrief | null
   expertises: EmployeeExpertise[]
   departments: EmployeeDepartmentBrief[]
