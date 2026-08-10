@@ -266,17 +266,17 @@ function reconcileLayout(saved: OrgChartLayoutData | null, items: ChartItem[]): 
   const itemById = new Map(items.map((item) => [item.id, item]))
   const generatedById = new Map(generated.nodes.map((node) => [node.id, node]))
   const savedById = new Map(saved.nodes.map((node) => [node.id, node]))
-  const nodes = generated.nodes.map((generatedNode) => {
+  let nodes = generated.nodes.map((generatedNode) => {
     const item = itemById.get(generatedNode.id)
     const savedNode = savedById.get(generatedNode.id)
     if (!item) return generatedNode
-    // Высота/ширина отдела должна вмещать всех текущих сотрудников,
-    // даже если сохранённая схема была нарисована до их появления.
+    // Сохранённые размеры пользователя важнее дефолтных 640×….
+    // Минимальные габариты отдела — только пол, без принудительного DEFAULT width.
     const width = item.kind === 'department'
-      ? Math.max(MIN_DEPARTMENT_WIDTH, DEPARTMENT_NODE_WIDTH, savedNode?.width ?? 0)
+      ? Math.max(MIN_DEPARTMENT_WIDTH, savedNode?.width ?? DEPARTMENT_NODE_WIDTH)
       : EMPLOYEE_NODE_WIDTH
     const height = item.kind === 'department'
-      ? Math.max(MIN_DEPARTMENT_HEIGHT, departmentHeight(item.block), savedNode?.height ?? 0)
+      ? Math.max(MIN_DEPARTMENT_HEIGHT, savedNode?.height ?? departmentHeight(item.block))
       : EMPLOYEE_NODE_HEIGHT
     if (!savedNode) {
       if (generatedNode.parentNodeId) {
@@ -299,14 +299,39 @@ function reconcileLayout(saved: OrgChartLayoutData | null, items: ChartItem[]): 
       kind: item.kind,
       refId: item.refId,
       parentNodeId: item.parentNodeId ?? null,
+      x: savedNode.x,
+      y: savedNode.y,
       width,
       height,
     }
   })
+
+  // Если новые сотрудники не влезают в сохранённую рамку отдела — расширяем рамку, не трогая остальных.
+  nodes = nodes.map((node) => {
+    if (node.kind !== 'department') return node
+    const children = nodes.filter((child) => child.parentNodeId === node.id)
+    if (children.length === 0) return node
+    const neededWidth = Math.max(
+      node.width,
+      ...children.map((child) => child.x + child.width + DEPARTMENT_PADDING - node.x),
+    )
+    const neededHeight = Math.max(
+      node.height,
+      ...children.map((child) => child.y + child.height + DEPARTMENT_PADDING - node.y),
+    )
+    if (neededWidth === node.width && neededHeight === node.height) return node
+    return {
+      ...node,
+      width: Math.max(MIN_DEPARTMENT_WIDTH, neededWidth),
+      height: Math.max(MIN_DEPARTMENT_HEIGHT, neededHeight),
+    }
+  })
+
   const knownNodeIds = new Set(nodes.map((node) => node.id))
-  const edges = saved.edges.filter(
-    (edge) => edge.manual === true && knownNodeIds.has(edge.fromNodeId) && knownNodeIds.has(edge.toNodeId),
-  )
+  // Старые схемы могли быть без manual=true — не выкидываем рёбра только из‑за флага.
+  const edges = saved.edges
+    .filter((edge) => knownNodeIds.has(edge.fromNodeId) && knownNodeIds.has(edge.toNodeId))
+    .map((edge) => ({ ...edge, manual: true }))
   return { nodes, edges }
 }
 
@@ -374,15 +399,19 @@ function DepartmentCard({
   )
 }
 
-function anchorPoint(node: OrgChartLayoutNode, anchor: EdgeAnchor = 'bottom'): Point {
-  return {
-    x: node.x + node.width / 2,
-    y: anchor === 'top' ? node.y : node.y + node.height,
-  }
+function roundPoint(point: Point): Point {
+  return { x: Math.round(point.x), y: Math.round(point.y) }
 }
 
-function edgePath(edge: OrgChartLayoutEdge, from: OrgChartLayoutNode, to: OrgChartLayoutNode): string {
-  const points = edgePathPoints(edge, from, to)
+function anchorPoint(node: OrgChartLayoutNode, anchor: EdgeAnchor = 'bottom'): Point {
+  return roundPoint({
+    x: node.x + node.width / 2,
+    y: anchor === 'top' ? node.y : node.y + node.height,
+  })
+}
+
+function edgePath(edge: OrgChartLayoutEdge, from: OrgChartLayoutNode, to: OrgChartLayoutNode, railY?: number): string {
+  const points = edgePathPoints(edge, from, to, railY)
   if (points.length <= 1) return ''
   return points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
 }
@@ -391,14 +420,51 @@ function edgePathPoints(
   edge: OrgChartLayoutEdge,
   from: OrgChartLayoutNode,
   to: OrgChartLayoutNode,
+  railY?: number,
 ): Point[] {
   const start = anchorPoint(from, edge.fromAnchor ?? 'bottom')
   const end = anchorPoint(to, edge.toAnchor ?? 'top')
   if (edge.points?.length) {
-    return [start, ...edge.points, end]
+    return [start, ...edge.points.map(roundPoint), end]
   }
-  const middleY = start.y + (end.y - start.y) / 2
+  const middleY = Math.round(railY ?? start.y + (end.y - start.y) / 2)
   return [start, { x: start.x, y: middleY }, { x: end.x, y: middleY }, end]
+}
+
+/** Общая горизонтальная «полка» для рёбер от одного родителя — без ступенек. */
+function sharedRailYByEdgeId(
+  edges: OrgChartLayoutEdge[],
+  nodeById: Map<string, OrgChartLayoutNode>,
+): Map<string, number> {
+  const groups = new Map<string, { startY: number; endYs: number[]; edgeIds: string[] }>()
+  for (const edge of edges) {
+    if (edge.points?.length) continue
+    const from = nodeById.get(edge.fromNodeId)
+    const to = nodeById.get(edge.toNodeId)
+    if (!from || !to) continue
+    const fromAnchor = edge.fromAnchor ?? 'bottom'
+    const toAnchor = edge.toAnchor ?? 'top'
+    const groupKey = `${edge.fromNodeId}:${fromAnchor}->${toAnchor}`
+    const start = anchorPoint(from, fromAnchor)
+    const end = anchorPoint(to, toAnchor)
+    const group = groups.get(groupKey) ?? { startY: start.y, endYs: [], edgeIds: [] }
+    group.startY = start.y
+    group.endYs.push(end.y)
+    group.edgeIds.push(edge.id)
+    groups.set(groupKey, group)
+  }
+  const railByEdge = new Map<string, number>()
+  for (const group of groups.values()) {
+    const childY =
+      group.startY <= Math.min(...group.endYs)
+        ? Math.min(...group.endYs)
+        : Math.max(...group.endYs)
+    const railY = Math.round(group.startY + (childY - group.startY) / 2)
+    for (const edgeId of group.edgeIds) {
+      railByEdge.set(edgeId, railY)
+    }
+  }
+  return railByEdge
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -449,6 +515,10 @@ export default function ManualOrgChartView({
   }, [items])
 
   const nodeById = useMemo(() => new Map(layout.nodes.map((node) => [node.id, node])), [layout.nodes])
+  const edgeRailY = useMemo(
+    () => sharedRailYByEdgeId(layout.edges, nodeById),
+    [layout.edges, nodeById],
+  )
   const canvasWidth = Math.max(1200, ...layout.nodes.map((node) => node.x + node.width + 80), 0)
   const canvasHeight = Math.max(600, ...layout.nodes.map((node) => node.y + node.height + 80), 0)
 
@@ -681,8 +751,28 @@ export default function ManualOrgChartView({
   const saveLayout = async () => {
     const toastId = notifyLoading('Сохраняем…', 'org-chart-save')
     try {
-      const saved = await putJson<OrgChartLayout>('/api/org/org-chart-layout?scope=company', { layout })
-      setLayout(reconcileLayout(saved.layout, items))
+      const payload: OrgChartLayoutData = {
+        nodes: layout.nodes.map((node) => ({
+          ...node,
+          x: Math.round(node.x),
+          y: Math.round(node.y),
+          width: Math.round(node.width),
+          height: Math.round(node.height),
+        })),
+        edges: layout.edges.map((edge) => ({
+          ...edge,
+          manual: true,
+          points: (edge.points ?? []).map((point) => ({
+            x: Math.round(point.x),
+            y: Math.round(point.y),
+          })),
+        })),
+      }
+      const saved = await putJson<OrgChartLayout>('/api/org/org-chart-layout?scope=company', {
+        layout: payload,
+      })
+      // Сохраняем то, что ушло на сервер; reconcile только подтягивает новых людей.
+      setLayout(reconcileLayout(saved.layout ?? payload, items))
       notifySuccess('Схема сохранена', toastId)
       setEditing(false)
       setConnectFrom(null)
@@ -833,11 +923,12 @@ export default function ManualOrgChartView({
             const from = nodeById.get(edge.fromNodeId)
             const to = nodeById.get(edge.toNodeId)
             if (!from || !to) return null
-            const junctionPoints = edgePathPoints(edge, from, to).slice(1, -1)
+            const railY = edgeRailY.get(edge.id)
+            const junctionPoints = edgePathPoints(edge, from, to, railY).slice(1, -1)
             return (
               <g key={edge.id}>
                 <path
-                  d={edgePath(edge, from, to)}
+                  d={edgePath(edge, from, to, railY)}
                   className={`org-manual-line${selectedEdgeId === edge.id ? ' org-manual-line-selected' : ''}`}
                   onClick={(event) => {
                     if (!editing) return

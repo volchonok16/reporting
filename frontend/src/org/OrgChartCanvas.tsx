@@ -115,12 +115,11 @@ export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
   )
 
   useEffect(() => {
-    userAdjustedRef.current = false
     const frame = requestAnimationFrame(() => {
       requestAnimationFrame(() => fitToView())
     })
     return () => cancelAnimationFrame(frame)
-  }, [children, fitToView])
+  }, [fitToView])
 
   useEffect(() => {
     const sheet = sheetRef.current
@@ -137,7 +136,7 @@ export default function OrgChartCanvas({ children }: OrgChartCanvasProps) {
       cancelAnimationFrame(frame)
       observer.disconnect()
     }
-  }, [children, fitToView])
+  }, [fitToView])
 
   useEffect(() => {
     const onResize = () => {

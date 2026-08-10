@@ -1038,7 +1038,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
 
       {panel === 'pyramid' ? (
         <section className="org-panel org-panel-pyramid">
-          <OrgChartCanvas>
+          <OrgChartCanvas key={selectedDepartmentId === null ? 'company' : `dept-${selectedDepartmentId}`}>
             {selectedDepartmentId === null ? (
               <OrgChartView
                 organizationHead={orgChart?.organizationHead}
