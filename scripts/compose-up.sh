@@ -21,8 +21,10 @@ done
 if [[ "$TUNNEL" -eq 1 ]]; then
   case "$MODE" in
     prod|prod-tunnel) MODE="prod-tunnel" ;;
+    offline|offline-tunnel) MODE="offline-tunnel" ;;
+    corp-direct|corp-direct-tunnel) MODE="corp-direct-tunnel" ;;
     *)
-      echo "Предупреждение: --tunnel поддерживается только с prod (игнорируется для mode=$MODE)" >&2
+      echo "Предупреждение: --tunnel не поддержан для mode=$MODE (игнорируется)" >&2
       ;;
   esac
 fi

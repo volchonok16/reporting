@@ -34,34 +34,39 @@ bash scripts/offline-bundle.sh dist/reporting-offline.tar linux/amd64
 scp dist/reporting-offline.tar root@SERVER:/tmp/
 ```
 
-**Деплой на сервере** (после `git pull` и `.env`):
+**Деплой на сервере** (после `git pull` и `.env`) — одной командой:
 
 ```bash
-# Только pallink.fun (HTTP, без SSL) — рекомендуемый offline на VPS/отдельном сервере:
 cp .env.pallink-offline.example .env   # один раз, заполнить пароли
-sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --pallink
-
-# Corp taskatestovaya.ru (HTTP):
-sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx
-
-# только контейнеры (без nginx):
-bash scripts/offline-deploy.sh /tmp/reporting-offline.tar
-# + туннель PostgreSQL для DBeaver:
-bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel
-# nginx + SSL (corp-сертификат или Let's Encrypt):
-sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-ssl
+sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --pallink --tunnel
 ```
 
-`--with-nginx --pallink` → `deploy/nginx/pallink-http.conf` (только pallink.fun / www / api / minio).  
+Поднимает offline-образы, Voice, HTTP nginx для pallink.fun и Postgres на `127.0.0.1:5432` (SSH → DBeaver).
+
+Другие варианты:
+
+```bash
+# Corp taskatestovaya.ru (HTTP):
+sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --tunnel
+
+# только контейнеры (без nginx):
+bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel
+
+# nginx + SSL (corp-сертификат или Let's Encrypt):
+sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-ssl --tunnel
+```
+
+`--with-nginx --pallink` → `deploy/nginx/pallink-http.conf` (только pallink.fun / www / api / minio + `/voice/`).  
 `--with-nginx` без флага → bootstrap corp+pallink.  
+`--tunnel` → `docker-compose.db-tunnel.yml` (Postgres `:5432` на localhost).  
 `--with-ssl` → `deploy/setup-nginx-ssl.sh`.
 
 DNS для pallink HTTP: `pallink.fun`, `www.pallink.fun`, `api.pallink.fun` → IP сервера.  
-UI ходит в API same-origin (`/api/…`); `VITE_API_URL` не обязателен.
+UI ходит в API same-origin (`/api/…`); Voice — `/voice/` и `/voice-api/`.
 
-Compose-файлы: `docker-compose.prod.yml` + `docker-compose.offline.yml` (фиксированные теги `reporting/*`).
+Compose-файлы: `docker-compose.prod.yml` + `docker-compose.offline.yml` (+ `db-tunnel.yml` при `--tunnel`).
 
-Обновление: `offline-bundle.sh` на Mac → `scp` tar → на сервере `git pull` + `sudo bash scripts/offline-deploy.sh … --with-nginx --pallink`.
+Обновление: `offline-bundle.sh` на Mac → `scp` tar → на сервере `git pull` + та же одна команда `offline-deploy.sh … --with-nginx --pallink --tunnel`.
 
 ## Полный стек вручную (dev)
 

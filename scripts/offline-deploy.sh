@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 # Деплой offline-bundle на закрытом сервере (без Docker Hub).
 #
-#   bash scripts/offline-deploy.sh /tmp/reporting-offline.tar
-#   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx
+# Одна команда (образы + nginx pallink + туннель Postgres :5432):
+#   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --pallink --tunnel
+#
+# Варианты:
 #   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --pallink
+#   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx
+#   bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel
+#   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-ssl
 #
 # --with-nginx: HTTP nginx (без certbot)
 # --pallink:    только pallink.fun (иначе bootstrap corp+pallink)
+# --tunnel:     Postgres на 127.0.0.1:5432 (SSH → DBeaver)
 # --with-ssl:   nginx + Let's Encrypt / corp-сертификат
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -54,19 +60,21 @@ if [[ -z "$TAR" ]]; then
 fi
 
 if [[ -z "$TAR" || ! -f "$TAR" ]]; then
-  echo "Использование: bash scripts/offline-deploy.sh [/path/to/tar] [--tunnel] [--with-nginx] [--pallink] [--with-ssl]" >&2
+  echo "Использование:" >&2
+  echo "  sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --pallink --tunnel" >&2
+  echo "Флаги: [--tunnel] [--with-nginx] [--pallink] [--with-ssl]" >&2
   echo "Bundle не найден: ${TAR:-<пусто>}" >&2
   exit 1
 fi
 
 if [[ "$WITH_NGINX" -eq 1 && "${EUID:-0}" -ne 0 ]]; then
   echo "Ошибка: --with-nginx / --with-ssl требуют root:" >&2
-  echo "  sudo bash scripts/offline-deploy.sh $TAR --with-nginx --pallink" >&2
+  echo "  sudo bash scripts/offline-deploy.sh $TAR --with-nginx --pallink --tunnel" >&2
   exit 1
 fi
 
 if ! docker info >/dev/null 2>&1; then
-  echo "Ошибка: Docker не запущен." >&2
+  echo "Ошибка: Docker не запущен (или нет прав у текущего пользователя)." >&2
   exit 1
 fi
 
@@ -76,6 +84,8 @@ MODE=offline
 # shellcheck source=resolve-compose.sh
 source "$(dirname "$0")/resolve-compose.sh" "$MODE"
 
+echo "==> Режим: ${MODE}"
+echo "    nginx=$WITH_NGINX  pallink=$PALLINK  tunnel=$TUNNEL  ssl=$WITH_SSL"
 echo "==> docker load ← ${TAR}"
 docker load -i "$TAR"
 
@@ -116,6 +126,21 @@ for i in $(seq 1 20); do
   sleep 2
 done
 
+echo ""
+echo "==> Ожидание Voice…"
+for i in $(seq 1 20); do
+  if curl -sf http://127.0.0.1:8100/api/health >/dev/null 2>&1; then
+    echo "OK voice-api: $(curl -sf http://127.0.0.1:8100/api/health)"
+    break
+  fi
+  if [[ "$i" -eq 20 ]]; then
+    echo "Предупреждение: voice-api не отвечает — ${COMPOSE[*]} logs voice-api" >&2
+  fi
+  sleep 2
+done
+voice_web_code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3100/ 2>/dev/null || echo 000)"
+echo "    voice-web :3100 → HTTP ${voice_web_code}"
+
 UI_URL="http://taskatestovaya.ru/"
 API_CHECK="http://taskatestovaya.ru/api/health"
 if [[ "$PALLINK" -eq 1 ]]; then
@@ -146,6 +171,8 @@ if [[ "$WITH_NGINX" -eq 1 ]]; then
   else
     echo "    GET /api/health → нет ответа (проверьте: curl $API_CHECK)" >&2
   fi
+  voice_code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/voice/ 2>/dev/null || echo 000)"
+  echo "    GET /voice/ → HTTP ${voice_code}"
 fi
 
 echo ""
@@ -153,11 +180,14 @@ echo "==> Статус контейнеров"
 "${COMPOSE[@]}" ps
 
 echo ""
-echo "Готово (offline deploy)."
-if [[ "$WITH_NGINX" -eq 0 ]]; then
-  echo "Nginx не трогали. Для pallink HTTP:"
-  echo "  sudo bash scripts/offline-deploy.sh $TAR --with-nginx --pallink"
-  echo "Для corp HTTP:"
-  echo "  sudo bash scripts/offline-deploy.sh $TAR --with-nginx"
+echo "Готово (offline deploy, mode=${MODE})."
+echo "UI:    $UI_URL"
+echo "Voice: ${UI_URL}voice/"
+if [[ "$TUNNEL" -eq 1 ]]; then
+  echo "Postgres tunnel: 127.0.0.1:5432 (SSH → сервер → localhost:5432)"
 fi
-echo "UI: $UI_URL  (не https, пока нет сертификата)"
+if [[ "$WITH_NGINX" -eq 0 ]]; then
+  echo ""
+  echo "Nginx не трогали. Полный деплой одной командой:"
+  echo "  sudo bash scripts/offline-deploy.sh $TAR --with-nginx --pallink --tunnel"
+fi
