@@ -98,6 +98,7 @@ export type OrgUserBrief = {
   email: string
   role: 'user' | 'admin'
   status: 'active' | 'inactive' | 'deleted'
+  voiceOnly?: boolean
 }
 
 export type Employee = {

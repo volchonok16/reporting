@@ -146,6 +146,7 @@ class OrgUserBriefOut(BaseModel):
     email: str
     role: Literal["user", "admin"]
     status: Literal["active", "inactive", "deleted"]
+    voiceOnly: bool = False
 
 
 class EmployeeDepartmentBriefOut(BaseModel):
@@ -210,6 +211,7 @@ class EmployeeIn(BaseModel):
     createUserAccount: bool = False
     userPassword: str | None = None
     userIsAdmin: bool = False
+    userVoiceOnly: bool = False
     departmentIds: list[int] = Field(default_factory=list)
 
 
@@ -222,6 +224,7 @@ class EmployeeUpdateIn(BaseModel):
     isActive: bool | None = None
     isOrganizationHead: bool | None = None
     userIsAdmin: bool | None = None
+    userVoiceOnly: bool | None = None
     userPassword: str | None = None
     departmentIds: list[int] | None = None
 
@@ -301,6 +304,7 @@ class OrgUserOut(BaseModel):
     email: str
     role: Literal["user", "admin"]
     status: Literal["active", "inactive", "deleted"]
+    voiceOnly: bool = False
     employeeId: int | None = None
     employeeName: str | None = None
 
@@ -309,6 +313,7 @@ class OrgUserIn(BaseModel):
     email: str
     password: str
     isAdmin: bool = False
+    voiceOnly: bool = False
     status: Literal["active", "inactive"] = "active"
 
 
@@ -316,6 +321,7 @@ class OrgUserUpdateIn(BaseModel):
     email: str | None = None
     password: str | None = None
     isAdmin: bool | None = None
+    voiceOnly: bool | None = None
     status: Literal["active", "inactive", "deleted"] | None = None
 
 

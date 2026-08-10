@@ -49,9 +49,13 @@ router = APIRouter(prefix="/api/planning", tags=["planning"])
 
 
 def _load_session_meta(x_session_id: str | None = Header(default=None, alias="X-Session-Id")) -> dict:
-    _, meta = get_session_with_meta(x_session_id)
-    if not meta:
+    from app.app_access import is_voice_only
+
+    auth, meta = get_session_with_meta(x_session_id)
+    if auth is None:
         raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
+    if is_voice_only(meta):
+        raise HTTPException(status_code=403, detail="Доступен только раздел Voice.")
     return meta
 
 

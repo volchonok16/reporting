@@ -199,6 +199,7 @@ def ensure_startup_schema() -> None:
         "042_planning_customer_department.sql",
         "043_zni_boards.sql",
         "044_b2b_product_status_analytics_split.sql",
+        "045_org_user_voice_only.sql",
     )
 
     auth_session_sql = """

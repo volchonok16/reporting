@@ -692,9 +692,12 @@
 | `password_hash` | text | Хеш пароля (PBKDF2-SHA256) |
 | `role` | smallint | `10` — пользователь, `100` — администратор отделов |
 | `status` | smallint | `0` удалён, `9` неактивен, `10` активен |
+| `voice_only` | boolean | Галочка **Voice сервисы** (только админ): доступ только к вкладке **Voice**; остальные вкладки скрыты |
 | `created_at`, `updated_at` | timestamptz | Метки времени |
 
 Связь: `employee.user_id` → `org_user.id`. Вход по email/паролю через `POST /api/auth/login` (режим app_user).
+
+Вкладка **Voice** (`SheetId = voice`) доступна всем авторизованным пользователям и встраивает приложение карусели (`voice/`, Docker-сервисы `voice-api` / `voice-web`, URL `VITE_VOICE_APP_URL`, по умолчанию `http://localhost:3100`). Пользователи с `voice_only = true` видят только эту вкладку.
 
 ---
 

@@ -114,10 +114,72 @@ services:
       context: ./frontend
       args:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+        VITE_VOICE_APP_URL: ${VITE_VOICE_APP_URL:-http://localhost:3100}
     container_name: reporting-frontend
     restart: unless-stopped
     depends_on:
       - backend
+    environment:
+      VITE_VOICE_APP_URL: ${VITE_VOICE_APP_URL:-http://localhost:3100}
+
+  voice-api:
+    build:
+      context: ./voice
+      dockerfile: Dockerfile.api
+    container_name: reporting-voice-api
+    restart: unless-stopped
+    environment:
+      CAROUSEL_DATA_DIR: /data
+      CAROUSEL_CORS_ORIGINS: ${CAROUSEL_CORS_ORIGINS:-http://localhost:3100,http://localhost:5173}
+      CAROUSEL_MAX_UPLOAD_BYTES: ${CAROUSEL_MAX_UPLOAD_BYTES:-8589934592}
+      CAROUSEL_MAX_MASTER_ROWS: ${CAROUSEL_MAX_MASTER_ROWS:-20000000}
+      CAROUSEL_MAX_ARCHIVE_MEMBERS: ${CAROUSEL_MAX_ARCHIVE_MEMBERS:-20000}
+      CAROUSEL_MAX_UNCOMPRESSED_BYTES: ${CAROUSEL_MAX_UNCOMPRESSED_BYTES:-2147483648}
+      CAROUSEL_MAX_COMPRESSION_RATIO: ${CAROUSEL_MAX_COMPRESSION_RATIO:-200}
+      CAROUSEL_JOB_WORKERS: ${CAROUSEL_JOB_WORKERS:-2}
+      CAROUSEL_PREVIEW_LIMIT: ${CAROUSEL_PREVIEW_LIMIT:-100}
+      CAROUSEL_OBJECT_TTL_SECONDS: ${CAROUSEL_OBJECT_TTL_SECONDS:-86400}
+      CAROUSEL_CLEANUP_INTERVAL_SECONDS: ${CAROUSEL_CLEANUP_INTERVAL_SECONDS:-300}
+      CAROUSEL_AUTH_BOOTSTRAP_EMAIL: ${CAROUSEL_AUTH_BOOTSTRAP_EMAIL:-admin@t2.local}
+      CAROUSEL_AUTH_BOOTSTRAP_PASSWORD: ${CAROUSEL_AUTH_BOOTSTRAP_PASSWORD:-T2-Admin-2026!}
+      CAROUSEL_AUTH_SESSION_SECONDS: ${CAROUSEL_AUTH_SESSION_SECONDS:-43200}
+    volumes:
+      - ./voice/data:/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2).read()
+      interval: 15s
+      timeout: 3s
+      start_period: 10s
+      retries: 5
+
+  voice-web:
+    build:
+      context: ./voice
+      dockerfile: Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: ${VOICE_API_PUBLIC_URL:-http://localhost:8100}
+    container_name: reporting-voice-web
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+    depends_on:
+      voice-api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
 
 volumes:
   reporting_pgdata:

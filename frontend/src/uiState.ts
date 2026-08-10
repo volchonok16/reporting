@@ -9,6 +9,7 @@ export type SheetId =
   | 'departments'
   | 'diagrams'
   | 'planning'
+  | 'voice'
 
 export type OrgPanelId =
   | 'roster'
@@ -93,6 +94,7 @@ const WORKBOOK_SHEETS: SheetId[] = [
   'departments',
   'diagrams',
   'planning',
+  'voice',
 ]
 
 const ORG_PANELS: OrgPanelId[] = [

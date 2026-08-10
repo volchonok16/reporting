@@ -5,7 +5,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
 
-from app.app_access import is_roadmap_role
+from app.app_access import is_roadmap_role, is_voice_only
 from app.auth_sessions import get_session_with_meta
 from app.product_status_live import ALLOWED_WORKBOOKS, product_status_live_broker
 
@@ -14,10 +14,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/product-status/live", tags=["product-status-live"])
 
 
-def _require_live_session(session_id: str | None) -> dict[str, str | None]:
+def _require_live_session(session_id: str | None) -> dict:
     auth, meta = get_session_with_meta(session_id)
     if auth is None:
         raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
+    if is_voice_only(meta):
+        raise HTTPException(status_code=403, detail="Доступен только раздел Voice.")
     if is_roadmap_role(meta.get("app_role")):
         raise HTTPException(status_code=403, detail="Недостаточно прав.")
     return meta

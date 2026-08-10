@@ -8,6 +8,7 @@ import Roadmap from './Roadmap'
 import YouJailBoard from './YouJailBoard'
 import Departments from './org/Departments'
 import Planning from './planning/Planning'
+import Voice from './Voice'
 import EmployeeProfile from './org/EmployeeProfile'
 import OrgPhoto from './org/OrgPhoto'
 import ThemeToggle from './ThemeToggle'
@@ -29,12 +30,14 @@ const SHEETS: SheetTab[] = [
   { id: 'departments', label: 'Staffing' },
   { id: 'diagrams', label: 'Диаграммы' },
   { id: 'planning', label: 'Планирование' },
+  { id: 'voice', label: 'Voice' },
 ]
 
 type WorkbookAppProps = {
   appRole: AppRole
   canSyncTfs: boolean
   canManageOrg: boolean
+  voiceOnly: boolean
   orgEmployeeId: number | null
   orgEmployeePhotoUrl: string | null
   accountLabel: string | null
@@ -46,6 +49,7 @@ export default function WorkbookApp({
   appRole,
   canSyncTfs,
   canManageOrg,
+  voiceOnly,
   orgEmployeeId,
   orgEmployeePhotoUrl,
   accountLabel,
@@ -53,25 +57,33 @@ export default function WorkbookApp({
   onLogout,
 }: WorkbookAppProps) {
   const visibleSheets = useMemo(() => {
+    if (voiceOnly) {
+      return SHEETS.filter((sheet) => sheet.id === 'voice')
+    }
     let sheets =
       appRole === 'roadmap'
         ? SHEETS.filter(
             (sheet) =>
-              sheet.id === 'roadmap' || sheet.id === 'youjail-board' || sheet.id === 'departments',
+              sheet.id === 'roadmap' ||
+              sheet.id === 'youjail-board' ||
+              sheet.id === 'departments' ||
+              sheet.id === 'voice',
           )
         : SHEETS
     if (!canSyncTfs) {
       sheets = sheets.filter((sheet) => sheet.id !== 'roadmap')
     }
     return sheets
-  }, [appRole, canSyncTfs])
+  }, [appRole, canSyncTfs, voiceOnly])
   const visibleSheetIds = useMemo(() => new Set(visibleSheets.map((sheet) => sheet.id)), [visibleSheets])
   const [activeSheet, setActiveSheet] = useState<SheetId>(() => {
     const saved = loadActiveSheet()
     let candidate: SheetId
-    if (appRole === 'roadmap') {
+    if (voiceOnly) {
+      candidate = 'voice'
+    } else if (appRole === 'roadmap') {
       candidate =
-        saved === 'departments' || saved === 'youjail-board' ? saved : 'roadmap'
+        saved === 'departments' || saved === 'youjail-board' || saved === 'voice' ? saved : 'roadmap'
     } else {
       candidate = saved
     }
@@ -93,12 +105,13 @@ export default function WorkbookApp({
   }, [activeSheet])
 
   useEffect(() => {
+    if (voiceOnly) return
     void getJson<Array<{ code: string; name: string; displayName: string }>>('/api/boards')
       .then((items) => setBoardDisplayLabels(items))
       .catch(() => {
         /* подписи досок подтянутся при открытии вкладки ЗНИ */
       })
-  }, [])
+  }, [voiceOnly])
 
   const handleLogout = async () => {
     await apiFetch('/api/auth/logout', { method: 'POST' })
@@ -124,20 +137,24 @@ export default function WorkbookApp({
           <div className="workbook-header-tools">
             <ThemeToggle compact />
             <div className="workbook-header-account">
-              <button
-                type="button"
-                className="workbook-tab workbook-profile-btn"
-                onClick={() => setProfileOpen(true)}
-                title="Личный кабинет"
-              >
-                <OrgPhoto
-                  url={orgEmployeePhotoUrl}
-                  name={accountLabel ?? 'Пользователь'}
-                  className="workbook-header-avatar-img"
-                  placeholderClassName="workbook-header-avatar"
-                />
+              {!voiceOnly ? (
+                <button
+                  type="button"
+                  className="workbook-tab workbook-profile-btn"
+                  onClick={() => setProfileOpen(true)}
+                  title="Личный кабинет"
+                >
+                  <OrgPhoto
+                    url={orgEmployeePhotoUrl}
+                    name={accountLabel ?? 'Пользователь'}
+                    className="workbook-header-avatar-img"
+                    placeholderClassName="workbook-header-avatar"
+                  />
+                  <span className="workbook-profile-label">{accountLabel ?? 'Пользователь'}</span>
+                </button>
+              ) : (
                 <span className="workbook-profile-label">{accountLabel ?? 'Пользователь'}</span>
-              </button>
+              )}
               <button type="button" className="workbook-tab" onClick={() => void handleLogout()}>
                 Выйти
               </button>
@@ -181,6 +198,8 @@ export default function WorkbookApp({
               }}
             />
           </div>
+        ) : activeSheet === 'voice' ? (
+          <Voice />
         ) : (
           <div className="app">
             <ProductStatusB2B canManageOrg={canManageOrg} />
@@ -188,7 +207,7 @@ export default function WorkbookApp({
         )}
       </div>
 
-      {profileOpen ? (
+      {profileOpen && !voiceOnly ? (
         <EmployeeProfile
           onClose={() => {
             setProfileOpen(false)

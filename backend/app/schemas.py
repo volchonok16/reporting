@@ -35,6 +35,7 @@ class TfsAuthStatusOut(BaseModel):
     appRole: Literal["full", "roadmap"] = "full"
     canSyncTfs: bool = False
     canManageOrg: bool = False
+    voiceOnly: bool = False
     orgUserId: int | None = None
     orgEmployeeId: int | None = None
     orgEmployeeName: str | None = None

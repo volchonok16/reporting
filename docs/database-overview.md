@@ -105,7 +105,7 @@
 | `team` | Канонические команды (коды досок из `zni_board`, напр. `digital_streams_b2b`, `b2b_product_core`, `be_t2_team`) |
 | `zni_board` | Конфиг досок ЗНИ: alias, board_name, area_path, теги, TFS project/team, метрики |
 | `auth_session` | Сессии PAT для веб-приложения |
-| `org_user` | Учётные записи сотрудников (email/пароль) |
+| `org_user` | Учётные записи сотрудников (email/пароль; `voice_only` — только вкладка Voice) |
 | `job_position` | Справочник должностей |
 | `team_role` | Роли в составе отдела |
 | `expertise_direction` | Направления экспертизы |

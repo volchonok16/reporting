@@ -344,6 +344,7 @@ CREATE TABLE org_user (
     password_hash   TEXT         NOT NULL,
     role            SMALLINT     NOT NULL DEFAULT 10,
     status          SMALLINT     NOT NULL DEFAULT 10,
+    voice_only      BOOLEAN      NOT NULL DEFAULT FALSE,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );

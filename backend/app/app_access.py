@@ -15,6 +15,18 @@ def is_roadmap_role(role: str | None) -> bool:
     return normalize_app_role(role) == ROADMAP_APP_ROLE
 
 
+def is_voice_only(meta: dict | None) -> bool:
+    """Пользователь с галочкой Voice сервисы — только вкладка Voice."""
+    if not meta:
+        return False
+    value = meta.get("voice_only")
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes"}
+    return bool(value)
+
+
 def sync_board_denied_reason(role: str | None, board_code: str | None) -> str | None:
     if not is_roadmap_role(role):
         return None

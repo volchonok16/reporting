@@ -98,6 +98,7 @@ const EMPTY_EMPLOYEE = {
   createUserAccount: true,
   userPassword: '12345678',
   userIsAdmin: false,
+  userVoiceOnly: false,
 }
 
 const EMPTY_DEPARTMENT = {
@@ -516,6 +517,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       createUserAccount: false,
       userPassword: '',
       userIsAdmin: emp.user?.role === 'admin',
+      userVoiceOnly: Boolean(emp.user?.voiceOnly),
     })
     setShowEmployeeModal(true)
   }
@@ -570,6 +572,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       createUserAccount: true,
       userPassword: '12345678',
       userIsAdmin: employeeForm.userIsAdmin,
+      userVoiceOnly: employeeForm.userVoiceOnly,
       departmentIds: employeeDepartmentIds,
     }
     setSavingEmployee(true)
@@ -585,7 +588,8 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
           isActive: body.isActive,
           isOrganizationHead: body.isOrganizationHead,
           userIsAdmin: body.userIsAdmin,
-          userPassword: body.userPassword,
+          userVoiceOnly: body.userVoiceOnly,
+          userPassword: employeeForm.userPassword.trim() || undefined,
           departmentIds: body.departmentIds,
         })
       } else {
@@ -1472,6 +1476,19 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                       />
                       Администратор
                     </label>
+                    <label className="org-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={employeeForm.userVoiceOnly}
+                        onChange={(e) =>
+                          setEmployeeForm({ ...employeeForm, userVoiceOnly: e.target.checked })
+                        }
+                      />
+                      Voice сервисы
+                    </label>
+                    <p className="org-hint">
+                      С галочкой «Voice сервисы» пользователь видит только вкладку Voice.
+                    </p>
                   </section>
                 ) : editingEmployee ? (
                   <section className="org-form-section">
@@ -1493,6 +1510,16 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                           }
                         />
                         Администратор
+                      </label>
+                      <label className="org-checkbox org-checkbox-field">
+                        <input
+                          type="checkbox"
+                          checked={employeeForm.userVoiceOnly}
+                          onChange={(e) =>
+                            setEmployeeForm({ ...employeeForm, userVoiceOnly: e.target.checked })
+                          }
+                        />
+                        Voice сервисы
                       </label>
                       <label>
                         Новый пароль (сброс)

@@ -90,9 +90,13 @@ router = APIRouter(prefix="/api/youjail", tags=["youjail"])
 
 
 def _require_session_meta(x_session_id: str | None) -> dict:
+    from app.app_access import is_voice_only
+
     auth, meta = get_session_with_meta(x_session_id)
     if auth is None:
         raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
+    if is_voice_only(meta):
+        raise HTTPException(status_code=403, detail="Доступен только раздел Voice.")
     return meta
 
 

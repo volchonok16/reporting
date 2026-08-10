@@ -1,0 +1,80 @@
+name: carousel
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    environment:
+      CAROUSEL_DATA_DIR: /data
+      CAROUSEL_CORS_ORIGINS: ${CAROUSEL_CORS_ORIGINS:-http://localhost:3000}
+      CAROUSEL_MAX_UPLOAD_BYTES: ${CAROUSEL_MAX_UPLOAD_BYTES:-8589934592}
+      CAROUSEL_MAX_MASTER_ROWS: ${CAROUSEL_MAX_MASTER_ROWS:-20000000}
+      CAROUSEL_MAX_ARCHIVE_MEMBERS: ${CAROUSEL_MAX_ARCHIVE_MEMBERS:-20000}
+      CAROUSEL_MAX_UNCOMPRESSED_BYTES: ${CAROUSEL_MAX_UNCOMPRESSED_BYTES:-2147483648}
+      CAROUSEL_MAX_COMPRESSION_RATIO: ${CAROUSEL_MAX_COMPRESSION_RATIO:-200}
+      CAROUSEL_JOB_WORKERS: ${CAROUSEL_JOB_WORKERS:-2}
+      CAROUSEL_PREVIEW_LIMIT: ${CAROUSEL_PREVIEW_LIMIT:-100}
+      CAROUSEL_OBJECT_TTL_SECONDS: ${CAROUSEL_OBJECT_TTL_SECONDS:-86400}
+      CAROUSEL_CLEANUP_INTERVAL_SECONDS: ${CAROUSEL_CLEANUP_INTERVAL_SECONDS:-300}
+      CAROUSEL_AUTH_BOOTSTRAP_EMAIL: ${CAROUSEL_AUTH_BOOTSTRAP_EMAIL:-admin@t2.local}
+      CAROUSEL_AUTH_BOOTSTRAP_PASSWORD: ${CAROUSEL_AUTH_BOOTSTRAP_PASSWORD:-T2-Admin-2026!}
+      CAROUSEL_AUTH_SESSION_SECONDS: ${CAROUSEL_AUTH_SESSION_SECONDS:-43200}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      # The archive ships with a clean registry containing only authorization
+      # users. Keep this bind mount so those users and future work survive
+      # container rebuilds.
+      - ./data:/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2).read()
+      interval: 15s
+      timeout: 3s
+      start_period: 10s
+      retries: 5
+    mem_limit: ${API_MEMORY_LIMIT:-1536m}
+    cpus: ${API_CPU_LIMIT:-2.0}
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+    mem_limit: ${WEB_MEMORY_LIMIT:-768m}
+    cpus: ${WEB_CPU_LIMIT:-1.0}
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

@@ -11,6 +11,7 @@ export default function App() {
   const [appRole, setAppRole] = useState<AppRole>('full')
   const [canSyncTfs, setCanSyncTfs] = useState(false)
   const [canManageOrg, setCanManageOrg] = useState(false)
+  const [voiceOnly, setVoiceOnly] = useState(false)
   const [orgEmployeeId, setOrgEmployeeId] = useState<number | null>(null)
   const [orgEmployeeName, setOrgEmployeeName] = useState<string | null>(null)
   const [orgEmployeePhotoUrl, setOrgEmployeePhotoUrl] = useState<string | null>(null)
@@ -29,6 +30,7 @@ export default function App() {
         appRole?: AppRole
         canSyncTfs?: boolean
         canManageOrg?: boolean
+        voiceOnly?: boolean
         orgUserId?: number | null
         orgEmployeeId?: number | null
         orgEmployeeName?: string | null
@@ -39,6 +41,7 @@ export default function App() {
       setAppRole(data.appRole === 'roadmap' ? 'roadmap' : 'full')
       setCanSyncTfs(Boolean(data.canSyncTfs))
       setCanManageOrg(Boolean(data.canManageOrg))
+      setVoiceOnly(Boolean(data.voiceOnly))
       setOrgEmployeeId(typeof data.orgEmployeeId === 'number' ? data.orgEmployeeId : null)
       setOrgEmployeeName(typeof data.orgEmployeeName === 'string' ? data.orgEmployeeName : null)
       setOrgEmployeePhotoUrl(
@@ -79,6 +82,7 @@ export default function App() {
       appRole={appRole}
       canSyncTfs={canSyncTfs}
       canManageOrg={canManageOrg}
+      voiceOnly={voiceOnly}
       orgEmployeeId={orgEmployeeId}
       orgEmployeePhotoUrl={orgEmployeePhotoUrl}
       accountLabel={orgEmployeeName ?? username}

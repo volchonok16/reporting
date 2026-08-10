@@ -113,6 +113,7 @@ def _employee_out(db: Session, emp: Employee) -> EmployeeOut:
             email=emp.user.email,
             role=_user_role_label(emp.user.role),  # type: ignore[arg-type]
             status=_user_status_label(emp.user.status),  # type: ignore[arg-type]
+            voiceOnly=bool(emp.user.voice_only),
         )
     expertises = [
         EmployeeExpertiseOut(
@@ -279,7 +280,14 @@ def _validate_manager_cycle(db: Session, employee_id: int, manager_id: int | Non
         current = mgr.manager_id if mgr else None
 
 
-def _create_org_user(db: Session, *, email: str, password: str, is_admin: bool) -> OrgUser:
+def _create_org_user(
+    db: Session,
+    *,
+    email: str,
+    password: str,
+    is_admin: bool,
+    voice_only: bool = False,
+) -> OrgUser:
     normalized = email.strip().casefold()
     if not normalized:
         raise HTTPException(status_code=400, detail="Email обязателен для учётной записи.")
@@ -293,6 +301,7 @@ def _create_org_user(db: Session, *, email: str, password: str, is_admin: bool) 
         password_hash=hash_password(password),
         role=ORG_USER_ROLE_ADMIN if is_admin else ORG_USER_ROLE_USER,
         status=ORG_USER_STATUS_ACTIVE,
+        voice_only=bool(voice_only),
     )
     db.add(user)
     db.flush()
@@ -473,7 +482,11 @@ def create_employee(db: Session, data: EmployeeIn) -> EmployeeOut:
     if len(password) < 8:
         raise HTTPException(status_code=400, detail="Пароль для входа должен быть не короче 8 символов.")
     user = _create_org_user(
-        db, email=data.email, password=password, is_admin=data.userIsAdmin
+        db,
+        email=data.email,
+        password=password,
+        is_admin=data.userIsAdmin,
+        voice_only=data.userVoiceOnly,
     )
     emp.user_id = user.id
     if data.departmentIds:
@@ -506,6 +519,8 @@ def update_employee(db: Session, employee_ref: str, data: EmployeeUpdateIn) -> E
             _ensure_single_org_head(db, employee_id)
     if data.userIsAdmin is not None and emp.user:
         emp.user.role = ORG_USER_ROLE_ADMIN if data.userIsAdmin else ORG_USER_ROLE_USER
+    if data.userVoiceOnly is not None and emp.user:
+        emp.user.voice_only = bool(data.userVoiceOnly)
     if data.userPassword and emp.user:
         if len(data.userPassword) < 8:
             raise HTTPException(status_code=400, detail="Пароль должен быть не короче 8 символов.")
@@ -523,6 +538,7 @@ def update_employee(db: Session, employee_ref: str, data: EmployeeUpdateIn) -> E
             email=emp.email,
             password=data.userPassword,
             is_admin=bool(data.userIsAdmin),
+            voice_only=bool(data.userVoiceOnly),
         )
         emp.user_id = user.id
     _sync_position_name(db, emp)
@@ -1014,6 +1030,7 @@ def list_org_users(db: Session) -> list[OrgUserOut]:
                 email=user.email,
                 role=_user_role_label(user.role),  # type: ignore[arg-type]
                 status=_user_status_label(user.status),  # type: ignore[arg-type]
+                voiceOnly=bool(user.voice_only),
                 employeeId=emp.id if emp else None,
                 employeeName=emp.full_name if emp else None,
             )
@@ -1022,7 +1039,13 @@ def list_org_users(db: Session) -> list[OrgUserOut]:
 
 
 def create_org_user_account(db: Session, data: OrgUserIn) -> OrgUserOut:
-    user = _create_org_user(db, email=data.email, password=data.password, is_admin=data.isAdmin)
+    user = _create_org_user(
+        db,
+        email=data.email,
+        password=data.password,
+        is_admin=data.isAdmin,
+        voice_only=data.voiceOnly,
+    )
     status = ORG_USER_STATUS_ACTIVE if data.status == "active" else ORG_USER_STATUS_INACTIVE
     user.status = status
     db.commit()
@@ -1031,6 +1054,7 @@ def create_org_user_account(db: Session, data: OrgUserIn) -> OrgUserOut:
         email=user.email,
         role=_user_role_label(user.role),  # type: ignore[arg-type]
         status=_user_status_label(user.status),  # type: ignore[arg-type]
+        voiceOnly=bool(user.voice_only),
     )
 
 
@@ -1053,6 +1077,8 @@ def update_org_user_account(db: Session, user_id: int, data: OrgUserUpdateIn) ->
         user.password_hash = hash_password(data.password)
     if data.isAdmin is not None:
         user.role = ORG_USER_ROLE_ADMIN if data.isAdmin else ORG_USER_ROLE_USER
+    if data.voiceOnly is not None:
+        user.voice_only = bool(data.voiceOnly)
     if data.status is not None:
         user.status = {
             "active": ORG_USER_STATUS_ACTIVE,
@@ -1066,6 +1092,7 @@ def update_org_user_account(db: Session, user_id: int, data: OrgUserUpdateIn) ->
         email=user.email,
         role=_user_role_label(user.role),  # type: ignore[arg-type]
         status=_user_status_label(user.status),  # type: ignore[arg-type]
+        voiceOnly=bool(user.voice_only),
         employeeId=emp.id if emp else None,
         employeeName=emp.full_name if emp else None,
     )

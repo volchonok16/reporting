@@ -85,6 +85,7 @@ async def login_with_app_user(
 
     org_user_id: int | None = None
     org_user_role: str | None = None
+    voice_only = False
     app_role = FULL_APP_ROLE
     app_login = login
 
@@ -96,6 +97,7 @@ async def login_with_app_user(
                 raise HTTPException(status_code=401, detail="Неверный логин или пароль.")
             org_user_id = org_user.id
             org_user_role = "admin" if org_user.role == ORG_USER_ROLE_ADMIN else "user"
+            voice_only = bool(getattr(org_user, "voice_only", False))
             app_login = org_user.email
             app_role = FULL_APP_ROLE
         else:
@@ -127,6 +129,7 @@ async def login_with_app_user(
         app_role=app_role,
         org_user_id=org_user_id,
         org_user_role=org_user_role,
+        voice_only=voice_only,
     )
     return AuthLoginOut(
         sessionId=session_id,

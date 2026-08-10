@@ -24,6 +24,7 @@ class OrgUser(Base):
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     role: Mapped[int] = mapped_column(SmallInteger, default=ORG_USER_ROLE_USER, nullable=False)
     status: Mapped[int] = mapped_column(SmallInteger, default=ORG_USER_STATUS_ACTIVE, nullable=False)
+    voice_only: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 

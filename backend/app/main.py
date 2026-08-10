@@ -7,12 +7,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy.orm import Session
 
-from app.app_access import can_manage_org, is_roadmap_role, sync_board_denied_reason
+from app.app_access import can_manage_org, is_roadmap_role, is_voice_only, sync_board_denied_reason
 from app.auth_service import login_with_app_user, login_with_pat
 from app.auth_sessions import delete_session, get_session, get_session_with_meta
 from app.boards import ALL_BOARDS_CODE, boards_for_sync, default_board, ensure_boards_loaded
 from app.config import settings
 from app.db import close_db_session, ensure_startup_schema, get_db, purge_stale_b2b_audit_records
+from app.org_models import OrgUser
 from app.org_photo_service import photo_public_url
 from app.org_service import get_employee_for_org_user
 from app.models import SyncRun
@@ -145,6 +146,8 @@ def require_full_app_access(
     _, meta = get_session_with_meta(x_session_id)
     if get_session(x_session_id) is None:
         raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
+    if is_voice_only(meta):
+        raise HTTPException(status_code=403, detail="Доступен только раздел Voice.")
     if is_roadmap_role(meta.get("app_role")):
         raise HTTPException(status_code=403, detail="Недостаточно прав.")
 
@@ -155,6 +158,8 @@ def require_org_manage_access(
     _, meta = get_session_with_meta(x_session_id)
     if get_session(x_session_id) is None:
         raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
+    if is_voice_only(meta):
+        raise HTTPException(status_code=403, detail="Доступен только раздел Voice.")
     if is_roadmap_role(meta.get("app_role")):
         raise HTTPException(status_code=403, detail="Недостаточно прав.")
     if not can_manage_org(meta):
@@ -192,8 +197,9 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
         return TfsAuthStatusOut(authenticated=False)
     app_role = meta.get("app_role") or "full"
     auth_mode = meta.get("auth_mode")
-    can_sync_tfs = _can_sync_tfs(auth, meta)
-    can_manage_org_flag = can_manage_org(meta)
+    voice_only_flag = is_voice_only(meta)
+    can_sync_tfs = False if voice_only_flag else _can_sync_tfs(auth, meta)
+    can_manage_org_flag = False if voice_only_flag else can_manage_org(meta)
     org_user_id = int(meta["org_user_id"]) if meta.get("org_user_id") else None
     org_employee_id: int | None = None
     org_employee_name: str | None = None
@@ -201,6 +207,12 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
     if org_user_id is not None:
         db = next(get_db())
         try:
+            org_user = db.get(OrgUser, org_user_id)
+            if org_user is not None:
+                voice_only_flag = bool(org_user.voice_only)
+                if voice_only_flag:
+                    can_sync_tfs = False
+                    can_manage_org_flag = False
             emp = get_employee_for_org_user(db, org_user_id)
             if emp:
                 org_employee_id = emp.id
@@ -217,6 +229,7 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
         appRole=app_role,  # type: ignore[arg-type]
         canSyncTfs=can_sync_tfs,
         canManageOrg=can_manage_org_flag,
+        voiceOnly=voice_only_flag,
         orgUserId=org_user_id,
         orgEmployeeId=org_employee_id,
         orgEmployeeName=org_employee_name,

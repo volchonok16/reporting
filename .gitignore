@@ -22,3 +22,12 @@ plantuml/out/
 # Offline Docker bundle (собирается локально, переносится scp)
 dist/*.tar
 dist/*.manifest.txt
+
+# Voice (carousel) local artifacts
+voice/node_modules/
+voice/.next/
+voice/build/
+voice/data/*.sqlite3-shm
+voice/data/*.sqlite3-wal
+voice/data/uploads/
+voice/data/workspaces/
