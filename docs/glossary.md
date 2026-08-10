@@ -692,12 +692,12 @@
 | `password_hash` | text | Хеш пароля (PBKDF2-SHA256) |
 | `role` | smallint | `10` — пользователь, `100` — администратор отделов |
 | `status` | smallint | `0` удалён, `9` неактивен, `10` активен |
-| `voice_only` | boolean | Галочка **Voice сервисы** (только админ): доступ только к вкладке **Voice**; без флага вкладка Voice скрыта |
+| `voice_only` | boolean | Галочка **Voice сервисы** (только админ): если true — доступна только вкладка **Voice**; если false — Voice и все остальные вкладки |
 | `created_at`, `updated_at` | timestamptz | Метки времени |
 
 Связь: `employee.user_id` → `org_user.id`. Вход по email/паролю через `POST /api/auth/login` (режим app_user).
 
-Вкладка **Voice** (`SheetId = voice`) доступна только пользователям с `voice_only = true` и встраивает карусель в тот же origin (`/voice/` → frontend-nginx → `voice-web`, `/voice-api/` → `voice-api`). Остальные вкладки для таких пользователей скрыты. Тема iframe синхронизируется с reporting (`?theme=light|dark`).
+Вкладка **Voice** (`SheetId = voice`) доступна всем авторизованным пользователям (same-origin `/voice/` → frontend-nginx → `voice-web`, `/voice-api/` → `voice-api`). Пользователи с `voice_only = true` (**Voice сервисы**) видят только эту вкладку; остальные вкладки для них скрыты. Тема iframe синхронизируется с reporting (`?theme=light|dark`).
 
 Авторизация единая: reporting выдаёт короткий SSO-токен (`POST /api/voice/sso-token`, секрет `VOICE_SSO_SECRET`), Voice обменивает его на свою сессию (`POST /api/auth/reporting-sso`) — отдельный логин карусели не нужен.
 

@@ -57,7 +57,7 @@ export default function WorkbookApp({
   onLogout,
 }: WorkbookAppProps) {
   const visibleSheets = useMemo(() => {
-    // «Voice сервисы»: только вкладка Voice. Без флага — Voice скрыта.
+    // «Voice сервисы»: только вкладка Voice. Без флага — все обычные вкладки + Voice.
     if (voiceOnly) {
       return SHEETS.filter((sheet) => sheet.id === 'voice')
     }
@@ -67,9 +67,10 @@ export default function WorkbookApp({
             (sheet) =>
               sheet.id === 'roadmap' ||
               sheet.id === 'youjail-board' ||
-              sheet.id === 'departments',
+              sheet.id === 'departments' ||
+              sheet.id === 'voice',
           )
-        : SHEETS.filter((sheet) => sheet.id !== 'voice')
+        : SHEETS
     if (!canSyncTfs) {
       sheets = sheets.filter((sheet) => sheet.id !== 'roadmap')
     }
@@ -82,9 +83,10 @@ export default function WorkbookApp({
     if (voiceOnly) {
       candidate = 'voice'
     } else if (appRole === 'roadmap') {
-      candidate = saved === 'departments' || saved === 'youjail-board' ? saved : 'roadmap'
+      candidate =
+        saved === 'departments' || saved === 'youjail-board' || saved === 'voice' ? saved : 'roadmap'
     } else {
-      candidate = saved === 'voice' ? 'zni' : saved
+      candidate = saved
     }
     if (candidate === 'roadmap' && !canSyncTfs) {
       candidate = appRole === 'roadmap' ? 'departments' : 'zni'
