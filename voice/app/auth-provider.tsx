@@ -193,7 +193,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (pathname === "/master" && user && !user.canAccessMaster)
-      router.replace("/account");
+      router.replace("/");
+    if (pathname === "/account") router.replace("/");
   }, [embedded, loading, pathname, router, user]);
 
   const logout = useCallback(async () => {

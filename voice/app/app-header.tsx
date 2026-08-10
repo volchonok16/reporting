@@ -71,22 +71,8 @@ export function AppHeader({ onBeforeNavigate }: AppHeaderProps = {}) {
               Мастер файл
             </Link>
           )}
-          <Link
-            className={`topbar-link ${
-              pathname === "/account" ? "is-active" : ""
-            }`}
-            href="/account"
-            onClick={navigateAfterCleanup("/account")}
-          >
-            Личный кабинет
-          </Link>
         </nav>
-        {embedded ? (
-          <div className="account-logout" aria-label="Пользователь reporting">
-            <span>{user?.email}</span>
-            <span>через reporting</span>
-          </div>
-        ) : (
+        {!embedded && (
           <button
             className="account-logout"
             type="button"
@@ -98,7 +84,6 @@ export function AppHeader({ onBeforeNavigate }: AppHeaderProps = {}) {
               })()
             }
           >
-            <span>{user?.email}</span>
             Выйти
           </button>
         )}
