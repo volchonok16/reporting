@@ -4408,6 +4408,12 @@ html[data-embed="1"] .request-tutorial-launcher {
   bottom: 18px;
   right: 18px;
 }
+@media (max-width: 620px) {
+  .request-tutorial-launcher {
+    top: auto;
+    right: 12px;
+    bottom: 12px;
+  }
   .request-tutorial-coach {
     right: 10px;
     bottom: 10px;
