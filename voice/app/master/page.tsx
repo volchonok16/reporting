@@ -5846,7 +5846,7 @@ export default function MasterPage() {
                   type="button"
                   onClick={() => {
                     setOwnerNotificationOpen(false);
-                    void toggleMasterLock();
+                    void releaseOwnedMasterLock();
                   }}
                 >
                   Освободить мастер-файл
