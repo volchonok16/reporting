@@ -138,8 +138,23 @@ for i in $(seq 1 20); do
   fi
   sleep 2
 done
-voice_web_code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3100/ 2>/dev/null || echo 000)"
-echo "    voice-web :3100 → HTTP ${voice_web_code}"
+voice_web_probe="$(curl -sf http://127.0.0.1:3100/voice/reporting-voice.txt 2>/dev/null || true)"
+if [[ "$voice_web_probe" == *voice-ok* ]]; then
+  echo "OK voice-web :3100/voice/reporting-voice.txt"
+else
+  voice_web_code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3100/voice/ 2>/dev/null || echo 000)"
+  echo "Предупреждение: voice-web :3100/voice/ → HTTP ${voice_web_code} (ожидали voice-ok в reporting-voice.txt)" >&2
+fi
+
+# Критично: /voice/ через frontend должен отдавать voice-web, а не reporting SPA.
+voice_probe="$(curl -sf http://127.0.0.1:5173/voice/reporting-voice.txt 2>/dev/null || true)"
+if [[ "$voice_probe" == *voice-ok* ]]; then
+  echo "OK frontend→voice: /voice/reporting-voice.txt"
+else
+  echo "ОШИБКА: http://127.0.0.1:5173/voice/reporting-voice.txt не вернул voice-ok." >&2
+  echo "  /voice/ сейчас, скорее всего, отдаёт reporting SPA (двойной хедер в UI)." >&2
+  echo "  Проверьте: docker ps | grep voice; docker exec reporting-frontend cat /etc/nginx/conf.d/default.conf | grep -A6 'location /voice'" >&2
+fi
 
 UI_URL="http://taskatestovaya.ru/"
 API_CHECK="http://taskatestovaya.ru/api/health"
@@ -173,6 +188,12 @@ if [[ "$WITH_NGINX" -eq 1 ]]; then
   fi
   voice_code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/voice/ 2>/dev/null || echo 000)"
   echo "    GET /voice/ → HTTP ${voice_code}"
+  voice_probe_host="$(curl -sf http://127.0.0.1/voice/reporting-voice.txt 2>/dev/null || true)"
+  if [[ "$voice_probe_host" == *voice-ok* ]]; then
+    echo "OK host nginx→voice: /voice/reporting-voice.txt"
+  else
+    echo "ОШИБКА: http://127.0.0.1/voice/reporting-voice.txt не вернул voice-ok (старый nginx или SPA)." >&2
+  fi
 fi
 
 echo ""

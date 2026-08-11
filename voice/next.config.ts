@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
 
+/** Same-origin embed в reporting: UI и ассеты под /voice/, без конфликта с reporting /assets/. */
+const basePath = (process.env.VOICE_BASE_PATH || "/voice").replace(/\/$/, "") || "";
+
 const nextConfig: NextConfig = {
-  /* config options here */
+  basePath: basePath || undefined,
+  assetPrefix: basePath || undefined,
 };
 
 export default nextConfig;

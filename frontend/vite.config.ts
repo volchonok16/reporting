@@ -45,12 +45,17 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/voice-api/, ''),
       },
-      '/voice': {
+      // vinext: basePath в HTML, статика на /assets/
+      '/voice/assets': {
         target: process.env.VITE_VOICE_WEB_PROXY_TARGET ?? 'http://127.0.0.1:3100',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/voice/, '') || '/',
+        rewrite: (path) => path.replace(/^\/voice\/assets/, '/assets'),
       },
-      '/_next': {
+      '/assets/_vinext_fonts': {
+        target: process.env.VITE_VOICE_WEB_PROXY_TARGET ?? 'http://127.0.0.1:3100',
+        changeOrigin: true,
+      },
+      '/voice': {
         target: process.env.VITE_VOICE_WEB_PROXY_TARGET ?? 'http://127.0.0.1:3100',
         changeOrigin: true,
       },

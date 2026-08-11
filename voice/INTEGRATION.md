@@ -2,8 +2,11 @@
 
 Каталог `voice/` — приложение «Агент мобильной карусели», встроенное во вкладку **Voice** reporting.
 
-- Docker Compose (корень reporting): сервисы `voice-api` (`:8100`) и `voice-web` (`:3100`)
-- Frontend reporting открывает `VITE_VOICE_APP_URL` в iframe с SSO-токеном
-- **Один логин:** пользователь входит в reporting → `POST /api/voice/sso-token` → iframe → `POST /api/auth/reporting-sso` (общий секрет `VOICE_SSO_SECRET`)
-- Пользователи reporting с `org_user.voice_only = true` видят только вкладку Voice
-- Локальные учётки карусели остаются для прямого доступа к `:3100` вне reporting
+- Docker Compose (корень reporting): сервисы `voice-api` (`:8100`) и `voice-web` (`:3100`, UI по пути `/voice/`)
+- `voice-web` собирается с `VOICE_BASE_PATH=/voice` — ассеты и роуты под `/voice/…`
+- Frontend reporting открывает same-origin iframe `/voice/?reportingSso=…&embed=1&theme=…`
+- Прокси: host nginx → `:5173` → `voice-web` / `voice-api` (`/voice-api/`)
+- Маркер: `GET /voice/reporting-voice.txt` → `voice-ok`
+- **Один логин:** reporting → `POST /api/voice/sso-token` → iframe → `POST /api/auth/reporting-sso` (`VOICE_SSO_SECRET`)
+- Пользователи с `org_user.voice_only = true` видят только вкладку Voice
+- Прямой доступ вне iframe: `http://localhost:3100/voice/`

@@ -697,7 +697,7 @@
 
 Связь: `employee.user_id` → `org_user.id`. Вход по email/паролю через `POST /api/auth/login` (режим app_user).
 
-Вкладка **Voice** (`SheetId = voice`) доступна всем авторизованным пользователям (same-origin `/voice/` → frontend-nginx → `voice-web`, `/voice-api/` → `voice-api`). Пользователи с `voice_only = true` (**Voice сервисы**) видят только эту вкладку; остальные вкладки для них скрыты. Тема iframe синхронизируется с reporting (`?theme=light|dark`).
+Вкладка **Voice** (`SheetId = voice`) доступна всем авторизованным пользователям (same-origin `/voice/` → frontend-nginx → `voice-web` с `basePath=/voice`, `/voice-api/` → `voice-api`). Проверка маршрута: `GET /voice/reporting-voice.txt` должен вернуть `voice-ok` (не HTML reporting). Пользователи с `voice_only = true` (**Voice сервисы**) видят только эту вкладку; остальные вкладки для них скрыты. Тема iframe синхронизируется с reporting (`?theme=light|dark`).
 
 Авторизация единая: reporting выдаёт короткий SSO-токен (`POST /api/voice/sso-token`, секрет `VOICE_SSO_SECRET`), Voice обменивает его на свою сессию (`POST /api/auth/reporting-sso`) — отдельный логин карусели не нужен.
 

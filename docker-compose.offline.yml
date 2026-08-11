@@ -41,3 +41,4 @@ services:
       dockerfile: Dockerfile.web
       args:
         NEXT_PUBLIC_API_URL: ${VOICE_API_PUBLIC_URL:-}
+        VOICE_BASE_PATH: ${VOICE_BASE_PATH:-/voice}

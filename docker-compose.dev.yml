@@ -13,12 +13,17 @@ services:
       - ./backend/app:/app/app:ro
 
   frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
     ports:
       - "5173:5173"
     environment:
       NPM_CONFIG_UPDATE_NOTIFIER: "false"
       NPM_CONFIG_FUND: "false"
       VITE_API_PROXY_TARGET: http://backend:8000
+      VITE_VOICE_WEB_PROXY_TARGET: http://voice-web:3000
+      VITE_VOICE_API_PROXY_TARGET: http://voice-api:8000
     command: sh -c "npm ci --no-fund --no-audit && npm run dev -- --host 0.0.0.0"
     volumes:
       - ./frontend:/app
@@ -34,6 +39,8 @@ services:
   voice-web:
     ports:
       - "${VOICE_WEB_PORT:-3100}:3000"
+    environment:
+      VOICE_BASE_PATH: /voice
 
   minio:
     ports:

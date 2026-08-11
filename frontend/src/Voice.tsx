@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { apiFetch } from './api'
 import { resolveTheme, THEME_CHANGE_EVENT, type Theme } from './theme'
 
-/** Voice всегда same-origin: /voice/ → nginx frontend → voice-web. */
+const VOICE_PROBE_PATH = '/voice/reporting-voice.txt'
+const VOICE_PROBE_MARK = 'voice-ok'
+
+/** Voice всегда same-origin: /voice/ → host nginx → frontend → voice-web. */
 function resolveVoiceAppUrl(): string {
   if (typeof window === 'undefined') return '/voice/'
   return `${window.location.origin}/voice/`
@@ -22,13 +25,43 @@ function buildVoiceSrc(token: string, theme: Theme): string {
   return url.toString()
 }
 
+function looksLikeReportingHtml(text: string): boolean {
+  const sample = text.slice(0, 4000).toLowerCase()
+  return (
+    sample.includes('workbook-header') ||
+    sample.includes('workbook-tabs') ||
+    sample.includes('id="root"') ||
+    sample.includes('/assets/index-')
+  )
+}
+
+async function assertVoiceUpstream(): Promise<void> {
+  const response = await fetch(`${VOICE_PROBE_PATH}?t=${Date.now()}`, {
+    method: 'GET',
+    cache: 'no-store',
+    credentials: 'same-origin',
+  })
+  const text = await response.text()
+  if (!response.ok) {
+    throw new Error(
+      `Voice upstream HTTP ${response.status}. Проверьте контейнеры reporting-voice-web и reporting-frontend.`,
+    )
+  }
+  if (!text.includes(VOICE_PROBE_MARK) || looksLikeReportingHtml(text)) {
+    throw new Error(
+      'Маршрут /voice/ отдал reporting SPA вместо voice-web. ' +
+        'Нужен новый образ frontend (nginx-прокси) и running reporting-voice-web. ' +
+        'Проверка: curl -sS http://127.0.0.1:5173/voice/reporting-voice.txt',
+    )
+  }
+}
+
 function iframeLooksLikeReporting(frame: HTMLIFrameElement): boolean {
   try {
     const doc = frame.contentDocument
     if (!doc) return false
     return Boolean(doc.querySelector('.workbook-header, .workbook-tabs'))
   } catch {
-    // cross-origin = скорее всего настоящий Voice на другом origin
     return false
   }
 }
@@ -42,6 +75,7 @@ export default function Voice() {
     let cancelled = false
     void (async () => {
       try {
+        await assertVoiceUpstream()
         const response = await apiFetch('/api/voice/sso-token', { method: 'POST' })
         if (!response.ok) {
           const detail = await response.text()
@@ -80,8 +114,7 @@ export default function Voice() {
     if (iframeLooksLikeReporting(frame)) {
       setIframeSrc(null)
       setError(
-        'Voice не поднялся: /voice/ отдал reporting. Перезапустите voice-web ' +
-          'или проверьте nginx frontend (прокси на voice-web).',
+        'Voice iframe снова открыл reporting. Обновите frontend/voice-web образы и nginx.',
       )
     }
   }

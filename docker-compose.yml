@@ -165,11 +165,13 @@ services:
       dockerfile: Dockerfile.web
       args:
         NEXT_PUBLIC_API_URL: ${VOICE_API_PUBLIC_URL:-}
+        VOICE_BASE_PATH: ${VOICE_BASE_PATH:-/voice}
     container_name: reporting-voice-web
     restart: unless-stopped
     environment:
       HOST: 0.0.0.0
       PORT: 3000
+      VOICE_BASE_PATH: ${VOICE_BASE_PATH:-/voice}
     depends_on:
       voice-api:
         condition: service_started
@@ -178,7 +180,7 @@ services:
         - CMD
         - node
         - -e
-        - fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))
+        - fetch('http://127.0.0.1:3000/voice/reporting-voice.txt').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
       interval: 15s
       timeout: 5s
       start_period: 60s
