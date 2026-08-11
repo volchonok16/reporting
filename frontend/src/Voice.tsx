@@ -17,11 +17,11 @@ function currentTheme(): Theme {
   return resolveTheme()
 }
 
-function buildVoiceSrc(token: string, theme: Theme): string {
+function buildVoiceSrc(theme: Theme, ssoToken?: string): string {
   const url = new URL(resolveVoiceAppUrl())
-  url.searchParams.set('reportingSso', token)
   url.searchParams.set('embed', '1')
   url.searchParams.set('theme', theme)
+  if (ssoToken) url.searchParams.set('reportingSso', ssoToken)
   return url.toString()
 }
 
@@ -66,25 +66,40 @@ function iframeLooksLikeReporting(frame: HTMLIFrameElement): boolean {
   }
 }
 
+async function fetchReportingSsoToken(): Promise<string> {
+  const response = await apiFetch('/api/voice/sso-token', { method: 'POST' })
+  if (!response.ok) {
+    const detail = await response.text()
+    throw new Error(detail || `HTTP ${response.status}`)
+  }
+  const data = (await response.json()) as { token?: string }
+  if (!data.token) throw new Error('Сервер не вернул SSO-токен')
+  return data.token
+}
+
 export default function Voice() {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [iframeSrc, setIframeSrc] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const ssoInflight = useRef<Promise<string> | null>(null)
+
+  const ensureSsoToken = async (): Promise<string> => {
+    if (!ssoInflight.current) {
+      ssoInflight.current = fetchReportingSsoToken().finally(() => {
+        ssoInflight.current = null
+      })
+    }
+    return ssoInflight.current
+  }
 
   useEffect(() => {
     let cancelled = false
     void (async () => {
       try {
         await assertVoiceUpstream()
-        const response = await apiFetch('/api/voice/sso-token', { method: 'POST' })
-        if (!response.ok) {
-          const detail = await response.text()
-          throw new Error(detail || `HTTP ${response.status}`)
-        }
-        const data = (await response.json()) as { token?: string }
-        if (!data.token) throw new Error('Сервер не вернул SSO-токен')
         if (cancelled) return
-        setIframeSrc(buildVoiceSrc(data.token, currentTheme()))
+        // Сначала открываем embed без нового SSO — если сессия Voice уже есть, хватит её.
+        setIframeSrc(buildVoiceSrc(currentTheme()))
         setError(null)
       } catch (err) {
         if (cancelled) return
@@ -104,8 +119,32 @@ export default function Voice() {
       if (!frame) return
       frame.postMessage({ type: 'reporting-theme', theme }, '*')
     }
+
+    const onFrameMessage = (event: MessageEvent) => {
+      const data = event.data
+      if (!data || typeof data !== 'object') return
+      if (data.type !== 'voice-auth-required') return
+      void (async () => {
+        try {
+          const token = await ensureSsoToken()
+          const frame = iframeRef.current?.contentWindow
+          if (frame) {
+            frame.postMessage({ type: 'reporting-sso', token }, '*')
+          } else {
+            setIframeSrc(buildVoiceSrc(currentTheme(), token))
+          }
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Не удалось выдать SSO для Voice')
+        }
+      })()
+    }
+
     window.addEventListener(THEME_CHANGE_EVENT, onThemeChange)
-    return () => window.removeEventListener(THEME_CHANGE_EVENT, onThemeChange)
+    window.addEventListener('message', onFrameMessage)
+    return () => {
+      window.removeEventListener(THEME_CHANGE_EVENT, onThemeChange)
+      window.removeEventListener('message', onFrameMessage)
+    }
   }, [])
 
   const handleIframeLoad = () => {

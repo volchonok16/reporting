@@ -42,6 +42,7 @@ const API_BASE = (() => {
 const TOKEN_KEY = "carousel-auth-token";
 const EMBED_KEY = "carousel-reporting-embed";
 const THEME_KEY = "carousel-reporting-theme";
+const AUTH_FETCH_MS = 8000;
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function storedToken() {
@@ -94,6 +95,33 @@ function readEmbedFlag() {
   }
 }
 
+function detailMessage(payload: unknown, fallback: string): string {
+  if (!payload || typeof payload !== "object") return fallback;
+  const detail = (payload as { detail?: unknown }).detail;
+  if (typeof detail === "string") return detail;
+  if (detail && typeof detail === "object" && "message" in detail) {
+    const message = (detail as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
+  return fallback;
+}
+
+async function fetchJson(
+  url: string,
+  init: RequestInit,
+  timeoutMs = AUTH_FETCH_MS,
+): Promise<{ ok: boolean; status: number; payload: unknown }> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    const payload = await response.json().catch(() => null);
+    return { ok: response.ok, status: response.status, payload };
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -138,90 +166,147 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSsoError(null);
   }, []);
 
-  const refreshUser = useCallback(async () => {
+  const restoreExistingSession = useCallback(async (): Promise<boolean> => {
     const token = storedToken();
-    if (!token) {
-      setUser(null);
-      setLoading(false);
-      return;
-    }
+    if (!token) return false;
     try {
-      const response = await authorizedFetch("/api/auth/me");
-      if (!response.ok) {
-        setUser(null);
-        return;
+      const result = await fetchJson(`${API_BASE}/api/auth/me`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!result.ok || !result.payload || typeof result.payload !== "object") {
+        localStorage.removeItem(TOKEN_KEY);
+        return false;
       }
-      const payload = await response.json();
-      setUser(payload.user as AuthUser);
+      const nextUser = (result.payload as { user?: AuthUser }).user;
+      if (!nextUser) {
+        localStorage.removeItem(TOKEN_KEY);
+        return false;
+      }
+      setUser(nextUser);
+      setSsoError(null);
+      setLoading(false);
+      return true;
     } catch {
+      // Сеть/таймаут: токен оставляем — ниже попробуем SSO или покажем ошибку.
+      return false;
+    }
+  }, []);
+
+  const exchangeReportingSso = useCallback(
+    async (ssoToken: string): Promise<boolean> => {
+      try {
+        const result = await fetchJson(`${API_BASE}/api/auth/reporting-sso`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: ssoToken }),
+        });
+        if (!result.ok) {
+          setSsoError(
+            detailMessage(result.payload, "Не удалось войти через reporting"),
+          );
+          return false;
+        }
+        const payload = result.payload as { token?: string; user?: AuthUser };
+        if (!payload.token || !payload.user) {
+          setSsoError("Сервер Voice не вернул сессию");
+          return false;
+        }
+        completeLogin(payload.token, payload.user);
+        const path = window.location.pathname.replace(/\/$/, "");
+        if (path.endsWith("/login")) router.replace("/");
+        return true;
+      } catch {
+        setSsoError("Сервер Voice недоступен");
+        return false;
+      }
+    },
+    [completeLogin, router],
+  );
+
+  const refreshUser = useCallback(async () => {
+    const restored = await restoreExistingSession();
+    if (!restored) {
       setUser(null);
-    } finally {
       setLoading(false);
     }
-  }, [authorizedFetch]);
+  }, [restoreExistingSession]);
 
   useEffect(() => {
     setEmbedded(readEmbedFlag());
-    const { sso: ssoToken } = takeReportingBootstrapFromUrl();
+    const { sso: ssoFromUrl } = takeReportingBootstrapFromUrl();
     setEmbedded(readEmbedFlag());
 
     let cancelled = false;
-    const boot = async () => {
-      if (ssoToken) {
-        setLoading(true);
-        try {
-          const response = await fetch(`${API_BASE}/api/auth/reporting-sso`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ token: ssoToken }),
-          });
-          const payload = await response.json().catch(() => null);
-          if (!response.ok) {
-            const message =
-              payload?.detail?.message ||
-              payload?.detail ||
-              "Не удалось войти через reporting";
-            if (!cancelled) {
-              setSsoError(String(message));
-              setUser(null);
-              setLoading(false);
-            }
-            return;
-          }
-          if (!cancelled) {
-            completeLogin(payload.token as string, payload.user as AuthUser);
-            if (window.location.pathname === "/login") router.replace("/");
-          }
-          return;
-        } catch {
-          if (!cancelled) {
-            setSsoError("Сервер Voice недоступен");
-            setLoading(false);
-          }
-          return;
+    let ssoFromParent: string | null = null;
+
+    const onParentMessage = (event: MessageEvent) => {
+      const data = event.data;
+      if (!data || typeof data !== "object") return;
+      if (data.type === "reporting-sso" && typeof data.token === "string") {
+        ssoFromParent = data.token;
+      }
+      if (data.type === "reporting-theme") {
+        if (data.theme === "dark" || data.theme === "light") {
+          window.sessionStorage.setItem(THEME_KEY, data.theme);
+          applyTheme(data.theme);
         }
       }
+    };
+    window.addEventListener("message", onParentMessage);
+
+    const boot = async () => {
+      const isEmbed = readEmbedFlag();
+
+      // Уже есть сессия Voice — не гоняем повторный SSO (пользователь уже в reporting).
+      if (storedToken()) {
+        const restored = await restoreExistingSession();
+        if (cancelled) return;
+        if (restored) return;
+      }
+
+      const ssoToken = ssoFromUrl || ssoFromParent;
+      if (ssoToken) {
+        const ok = await exchangeReportingSso(ssoToken);
+        if (cancelled) return;
+        if (!ok) setLoading(false);
+        return;
+      }
+
+      if (isEmbed) {
+        // Попросим reporting отдать SSO один раз, без отдельного логина Voice.
+        try {
+          window.parent.postMessage({ type: "voice-auth-required" }, "*");
+        } catch {
+          /* ignore */
+        }
+        const deadline = Date.now() + AUTH_FETCH_MS;
+        while (Date.now() < deadline && !cancelled) {
+          if (ssoFromParent) {
+            const ok = await exchangeReportingSso(ssoFromParent);
+            if (cancelled) return;
+            if (!ok) setLoading(false);
+            return;
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 100));
+        }
+        if (cancelled) return;
+        setSsoError(
+          "Reporting не передал сессию в Voice. Обновите вкладку Voice.",
+        );
+        setLoading(false);
+        return;
+      }
+
       await refreshUser();
     };
 
     void boot();
     return () => {
       cancelled = true;
+      window.removeEventListener("message", onParentMessage);
     };
-  }, [completeLogin, refreshUser, router]);
-
-  useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      const data = event.data;
-      if (!data || typeof data !== "object") return;
-      if (data.type !== "reporting-theme") return;
-      if (data.theme !== "dark" && data.theme !== "light") return;
-      window.sessionStorage.setItem(THEME_KEY, data.theme);
-      applyTheme(data.theme);
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, []);
+  }, [exchangeReportingSso, refreshUser, restoreExistingSession]);
 
   useEffect(() => {
     if (loading) return;
@@ -242,7 +327,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem(TOKEN_KEY);
       setUser(null);
       if (readEmbedFlag()) {
-        setSsoError("Сессия Voice завершена. Выйдите и войдите снова в reporting.");
+        setSsoError(
+          "Сессия Voice завершена. Выйдите и войдите снова в reporting.",
+        );
       } else {
         router.replace("/login");
       }
@@ -272,7 +359,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const protectedPath = pathname !== "/login";
   const masterDenied =
-    pathname === "/master" && user && !user.canAccessMaster;
+    pathname === "/master" && Boolean(user && !user.canAccessMaster);
+  // В embed не показываем «Проверяем авторизацию» — пользователь уже вошёл в reporting.
+  const blockForAuth =
+    protectedPath &&
+    (masterDenied ||
+      (embedded ? loading && !user : loading || !user));
 
   if (ssoError && embedded) {
     return (
@@ -289,16 +381,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={value}>
-      {protectedPath && (loading || !user || masterDenied) ? (
+      {blockForAuth ? (
         <main className="auth-loading">
           <span className="brand-mark" aria-hidden="true">
             t2
           </span>
           <strong>
             {masterDenied
-              ? "Проверяем доступ…"
+              ? "Нет доступа к этому разделу"
               : embedded
-                ? "Входим через reporting…"
+                ? "Открываем Voice…"
                 : "Проверяем авторизацию…"}
           </strong>
         </main>
