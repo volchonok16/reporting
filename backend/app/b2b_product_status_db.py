@@ -40,6 +40,8 @@ B2B_PRODUCT_STATUS_COLUMNS: tuple[str, ...] = (
     "Идет в презентацию",
     "Обратить внимание",
     "Комментарий",
+    "Приоритет",
+    "Неактуальное",
 )
 
 WHY_COLUMN = "Зачем и для чего делаем"
@@ -144,7 +146,13 @@ def _replace_office_rows_from_snapshot(
         )
 
 
-def _sheet_from_rows(*, gid: str, name: str, rows: list[dict[str, Any]]) -> ProductStatusSheetOut:
+def _sheet_from_rows(
+    *,
+    gid: str,
+    name: str,
+    rows: list[dict[str, Any]],
+    projects: list[str] | None = None,
+) -> ProductStatusSheetOut:
     sheet_rows: list[dict[str, str]] = []
     for row in rows:
         cells = _normalize_cells(row.get("cells"))
@@ -157,6 +165,7 @@ def _sheet_from_rows(*, gid: str, name: str, rows: list[dict[str, Any]]) -> Prod
         columns=list(B2B_PRODUCT_STATUS_COLUMNS),
         rows=sheet_rows,
         totalShown=len(sheet_rows),
+        projects=list(projects or []),
     )
 
 
@@ -172,6 +181,28 @@ def _load_offices(db: Session) -> list[dict[str, Any]]:
         )
     )
     return [dict(row._mapping) for row in result]
+
+
+def _load_office_projects(db: Session, *, office_ids: list[int]) -> dict[int, list[str]]:
+    if not office_ids:
+        return {}
+    result = db.execute(
+        text(
+            """
+            SELECT office_id, name
+            FROM b2b_product_status_project
+            WHERE is_active = TRUE
+              AND office_id = ANY(:office_ids)
+            ORDER BY office_id, sort_order, id
+            """
+        ),
+        {"office_ids": office_ids},
+    )
+    by_office: dict[int, list[str]] = {}
+    for row in result:
+        office_id = int(row._mapping["office_id"])
+        by_office.setdefault(office_id, []).append(str(row._mapping["name"]))
+    return by_office
 
 
 def _load_office(db: Session, *, gid: str) -> dict[str, Any] | None:
@@ -229,7 +260,12 @@ def load_b2b_product_status_from_db(
             raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
 
     sheets: list[ProductStatusSheetOut] = []
+    projects_by_office = _load_office_projects(
+        db,
+        office_ids=[int(office["id"]) for office in offices],
+    )
     for office in offices:
+        office_projects = projects_by_office.get(int(office["id"]), [])
         if meta_only:
             sheets.append(
                 ProductStatusSheetOut(
@@ -238,6 +274,7 @@ def load_b2b_product_status_from_db(
                     columns=list(B2B_PRODUCT_STATUS_COLUMNS),
                     rows=[],
                     totalShown=0,
+                    projects=office_projects,
                 )
             )
             continue
@@ -247,6 +284,7 @@ def load_b2b_product_status_from_db(
                 gid=office["gid"],
                 name=office["name"],
                 rows=rows,
+                projects=office_projects,
             )
         )
 

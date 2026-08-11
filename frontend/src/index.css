@@ -1859,6 +1859,99 @@ body {
   width: 180px;
 }
 
+.product-status-table col.col-priority {
+  width: 72px;
+}
+
+.product-status-project-select {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.product-status-project-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-height: 2.4em;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.product-status-project-select-trigger:hover:not(:disabled) {
+  background: var(--input-hover-bg);
+}
+
+.product-status-project-select-trigger:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.product-status-project-select-trigger span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-status-project-select-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-md, 0 8px 24px rgba(15, 23, 42, 0.12));
+}
+
+.product-status-project-select-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.product-status-project-select-option:hover {
+  background: var(--bg-hover);
+}
+
+.product-status-priority-input {
+  width: 100%;
+  min-height: 2.4em;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.product-status-priority-input:hover {
+  background: var(--input-hover-bg);
+}
+
+.product-status-priority-input:focus {
+  outline: none;
+  border-color: var(--input-focus-border);
+}
+
 .product-status-table thead th {
   position: sticky;
   top: 0;
@@ -2037,6 +2130,45 @@ body {
   border: 1px solid color-mix(in srgb, var(--border-strong) 62%, #166534 38%);
   border-radius: 6px;
   background: color-mix(in srgb, var(--presentation-row-bg) 86%, var(--surface-1) 14%);
+  box-sizing: border-box;
+}
+
+.product-status-table tbody tr.product-status-row--obsolete td {
+  background-color: var(--obsolete-row-bg);
+  border-color: color-mix(in srgb, var(--border-strong) 58%, #3b82f6 42%);
+}
+
+.product-status-table tbody tr.product-status-row--obsolete:hover td {
+  background-color: var(--obsolete-row-bg-hover);
+  border-color: color-mix(in srgb, var(--border-strong) 52%, #2563eb 48%);
+}
+
+.product-status-table tbody tr.product-status-row--obsolete .product-status-cell-input {
+  background: color-mix(in srgb, var(--obsolete-row-bg) 86%, var(--surface-1) 14%);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 62%, #2563eb 38%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #ffffff 28%, transparent);
+}
+
+.product-status-table tbody tr.product-status-row--obsolete .product-status-cell-input:hover {
+  background: color-mix(in srgb, var(--obsolete-row-bg-hover) 82%, var(--surface-1) 18%);
+  border-color: color-mix(in srgb, var(--border-strong) 55%, #1d4ed8 45%);
+}
+
+.product-status-table tbody tr.product-status-row--obsolete .product-status-cell-active .product-status-cell-input,
+.product-status-table tbody tr.product-status-row--obsolete .product-status-cell-input:focus {
+  background: color-mix(in srgb, var(--obsolete-row-bg) 78%, var(--surface-1) 22%);
+  border-color: var(--brand-accent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, #ffffff 22%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--brand-accent) 35%, transparent);
+}
+
+.product-status-table tbody tr.product-status-row--obsolete .product-status-cell-readonly-value {
+  min-height: 3em;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 62%, #2563eb 38%);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--obsolete-row-bg) 86%, var(--surface-1) 14%);
   box-sizing: border-box;
 }
 

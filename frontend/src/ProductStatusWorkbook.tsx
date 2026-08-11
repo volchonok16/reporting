@@ -21,6 +21,13 @@ import { computeRevenueColumnTotals, withRevenueResult } from './revenueActiviti
 import ProductStatusColumnFilter, { rowMatchesColumnFilters } from './ProductStatusColumnFilter'
 import type { ChangeRequest, TaskLookupResponse } from './zniTypes'
 import ZniDetailModal from './ZniDetailModal'
+import {
+  applyPrioritySequence,
+  compareRowsByPriority,
+  isCoordinationProjectColumn,
+  isObsoleteColumn,
+  isPriorityColumn,
+} from './productStatusCoordination'
 
 type ProductStatusSheet = {
   gid: string
@@ -28,6 +35,7 @@ type ProductStatusSheet = {
   columns: string[]
   rows: Record<string, string>[]
   totalShown: number
+  projects?: string[]
 }
 
 type ProductStatusData = {
@@ -154,6 +162,7 @@ function cloneSheet(sheet: ProductStatusSheet): ProductStatusSheet {
     ...sheet,
     columns: [...sheet.columns],
     rows: sheet.rows.map((row) => ({ ...row })),
+    projects: sheet.projects ? [...sheet.projects] : [],
   }
 }
 
@@ -162,7 +171,17 @@ function cloneSheets(sheets: ProductStatusSheet[]): ProductStatusSheet[] {
     ...sheet,
     columns: [...sheet.columns],
     rows: sheet.rows.map((row) => ({ ...row })),
+    projects: sheet.projects ? [...sheet.projects] : [],
   }))
+}
+
+function sortSheetRowsByPriority(sheet: ProductStatusSheet): ProductStatusSheet {
+  const priorityColumn = sheet.columns.find(isPriorityColumn)
+  if (!priorityColumn) return sheet
+  const rows = [...sheet.rows].sort((left, right) =>
+    compareRowsByPriority(left, right, priorityColumn),
+  )
+  return { ...sheet, rows, totalShown: rows.length }
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -444,6 +463,8 @@ function resolveColumnClass(column: string): string | undefined {
   if (key.includes('полное описание') || key.includes('для презентации')) return 'col-description'
   if (key.includes('описание')) return 'col-description'
   if (key.includes('комментар')) return 'col-comment'
+  if (isPriorityColumn(column)) return 'col-priority'
+  if (isObsoleteColumn(column)) return 'col-presentation-flag'
   if (key.startsWith('влияние на') || key === 'результат') return 'col-numeric'
   if (key === 'активность') return 'col-activity'
   if (key.startsWith('статус')) return 'col-status-text'
@@ -456,7 +477,11 @@ function isAdminOnlyColumn(column: string): boolean {
 }
 
 function isBooleanColumn(column: string): boolean {
-  return isPresentationFlagColumn(column) || isAttentionColumn(column)
+  return (
+    isPresentationFlagColumn(column) ||
+    isAttentionColumn(column) ||
+    isObsoleteColumn(column)
+  )
 }
 
 function booleanCellValue(value: string): string {
@@ -478,12 +503,14 @@ function findColumn(columns: string[], matcher: (column: string) => boolean): st
 function resolveRowHighlight(
   row: Record<string, string>,
   columns: string[],
-): { isPresentation: boolean; isAttention: boolean } {
+): { isPresentation: boolean; isAttention: boolean; isObsolete: boolean } {
   const presentationColumn = findColumn(columns, isPresentationFlagColumn)
   const attentionColumn = findColumn(columns, isAttentionColumn)
+  const obsoleteColumn = findColumn(columns, isObsoleteColumn)
   return {
     isPresentation: presentationColumn ? isYesValue(row[presentationColumn] ?? '') : false,
     isAttention: attentionColumn ? isYesValue(row[attentionColumn] ?? '') : false,
+    isObsolete: obsoleteColumn ? isYesValue(row[obsoleteColumn] ?? '') : false,
   }
 }
 
@@ -599,8 +626,10 @@ export default function ProductStatusWorkbook({
         const local = sheetsRef.current.find((item) => item.gid === gid)
         const oldBaseline = baselineByGidRef.current.get(gid)
         if (local && oldBaseline && oldBaseline.columns.length > 0) {
-          const merged = rebaseLocalSheetOnRemote(local, oldBaseline, sheet)
-          rememberBaseline(sheet)
+          const merged = sortSheetRowsByPriority(
+            rebaseLocalSheetOnRemote(local, oldBaseline, sheet),
+          )
+          rememberBaseline(sortSheetRowsByPriority(sheet))
           setSheets((current) =>
             current.map((item) => (item.gid === gid ? cloneSheet(merged) : item)),
           )
@@ -616,11 +645,14 @@ export default function ProductStatusWorkbook({
         }
       }
 
-      rememberBaseline(sheet)
+      const sortedSheet = sortSheetRowsByPriority(sheet)
+      rememberBaseline(sortedSheet)
       if (options?.baselineOnly) {
         return
       }
-      setSheets((current) => current.map((item) => (item.gid === gid ? cloneSheet(sheet) : item)))
+      setSheets((current) =>
+        current.map((item) => (item.gid === gid ? cloneSheet(sortedSheet) : item)),
+      )
       setLoadedGids((current) => new Set(current).add(gid))
       setData((current) => ({
         title: payload.title ?? current?.title ?? defaultTitle,
@@ -717,7 +749,7 @@ export default function ProductStatusWorkbook({
           }
           const meta = await getJson<ProductStatusData>(`${apiBase}?${params}`)
           setData(meta)
-          setSheets(cloneSheets(meta.sheets))
+          setSheets(cloneSheets(meta.sheets).map(sortSheetRowsByPriority))
           setLoadedGids(new Set())
           resetBaselines()
           setDirty(false)
@@ -743,12 +775,12 @@ export default function ProductStatusWorkbook({
         const url = options?.refresh ? `${apiBase}?refresh=true` : apiBase
         const payload = await getJson<ProductStatusData>(url)
         setData(payload)
-        setSheets(cloneSheets(payload.sheets))
+        setSheets(cloneSheets(payload.sheets).map(sortSheetRowsByPriority))
         setLoadedGids(new Set(payload.sheets.map((sheet) => sheet.gid)))
         resetBaselines()
         for (const sheet of payload.sheets) {
           if (sheet.columns.length > 0) {
-            rememberBaseline(sheet)
+            rememberBaseline(sortSheetRowsByPriority(sheet))
           }
         }
         setDirty(false)
@@ -1002,7 +1034,11 @@ export default function ProductStatusWorkbook({
           const rows = [...sheet.rows]
           const [moved] = rows.splice(fromIndex, 1)
           rows.splice(toIndex, 0, moved)
-          return { ...sheet, rows }
+          const priorityColumn = sheet.columns.find(isPriorityColumn)
+          const nextRows = priorityColumn
+            ? applyPrioritySequence(rows, priorityColumn)
+            : rows
+          return { ...sheet, rows: nextRows, totalShown: nextRows.length }
         }),
       )
       setActiveCell((current) => {
@@ -1050,10 +1086,13 @@ export default function ProductStatusWorkbook({
     (gid: string, rowIndex: number, column: string, value: string) => {
       if (sumColumn && column === sumColumn) return
       setDirty(true)
+      let nextActiveRowIndex: number | null = null
       setSheets((current) =>
         current.map((sheet) => {
           if (sheet.gid !== gid) return sheet
-          const rows = sheet.rows.map((row, index) => {
+          const sourceRow = sheet.rows[rowIndex]
+          const rowId = sourceRow?.[PRODUCT_STATUS_ROW_ID_KEY]
+          let rows = sheet.rows.map((row, index) => {
             if (index !== rowIndex) return row
             const next = { ...row, [column]: value }
             if (sumColumn && sumSourceColumns && sumSourceColumns.length > 0) {
@@ -1061,9 +1100,35 @@ export default function ProductStatusWorkbook({
             }
             return next
           })
-          return { ...sheet, rows }
+          if (isPriorityColumn(column)) {
+            const priorityColumn = sheet.columns.find(isPriorityColumn)
+            if (priorityColumn) {
+              rows = [...rows].sort((left, right) =>
+                compareRowsByPriority(left, right, priorityColumn),
+              )
+              if (rowId) {
+                const nextIndex = rows.findIndex(
+                  (row) => row[PRODUCT_STATUS_ROW_ID_KEY] === rowId,
+                )
+                if (nextIndex >= 0) nextActiveRowIndex = nextIndex
+              }
+            }
+          }
+          return { ...sheet, rows, totalShown: rows.length }
         }),
       )
+      if (nextActiveRowIndex != null) {
+        setActiveCell((currentCell) => {
+          if (
+            !currentCell ||
+            currentCell.rowIndex !== rowIndex ||
+            currentCell.column !== column
+          ) {
+            return currentCell
+          }
+          return { ...currentCell, rowIndex: nextActiveRowIndex as number }
+        })
+      }
     },
     [sumColumn, sumSourceColumns],
   )
@@ -2029,6 +2094,11 @@ export default function ProductStatusWorkbook({
                               rows={activeSheet!.rows}
                               selected={columnFilters[column] ?? null}
                               onChange={handleColumnFilterChange}
+                              extraOptions={
+                                isCoordinationProjectColumn(column)
+                                  ? activeSheet!.projects ?? []
+                                  : undefined
+                              }
                             />
                           ) : null}
                         </div>
@@ -2038,12 +2108,16 @@ export default function ProductStatusWorkbook({
                 </thead>
                 <tbody>
                   {visibleRows.map(({ row, rowIndex }) => {
-                    const { isPresentation, isAttention } = resolveRowHighlight(
+                    const { isPresentation, isAttention, isObsolete } = resolveRowHighlight(
                       row,
                       activeSheet!.columns,
                     )
                     const rowClassName = [
-                      isPresentation ? 'product-status-row--presentation' : '',
+                      isObsolete
+                        ? 'product-status-row--obsolete'
+                        : isPresentation
+                          ? 'product-status-row--presentation'
+                          : '',
                       isAttention ? 'product-status-row--attention' : '',
                     ]
                       .filter(Boolean)
@@ -2070,6 +2144,7 @@ export default function ProductStatusWorkbook({
                         isBooleanColumn={isBooleanColumn}
                         isNumericColumn={isNumericColumn}
                         isReadOnlyColumn={isReadOnlyColumn}
+                        projectOptions={activeSheet!.projects ?? []}
                         enableRowDelete={enableRowDelete}
                         onDeleteRow={deleteRow}
                         enableRowReorder={enableRowReorder}

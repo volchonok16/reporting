@@ -287,6 +287,13 @@ package "Статус продукта B2B" #E0F0FF {
     cells : jsonb
   }
 
+  class b2b_product_status_project <<table>> {
+    +id : bigserial PK
+    office_id : FK
+    name : text
+    sort_order : int
+  }
+
   class b2b_news_section <<table>> {
     +id : bigserial PK
     code : varchar
@@ -367,6 +374,7 @@ youjail_card "1" -- "0..*" youjail_card_zni
 task "1" -- "0..*" youjail_card_zni
 
 b2b_product_status_office "1" -- "0..*" b2b_product_status_row
+b2b_product_status_office "1" -- "0..*" b2b_product_status_project
 b2b_news_section "1" -- "0..*" b2b_news_row
 revenue_activity_section "1" -- "0..*" revenue_activity_row
 

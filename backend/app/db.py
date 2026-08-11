@@ -201,6 +201,7 @@ def ensure_startup_schema() -> None:
         "044_b2b_product_status_analytics_split.sql",
         "045_org_user_voice_only.sql",
         "046_employee_hide_from_pyramid.sql",
+        "047_b2b_product_status_projects.sql",
     )
 
     auth_session_sql = """

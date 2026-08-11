@@ -1044,6 +1044,23 @@ CREATE INDEX idx_b2b_product_status_snapshot_office
 COMMENT ON TABLE b2b_product_status_snapshot IS 'Снимки строк офиса после сохранения; используются для отката к версии';
 COMMENT ON COLUMN b2b_product_status_snapshot.rows IS 'JSON: {"rows": [{"cells": {...}}, ...]} — полный порядок строк офиса';
 
+CREATE TABLE b2b_product_status_project (
+    id              BIGSERIAL PRIMARY KEY,
+    office_id       BIGINT       NOT NULL REFERENCES b2b_product_status_office(id) ON DELETE CASCADE,
+    name            TEXT         NOT NULL,
+    sort_order      INT          NOT NULL DEFAULT 0,
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE (office_id, name)
+);
+
+CREATE INDEX idx_b2b_product_status_project_office
+    ON b2b_product_status_project (office_id, sort_order, id);
+
+COMMENT ON TABLE b2b_product_status_project IS 'Справочник проектов координации для офисов B2B (мультиселект в колонке «Проект координация»)';
+COMMENT ON COLUMN b2b_product_status_project.name IS 'Отображаемое имя проекта';
+COMMENT ON COLUMN b2b_product_status_project.sort_order IS 'Порядок в выпадающем списке';
+
 -- -----------------------------------------------------------------------------
 -- Новости и запуски B2B
 -- -----------------------------------------------------------------------------

@@ -137,6 +137,7 @@ class ProductStatusSheetOut(BaseModel):
     columns: list[str]
     rows: list[dict[str, str]]
     totalShown: int
+    projects: list[str] = Field(default_factory=list)
 
 
 class ProductStatusB2BOut(BaseModel):

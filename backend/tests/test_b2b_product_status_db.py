@@ -27,6 +27,8 @@ def test_columns_include_coordination_and_flags() -> None:
     assert "Идет в презентацию" in B2B_PRODUCT_STATUS_COLUMNS
     assert "Обратить внимание" in B2B_PRODUCT_STATUS_COLUMNS
     assert "Комментарий" in B2B_PRODUCT_STATUS_COLUMNS
+    assert "Приоритет" in B2B_PRODUCT_STATUS_COLUMNS
+    assert "Неактуальное" in B2B_PRODUCT_STATUS_COLUMNS
     assert "ЗНИ" in B2B_PRODUCT_STATUS_COLUMNS
     assert "Проект координация" not in ADMIN_ONLY_COLUMNS
 
@@ -38,6 +40,8 @@ def test_normalize_cells_fills_missing_columns() -> None:
     assert cells["Дата запуска"] == "01.07"
     assert cells["ЗНИ"] == "123456, 789012"
     assert cells["Проект координация"] == ""
+    assert cells["Приоритет"] == ""
+    assert cells["Неактуальное"] == ""
     assert len(cells) == len(B2B_PRODUCT_STATUS_COLUMNS)
 
 

@@ -184,6 +184,7 @@ erDiagram
     youjail_card ||--o{ youjail_card_zni : zni
 
     b2b_product_status_office ||--o{ b2b_product_status_row : rows
+    b2b_product_status_office ||--o{ b2b_product_status_project : projects
     b2b_news_section ||--o{ b2b_news_row : rows
     revenue_activity_section ||--o{ revenue_activity_row : rows
 

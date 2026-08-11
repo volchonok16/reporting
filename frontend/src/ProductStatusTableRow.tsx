@@ -1,6 +1,11 @@
 import { memo, useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import ProductStatusCell, { type ProductStatusCellHandle } from './ProductStatusCell'
+import ProductStatusProjectMultiSelect from './ProductStatusProjectMultiSelect'
 import { resolveBooleanColors, styledBooleanValue } from './productStatusBoolean'
+import {
+  isCoordinationProjectColumn,
+  isPriorityColumn,
+} from './productStatusCoordination'
 import {
   isZniColumn,
   normalizeZniCellValue,
@@ -35,6 +40,7 @@ type ProductStatusTableRowProps = {
   isBooleanColumn: (column: string) => boolean
   isNumericColumn?: (column: string) => boolean
   isReadOnlyColumn?: (column: string) => boolean
+  projectOptions?: string[]
   enableRowDelete?: boolean
   onDeleteRow?: (rowIndex: number) => void
   enableRowReorder?: boolean
@@ -112,6 +118,7 @@ function ProductStatusTableRow({
   isBooleanColumn,
   isNumericColumn,
   isReadOnlyColumn,
+  projectOptions = [],
   enableRowDelete = false,
   onDeleteRow,
   enableRowReorder = false,
@@ -253,6 +260,68 @@ function ProductStatusTableRow({
                     column,
                     styledBooleanValue(event.target.checked, colors),
                   )
+                }}
+              />
+            </td>
+          )
+        }
+
+        if (
+          isCoordinationProjectColumn(column) &&
+          projectOptions.length > 0 &&
+          !readOnly
+        ) {
+          return (
+            <td
+              key={column}
+              data-product-status-column={column}
+              className={[cellClassName, 'product-status-project-cell'].filter(Boolean).join(' ')}
+              onMouseDownCapture={(event) => {
+                if (isInteractiveCellTarget(event.target)) return
+                commitActiveCellOnLeave(activeCellRef, rowActive)
+              }}
+            >
+              <ProductStatusProjectMultiSelect
+                value={row[column] ?? ''}
+                options={projectOptions}
+                disabled={cellBusy}
+                ariaLabel={column}
+                onChange={(next) => onUpdateCell(sheetGid, rowIndex, column, next)}
+              />
+            </td>
+          )
+        }
+
+        if (isPriorityColumn(column) && !readOnly) {
+          return (
+            <td
+              key={column}
+              data-product-status-column={column}
+              className={[cellClassName, 'product-status-priority-cell', isActive ? 'product-status-cell-active' : '']
+                .filter(Boolean)
+                .join(' ')}
+              onMouseDownCapture={(event) => {
+                if (isInteractiveCellTarget(event.target)) return
+                activateProductStatusCell(
+                  activeCellRef,
+                  onActiveCellFocus,
+                  { rowIndex, column },
+                  isActive,
+                )
+              }}
+            >
+              <input
+                type="number"
+                min={1}
+                step={1}
+                className="product-status-priority-input"
+                value={displayCellText(row[column] ?? '')}
+                aria-label={column}
+                disabled={cellBusy}
+                onFocus={() => onActiveCellFocus({ rowIndex, column })}
+                onBlur={() => onActiveCellBlur({ rowIndex, column })}
+                onChange={(event) => {
+                  onUpdateCell(sheetGid, rowIndex, column, event.target.value)
                 }}
               />
             </td>
@@ -416,6 +485,7 @@ export default memo(ProductStatusTableRow, (prev, next) => {
   if (prev.rowCount !== next.rowCount) return false
   if (prev.isDraggingRow !== next.isDraggingRow) return false
   if (prev.isDragOverRow !== next.isDragOverRow) return false
+  if (prev.projectOptions !== next.projectOptions) return false
   if (rowNeedsActiveCellUpdate(prev.activeCell, next.activeCell, prev.rowIndex)) {
     return false
   }

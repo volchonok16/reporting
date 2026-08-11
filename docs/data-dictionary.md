@@ -196,6 +196,7 @@
 |---------|---------------|------------|
 | `b2b_product_status_office` | `gid`, `name`, `sort_order` | Вкладки офисов (SMS, VOICE, CORE, Аналитики: планирование / бизнес-анализа, Проекты…) |
 | `b2b_product_status_row` | `office_id`, `sort_order`, `cells` | Строки таблицы; `cells` — jsonb с колонками и rich-text |
+| `b2b_product_status_project` | `office_id`, `name`, `sort_order` | Справочник проектов координации (мультиселект) |
 | `b2b_product_status_history` | `office_id`, `row_id`, `action`, `field_name` | Журнал create/update/delete/restore |
 | `b2b_product_status_snapshot` | `office_id`, `rows`, `changed_by` | Снимок всех строк офиса после сохранения |
 
@@ -208,7 +209,7 @@
 | `b2b_news_history` | `section_id`, `row_id`, `action` | Журнал create/update/delete/restore |
 | `b2b_news_snapshot` | `section_id`, `rows`, `changed_by` | Снимок для отката версии |
 
-Колонка «Проект координация» в `cells` доступна на запись только админам (`canManageOrg`).
+Колонка «Проект координация» в `cells`: для офисов со справочником `b2b_product_status_project` — мультиселект; иначе свободный текст. «Приоритет» и «Неактуальное» — дополнительные ключи в `cells`.
 
 ## revenue_activity_* — активности по выручкам
 

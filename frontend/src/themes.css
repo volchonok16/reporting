@@ -88,6 +88,8 @@
   --tag-warn-text: #9a3412;
   --presentation-row-bg: #dcfce7;
   --presentation-row-bg-hover: #bbf7d0;
+  --obsolete-row-bg: #bdd7ee;
+  --obsolete-row-bg-hover: #9ec5e8;
   --attention-text: #b91c1c;
   --format-toolbar-bg: #f8fafc;
   --format-toolbar-border: #e2e8f0;
@@ -197,6 +199,8 @@
   --tag-warn-text: #fcd34d;
   --presentation-row-bg: rgba(52, 211, 153, 0.18);
   --presentation-row-bg-hover: rgba(52, 211, 153, 0.28);
+  --obsolete-row-bg: rgba(147, 197, 253, 0.22);
+  --obsolete-row-bg-hover: rgba(147, 197, 253, 0.34);
   --attention-text: #fca5a5;
   --format-toolbar-bg: var(--surface-2);
   --format-toolbar-border: var(--border);

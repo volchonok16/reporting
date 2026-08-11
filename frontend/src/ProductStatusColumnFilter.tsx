@@ -1,15 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { displayCellText } from './productStatusRichText'
+import {
+  isCoordinationProjectColumn,
+  splitCoordinationProjects,
+} from './productStatusCoordination'
 
 type ProductStatusColumnFilterProps = {
   column: string
   rows: Array<Record<string, string>>
   selected: Set<string> | null
   onChange: (column: string, selected: Set<string> | null) => void
+  extraOptions?: string[]
 }
 
 export function rowFilterValue(row: Record<string, string>, column: string): string {
   return displayCellText(row[column] ?? '').trim()
+}
+
+function rowFilterTokens(row: Record<string, string>, column: string): string[] {
+  if (isCoordinationProjectColumn(column)) {
+    const parts = splitCoordinationProjects(row[column] ?? '')
+    return parts.length > 0 ? parts : ['']
+  }
+  return [rowFilterValue(row, column)]
 }
 
 export function rowMatchesColumnFilters(
@@ -18,7 +31,8 @@ export function rowMatchesColumnFilters(
 ): boolean {
   for (const [column, selected] of Object.entries(filters)) {
     if (!selected) continue
-    if (!selected.has(rowFilterValue(row, column))) return false
+    const tokens = rowFilterTokens(row, column)
+    if (!tokens.some((token) => selected.has(token))) return false
   }
   return true
 }
@@ -28,6 +42,7 @@ export default function ProductStatusColumnFilter({
   rows,
   selected,
   onChange,
+  extraOptions = [],
 }: ProductStatusColumnFilterProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -36,15 +51,21 @@ export default function ProductStatusColumnFilter({
 
   const uniqueValues = useMemo(() => {
     const values = new Set<string>()
+    for (const option of extraOptions) {
+      const trimmed = option.trim()
+      if (trimmed) values.add(trimmed)
+    }
     for (const row of rows) {
-      values.add(rowFilterValue(row, column))
+      for (const token of rowFilterTokens(row, column)) {
+        values.add(token)
+      }
     }
     return [...values].sort((a, b) => {
       if (a === '' && b !== '') return 1
       if (b === '' && a !== '') return -1
       return a.localeCompare(b, 'ru', { numeric: true, sensitivity: 'base' })
     })
-  }, [column, rows])
+  }, [column, extraOptions, rows])
 
   const filteredOptions = useMemo(() => {
     const q = search.trim().toLowerCase()
