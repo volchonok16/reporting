@@ -44,6 +44,16 @@ const USER_KEY = "carousel-auth-user";
 const EMBED_KEY = "carousel-reporting-embed";
 const THEME_KEY = "carousel-reporting-theme";
 const AUTH_FETCH_MS = 8000;
+
+/** В embed UI не ждёт Voice-логин: пользователь уже вошёл в reporting. */
+const REPORTING_EMBED_USER: AuthUser = {
+  id: "reporting-embed",
+  email: "user@reporting.local",
+  role: "standard",
+  canAccessMaster: true,
+  isActive: true,
+};
+
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function storedToken() {
@@ -139,18 +149,20 @@ async function fetchJson(
 export function AuthProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const initialEmbed =
+  const isEmbedBoot =
     typeof window !== "undefined" ? readEmbedFlag() : false;
-  const [user, setUser] = useState<AuthUser | null>(() =>
-    typeof window !== "undefined" && readEmbedFlag() ? storedUser() : null,
-  );
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    if (typeof window === "undefined") return null;
+    if (!readEmbedFlag()) return null;
+    return storedUser() ?? REPORTING_EMBED_USER;
+  });
   const [loading, setLoading] = useState(() => {
     if (typeof window === "undefined") return true;
-    // Embed из reporting: не блокируем UI повторной проверкой.
-    if (readEmbedFlag() && storedToken() && storedUser()) return false;
+    // Embed: сразу UI, без экрана «проверяем авторизацию».
+    if (readEmbedFlag()) return false;
     return true;
   });
-  const [embedded, setEmbedded] = useState(initialEmbed);
+  const [embedded, setEmbedded] = useState(isEmbedBoot);
   const [ssoError, setSsoError] = useState<string | null>(null);
 
   const authorizedFetch = useCallback(
@@ -175,8 +187,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ) {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(USER_KEY);
-        setUser(null);
-        if (!readEmbedFlag()) router.replace("/login");
+        if (!readEmbedFlag()) {
+          setUser(null);
+          router.replace("/login");
+        } else {
+          // В reporting-вкладке не выкидываем на логин и не показываем auth-gate.
+          try {
+            window.parent.postMessage({ type: "voice-auth-required" }, "*");
+          } catch {
+            /* ignore */
+          }
+        }
       }
       return response;
     },
@@ -200,14 +221,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({ token: ssoToken }),
         });
         if (!result.ok) {
-          setSsoError(
-            detailMessage(result.payload, "Не удалось войти через reporting"),
-          );
+          // В embed не блокируем UI ошибкой SSO — UI уже открыт из reporting.
+          if (!readEmbedFlag()) {
+            setSsoError(
+              detailMessage(result.payload, "Не удалось войти через reporting"),
+            );
+          }
           return false;
         }
         const payload = result.payload as { token?: string; user?: AuthUser };
         if (!payload.token || !payload.user) {
-          setSsoError("Сервер Voice не вернул сессию");
+          if (!readEmbedFlag()) {
+            setSsoError("Сервер Voice не вернул сессию");
+          }
           return false;
         }
         completeLogin(payload.token, payload.user);
@@ -215,7 +241,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (path.endsWith("/login")) router.replace("/");
         return true;
       } catch {
-        setSsoError("Сервер Voice недоступен");
+        if (!readEmbedFlag()) {
+          setSsoError("Сервер Voice недоступен");
+        }
         return false;
       }
     },
@@ -223,7 +251,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const refreshUser = useCallback(async () => {
-    // Только для standalone Voice (не iframe reporting).
     const token = storedToken();
     if (!token) {
       setUser(null);
@@ -273,6 +300,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!data || typeof data !== "object") return;
       if (data.type === "reporting-sso" && typeof data.token === "string") {
         ssoFromParent = data.token;
+        // Тихий обмен в фоне — UI уже открыт.
+        if (readEmbedFlag()) {
+          void exchangeReportingSso(data.token);
+        }
       }
       if (data.type === "reporting-theme") {
         if (data.theme === "dark" || data.theme === "light") {
@@ -283,52 +314,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("message", onParentMessage);
 
-    const requestSsoFromParent = async (): Promise<string | null> => {
-      try {
-        window.parent.postMessage({ type: "voice-auth-required" }, "*");
-      } catch {
-        return null;
-      }
-      const deadline = Date.now() + AUTH_FETCH_MS;
-      while (Date.now() < deadline && !cancelled) {
-        if (ssoFromParent) return ssoFromParent;
-        await new Promise((resolve) => window.setTimeout(resolve, 100));
-      }
-      return ssoFromParent;
-    };
-
     const boot = async () => {
-      // Embed: пользователь уже авторизован в reporting — без /auth/me и без экрана проверки.
       if (isEmbed) {
-        const cached = storedUser();
-        const token = storedToken();
-        if (cached && token) {
-          setUser(cached);
-          setLoading(false);
-          setSsoError(null);
-          // Фоном обновим токен только если reporting сам прислал SSO в URL.
-          if (ssoFromUrl) {
-            void exchangeReportingSso(ssoFromUrl);
-          }
-          return;
-        }
+        // Сразу UI reporting — без экрана проверки.
+        setUser(storedUser() ?? REPORTING_EMBED_USER);
+        setLoading(false);
+        setSsoError(null);
 
-        const ssoToken = ssoFromUrl || (await requestSsoFromParent());
-        if (cancelled) return;
-        if (!ssoToken) {
-          setSsoError(
-            "Reporting не передал сессию в Voice. Обновите вкладку Voice.",
-          );
-          setLoading(false);
+        const ssoToken = ssoFromUrl || ssoFromParent;
+        if (ssoToken) {
+          void exchangeReportingSso(ssoToken);
           return;
         }
-        const ok = await exchangeReportingSso(ssoToken);
-        if (cancelled) return;
-        if (!ok) setLoading(false);
+        // Попросим parent токен в фоне (не блокируем).
+        try {
+          window.parent.postMessage({ type: "voice-auth-required" }, "*");
+        } catch {
+          /* ignore */
+        }
         return;
       }
 
-      // Standalone Voice — обычная проверка сессии.
       if (ssoFromUrl) {
         const ok = await exchangeReportingSso(ssoFromUrl);
         if (cancelled) return;
@@ -363,12 +369,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(USER_KEY);
-      setUser(null);
       if (readEmbedFlag()) {
-        setSsoError(
-          "Сессия Voice завершена. Выйдите и войдите снова в reporting.",
-        );
+        setUser(REPORTING_EMBED_USER);
+        setSsoError(null);
       } else {
+        setUser(null);
         router.replace("/login");
       }
     }
@@ -398,12 +403,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const protectedPath = pathname !== "/login";
   const masterDenied =
     pathname === "/master" && Boolean(user && !user.canAccessMaster);
-  // В iframe reporting повторная авторизация не показывается.
+  // Embed из reporting никогда не показывает экран проверки авторизации.
   const blockForAuth =
     protectedPath &&
-    (masterDenied || (!embedded && (loading || !user)) || (embedded && loading && !user));
+    (masterDenied || (!embedded && (loading || !user)));
 
-  if (ssoError && embedded && !user) {
+  if (ssoError && !embedded) {
     return (
       <main className="auth-loading">
         <span className="brand-mark" aria-hidden="true">
@@ -411,7 +416,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         </span>
         <strong>Voice</strong>
         <p>{ssoError}</p>
-        <p>Откройте вкладку Voice заново из reporting.</p>
       </main>
     );
   }
@@ -426,9 +430,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           <strong>
             {masterDenied
               ? "Нет доступа к этому разделу"
-              : embedded
-                ? "Открываем Voice…"
-                : "Проверяем авторизацию…"}
+              : "Проверяем авторизацию…"}
           </strong>
         </main>
       ) : (

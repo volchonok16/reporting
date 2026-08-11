@@ -47,7 +47,8 @@ async function assertVoiceUpstream(): Promise<void> {
       `Voice upstream HTTP ${response.status}. Проверьте контейнеры reporting-voice-web и reporting-frontend.`,
     )
   }
-  if (!text.includes(VOICE_PROBE_MARK) || looksLikeReportingHtml(text)) {
+  const okMark = text.includes(VOICE_PROBE_MARK)
+  if (!okMark || looksLikeReportingHtml(text)) {
     throw new Error(
       'Маршрут /voice/ отдал reporting SPA вместо voice-web. ' +
         'Нужен новый образ frontend (nginx-прокси) и running reporting-voice-web. ' +
@@ -96,11 +97,30 @@ export default function Voice() {
     let cancelled = false
     void (async () => {
       try {
-        await assertVoiceUpstream()
+        // Параллельно: проверка upstream + SSO reporting (пользователь уже вошёл).
+        const [, token] = await Promise.all([
+          assertVoiceUpstream(),
+          ensureSsoToken().catch(() => ''),
+        ])
         if (cancelled) return
-        // Сначала открываем embed без нового SSO — если сессия Voice уже есть, хватит её.
-        setIframeSrc(buildVoiceSrc(currentTheme()))
+        setIframeSrc(buildVoiceSrc(currentTheme(), token || undefined))
         setError(null)
+        // Если SSO пришёл чуть позже probe — дошлём в iframe.
+        if (!token) {
+          void ensureSsoToken()
+            .then((lateToken) => {
+              if (cancelled) return
+              const frame = iframeRef.current?.contentWindow
+              if (frame) {
+                frame.postMessage({ type: 'reporting-sso', token: lateToken }, '*')
+              } else {
+                setIframeSrc(buildVoiceSrc(currentTheme(), lateToken))
+              }
+            })
+            .catch(() => {
+              /* UI уже открыт из reporting */
+            })
+        }
       } catch (err) {
         if (cancelled) return
         setError(err instanceof Error ? err.message : 'Не удалось открыть Voice')
@@ -130,11 +150,9 @@ export default function Voice() {
           const frame = iframeRef.current?.contentWindow
           if (frame) {
             frame.postMessage({ type: 'reporting-sso', token }, '*')
-          } else {
-            setIframeSrc(buildVoiceSrc(currentTheme(), token))
           }
-        } catch (err) {
-          setError(err instanceof Error ? err.message : 'Не удалось выдать SSO для Voice')
+        } catch {
+          /* не блокируем вкладку */
         }
       })()
     }
