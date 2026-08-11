@@ -141,9 +141,14 @@ function WorkloadCells({ row, dayKeys }: { row: WorkloadRow; dayKeys: string[] }
   )
 }
 
+function isValidCalendarYear(value: number): boolean {
+  return Number.isInteger(value) && value >= 2000 && value <= 2100
+}
+
 export default function PlanningWorkload() {
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
+  const [yearText, setYearText] = useState(String(now.getFullYear()))
   const [month, setMonth] = useState(now.getMonth())
   const [viewMode, setViewMode] = useState<WorkloadViewMode>('byProject')
   const [workload, setWorkload] = useState<PlanningWorkload | null>(null)
@@ -153,6 +158,7 @@ export default function PlanningWorkload() {
   const bounds = useMemo(() => monthBounds(year, month), [year, month])
 
   const load = useCallback(async () => {
+    if (!isValidCalendarYear(year)) return
     setLoading(true)
     try {
       const params = new URLSearchParams({
@@ -166,7 +172,7 @@ export default function PlanningWorkload() {
     } finally {
       setLoading(false)
     }
-  }, [bounds.from, bounds.to])
+  }, [bounds.from, bounds.to, year])
 
   useEffect(() => {
     void load()
@@ -211,8 +217,15 @@ export default function PlanningWorkload() {
             type="number"
             min="2000"
             max="2100"
-            value={year}
-            onChange={(event) => setYear(Number(event.target.value))}
+            value={yearText}
+            onChange={(event) => {
+              const raw = event.target.value
+              setYearText(raw)
+              const next = Number(raw)
+              // Не дергаем API на промежуточных значениях вроде "202" при наборе "2026".
+              if (isValidCalendarYear(next)) setYear(next)
+            }}
+            onBlur={() => setYearText(String(year))}
           />
         </label>
         <label>
