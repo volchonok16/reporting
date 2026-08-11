@@ -12,7 +12,7 @@ type AppHeaderProps = {
 export function AppHeader({ onBeforeNavigate }: AppHeaderProps = {}) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout, embedded } = useAuth();
+  const { user, logout, embedded, ready } = useAuth();
 
   const navigateAfterCleanup =
     (href: string) => async (event: MouseEvent<HTMLAnchorElement>) => {
@@ -60,7 +60,7 @@ export function AppHeader({ onBeforeNavigate }: AppHeaderProps = {}) {
           >
             Обработка заявок
           </Link>
-          {user?.canAccessMaster && (
+          {ready && user?.canAccessMaster ? (
             <Link
               className={`topbar-link ${
                 pathname === "/master" ? "is-active" : ""
@@ -70,9 +70,9 @@ export function AppHeader({ onBeforeNavigate }: AppHeaderProps = {}) {
             >
               Мастер файл
             </Link>
-          )}
+          ) : null}
         </nav>
-        {!embedded && (
+        {ready && !embedded ? (
           <button
             className="account-logout"
             type="button"
@@ -86,7 +86,7 @@ export function AppHeader({ onBeforeNavigate }: AppHeaderProps = {}) {
           >
             Выйти
           </button>
-        )}
+        ) : null}
       </div>
     </header>
   );

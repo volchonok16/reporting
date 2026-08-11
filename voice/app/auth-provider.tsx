@@ -23,6 +23,7 @@ type AuthContextValue = {
   user: AuthUser | null;
   loading: boolean;
   embedded: boolean;
+  ready: boolean;
   authorizedFetch: (path: string, init?: RequestInit) => Promise<Response>;
   completeLogin: (token: string, user: AuthUser) => void;
   refreshUser: () => Promise<void>;
@@ -149,20 +150,11 @@ async function fetchJson(
 export function AuthProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const isEmbedBoot =
-    typeof window !== "undefined" ? readEmbedFlag() : false;
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    if (typeof window === "undefined") return null;
-    if (!readEmbedFlag()) return null;
-    return storedUser() ?? REPORTING_EMBED_USER;
-  });
-  const [loading, setLoading] = useState(() => {
-    if (typeof window === "undefined") return true;
-    // Embed: сразу UI, без экрана «проверяем авторизацию».
-    if (readEmbedFlag()) return false;
-    return true;
-  });
-  const [embedded, setEmbedded] = useState(isEmbedBoot);
+  // Важно: SSR и первый client-render одинаковые — иначе React #418 (hydration).
+  const [ready, setReady] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [embedded, setEmbedded] = useState(false);
   const [ssoError, setSsoError] = useState<string | null>(null);
 
   const authorizedFetch = useCallback(
@@ -191,7 +183,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null);
           router.replace("/login");
         } else {
-          // В reporting-вкладке не выкидываем на логин и не показываем auth-gate.
           try {
             window.parent.postMessage({ type: "voice-auth-required" }, "*");
           } catch {
@@ -221,7 +212,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({ token: ssoToken }),
         });
         if (!result.ok) {
-          // В embed не блокируем UI ошибкой SSO — UI уже открыт из reporting.
           if (!readEmbedFlag()) {
             setSsoError(
               detailMessage(result.payload, "Не удалось войти через reporting"),
@@ -292,15 +282,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const isEmbed = readEmbedFlag();
     setEmbedded(isEmbed);
 
-    let cancelled = false;
-    let ssoFromParent: string | null = null;
-
     const onParentMessage = (event: MessageEvent) => {
       const data = event.data;
       if (!data || typeof data !== "object") return;
       if (data.type === "reporting-sso" && typeof data.token === "string") {
-        ssoFromParent = data.token;
-        // Тихий обмен в фоне — UI уже открыт.
         if (readEmbedFlag()) {
           void exchangeReportingSso(data.token);
         }
@@ -316,43 +301,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const boot = async () => {
       if (isEmbed) {
-        // Сразу UI reporting — без экрана проверки.
         setUser(storedUser() ?? REPORTING_EMBED_USER);
         setLoading(false);
         setSsoError(null);
-
-        const ssoToken = ssoFromUrl || ssoFromParent;
-        if (ssoToken) {
-          void exchangeReportingSso(ssoToken);
-          return;
-        }
-        // Попросим parent токен в фоне (не блокируем).
-        try {
-          window.parent.postMessage({ type: "voice-auth-required" }, "*");
-        } catch {
-          /* ignore */
+        setReady(true);
+        if (ssoFromUrl) {
+          void exchangeReportingSso(ssoFromUrl);
+        } else {
+          try {
+            window.parent.postMessage({ type: "voice-auth-required" }, "*");
+          } catch {
+            /* ignore */
+          }
         }
         return;
       }
 
       if (ssoFromUrl) {
-        const ok = await exchangeReportingSso(ssoFromUrl);
-        if (cancelled) return;
-        if (!ok) setLoading(false);
+        await exchangeReportingSso(ssoFromUrl);
+        setReady(true);
         return;
       }
       await refreshUser();
+      setReady(true);
     };
 
     void boot();
     return () => {
-      cancelled = true;
       window.removeEventListener("message", onParentMessage);
     };
   }, [exchangeReportingSso, refreshUser]);
 
   useEffect(() => {
-    if (loading) return;
+    if (!ready || loading) return;
     if (embedded) return;
     if (pathname !== "/login" && !user) {
       router.replace("/login");
@@ -361,7 +342,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (pathname === "/master" && user && !user.canAccessMaster)
       router.replace("/");
     if (pathname === "/account") router.replace("/");
-  }, [embedded, loading, pathname, router, user]);
+  }, [embedded, loading, pathname, ready, router, user]);
 
   const logout = useCallback(async () => {
     try {
@@ -384,6 +365,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       loading,
       embedded,
+      ready,
       authorizedFetch,
       completeLogin,
       refreshUser,
@@ -395,6 +377,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       embedded,
       loading,
       logout,
+      ready,
       refreshUser,
       user,
     ],
@@ -402,13 +385,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const protectedPath = pathname !== "/login";
   const masterDenied =
-    pathname === "/master" && Boolean(user && !user.canAccessMaster);
-  // Embed из reporting никогда не показывает экран проверки авторизации.
+    ready && pathname === "/master" && Boolean(user && !user.canAccessMaster);
+  // До hydration (ready=false) всегда одинаковый UI: children.
+  // Embed — без auth-gate. Standalone — gate только после ready.
   const blockForAuth =
+    ready &&
     protectedPath &&
     (masterDenied || (!embedded && (loading || !user)));
 
-  if (ssoError && !embedded) {
+  if (ssoError && ready && !embedded) {
     return (
       <main className="auth-loading">
         <span className="brand-mark" aria-hidden="true">
