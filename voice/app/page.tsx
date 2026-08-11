@@ -3662,6 +3662,17 @@ export default function Home() {
                     setError("");
                     setNotice("");
                   }}
+                  onPointerUp={(event) => {
+                    // На части touch/iframe окружений click не доходит — берём pointerup.
+                    if (event.pointerType !== "touch" && event.pointerType !== "pen")
+                      return;
+                    if (event.button !== 0) return;
+                    event.preventDefault();
+                    setStartVariant("raw");
+                    setMode("raw");
+                    setError("");
+                    setNotice("");
+                  }}
                 >
                   <span className="start-variant-number">Вариант 1</span>
                   <strong>Обработка заявки на добавление номеров</strong>
@@ -3676,7 +3687,18 @@ export default function Home() {
                 <button
                   className="start-variant-card"
                   type="button"
+                  data-tour="formatted-variant"
                   onClick={() => {
+                    setStartVariant("formatted");
+                    setMode("formatted");
+                    setError("");
+                    setNotice("");
+                  }}
+                  onPointerUp={(event) => {
+                    if (event.pointerType !== "touch" && event.pointerType !== "pen")
+                      return;
+                    if (event.button !== 0) return;
+                    event.preventDefault();
                     setStartVariant("formatted");
                     setMode("formatted");
                     setError("");

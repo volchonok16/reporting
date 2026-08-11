@@ -62,7 +62,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const themeBootScript = `(function(){try{var q=new URLSearchParams(location.search);var t=q.get("theme")||sessionStorage.getItem("carousel-reporting-theme");if(t==="dark"||t==="light"){document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t;}if(q.get("embed")==="1"||window.self!==window.top){sessionStorage.setItem("carousel-reporting-embed","1");}}catch(e){}})();`;
+  const themeBootScript = `(function(){try{var q=new URLSearchParams(location.search);var t=q.get("theme")||sessionStorage.getItem("carousel-reporting-theme");if(t==="dark"||t==="light"){document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t;}if(q.get("embed")==="1"||window.self!==window.top){sessionStorage.setItem("carousel-reporting-embed","1");document.documentElement.dataset.embed="1";}}catch(e){}})();`;
 
   return (
     <html lang="ru" suppressHydrationWarning>

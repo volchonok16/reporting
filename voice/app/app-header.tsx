@@ -40,6 +40,7 @@ export function AppHeader({ onBeforeNavigate }: AppHeaderProps = {}) {
       <Link
         className="brand"
         href="/"
+        prefetch={false}
         onClick={navigateAfterCleanup("/")}
         aria-label="Агент мобильной карусели — главная"
       >
@@ -56,6 +57,7 @@ export function AppHeader({ onBeforeNavigate }: AppHeaderProps = {}) {
           <Link
             className={`topbar-link ${pathname === "/" ? "is-active" : ""}`}
             href="/"
+            prefetch={false}
             onClick={navigateAfterCleanup("/")}
           >
             Обработка заявок
@@ -66,6 +68,7 @@ export function AppHeader({ onBeforeNavigate }: AppHeaderProps = {}) {
                 pathname === "/master" ? "is-active" : ""
               }`}
               href="/master"
+              prefetch={false}
               onClick={navigateAfterCleanup("/master")}
             >
               Мастер файл

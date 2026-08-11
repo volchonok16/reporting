@@ -161,6 +161,8 @@ button:disabled, select:disabled, input:disabled { cursor: not-allowed; opacity:
   box-shadow: 0 14px 34px rgba(0, 0, 0, .2);
   color: #fff;
   text-align: left;
+  touch-action: manipulation;
+  cursor: pointer;
 }
 .request-tutorial-launcher > span:first-child {
   display: grid;
@@ -525,6 +527,8 @@ button:disabled, select:disabled, input:disabled { cursor: not-allowed; opacity:
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+  position: relative;
+  z-index: 1;
 }
 .start-variant-card {
   display: grid;
@@ -538,12 +542,30 @@ button:disabled, select:disabled, input:disabled { cursor: not-allowed; opacity:
   background: var(--panel);
   color: var(--ink);
   text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(255, 52, 149, 0.28);
+  user-select: none;
+  -webkit-user-select: none;
+  position: relative;
+  z-index: 1;
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
-.start-variant-card:hover {
+/* Дети не перехватывают touch/click — иначе на части устройств тап «съедается». */
+.start-variant-card > * {
+  pointer-events: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .start-variant-card:hover {
+    border-color: var(--teal);
+    box-shadow: 0 14px 30px rgba(184, 0, 92, .09);
+    transform: translateY(-2px);
+  }
+}
+.start-variant-card:active,
+.start-variant-card:focus-visible {
   border-color: var(--teal);
-  box-shadow: 0 14px 30px rgba(184, 0, 92, .09);
-  transform: translateY(-2px);
+  box-shadow: 0 0 0 3px rgba(255, 52, 149, .22);
 }
 .start-variant-number {
   width: fit-content;
@@ -3830,6 +3852,9 @@ textarea.is-invalid-number-whitespace,
   font-size: 12px;
   line-height: 1.55;
 }
+html[data-theme="dark"] .start-variant-card > span:not(.start-variant-number) {
+  color: #c8d0dc;
+}
 .workflow-operation-block {
   margin-top: 18px;
   padding: 18px;
@@ -4378,12 +4403,11 @@ textarea.is-invalid-number-whitespace,
     transition-duration: .01ms !important;
   }
 }
-@media (max-width: 620px) {
-  .request-tutorial-launcher {
-    top: auto;
-    right: 12px;
-    bottom: 12px;
-  }
+html[data-embed="1"] .request-tutorial-launcher {
+  top: auto;
+  bottom: 18px;
+  right: 18px;
+}
   .request-tutorial-coach {
     right: 10px;
     bottom: 10px;
