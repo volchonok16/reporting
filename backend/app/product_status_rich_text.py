@@ -214,6 +214,7 @@ def split_cell_wrapper(text: str) -> tuple[CellStyle, str]:
 @dataclass(frozen=True)
 class EmbeddedTableDoc:
     text: str
+    after_text: str
     cells: tuple[tuple[str, ...], ...]
 
 
@@ -221,12 +222,13 @@ def format_embedded_table_doc(parsed: object) -> str:
     if not isinstance(parsed, dict):
         return ""
     text = str(parsed.get("text") or "").strip()
+    after_text = str(parsed.get("afterText") or "").strip()
     table = parsed.get("table") if isinstance(parsed.get("table"), dict) else parsed
     if not isinstance(table, dict):
-        return text
+        return "\n".join(part for part in (text, after_text) if part)
     cells = table.get("cells")
     if not isinstance(cells, list):
-        return text
+        return "\n".join(part for part in (text, after_text) if part)
     lines: list[str] = []
     if text:
         lines.append(text)
@@ -236,6 +238,8 @@ def format_embedded_table_doc(parsed: object) -> str:
         row_text = " | ".join(str(cell).strip() for cell in row)
         if row_text.replace("|", "").strip():
             lines.append(row_text)
+    if after_text:
+        lines.append(after_text)
     return "\n".join(lines)
 
 
@@ -279,8 +283,10 @@ def parse_embedded_table_doc(text: str) -> EmbeddedTableDoc | None:
     if rows < 1 or cols < 1:
         return None
     preamble = str(parsed.get("text") or "")
+    after_text = str(parsed.get("afterText") or "")
     return EmbeddedTableDoc(
         text=preamble,
+        after_text=after_text,
         cells=_normalize_embedded_table_cells(cells_raw, rows, cols),
     )
 

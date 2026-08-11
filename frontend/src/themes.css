@@ -430,6 +430,20 @@ html.theme-switch-instant *::after {
   border-bottom-color: #fb7185;
 }
 
+[data-theme='dark'] .product-status-inline-table {
+  border: 1px solid #7b879c;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+[data-theme='dark'] .product-status-inline-table td {
+  border: 1px solid #7b879c;
+  background: color-mix(in srgb, var(--surface-1) 88%, #000 12%);
+}
+
+[data-theme='dark'] .product-status-inline-table-cell:focus {
+  background: color-mix(in srgb, var(--surface-2) 70%, var(--brand-accent) 30%);
+}
+
 [data-theme='dark'] .loading {
   color: var(--text-primary);
 }

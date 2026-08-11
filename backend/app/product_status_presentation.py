@@ -695,6 +695,12 @@ def _estimate_cell_height(text: str, col_index: int, col_chars_per_line: tuple[i
                 embedded.cells,
                 col_index,
                 col_chars_per_line,
+            )
+            + (
+                _estimate_text_lines(embedded.after_text, col_chars_per_line[col_index] if col_index < len(col_chars_per_line) else 40)
+                * (LINE_HEIGHT_DENSE_EMU if col_index == WHY_COLUMN_INDEX else LINE_HEIGHT_EMU)
+                if embedded.after_text.strip()
+                else 0
             ),
         )
     chars_per_line = col_chars_per_line[col_index] if col_index < len(col_chars_per_line) else 40

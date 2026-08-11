@@ -2472,7 +2472,14 @@ body {
   width: 100%;
 }
 
-.product-status-inline-table-preamble {
+.product-status-inline-table-after-block {
+  order: 3;
+  flex: 0 0 auto;
+  width: 100%;
+}
+
+.product-status-inline-table-preamble,
+.product-status-inline-table-postamble {
   display: block;
   width: 100%;
   min-height: 2.7em;
@@ -2494,7 +2501,13 @@ body {
   field-sizing: content;
 }
 
-.product-status-inline-table-preamble:focus {
+.product-status-inline-table-postamble {
+  margin-top: 4px;
+  min-height: 1.8em;
+}
+
+.product-status-inline-table-preamble:focus,
+.product-status-inline-table-postamble:focus {
   outline: none;
 }
 
@@ -2502,10 +2515,11 @@ body {
   margin-top: 0;
   width: 100%;
   border-collapse: collapse;
+  border: 1px solid var(--border-strong);
 }
 
 .product-status-inline-table td {
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   padding: 0;
   vertical-align: top;
 }

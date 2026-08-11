@@ -1234,7 +1234,7 @@ export default function ProductStatusWorkbook({
         }
       }
 
-      if (focused?.closest('.product-status-inline-table-preamble, .product-status-inline-table-cell, .product-status-cell-input')) {
+      if (focused?.closest('.product-status-inline-table-preamble, .product-status-inline-table-postamble, .product-status-inline-table-cell, .product-status-cell-input')) {
         return
       }
 

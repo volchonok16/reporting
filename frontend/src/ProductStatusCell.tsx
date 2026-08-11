@@ -21,6 +21,8 @@ import {
   readTableDocFromHost,
   collapseExactDuplicatePreamble,
   preambleFromCellValue,
+  removeTableColumn,
+  removeTableRow,
   resolvePreambleForTableInsert,
   serializeDocWithTable,
   setLastCopiedEmbeddedTable,
@@ -253,8 +255,10 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         if (!(node instanceof HTMLElement)) return
         const keep =
           node.classList.contains('product-status-inline-table-text-block') ||
+          node.classList.contains('product-status-inline-table-after-block') ||
           node.classList.contains('product-status-inline-table-block') ||
           node.classList.contains('product-status-inline-table-preamble') ||
+          node.classList.contains('product-status-inline-table-postamble') ||
           node.classList.contains('product-status-inline-table-toolbar') ||
           node.classList.contains('product-status-inline-table')
         if (!keep) host.removeChild(node)
@@ -392,6 +396,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         commitValue(
           serializeDocWithTable({
             text: preamble,
+            afterText: tableDoc?.afterText ?? '',
             table: createEmbeddedTable(rows, cols),
           }),
         )
@@ -443,6 +448,8 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
     }
 
     if (tableDoc) {
+      const focusedCellRef = { current: { row: 0, col: 0 } as { row: number; col: number } }
+
       const readCurrentDoc = (): EmbeddedTableDoc => {
         const host = tableHostRef.current
         if (host) {
@@ -451,9 +458,35 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         return tableDoc
       }
 
+      const withDocTexts = (
+        current: EmbeddedTableDoc,
+        table: EmbeddedTable,
+      ): EmbeddedTableDoc => ({
+        text: current.text || tableDoc.text,
+        afterText: current.afterText ?? tableDoc.afterText ?? '',
+        table,
+      })
+
       const updateFreeText = (nextText: string) => {
         const current = readCurrentDoc()
-        commitValue(serializeDocWithTable({ text: nextText, table: current.table }))
+        commitValue(
+          serializeDocWithTable({
+            text: nextText,
+            afterText: current.afterText ?? tableDoc.afterText ?? '',
+            table: current.table,
+          }),
+        )
+      }
+
+      const updateAfterText = (nextText: string) => {
+        const current = readCurrentDoc()
+        commitValue(
+          serializeDocWithTable({
+            text: current.text || tableDoc.text,
+            afterText: nextText,
+            table: current.table,
+          }),
+        )
       }
 
       const updateTableCell = (rowIndex: number, colIndex: number, cellValue: string) => {
@@ -464,18 +497,48 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
           cells: current.table.cells.map((items) => [...items]),
         }
         nextTable.cells[rowIndex][colIndex] = cellValue
-        commitValue(serializeDocWithTable({ text: current.text || tableDoc.text, table: nextTable }))
+        commitValue(serializeDocWithTable(withDocTexts(current, nextTable)))
       }
 
       const updateTable = (nextTable: EmbeddedTable) => {
         const current = readCurrentDoc()
-        commitValue(serializeDocWithTable({ text: current.text || tableDoc.text, table: nextTable }))
+        commitValue(serializeDocWithTable(withDocTexts(current, nextTable)))
       }
 
       const removeTableKeepText = () => {
         const current = readCurrentDoc()
-        const text = current.text || tableDoc.text
-        commitValue(text)
+        const parts = [current.text || tableDoc.text, current.afterText || tableDoc.afterText || '']
+          .map((part) => part.trim())
+          .filter(Boolean)
+        commitValue(parts.join('\n\n'))
+      }
+
+      const deleteFocusedRow = () => {
+        const current = readCurrentDoc()
+        const next = removeTableRow(current.table, focusedCellRef.current.row)
+        if (!next) {
+          notifyWarning('Нельзя удалить единственную строку')
+          return
+        }
+        focusedCellRef.current = {
+          row: Math.min(focusedCellRef.current.row, next.rows - 1),
+          col: Math.min(focusedCellRef.current.col, next.cols - 1),
+        }
+        updateTable(next)
+      }
+
+      const deleteFocusedColumn = () => {
+        const current = readCurrentDoc()
+        const next = removeTableColumn(current.table, focusedCellRef.current.col)
+        if (!next) {
+          notifyWarning('Нельзя удалить единственный столбец')
+          return
+        }
+        focusedCellRef.current = {
+          row: Math.min(focusedCellRef.current.row, next.rows - 1),
+          col: Math.min(focusedCellRef.current.col, next.cols - 1),
+        }
+        updateTable(next)
       }
 
       const copyCurrentTable = () => {
@@ -598,6 +661,24 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
               <button
                 type="button"
                 className="btn-secondary product-status-inline-table-btn"
+                title="Удалить строку с активной ячейкой"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={deleteFocusedRow}
+              >
+                − Строка
+              </button>
+              <button
+                type="button"
+                className="btn-secondary product-status-inline-table-btn"
+                title="Удалить столбец с активной ячейкой"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={deleteFocusedColumn}
+              >
+                − Столбец
+              </button>
+              <button
+                type="button"
+                className="btn-secondary product-status-inline-table-btn"
                 title="Скопировать таблицу (Ctrl/Cmd+C без выделения текста)"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={copyCurrentTable}
@@ -624,7 +705,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
               <button
                 type="button"
                 className="btn-secondary product-status-inline-table-btn"
-                title="Удалить таблицу, оставить текст над ней"
+                title="Удалить таблицу, оставить текст над и под ней"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={removeTableKeepText}
               >
@@ -639,7 +720,10 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
                       <td key={colIndex}>
                         <InlineTableCell
                           value={cell}
-                          onFocus={onFocus}
+                          onFocus={() => {
+                            focusedCellRef.current = { row: rowIndex, col: colIndex }
+                            onFocus?.()
+                          }}
                           onCommit={(nextValue) => updateTableCell(rowIndex, colIndex, nextValue)}
                         />
                       </td>
@@ -648,6 +732,14 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="product-status-inline-table-after-block">
+            <PreambleEditor
+              value={tableDoc.afterText ?? ''}
+              className="product-status-inline-table-postamble"
+              onFocus={onFocus}
+              onChange={updateAfterText}
+            />
           </div>
         </div>
       )

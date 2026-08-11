@@ -174,6 +174,7 @@ const TABLE_TOKEN_SUFFIX = '>>'
 
 type EmbeddedTablePayload = {
   text?: string
+  afterText?: string
   table?: {
     cells?: string[][]
   }
@@ -182,10 +183,11 @@ type EmbeddedTablePayload = {
 
 function formatEmbeddedTableDoc(parsed: EmbeddedTablePayload): string {
   const text = (parsed.text ?? '').trim()
+  const afterText = (parsed.afterText ?? '').trim()
   const table = parsed.table ?? parsed
   const cells = table.cells
   if (!Array.isArray(cells)) {
-    return text
+    return [text, afterText].filter(Boolean).join('\n')
   }
   const lines: string[] = []
   if (text) lines.push(text)
@@ -196,6 +198,7 @@ function formatEmbeddedTableDoc(parsed: EmbeddedTablePayload): string {
       lines.push(rowText)
     }
   }
+  if (afterText) lines.push(afterText)
   return lines.join('\n')
 }
 

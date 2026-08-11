@@ -7,7 +7,10 @@ export type EmbeddedTable = {
 }
 
 export type EmbeddedTableDoc = {
+  /** Текст над таблицей */
   text: string
+  /** Текст под таблицей */
+  afterText: string
   table: EmbeddedTable
 }
 
@@ -15,7 +18,11 @@ export const TABLE_TOKEN_PREFIX = '<<tablejson:'
 export const TABLE_TOKEN_SUFFIX = '>>'
 
 export function serializeEmbeddedTableDoc(doc: EmbeddedTableDoc): string {
-  const payload = JSON.stringify({ text: doc.text, table: doc.table })
+  const payload = JSON.stringify({
+    text: doc.text,
+    afterText: doc.afterText || '',
+    table: doc.table,
+  })
   return `${TABLE_TOKEN_PREFIX}${btoa(unescape(encodeURIComponent(payload)))}${TABLE_TOKEN_SUFFIX}`
 }
 
@@ -30,11 +37,15 @@ export function parseEmbeddedTableDoc(value: string): EmbeddedTableDoc | null {
     const parsed = JSON.parse(raw) as EmbeddedTable | EmbeddedTableDoc
     const table = (parsed as EmbeddedTableDoc).table ?? (parsed as EmbeddedTable)
     const text = typeof (parsed as EmbeddedTableDoc).text === 'string' ? (parsed as EmbeddedTableDoc).text : ''
+    const afterText =
+      typeof (parsed as EmbeddedTableDoc).afterText === 'string'
+        ? (parsed as EmbeddedTableDoc).afterText
+        : ''
     if (!table || table.rows < 1 || table.cols < 1 || !Array.isArray(table.cells)) return null
     const cells = Array.from({ length: table.rows }, (_, row) =>
       Array.from({ length: table.cols }, (_, col) => table.cells[row]?.[col] ?? ''),
     )
-    return { text, table: { rows: table.rows, cols: table.cols, cells } }
+    return { text, afterText, table: { rows: table.rows, cols: table.cols, cells } }
   } catch {
     return null
   }
@@ -49,7 +60,11 @@ export function createEmbeddedTable(rows: number, cols: number): EmbeddedTable {
 }
 
 export function serializeDocWithTable(doc: EmbeddedTableDoc): string {
-  return serializeEmbeddedTableDoc(doc)
+  return serializeEmbeddedTableDoc({
+    text: doc.text,
+    afterText: doc.afterText ?? '',
+    table: doc.table,
+  })
 }
 
 export function cloneEmbeddedTable(table: EmbeddedTable): EmbeddedTable {
@@ -63,6 +78,7 @@ export function cloneEmbeddedTable(table: EmbeddedTable): EmbeddedTable {
 export function cloneEmbeddedTableDoc(doc: EmbeddedTableDoc): EmbeddedTableDoc {
   return {
     text: doc.text,
+    afterText: doc.afterText ?? '',
     table: cloneEmbeddedTable(doc.table),
   }
 }
@@ -74,16 +90,15 @@ export function preambleFromCellValue(value: string): string {
   return displayCellText(value)
 }
 
-function readPreambleFromHost(host: HTMLElement): string {
-  const preambleEl = host.querySelector('.product-status-inline-table-preamble')
-  if (preambleEl instanceof HTMLTextAreaElement) {
-    return preambleEl.value
-  }
-  return preambleEl?.textContent ?? ''
+function readTextareaByClass(host: HTMLElement, className: string): string {
+  const el = host.querySelector(`.${className}`)
+  if (el instanceof HTMLTextAreaElement) return el.value
+  return el?.textContent ?? ''
 }
 
 export function readTableDocFromHost(host: HTMLElement, table: EmbeddedTable): EmbeddedTableDoc {
-  const text = readPreambleFromHost(host)
+  const text = readTextareaByClass(host, 'product-status-inline-table-preamble')
+  const afterText = readTextareaByClass(host, 'product-status-inline-table-postamble')
   const nextCells: string[][] = []
   host.querySelectorAll('.product-status-inline-table tbody tr').forEach((rowElement) => {
     const row: string[] = []
@@ -95,10 +110,11 @@ export function readTableDocFromHost(host: HTMLElement, table: EmbeddedTable): E
     }
   })
   if (nextCells.length === 0) {
-    return { text, table }
+    return { text, afterText, table }
   }
   return {
     text,
+    afterText,
     table: {
       rows: nextCells.length,
       cols: Math.max(...nextCells.map((row) => row.length), table.cols),
@@ -204,4 +220,18 @@ export function resolvePreambleForTableInsert(options: {
     preamble = embedded ? embedded.text : displayCellText(options.serializedPlain)
   }
   return collapseExactDuplicatePreamble(preamble)
+}
+
+export function removeTableRow(table: EmbeddedTable, rowIndex: number): EmbeddedTable | null {
+  if (table.rows <= 1) return null
+  const idx = Math.max(0, Math.min(rowIndex, table.rows - 1))
+  const cells = table.cells.filter((_, i) => i !== idx).map((row) => [...row])
+  return { rows: cells.length, cols: table.cols, cells }
+}
+
+export function removeTableColumn(table: EmbeddedTable, colIndex: number): EmbeddedTable | null {
+  if (table.cols <= 1) return null
+  const idx = Math.max(0, Math.min(colIndex, table.cols - 1))
+  const cells = table.cells.map((row) => row.filter((_, i) => i !== idx))
+  return { rows: table.rows, cols: table.cols - 1, cells }
 }
