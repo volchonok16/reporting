@@ -377,6 +377,59 @@ html.theme-switch-instant *::after {
   background: transparent;
 }
 
+/* Маркер / заливка в тёмной теме: светлый фон + светлый текст → нечитаемо */
+[data-theme='dark'] .product-status-highlight[data-bg],
+[data-theme='dark'] .product-status-cell-input[data-cell-bg],
+[data-theme='dark'] .product-status-numeric-input[data-cell-bg] {
+  color: #141414 !important;
+}
+
+[data-theme='dark'] .product-status-highlight[data-bg].product-status-fg-attention {
+  color: #9f1239 !important;
+}
+
+[data-theme='dark'] .product-status-fg-blue {
+  color: #93bbff !important;
+}
+
+[data-theme='dark'] .product-status-fg-black {
+  color: #e8eaed !important;
+  background: transparent !important;
+}
+
+[data-theme='dark'] .product-status-highlight[data-bg].product-status-fg-black,
+[data-theme='dark'] .product-status-fg-black[data-bg] {
+  color: #141414 !important;
+}
+
+[data-theme='dark'] .product-status-fg-green {
+  color: #4ade80 !important;
+}
+
+[data-theme='dark'] .product-status-fg-gray {
+  color: #9aa3b2 !important;
+}
+
+[data-theme='dark'] .product-status-highlight[data-bg].product-status-fg-blue {
+  color: #1e3a8a !important;
+}
+
+[data-theme='dark'] .product-status-highlight[data-bg].product-status-fg-green {
+  color: #14532d !important;
+}
+
+[data-theme='dark'] .product-status-highlight[data-bg].product-status-fg-gray {
+  color: #374151 !important;
+}
+
+[data-theme='dark'] .product-status-title-tab-alt {
+  color: #fb7185;
+}
+
+[data-theme='dark'] .product-status-title-tab-alt.product-status-title-tab-active {
+  border-bottom-color: #fb7185;
+}
+
 [data-theme='dark'] .loading {
   color: var(--text-primary);
 }

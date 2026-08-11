@@ -359,7 +359,8 @@ function decorateStyledText(element: HTMLElement, segment: TextStyleSegment) {
   } else {
     delete element.dataset.fg
     element.classList.remove('product-status-fg-attention')
-    element.style.color = ''
+    // На маркере без fg — тёмный текст (читаемо и в light, и в dark).
+    element.style.color = normalized.bg ? '#141414' : ''
   }
   const textDecorations: string[] = []
   if (normalized.strike) {

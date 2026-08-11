@@ -62,7 +62,13 @@ function selectionIsInside(root: HTMLElement | null): boolean {
 }
 
 function applyCellStyle(element: HTMLElement, cellStyle: CellStyle) {
-  element.style.backgroundColor = cellStyle.bg ? `#${cellStyle.bg}` : ''
+  if (cellStyle.bg) {
+    element.dataset.cellBg = cellStyle.bg
+    element.style.backgroundColor = `#${cellStyle.bg}`
+  } else {
+    delete element.dataset.cellBg
+    element.style.backgroundColor = ''
+  }
   element.style.border = cellStyle.border ? `2px solid #${cellStyle.border}` : ''
 }
 
