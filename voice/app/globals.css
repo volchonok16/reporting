@@ -1847,16 +1847,22 @@ footer span:first-child { color: var(--ink); font-weight: 800; }
   border: 1px solid var(--line);
   border-radius: 15px;
   background: var(--panel);
+  color: var(--ink);
 }
 .master-lock-panel.is-owned {
-  border-color: #ffb8d9;
-  background: #fff7fb;
-  box-shadow: inset 4px 0 #ff3495;
+  border-color: color-mix(in srgb, var(--teal) 55%, var(--line));
+  background: var(--teal-soft);
+  box-shadow: inset 4px 0 var(--teal);
 }
 .master-lock-panel.is-locked {
-  border-color: #f0c887;
-  background: #fff9ea;
-  box-shadow: inset 4px 0 #e6a11c;
+  border-color: color-mix(in srgb, var(--warning) 55%, var(--line));
+  background: var(--warning-soft);
+  box-shadow: inset 4px 0 var(--warning);
+}
+.master-lock-panel.is-stale-session {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--teal));
+  background: var(--warning-soft);
+  box-shadow: inset 4px 0 var(--warning);
 }
 .master-lock-status {
   display: grid;
@@ -1864,18 +1870,19 @@ footer span:first-child { color: var(--ink); font-weight: 800; }
   height: 38px;
   place-items: center;
   border-radius: 11px;
-  background: #f1f1f1;
-  color: #686868;
+  background: var(--panel-soft);
+  color: var(--muted);
   font-size: 19px;
   font-weight: 900;
 }
 .master-lock-panel.is-owned .master-lock-status {
-  background: #ffd9eb;
-  color: #bb155f;
+  background: color-mix(in srgb, var(--teal) 28%, var(--panel));
+  color: var(--teal-dark);
 }
-.master-lock-panel.is-locked .master-lock-status {
-  background: #ffedc1;
-  color: #8a5700;
+.master-lock-panel.is-locked .master-lock-status,
+.master-lock-panel.is-stale-session .master-lock-status {
+  background: color-mix(in srgb, var(--warning) 28%, var(--panel));
+  color: var(--warning);
 }
 .master-lock-copy {
   display: flex;
@@ -1883,11 +1890,32 @@ footer span:first-child { color: var(--ink); font-weight: 800; }
   flex-direction: column;
   gap: 4px;
 }
-.master-lock-copy strong { font-size: 13px; }
+.master-lock-copy strong {
+  font-size: 13px;
+  color: var(--ink);
+}
 .master-lock-copy span {
   color: var(--muted);
   font-size: 10px;
   line-height: 1.45;
+}
+.master-lock-reminder {
+  margin-top: 2px;
+  color: var(--teal-dark) !important;
+  font-weight: 750;
+}
+.master-lock-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+  min-width: min(220px, 100%);
+}
+.master-lock-actions > button {
+  width: 100%;
+  white-space: normal;
+  line-height: 1.25;
 }
 .master-stats {
   display: grid;
@@ -4055,6 +4083,10 @@ textarea.is-invalid-number-whitespace,
   .master-lock-panel {
     grid-template-columns: auto minmax(0, 1fr);
   }
+  .master-lock-actions {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
   .master-lock-panel > button {
     grid-column: 1 / -1;
     width: 100%;
@@ -4233,6 +4265,7 @@ textarea.is-invalid-number-whitespace,
     align-items: stretch;
   }
   .master-lock-status { display: none; }
+  .master-lock-actions { min-width: 0; }
   .master-lock-panel > button { grid-column: auto; }
   .master-lock-dialog { padding: 23px 20px; }
   .master-lock-dialog h2 { font-size: 22px; }
@@ -4463,13 +4496,14 @@ html[data-theme="dark"] .job-card.is-complete {
   color: var(--ink);
 }
 html[data-theme="dark"] .master-lock-panel.is-owned {
-  border-color: #9d174d;
+  border-color: color-mix(in srgb, var(--teal) 55%, var(--line));
   background: var(--teal-soft);
   color: var(--ink);
   box-shadow: inset 4px 0 var(--teal);
 }
-html[data-theme="dark"] .master-lock-panel.is-locked {
-  border-color: #a16207;
+html[data-theme="dark"] .master-lock-panel.is-locked,
+html[data-theme="dark"] .master-lock-panel.is-stale-session {
+  border-color: color-mix(in srgb, var(--warning) 55%, var(--line));
   background: var(--warning-soft);
   color: var(--ink);
   box-shadow: inset 4px 0 var(--warning);
@@ -4478,11 +4512,14 @@ html[data-theme="dark"] .master-lock-panel.is-owned .master-lock-status {
   background: #5b1a38;
   color: #fda4d0;
 }
-html[data-theme="dark"] .master-lock-panel.is-locked .master-lock-status {
+html[data-theme="dark"] .master-lock-panel.is-locked .master-lock-status,
+html[data-theme="dark"] .master-lock-panel.is-stale-session .master-lock-status {
   background: #4a3a14;
   color: #fde68a;
 }
+html[data-theme="dark"] .master-lock-copy strong { color: var(--ink); }
 html[data-theme="dark"] .master-lock-copy span { color: var(--muted); }
+html[data-theme="dark"] .master-lock-reminder { color: #fda4d0 !important; }
 html[data-theme="dark"] .master-alert.is-warning {
   border-color: #a16207;
   background: var(--warning-soft);

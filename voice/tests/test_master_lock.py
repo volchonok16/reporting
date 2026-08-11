@@ -41,6 +41,7 @@ def test_master_lock_is_exclusive_and_persists(tmp_path) -> None:
     assert lock.status(owner, owner_token) == {
         "locked": False,
         "ownedByCurrentUser": False,
+        "ownedByCurrentSession": False,
         "owner": None,
         "acquiredAt": None,
         "notification": None,
@@ -49,18 +50,21 @@ def test_master_lock_is_exclusive_and_persists(tmp_path) -> None:
     acquired = lock.acquire(owner, owner_token)
     assert acquired["locked"] is True
     assert acquired["ownedByCurrentUser"] is True
+    assert acquired["ownedByCurrentSession"] is True
     assert acquired["owner"]["email"] == owner.email
 
     restarted_service = MasterLockService(registry)
     occupied = restarted_service.status(other, other_token)
     assert occupied["locked"] is True
     assert occupied["ownedByCurrentUser"] is False
+    assert occupied["ownedByCurrentSession"] is False
     assert occupied["owner"]["email"] == owner.email
     assert occupied["acquiredAt"] == acquired["acquiredAt"]
     notified = restarted_service.notify_owner(
         other, other_token, "reminder"
     )
     assert notified["notified"] is True
+    assert notified["delivery"] == "in_app_master_page"
     owner_notification = restarted_service.status(owner, owner_token)[
         "notification"
     ]
@@ -80,12 +84,15 @@ def test_master_lock_is_exclusive_and_persists(tmp_path) -> None:
     )
     second_owner_token = second_owner_login["token"]
     second_owner = auth.authenticate(second_owner_token)
-    assert (
-        restarted_service.status(second_owner, second_owner_token)[
-            "ownedByCurrentUser"
-        ]
-        is False
-    )
+    stale = restarted_service.status(second_owner, second_owner_token)
+    assert stale["ownedByCurrentUser"] is True
+    assert stale["ownedByCurrentSession"] is False
+    assert stale["notification"]["kind"] == "upload_attempt"
+
+    reclaimed = restarted_service.acquire(second_owner, second_owner_token)
+    assert reclaimed["ownedByCurrentUser"] is True
+    assert reclaimed["ownedByCurrentSession"] is True
+    assert reclaimed["notification"] is None
 
     with pytest.raises(AppError) as acquire_error:
         restarted_service.acquire(other, other_token)
@@ -96,13 +103,21 @@ def test_master_lock_is_exclusive_and_persists(tmp_path) -> None:
     with pytest.raises(AppError) as action_error:
         restarted_service.require_owner(other, other_token)
     assert action_error.value.code == "MASTER_LOCKED"
-    restarted_service.require_owner(owner, owner_token)
+    restarted_service.require_owner(second_owner, second_owner_token)
 
     with pytest.raises(AppError) as release_error:
         restarted_service.release(other, other_token)
     assert release_error.value.code == "MASTER_LOCKED"
 
-    auth.logout(owner_token)
+    # Owner can release from any of their sessions.
+    released_by_owner = restarted_service.release(
+        second_owner, second_owner_token
+    )
+    assert released_by_owner["locked"] is False
+
+    acquired = restarted_service.acquire(second_owner, second_owner_token)
+    assert acquired["ownedByCurrentSession"] is True
+    auth.logout(second_owner_token)
     released_after_logout = restarted_service.status(other, other_token)
     assert released_after_logout["locked"] is False
 
@@ -114,12 +129,28 @@ def test_master_lock_is_exclusive_and_persists(tmp_path) -> None:
             "UPDATE auth_sessions SET expires_at = 0 WHERE token_hash = ?",
             (other_session_hash,),
         )
+    force_login = auth.login(
+        config.auth_bootstrap_email,
+        config.auth_bootstrap_password,
+    )
+    force_token = force_login["token"]
+    force_user = auth.authenticate(force_token)
     released_after_expiry = restarted_service.status(
-        second_owner,
-        second_owner_token,
+        force_user,
+        force_token,
     )
     assert released_after_expiry["locked"] is False
 
     with pytest.raises(AppError) as missing_lock:
-        restarted_service.require_owner(second_owner, second_owner_token)
+        restarted_service.require_owner(force_user, force_token)
     assert missing_lock.value.code == "MASTER_LOCK_REQUIRED"
+
+    # Superuser can force-release another user's lock.
+    other_login_again = auth.login(other_payload["email"], "Editor-2026!")
+    other_token = other_login_again["token"]
+    other = auth.authenticate(other_token)
+    forced_owner = restarted_service.acquire(other, other_token)
+    assert forced_owner["locked"] is True
+    assert force_user.is_superuser
+    forced = restarted_service.release(force_user, force_token, force=True)
+    assert forced["locked"] is False

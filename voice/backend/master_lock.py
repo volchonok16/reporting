@@ -90,13 +90,15 @@ class MasterLockService:
             return {
                 "locked": False,
                 "ownedByCurrentUser": False,
+                "ownedByCurrentSession": False,
                 "owner": None,
                 "acquiredAt": None,
                 "notification": None,
             }
         owner_id = str(row["owner_user_id"])
-        owned_by_current_user = (
-            owner_id == current_user.id
+        owned_by_current_user = owner_id == current_user.id
+        owned_by_current_session = (
+            owned_by_current_user
             and str(row["owner_session_hash"]) == current_session_hash
         )
         notification = None
@@ -121,6 +123,7 @@ class MasterLockService:
         return {
             "locked": True,
             "ownedByCurrentUser": owned_by_current_user,
+            "ownedByCurrentSession": owned_by_current_session,
             "owner": {
                 "id": owner_id,
                 "email": str(row["owner_email"]),
@@ -159,6 +162,8 @@ class MasterLockService:
             """
         ).fetchone()
         if row is None:
+            # Session expired/removed or user gone — drop stale lock row.
+            connection.execute("DELETE FROM master_edit_lock WHERE id = 1")
             return None
         owner_has_access = (
             str(row["owner_role"]) == "superuser"
@@ -195,6 +200,26 @@ class MasterLockService:
             if row is not None:
                 if str(row["owner_session_hash"]) == session_hash:
                     return self._payload(row, current_user, session_hash)
+                # Same user, another tab/SSO session: reclaim the lock.
+                if str(row["owner_user_id"]) == current_user.id:
+                    connection.execute(
+                        """
+                        UPDATE master_edit_lock
+                        SET owner_session_hash = ?,
+                            notification_sequence = 0,
+                            notification_kind = NULL,
+                            notification_requester_id = NULL,
+                            notification_requester_email = NULL,
+                            notification_created_at = NULL
+                        WHERE id = 1
+                        """,
+                        (session_hash,),
+                    )
+                    reclaimed = self._owner_row(connection)
+                    assert reclaimed is not None
+                    return self._payload(
+                        reclaimed, current_user, session_hash
+                    )
                 raise AppError(
                     "MASTER_LOCKED",
                     (
@@ -219,6 +244,8 @@ class MasterLockService:
         self,
         current_user: AuthUser,
         token: str,
+        *,
+        force: bool = False,
     ) -> dict[str, Any]:
         session_hash = self._token_hash(token)
         with self._lock, self._connect() as connection:
@@ -226,7 +253,8 @@ class MasterLockService:
             row = self._owner_row(connection)
             if row is None:
                 return self._payload(None, current_user, session_hash)
-            if str(row["owner_session_hash"]) != session_hash:
+            same_user = str(row["owner_user_id"]) == current_user.id
+            if not same_user and not (force and current_user.is_superuser):
                 raise AppError(
                     "MASTER_LOCKED",
                     (
@@ -259,10 +287,13 @@ class MasterLockService:
                     "Мастер-файл уже свободен",
                     status_code=409,
                 )
-            if str(row["owner_session_hash"]) == session_hash:
+            if str(row["owner_user_id"]) == current_user.id:
                 raise AppError(
                     "MASTER_LOCK_OWNED",
-                    "Мастер-файл уже занят вами",
+                    (
+                        "Мастер-файл уже занят вами. "
+                        "Нажмите «Перехватить» или «Освободить»."
+                    ),
                     status_code=409,
                 )
             sequence = int(row["notification_sequence"] or 0) + 1
@@ -294,6 +325,11 @@ class MasterLockService:
                     f"{int(float(row['acquired_at']) * 1000)}:{sequence}"
                 ),
                 "createdAt": created_at,
+                "delivery": "in_app_master_page",
+                "message": (
+                    "Напоминание появится у владельца на странице мастер-файла, "
+                    "если у него открыт Voice. Отдельного колокольчика в портале нет."
+                ),
             }
 
     def require_owner(
@@ -311,12 +347,22 @@ class MasterLockService:
                     "Сначала займите мастер-файл",
                     status_code=423,
                 )
-            if str(row["owner_session_hash"]) != session_hash:
+            if str(row["owner_session_hash"]) == session_hash:
+                return
+            if str(row["owner_user_id"]) == current_user.id:
                 raise AppError(
-                    "MASTER_LOCKED",
+                    "MASTER_LOCK_RECLAIM_REQUIRED",
                     (
-                        "Мастер-файл занят пользователем "
-                        f"{row['owner_email']}"
+                        "Мастер-файл занят вами в другой сессии. "
+                        "Нажмите «Перехватить», чтобы продолжить здесь."
                     ),
                     status_code=423,
                 )
+            raise AppError(
+                "MASTER_LOCKED",
+                (
+                    "Мастер-файл занят пользователем "
+                    f"{row['owner_email']}"
+                ),
+                status_code=423,
+            )

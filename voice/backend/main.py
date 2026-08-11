@@ -344,8 +344,9 @@ def release_master_lock(
     _session_id: MasterSessionId,
     user: CurrentUser,
     token: AuthToken,
+    force: bool = False,
 ) -> dict[str, Any]:
-    return master_lock_service.release(user, token)
+    return master_lock_service.release(user, token, force=force)
 
 
 @app.post("/api/master/lock/notify")
@@ -703,14 +704,24 @@ def send_result_to_master(
     token: AuthToken,
 ) -> dict[str, Any]:
     lock_state = master_lock_service.status(user, token)
-    if lock_state["locked"] and not lock_state["ownedByCurrentUser"]:
+    if lock_state["locked"] and not lock_state["ownedByCurrentSession"]:
+        if lock_state["ownedByCurrentUser"]:
+            raise AppError(
+                "MASTER_LOCK_RECLAIM_REQUIRED",
+                (
+                    "Мастер-файл занят вами в другой сессии. "
+                    "Откройте мастер-файл и нажмите «Перехватить»."
+                ),
+                status_code=423,
+            )
         master_lock_service.notify_owner(user, token, "upload_attempt")
         owner_email = lock_state["owner"]["email"]
         raise AppError(
             "MASTER_LOCKED",
             (
                 f"Мастер-файл сейчас занят пользователем {owner_email}. "
-                "Пользователь получил уведомление о попытке загрузки."
+                "Напоминание появится у владельца на странице мастер-файла "
+                "в Voice (колокольчика в портале нет)."
             ),
             status_code=423,
         )

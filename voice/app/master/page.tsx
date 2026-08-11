@@ -137,6 +137,7 @@ type RegionOption = {
 type MasterLockState = {
   locked: boolean;
   ownedByCurrentUser: boolean;
+  ownedByCurrentSession: boolean;
   owner: {
     id: string;
     email: string;
@@ -193,7 +194,7 @@ const MASTER_TUTORIAL_STEPS: MasterTutorialStepDefinition[] = [
     description:
       "Одновременно изменять базу может только один пользователь. Пока файл занят вами, остальные пользователи видят данные без возможности изменения.",
     action:
-      "Если мастер-файл свободен, нажмите «Занять мастер-файл». Если он занят другим пользователем, здесь можно отправить владельцу напоминание.",
+      "Если мастер-файл свободен, нажмите «Занять мастер-файл». Если он занят вами в другой сессии — «Перехватить» или «Освободить». Если занят другим пользователем, можно отправить напоминание на страницу мастер-файла (колокольчика в портале нет).",
     target: '[data-tour="master-lock-panel"]',
     requiresAction: true,
   },
@@ -373,6 +374,7 @@ const MASTER_IMPORT_ACCEPT = MASTER_IMPORT_EXTENSIONS.join(",");
 const EMPTY_MASTER_LOCK: MasterLockState = {
   locked: false,
   ownedByCurrentUser: false,
+  ownedByCurrentSession: false,
   owner: null,
   acquiredAt: null,
   notification: null,
@@ -1281,7 +1283,7 @@ export default function MasterPage() {
   }, [analysis, apiFetch, user, waitForImportAnalysis]);
 
   const applyMasterLock = useCallback((nextLock: MasterLockState) => {
-    ownedLockRef.current = nextLock.ownedByCurrentUser;
+    ownedLockRef.current = nextLock.ownedByCurrentSession;
     setMasterLock(nextLock);
     const notificationKey =
       nextLock.locked && !nextLock.ownedByCurrentUser && nextLock.owner
@@ -1750,19 +1752,32 @@ export default function MasterPage() {
     (duplicatesOnly ? 1 : 0) +
     (invalidOnly ? 1 : 0) +
     (invalidStartOnly ? 1 : 0);
-  const masterEditable = masterLock.ownedByCurrentUser;
+  const masterEditable = masterLock.ownedByCurrentSession;
   const lockedByOther =
     masterLock.locked && !masterLock.ownedByCurrentUser;
+  const lockedByOwnOtherSession =
+    masterLock.locked &&
+    masterLock.ownedByCurrentUser &&
+    !masterLock.ownedByCurrentSession;
   const notifyLockOwner = useCallback(async () => {
     if (!lockedByOther || notifyingLockOwner) return;
     setNotifyingLockOwner(true);
     try {
-      await apiFetch("/api/master/lock/notify", {
+      const response = await apiFetch("/api/master/lock/notify", {
         method: "POST",
         body: JSON.stringify({ kind: "reminder" }),
       });
+      const payload = (await response.json()) as {
+        message?: string;
+        owner?: { email?: string };
+      };
       setNotice(
-        `Пользователь ${masterLock.owner?.email ?? "владелец блокировки"} получил напоминание освободить мастер-файл.`,
+        payload.message ??
+          `Напоминание для ${
+            payload.owner?.email ??
+            masterLock.owner?.email ??
+            "владельца"
+          } сохранено. Оно появится у него на странице мастер-файла в Voice — отдельного колокольчика в портале нет.`,
       );
       setLockDialogOpen(false);
       setError("");
@@ -2117,7 +2132,7 @@ export default function MasterPage() {
     if (lockedByOther) return;
     setLockChanging(true);
     try {
-      const releasing = masterLock.ownedByCurrentUser;
+      const releasing = masterLock.ownedByCurrentSession;
       const response = await apiFetch("/api/master/lock", {
         method: releasing ? "DELETE" : "POST",
       });
@@ -2129,6 +2144,10 @@ export default function MasterPage() {
         setSelectedConflicts([]);
         setReplaceAll(false);
         setNotice("Мастер-файл освобождён для других пользователей.");
+      } else if (lockedByOwnOtherSession) {
+        setNotice(
+          "Блокировка перехвачена в эту сессию. Можно продолжать редактирование здесь.",
+        );
       } else {
         setNotice(
           "Мастер-файл занят вами. Остальные пользователи работают в режиме просмотра.",
@@ -2140,6 +2159,55 @@ export default function MasterPage() {
         nextError instanceof Error
           ? nextError.message
           : "Не удалось изменить состояние мастер-файла.",
+      );
+      await loadMasterLock();
+    } finally {
+      setLockChanging(false);
+    }
+  };
+
+  const releaseOwnedMasterLock = async () => {
+    if (!masterLock.ownedByCurrentUser || lockChanging) return;
+    setLockChanging(true);
+    try {
+      const response = await apiFetch("/api/master/lock", {
+        method: "DELETE",
+      });
+      applyMasterLock((await response.json()) as MasterLockState);
+      resetEditor();
+      setImportAnalysis(null);
+      setSelectedConflicts([]);
+      setReplaceAll(false);
+      setNotice("Мастер-файл освобождён для других пользователей.");
+      setError("");
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Не удалось освободить мастер-файл.",
+      );
+      await loadMasterLock();
+    } finally {
+      setLockChanging(false);
+    }
+  };
+
+  const forceReleaseMasterLock = async () => {
+    if (!lockedByOther || user?.role !== "superuser" || lockChanging) return;
+    setLockChanging(true);
+    try {
+      const response = await apiFetch("/api/master/lock?force=true", {
+        method: "DELETE",
+      });
+      applyMasterLock((await response.json()) as MasterLockState);
+      setNotice("Блокировка снята принудительно (права суперпользователя).");
+      setLockDialogOpen(false);
+      setError("");
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Не удалось принудительно освободить мастер-файл.",
       );
       await loadMasterLock();
     } finally {
@@ -2189,7 +2257,7 @@ export default function MasterPage() {
       });
       const nextLock = (await response.json()) as MasterLockState;
       applyMasterLock(nextLock);
-      if (!nextLock.ownedByCurrentUser) {
+      if (!nextLock.ownedByCurrentSession) {
         setLockDialogOpen(true);
         return;
       }
@@ -3600,15 +3668,25 @@ export default function MasterPage() {
           className={`master-lock-panel ${
             masterEditable
               ? "is-owned"
-              : lockedByOther
-                ? "is-locked"
-                : "is-free"
+              : lockedByOwnOtherSession
+                ? "is-owned is-stale-session"
+                : lockedByOther
+                  ? "is-locked"
+                  : "is-free"
           }`}
           aria-live="polite"
           data-tour="master-lock-panel"
         >
           <div className="master-lock-status" aria-hidden="true">
-            <span>{masterEditable ? "✓" : lockedByOther ? "⌁" : "○"}</span>
+            <span>
+              {masterEditable
+                ? "✓"
+                : lockedByOwnOtherSession
+                  ? "↻"
+                  : lockedByOther
+                    ? "⌁"
+                    : "○"}
+            </span>
           </div>
           <div className="master-lock-copy">
             <strong>
@@ -3616,49 +3694,122 @@ export default function MasterPage() {
                 ? "Проверяем доступность мастер-файла…"
                 : masterEditable
                   ? "Мастер-файл занят вами"
-                  : lockedByOther
-                    ? "Мастер-файл занят другим пользователем"
-                    : "Мастер-файл свободен"}
+                  : lockedByOwnOtherSession
+                    ? "Мастер-файл занят вами в другой сессии"
+                    : lockedByOther
+                      ? "Мастер-файл занят другим пользователем"
+                      : "Мастер-файл свободен"}
             </strong>
             <span>
               {masterEditable
                 ? "Редактирование, импорт и экспорт доступны только вам до освобождения файла."
-                : lockedByOther
-                  ? `Редактирование заблокировано. Владелец: ${masterLock.owner?.email ?? "неизвестный пользователь"}.`
-                  : "Займите мастер-файл, чтобы импортировать, экспортировать или изменять данные."}
+                : lockedByOwnOtherSession
+                  ? "После повторного входа или открытия в другой вкладке блокировка осталась на прежней сессии. Перехватите её сюда или освободите файл."
+                  : lockedByOther
+                    ? `Редактирование заблокировано. Владелец: ${masterLock.owner?.email ?? "неизвестный пользователь"}. Напоминание появится у владельца на странице мастер-файла в Voice — колокольчика в портале нет.`
+                    : "Займите мастер-файл, чтобы импортировать, экспортировать или изменять данные."}
               {masterLock.acquiredAt
                 ? ` Занят ${formatDate(masterLock.acquiredAt)}.`
                 : ""}
             </span>
+            {masterLock.ownedByCurrentUser && masterLock.notification ? (
+              <span className="master-lock-reminder">
+                Ожидает ответа: {masterLock.notification.requester.email}
+                {masterLock.notification.kind === "upload_attempt"
+                  ? " (попытка загрузки)"
+                  : " (напоминание)"}
+                .
+              </span>
+            ) : null}
           </div>
-          <button
-            className={
-              masterEditable ? "secondary-button" : "primary-button"
-            }
-            type="button"
-            data-tour="master-lock"
-            onClick={() =>
-              void (lockedByOther ? notifyLockOwner() : toggleMasterLock())
-            }
-            disabled={
-              lockLoading ||
-              lockChanging ||
-              notifyingLockOwner ||
-              uploading ||
-              merging ||
-              saving
-            }
-          >
-            {lockChanging
-              ? "Сохраняем…"
-              : masterEditable
-                ? "Освободить мастер-файл"
-                : lockedByOther
-                  ? notifyingLockOwner
+          <div className="master-lock-actions">
+            {lockedByOwnOtherSession ? (
+              <>
+                <button
+                  className="primary-button"
+                  type="button"
+                  data-tour="master-lock"
+                  onClick={() => void toggleMasterLock()}
+                  disabled={
+                    lockLoading ||
+                    lockChanging ||
+                    uploading ||
+                    merging ||
+                    saving
+                  }
+                >
+                  {lockChanging ? "Сохраняем…" : "Перехватить"}
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => void releaseOwnedMasterLock()}
+                  disabled={
+                    lockLoading ||
+                    lockChanging ||
+                    uploading ||
+                    merging ||
+                    saving
+                  }
+                >
+                  Освободить
+                </button>
+              </>
+            ) : lockedByOther ? (
+              <>
+                <button
+                  className="primary-button"
+                  type="button"
+                  data-tour="master-lock"
+                  onClick={() => void notifyLockOwner()}
+                  disabled={
+                    lockLoading ||
+                    lockChanging ||
+                    notifyingLockOwner ||
+                    uploading ||
+                    merging ||
+                    saving
+                  }
+                >
+                  {notifyingLockOwner
                     ? "Отправляем напоминание…"
-                    : "Уведомить владельца"
-                  : "Занять мастер-файл"}
-          </button>
+                    : "Напомнить владельцу"}
+                </button>
+                {user?.role === "superuser" ? (
+                  <button
+                    className="danger-button compact"
+                    type="button"
+                    onClick={() => void forceReleaseMasterLock()}
+                    disabled={lockLoading || lockChanging}
+                  >
+                    Снять блокировку
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <button
+                className={
+                  masterEditable ? "secondary-button" : "primary-button"
+                }
+                type="button"
+                data-tour="master-lock"
+                onClick={() => void toggleMasterLock()}
+                disabled={
+                  lockLoading ||
+                  lockChanging ||
+                  uploading ||
+                  merging ||
+                  saving
+                }
+              >
+                {lockChanging
+                  ? "Сохраняем…"
+                  : masterEditable
+                    ? "Освободить мастер-файл"
+                    : "Занять мастер-файл"}
+              </button>
+            )}
+          </div>
         </section>
 
         <div className="master-stats" data-tour="master-stats">
@@ -5606,8 +5757,10 @@ export default function MasterPage() {
             </h2>
             <p id="master-lock-dialog-description">
               На текущий момент мастер-файл занят пользователем
-              <strong>{masterLock.owner.email}</strong>. До освобождения
+              <strong> {masterLock.owner.email}</strong>. До освобождения
               файла редактирование и остальные операции заблокированы.
+              Напоминание показывается владельцу на странице мастер-файла в
+              Voice — отдельного колокольчика в портале нет.
             </p>
             {masterLock.acquiredAt && (
               <small>
@@ -5623,8 +5776,18 @@ export default function MasterPage() {
               >
                 {notifyingLockOwner
                   ? "Отправляем…"
-                  : "Уведомить пользователя"}
+                  : "Напомнить владельцу"}
               </button>
+              {user?.role === "superuser" ? (
+                <button
+                  className="danger-button"
+                  type="button"
+                  onClick={() => void forceReleaseMasterLock()}
+                  disabled={lockChanging}
+                >
+                  Снять блокировку
+                </button>
+              ) : null}
               <button
                 className="primary-button"
                 type="button"
@@ -5641,7 +5804,7 @@ export default function MasterPage() {
       {!draftDialogOpen &&
         !clearDialogOpen &&
         ownerNotificationOpen &&
-        masterEditable &&
+        masterLock.ownedByCurrentUser &&
         masterLock.notification && (
           <div className="master-lock-backdrop">
             <section
