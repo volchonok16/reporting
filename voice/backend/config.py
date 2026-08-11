@@ -72,13 +72,11 @@ class Settings:
                 "CAROUSEL_CLEANUP_INTERVAL_SECONDS", 5 * 60
             ),
             preview_limit=_positive_int("CAROUSEL_PREVIEW_LIMIT", 100),
-            auth_bootstrap_email=os.getenv(
-                "CAROUSEL_AUTH_BOOTSTRAP_EMAIL",
-                "admin@t2.local",
+            auth_bootstrap_email=(
+                os.getenv("CAROUSEL_AUTH_BOOTSTRAP_EMAIL") or "admin@t2.local"
             ).strip().lower(),
-            auth_bootstrap_password=os.getenv(
-                "CAROUSEL_AUTH_BOOTSTRAP_PASSWORD",
-                "T2-Admin-2026!",
+            auth_bootstrap_password=(
+                os.getenv("CAROUSEL_AUTH_BOOTSTRAP_PASSWORD") or "T2-Admin-2026!"
             ),
             auth_session_seconds=_positive_int(
                 "CAROUSEL_AUTH_SESSION_SECONDS",

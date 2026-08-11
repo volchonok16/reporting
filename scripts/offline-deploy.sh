@@ -89,9 +89,13 @@ echo "    nginx=$WITH_NGINX  pallink=$PALLINK  tunnel=$TUNNEL  ssl=$WITH_SSL"
 echo "==> docker load ← ${TAR}"
 docker load -i "$TAR"
 
-# Voice SQLite (UID 10001 в образе). Пустой каталог создаёт compose, но права
-# от root часто ломают healthcheck voice-api → затем падает voice-web.
+# Voice SQLite (UID 10001 в образе). Права от root ломают voice-api → SSO падает.
 mkdir -p voice/data
+if command -v chown >/dev/null 2>&1; then
+  chown -R 10001:10001 voice/data 2>/dev/null || chmod -R a+rwX voice/data 2>/dev/null || true
+else
+  chmod -R a+rwX voice/data 2>/dev/null || true
+fi
 chmod 777 voice/data 2>/dev/null || true
 
 # shellcheck source=compose-v1-purge.sh
@@ -128,13 +132,15 @@ done
 
 echo ""
 echo "==> Ожидание Voice…"
-for i in $(seq 1 20); do
+for i in $(seq 1 30); do
   if curl -sf http://127.0.0.1:8100/api/health >/dev/null 2>&1; then
     echo "OK voice-api: $(curl -sf http://127.0.0.1:8100/api/health)"
     break
   fi
-  if [[ "$i" -eq 20 ]]; then
-    echo "Предупреждение: voice-api не отвечает — ${COMPOSE[*]} logs voice-api" >&2
+  if [[ "$i" -eq 30 ]]; then
+    echo "Предупреждение: voice-api не отвечает — смотрите логи ниже" >&2
+    "${COMPOSE[@]}" logs --tail 80 voice-api >&2 || true
+    echo "Частый фикс: sudo chown -R 10001:10001 voice/data && ${COMPOSE[*]} restart voice-api" >&2
   fi
   sleep 2
 done

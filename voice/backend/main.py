@@ -55,7 +55,15 @@ from .validation import ValidationService
 
 
 registry = Registry(settings)
-auth_service = AuthService(settings, registry)
+try:
+    auth_service = AuthService(settings, registry)
+except PermissionError as exc:
+    raise SystemExit(
+        f"Voice data dir не доступен для записи ({settings.data_dir}): {exc}. "
+        "На хосте: sudo chown -R 10001:10001 voice/data && chmod -R u+rwX voice/data"
+    ) from exc
+except Exception as exc:
+    raise SystemExit(f"Voice auth init failed: {exc}") from exc
 upload_service = UploadService(settings, registry)
 job_service = JobService(settings, registry)
 validation_service = ValidationService(settings.preview_limit)
