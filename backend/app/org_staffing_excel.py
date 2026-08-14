@@ -30,7 +30,6 @@ GENERAL_HEADERS = [
     "Экспертиза",
     "Руководитель",
     "Активен",
-    "Директор организации",
 ]
 
 DEPARTMENT_HEADERS = [
@@ -41,7 +40,6 @@ DEPARTMENT_HEADERS = [
     "Экспертиза",
     "Руководитель",
     "Активен",
-    "Директор организации",
 ]
 
 
@@ -111,7 +109,6 @@ def _write_general_row(worksheet: Worksheet, row_index: int, employee: EmployeeO
         _format_expertises(employee),
         employee.managerName or "",
         _yes_no(employee.isActive),
-        _yes_no(employee.isOrganizationHead),
     ]
     for col_index, value in enumerate(values, start=1):
         cell = worksheet.cell(row=row_index, column=col_index, value=value)
@@ -127,7 +124,6 @@ def _write_department_row(worksheet: Worksheet, row_index: int, employee: Employ
         _format_expertises(employee),
         employee.managerName or "",
         _yes_no(employee.isActive),
-        _yes_no(employee.isOrganizationHead),
     ]
     for col_index, value in enumerate(values, start=1):
         cell = worksheet.cell(row=row_index, column=col_index, value=value)
@@ -141,20 +137,23 @@ def _finish_sheet(worksheet: Worksheet, *, headers: list[str], data_rows: int) -
     worksheet.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{last_row}"
 
 
+def _visible_in_pyramid(employee: EmployeeOut) -> bool:
+    return bool(employee.isActive) and not bool(employee.hideFromPyramid)
+
+
 def generate_staffing_excel(
     employees: list[EmployeeOut],
     departments: list[DepartmentOut],
 ) -> tuple[bytes, str]:
     """
-    Лист 1 — общий список сотрудников с отделами.
-    Далее — по одному листу на отдел (только если в отделе есть сотрудники).
-    Сотрудники без отдела в выгрузку не попадают.
+    Лист 1 — все, кто попадает в пирамиду (активен и без «Не отображать в пирамиде»).
+    Далее — по одному листу на отдел, если в нём есть такие сотрудники.
     """
-    with_departments = [emp for emp in employees if emp.departments]
-    with_departments.sort(key=lambda emp: emp.fullName.casefold())
+    visible = [emp for emp in employees if _visible_in_pyramid(emp)]
+    visible.sort(key=lambda emp: emp.fullName.casefold())
 
     by_department: dict[int, list[EmployeeOut]] = {}
-    for emp in with_departments:
+    for emp in visible:
         for membership in emp.departments:
             by_department.setdefault(membership.departmentId, []).append(emp)
 
@@ -167,9 +166,9 @@ def generate_staffing_excel(
     general = workbook.active
     general.title = _unique_sheet_name("Общий список", used_names)
     _write_header(general, GENERAL_HEADERS)
-    for row_index, emp in enumerate(with_departments, start=2):
+    for row_index, emp in enumerate(visible, start=2):
         _write_general_row(general, row_index, emp)
-    _finish_sheet(general, headers=GENERAL_HEADERS, data_rows=len(with_departments))
+    _finish_sheet(general, headers=GENERAL_HEADERS, data_rows=len(visible))
 
     ordered_departments = sorted(
         departments,

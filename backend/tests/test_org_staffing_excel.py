@@ -19,7 +19,8 @@ def _employee(
     emp_id: int,
     name: str,
     departments: list[EmployeeDepartmentBriefOut],
-    is_org_head: bool = False,
+    is_active: bool = True,
+    hide_from_pyramid: bool = False,
 ) -> EmployeeOut:
     return EmployeeOut(
         id=emp_id,
@@ -29,8 +30,9 @@ def _employee(
         position="Инженер",
         managerName="Руководитель",
         dailyWorkHours=Decimal("8"),
-        isActive=True,
-        isOrganizationHead=is_org_head,
+        isActive=is_active,
+        isOrganizationHead=False,
+        hideFromPyramid=hide_from_pyramid,
         expertises=[
             EmployeeExpertiseOut(id=1, directionId=1, directionName="Backend", level="Senior"),
         ],
@@ -38,7 +40,7 @@ def _employee(
     )
 
 
-def test_staffing_excel_general_and_department_sheets() -> None:
+def test_staffing_excel_exports_pyramid_people_without_director_column() -> None:
     departments = [
         DepartmentOut(
             id=10,
@@ -75,12 +77,23 @@ def test_staffing_excel_general_and_department_sheets() -> None:
                 EmployeeDepartmentBriefOut(departmentId=10, departmentName="Платформа"),
                 EmployeeDepartmentBriefOut(departmentId=30, departmentName="Аналитика"),
             ],
-            is_org_head=True,
         ),
         _employee(
             emp_id=3,
             name="Сидоров Сидор",
             departments=[],
+        ),
+        _employee(
+            emp_id=4,
+            name="Скрытый Сергей",
+            departments=[EmployeeDepartmentBriefOut(departmentId=10, departmentName="Платформа")],
+            hide_from_pyramid=True,
+        ),
+        _employee(
+            emp_id=5,
+            name="Неактивный Николай",
+            departments=[EmployeeDepartmentBriefOut(departmentId=30, departmentName="Аналитика")],
+            is_active=False,
         ),
     ]
 
@@ -91,15 +104,24 @@ def test_staffing_excel_general_and_department_sheets() -> None:
     assert workbook.sheetnames == ["Общий список", "Аналитика", "Платформа"]
 
     general = workbook["Общий список"]
-    assert general.cell(1, 1).value == "ФИО"
-    assert general.cell(1, 9).value == "Директор организации"
+    assert [general.cell(1, col).value for col in range(1, 10)] == [
+        "ФИО",
+        "Должность",
+        "Отделы",
+        "Email",
+        "Рабочих часов в день",
+        "Экспертиза",
+        "Руководитель",
+        "Активен",
+        None,
+    ]
     assert general.cell(2, 1).value == "Алова Анна"
-    assert general.cell(2, 9).value == "Да"
     assert general.cell(3, 1).value == "Белов Борис"
-    assert general.cell(3, 9).value == "Нет"
-    assert general.max_row == 3
+    assert general.cell(4, 1).value == "Сидоров Сидор"
+    assert general.max_row == 4
 
     analytics = workbook["Аналитика"]
+    assert analytics.cell(1, 8).value is None
     assert analytics.cell(2, 1).value == "Алова Анна"
     assert analytics.max_row == 2
 
