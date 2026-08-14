@@ -513,9 +513,9 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         commitValue(parts.join('\n\n'))
       }
 
-      const deleteFocusedRow = () => {
+      const deleteLastRow = () => {
         const current = readCurrentDoc()
-        const next = removeTableRow(current.table, focusedCellRef.current.row)
+        const next = removeTableRow(current.table, current.table.rows - 1)
         if (!next) {
           notifyWarning('Нельзя удалить единственную строку')
           return
@@ -527,9 +527,9 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         updateTable(next)
       }
 
-      const deleteFocusedColumn = () => {
+      const deleteLastColumn = () => {
         const current = readCurrentDoc()
-        const next = removeTableColumn(current.table, focusedCellRef.current.col)
+        const next = removeTableColumn(current.table, current.table.cols - 1)
         if (!next) {
           notifyWarning('Нельзя удалить единственный столбец')
           return
@@ -661,18 +661,18 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
               <button
                 type="button"
                 className="btn-secondary product-status-inline-table-btn"
-                title="Удалить строку с активной ячейкой"
+                title="Удалить последнюю нижнюю строку"
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={deleteFocusedRow}
+                onClick={deleteLastRow}
               >
                 − Строка
               </button>
               <button
                 type="button"
                 className="btn-secondary product-status-inline-table-btn"
-                title="Удалить столбец с активной ячейкой"
+                title="Удалить самый правый столбец"
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={deleteFocusedColumn}
+                onClick={deleteLastColumn}
               >
                 − Столбец
               </button>
