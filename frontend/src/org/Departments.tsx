@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
-import { deleteJson, getJson, patchJson, postForm, postJson, putJson, resolvePhotoUrl } from '../api'
-import { notifyProblem } from '../toast'
+import { apiFetch, deleteJson, getJson, patchJson, postForm, postJson, putJson, readApiError, resolvePhotoUrl } from '../api'
+import { notifyLoading, notifyProblem, notifySuccess } from '../toast'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgChartCanvas from './OrgChartCanvas'
 import OrgChartView from './OrgChartView'
@@ -134,6 +134,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const [employeeOptions, setEmployeeOptions] = useState<EmployeeOption[]>([])
   const [orgChart, setOrgChart] = useState<OrgChartData | null>(null)
   const [loading, setLoading] = useState(false)
+  const [exportingExcel, setExportingExcel] = useState(false)
 
   const [employeeForm, setEmployeeForm] = useState({ ...EMPTY_EMPLOYEE })
   const [editingEmployeeId, setEditingEmployeeId] = useState<number | null>(null)
@@ -262,6 +263,32 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       })
     } catch (err) {
       notifyProblem(err, 'Ошибка загрузки')
+    }
+  }, [])
+
+  const exportEmployeesExcel = useCallback(async () => {
+    setExportingExcel(true)
+    const toastId = notifyLoading('Формирование Excel…', 'staffing-excel')
+    try {
+      const response = await apiFetch('/api/org/employees/excel')
+      if (!response.ok) {
+        throw new Error(await readApiError(response))
+      }
+      const blob = await response.blob()
+      const disposition = response.headers.get('Content-Disposition') ?? ''
+      const match = disposition.match(/filename="([^"]+)"/)
+      const filename = match?.[1] ?? 'staffing-employees.xlsx'
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      link.click()
+      URL.revokeObjectURL(url)
+      notifySuccess('Excel сформирован', toastId)
+    } catch (err) {
+      notifyProblem(err, 'Ошибка выгрузки Excel', toastId)
+    } finally {
+      setExportingExcel(false)
     }
   }, [])
 
@@ -1070,19 +1097,29 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
         <section className="org-panel">
           <div className="org-panel-toolbar">
             <h2>Сотрудники</h2>
-            {canManage ? (
-              <div className="org-panel-toolbar-actions">
-                <button type="button" className="btn-ghost" onClick={() => void addExpertiseDirection()}>
-                  + Направление
-                </button>
-                <button type="button" className="btn-ghost" onClick={() => void addPosition()}>
-                  + Должность
-                </button>
-                <button type="button" className="btn-primary" onClick={openCreateEmployee}>
-                  + Сотрудник
-                </button>
-              </div>
-            ) : null}
+            <div className="org-panel-toolbar-actions">
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={exportingExcel}
+                onClick={() => void exportEmployeesExcel()}
+              >
+                {exportingExcel ? 'Выгрузка…' : 'Выгрузить в Excel'}
+              </button>
+              {canManage ? (
+                <>
+                  <button type="button" className="btn-ghost" onClick={() => void addExpertiseDirection()}>
+                    + Направление
+                  </button>
+                  <button type="button" className="btn-ghost" onClick={() => void addPosition()}>
+                    + Должность
+                  </button>
+                  <button type="button" className="btn-primary" onClick={openCreateEmployee}>
+                    + Сотрудник
+                  </button>
+                </>
+              ) : null}
+            </div>
           </div>
           <table className="org-table">
             <thead>

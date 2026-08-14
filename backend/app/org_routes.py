@@ -84,6 +84,7 @@ from app.org_service import (
     upload_employee_photo,
 )
 from app.org_service import update_profile_photo as update_profile_photo_service
+from app.org_staffing_excel import generate_staffing_excel
 
 from app.org_vacation_service import get_vacation_schedule, upsert_vacation_range
 from app.org_workspace_service import (
@@ -191,6 +192,19 @@ def api_list_employees(
     _: dict = Depends(_load_session_meta),
 ) -> list[EmployeeOut]:
     return list_employees(db)
+
+
+@router.get("/employees/excel")
+def api_export_employees_excel(
+    db: Session = Depends(get_db),
+    _: dict = Depends(_load_session_meta),
+) -> Response:
+    content, filename = generate_staffing_excel(list_employees(db), list_departments(db))
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/employees/{employee_ref}", response_model=EmployeeDetailOut)
