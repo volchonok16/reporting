@@ -1,9 +1,12 @@
 from app.boards import (
     ALL_BOARDS_CODE,
+    BoardConfig,
     board_by_code,
     boards_for_sync,
+    boards_sharing_alias,
     ensure_boards_loaded,
     get_boards,
+    grouped_boards_for_ui,
     is_all_boards,
     load_boards,
     parse_csv_tags,
@@ -117,3 +120,52 @@ def test_load_boards_replaces_cache_with_db_rows() -> None:
 
 def test_boards_for_sync_unknown_code_is_empty() -> None:
     assert boards_for_sync("does_not_exist") == []
+
+
+def _extra_products_board() -> BoardConfig:
+    return BoardConfig(
+        code="products_other",
+        name="Другие продукты",
+        display_name="Продукты",
+        project="Tele2",
+        project_id="pid",
+        team_id="tid",
+        area_path=r"Tele2\Other\Products",
+        sync_tags=("b2b_product",),
+    )
+
+
+def test_same_alias_boards_collapse_in_ui_and_expand_for_sync() -> None:
+    boards = [*get_boards(), _extra_products_board()]
+    ui = grouped_boards_for_ui(boards)
+    display_names = [board.display_name for board in ui]
+    assert display_names.count("Продукты") == 1
+    assert all(board.code != "products_other" for board in ui)
+
+    by_first = boards_for_sync("tele2_products", boards)
+    by_second = boards_for_sync("products_other", boards)
+    assert {board.code for board in by_first} == {"tele2_products", "products_other"}
+    assert {board.code for board in by_second} == {"tele2_products", "products_other"}
+    assert [board.code for board in boards_sharing_alias(by_first[0], boards)] == [
+        "tele2_products",
+        "products_other",
+    ]
+
+
+def test_same_alias_is_case_and_space_insensitive() -> None:
+    extra = BoardConfig(
+        code="products_spaced",
+        name="Products Spaced",
+        display_name="  продукты  ",
+        project="Tele2",
+        project_id="pid",
+        team_id="tid",
+        area_path=r"Tele2\Spaced\Products",
+    )
+    boards = [*get_boards(), extra]
+    ui = grouped_boards_for_ui(boards)
+    assert sum(1 for board in ui if board.code in {"tele2_products", "products_spaced"}) == 1
+    assert {board.code for board in boards_for_sync("tele2_products", boards)} == {
+        "tele2_products",
+        "products_spaced",
+    }

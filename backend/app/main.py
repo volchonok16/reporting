@@ -10,7 +10,15 @@ from sqlalchemy.orm import Session
 from app.app_access import can_manage_org, is_roadmap_role, is_voice_only, sync_board_denied_reason
 from app.auth_service import login_with_app_user, login_with_pat
 from app.auth_sessions import delete_session, get_session, get_session_with_meta
-from app.boards import ALL_BOARDS_CODE, boards_for_sync, default_board, ensure_boards_loaded, is_all_boards
+from app.boards import (
+    ALL_BOARDS_CODE,
+    boards_for_sync,
+    boards_sharing_alias,
+    default_board,
+    ensure_boards_loaded,
+    grouped_boards_for_ui,
+    is_all_boards,
+)
 from app.config import settings
 from app.db import close_db_session, ensure_startup_schema, get_db, purge_stale_b2b_audit_records
 from app.org_models import OrgUser
@@ -296,11 +304,25 @@ def auth_logout(x_session_id: str | None = Header(default=None, alias="X-Session
 def list_boards(db: Session = Depends(get_db)) -> list[BoardOut]:
     boards = ensure_boards_loaded(db, refresh=True)
     items = [
-        BoardOut(code=ALL_BOARDS_CODE, name="Все доски", displayName="Все доски", project=""),
+        BoardOut(
+            code=ALL_BOARDS_CODE,
+            name="Все доски",
+            displayName="Все доски",
+            project="",
+            memberCodes=[ALL_BOARDS_CODE],
+        ),
     ]
-    items.extend(
-        BoardOut(code=b.code, name=b.name, displayName=b.display_name, project=b.project) for b in boards
-    )
+    for board in grouped_boards_for_ui(boards):
+        members = [item.code for item in boards_sharing_alias(board, boards)]
+        items.append(
+            BoardOut(
+                code=board.code,
+                name=board.name,
+                displayName=board.display_name,
+                project=board.project,
+                memberCodes=members,
+            )
+        )
     return items
 
 

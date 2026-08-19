@@ -52,6 +52,7 @@ class BoardOut(BaseModel):
     name: str
     displayName: str
     project: str
+    memberCodes: list[str] = []
 
 
 class LinkedErrorOut(BaseModel):

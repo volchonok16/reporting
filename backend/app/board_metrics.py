@@ -13,8 +13,11 @@ from app.pilot_metrics import pilot_entered_in_period
 def _boards_index() -> tuple[dict[str, BoardConfig], dict[str, BoardConfig], dict[str, BoardConfig]]:
     boards = get_boards()
     by_code = {normalize_board_code(board.code): board for board in boards}
-    by_name = {board.name: board for board in boards}
-    by_display = {board.display_name: board for board in boards}
+    by_name: dict[str, BoardConfig] = {}
+    by_display: dict[str, BoardConfig] = {}
+    for board in boards:
+        by_name.setdefault(board.name, board)
+        by_display.setdefault(board.display_name, board)
     return by_code, by_name, by_display
 
 

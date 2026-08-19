@@ -60,3 +60,24 @@ def test_export_xlsx_is_real_excel_file(monkeypatch) -> None:
     assert rows[1][1] == "Тест ЗНИ"
     assert rows[1][11] == "9: ошибка"
     assert all(row[0] != "222" for row in rows[1:])
+
+
+def test_export_all_collapses_same_alias_boards(monkeypatch) -> None:
+    from app.boards import BoardConfig, set_boards_cache
+    from app.report_service import _boards_for_export
+
+    extra = BoardConfig(
+        code="products_other",
+        name="Другие продукты",
+        display_name="Продукты",
+        project="Tele2",
+        project_id="pid",
+        team_id="tid",
+        area_path=r"Tele2\Other\Products",
+    )
+    boards = [*get_boards(), extra]
+    set_boards_cache(boards)
+    exported = _boards_for_export("all", boards)
+    assert [board.code for board in exported].count("tele2_products") == 1
+    assert all(board.code != "products_other" for board in exported)
+    assert {board.code for board in _boards_for_export("products_other", boards)} == {"tele2_products"}

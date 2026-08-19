@@ -10,9 +10,11 @@ from sqlalchemy.orm import Session
 
 from app.boards import (
     BoardConfig,
-    board_by_code,
+    boards_for_sync,
+    boards_sharing_alias,
     ensure_boards_loaded,
     get_boards,
+    grouped_boards_for_ui,
     is_all_boards,
 )
 from app.board_metrics import (
@@ -62,8 +64,15 @@ BERCUT_BOARD_CODE = "be_t2_team"
 INCIDENT_ERROR_ROW_TYPE = "error"
 
 
-def _board_out(board: BoardConfig) -> BoardOut:
-    return BoardOut(code=board.code, name=board.name, displayName=board.display_name, project=board.project)
+def _board_out(board: BoardConfig, boards: list[BoardConfig] | None = None) -> BoardOut:
+    members = [item.code for item in boards_sharing_alias(board, boards)]
+    return BoardOut(
+        code=board.code,
+        name=board.name,
+        displayName=board.display_name,
+        project=board.project,
+        memberCodes=members,
+    )
 
 
 def _board_task_clause(board: BoardConfig):
@@ -692,7 +701,8 @@ def load_change_requests(
 ) -> DashboardOut:
     boards = ensure_boards_loaded(db, refresh=True)
     all_boards = is_all_boards(board_code)
-    board = board_by_code(board_code, boards)
+    matched = [] if all_boards else boards_for_sync(board_code, boards)
+    board = matched[0] if matched else None
     selected_tag_groups = (
         normalize_tag_group_keys(tag_groups, board_code)
         if tag_filter_supported_for_board(board_code)
@@ -710,7 +720,7 @@ def load_change_requests(
             totalShown=0,
         )
     else:
-        scope = _board_task_clause(board)
+        scope = _boards_task_clause(matched)
 
     zni_query = select(Task).where(
         Task.task_type == "change_request",
@@ -784,7 +794,7 @@ def load_change_requests(
         items.append(_change_request_to_out(row, errors_by_parent.get(row.id, [])))
 
     return DashboardOut(
-        board=_board_out(board) if board and not all_boards else None,
+        board=_board_out(board, boards) if board and not all_boards else None,
         allBoards=all_boards,
         metrics=_compute_metrics(
             rows_with_customer,
@@ -819,9 +829,9 @@ def _boards_for_export(
 ) -> list[BoardConfig]:
     source = boards if boards is not None else get_boards()
     if is_all_boards(board_code) or not board_code:
-        return list(source)
-    board = board_by_code(board_code, source)
-    return [board] if board else []
+        return grouped_boards_for_ui(source)
+    matched = boards_for_sync(board_code, source)
+    return [matched[0]] if matched else []
 
 
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

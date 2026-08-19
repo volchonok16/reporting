@@ -144,6 +144,11 @@ def is_all_boards(code: str | None) -> bool:
     return normalize_board_code(code) == ALL_BOARDS_CODE
 
 
+def normalize_board_alias(value: str | None) -> str:
+    """UI-имя доски: пробелы схлопываются, регистр не важен."""
+    return " ".join((value or "").split()).casefold()
+
+
 def board_by_code(
     code: str | None,
     boards: list[BoardConfig] | None = None,
@@ -157,6 +162,33 @@ def board_by_code(
     return None
 
 
+def boards_sharing_alias(
+    board: BoardConfig,
+    boards: list[BoardConfig] | None = None,
+) -> list[BoardConfig]:
+    """Все активные конфиги с тем же alias — разные area path в одной вкладке."""
+    source = boards if boards is not None else get_boards()
+    key = normalize_board_alias(board.display_name)
+    if not key:
+        return [board]
+    return [item for item in source if normalize_board_alias(item.display_name) == key]
+
+
+def grouped_boards_for_ui(boards: list[BoardConfig] | None = None) -> list[BoardConfig]:
+    """Одна доска на alias: первая по sort_order, остальные area path подмешиваются."""
+    source = boards if boards is not None else get_boards()
+    seen: set[str] = set()
+    result: list[BoardConfig] = []
+    for board in source:
+        key = normalize_board_alias(board.display_name)
+        if key:
+            if key in seen:
+                continue
+            seen.add(key)
+        result.append(board)
+    return result
+
+
 def boards_for_sync(
     board_code: str | None,
     boards: list[BoardConfig] | None = None,
@@ -165,7 +197,9 @@ def boards_for_sync(
     if is_all_boards(board_code) or not board_code:
         return list(source)
     board = board_by_code(board_code, source)
-    return [board] if board else []
+    if board is None:
+        return []
+    return boards_sharing_alias(board, source)
 
 
 def default_board(boards: list[BoardConfig] | None = None) -> BoardConfig:

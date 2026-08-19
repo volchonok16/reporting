@@ -5,7 +5,12 @@ const labelsByName = new Map<string, string>()
 
 /** Заполнить подписи досок из GET /api/boards (alias = displayName). */
 export function setBoardDisplayLabels(
-  boards: Array<{ code: string; name?: string | null; displayName?: string | null }>,
+  boards: Array<{
+    code: string
+    name?: string | null
+    displayName?: string | null
+    memberCodes?: string[] | null
+  }>,
 ): void {
   labelsByCode.clear()
   labelsByName.clear()
@@ -13,6 +18,9 @@ export function setBoardDisplayLabels(
     const label = (board.displayName || board.name || board.code).trim()
     if (!label) continue
     labelsByCode.set(board.code, label)
+    for (const code of board.memberCodes ?? []) {
+      if (code.trim()) labelsByCode.set(code, label)
+    }
     if (board.name?.trim()) {
       labelsByName.set(board.name.trim(), label)
     }

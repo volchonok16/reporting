@@ -11,6 +11,13 @@ type Board = {
   code: string
   name: string
   displayName: string
+  memberCodes?: string[]
+}
+
+function canonicalBoardCode(items: Board[], code: string): string {
+  if (items.some((board) => board.code === code)) return code
+  const grouped = items.find((board) => (board.memberCodes ?? []).includes(code))
+  return grouped?.code ?? code
 }
 
 type LinkedError = {
@@ -479,6 +486,13 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
     const items = await getJson<Board[]>('/api/boards')
     setBoardDisplayLabels(items)
     setBoards(items)
+    setBoardCode((current) => {
+      const next = canonicalBoardCode(items, current)
+      if (prevBoardCodeRef.current === current) {
+        prevBoardCodeRef.current = next
+      }
+      return next
+    })
   }, [])
 
   useEffect(() => {
@@ -736,7 +750,9 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
     }
   }
 
-  const selectedBoard = boards.find((b) => b.code === boardCode)
+  const selectedBoard = boards.find(
+    (b) => b.code === boardCode || (b.memberCodes ?? []).includes(boardCode),
+  )
   const boardLabel = selectedBoard?.displayName || boardNameLabel(null, boardCode) || boardCode
   const activeFilterCount = [
     search.trim(),
@@ -759,7 +775,11 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
               <button
                 key={board.code}
                 type="button"
-                className={`board-filter-btn${boardCode === board.code ? ' board-filter-btn-active' : ''}`}
+                className={`board-filter-btn${
+                  boardCode === board.code || (board.memberCodes ?? []).includes(boardCode)
+                    ? ' board-filter-btn-active'
+                    : ''
+                }`}
                 onClick={() => setBoardCode(board.code)}
               >
                 {board.displayName}
