@@ -88,6 +88,16 @@
   gap: 8px;
 }
 
+.org-employee-subsection {
+  margin-top: 28px;
+}
+
+.org-employee-subsection h3 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
 .org-table {
   width: 100%;
   border-collapse: collapse;

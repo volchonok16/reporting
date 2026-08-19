@@ -87,6 +87,69 @@ function EmployeeNameButton({
   )
 }
 
+function EmployeesTable({
+  employees,
+  canManage,
+  onOpen,
+  onEdit,
+  onRemove,
+}: {
+  employees: Employee[]
+  canManage: boolean
+  onOpen: (employeeId: number) => void
+  onEdit: (employee: Employee) => void
+  onRemove: (employeeId: number) => void
+}) {
+  return (
+    <table className="org-table">
+      <thead>
+        <tr>
+          <th>ФИО</th>
+          <th>Должность</th>
+          <th>Отделы</th>
+          <th>Email</th>
+          <th>Рабочих часов в день</th>
+          <th>Экспертиза</th>
+          <th>Руководитель</th>
+          <th>Активен</th>
+          {canManage ? <th /> : null}
+        </tr>
+      </thead>
+      <tbody>
+        {employees.map((emp) => (
+          <tr key={emp.id}>
+            <td>
+              <PersonCell
+                employeeId={emp.id}
+                name={emp.fullName}
+                photoUrl={emp.photoUrl}
+                onOpen={onOpen}
+              />
+            </td>
+            <td>{emp.position ?? '—'}</td>
+            <td>{formatDepartments(emp.departments)}</td>
+            <td>{emp.email ?? '—'}</td>
+            <td>{emp.dailyWorkHours}</td>
+            <td>{formatExpertises(emp.expertises)}</td>
+            <td>{emp.managerName ?? '—'}</td>
+            <td>{emp.isActive ? 'Да' : 'Нет'}</td>
+            {canManage ? (
+              <td className="org-table-actions">
+                <button type="button" className="btn-ghost" onClick={() => onEdit(emp)}>
+                  Изм.
+                </button>
+                <button type="button" className="btn-ghost" onClick={() => onRemove(emp.id)}>
+                  ✕
+                </button>
+              </td>
+            ) : null}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 const EMPTY_EMPLOYEE = {
   fullName: '',
   email: '',
@@ -189,6 +252,15 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
     for (const emp of employees) map.set(emp.id, emp)
     return map
   }, [employees])
+
+  const pyramidEmployees = useMemo(
+    () => employees.filter((emp) => !emp.hideFromPyramid),
+    [employees],
+  )
+  const otherEmployees = useMemo(
+    () => employees.filter((emp) => Boolean(emp.hideFromPyramid)),
+    [employees],
+  )
 
   const openEmployeeCard = (employeeRef: string) => setCardEmployeeRef(employeeRef)
   const openEmployeeCardById = (employeeId: number) => {
@@ -1121,52 +1193,27 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
               ) : null}
             </div>
           </div>
-          <table className="org-table">
-            <thead>
-              <tr>
-                <th>ФИО</th>
-                <th>Должность</th>
-                <th>Отделы</th>
-                <th>Email</th>
-                <th>Рабочих часов в день</th>
-                <th>Экспертиза</th>
-                <th>Руководитель</th>
-                <th>Активен</th>
-                {canManage ? <th /> : null}
-              </tr>
-            </thead>
-            <tbody>
-              {employees.map((emp) => (
-                <tr key={emp.id}>
-                  <td>
-                    <PersonCell
-                      employeeId={emp.id}
-                      name={emp.fullName}
-                      photoUrl={emp.photoUrl}
-                      onOpen={openEmployeeCardById}
-                    />
-                  </td>
-                  <td>{emp.position ?? '—'}</td>
-                  <td>{formatDepartments(emp.departments)}</td>
-                  <td>{emp.email ?? '—'}</td>
-                  <td>{emp.dailyWorkHours}</td>
-                  <td>{formatExpertises(emp.expertises)}</td>
-                  <td>{emp.managerName ?? '—'}</td>
-                  <td>{emp.isActive ? 'Да' : 'Нет'}</td>
-                  {canManage ? (
-                    <td className="org-table-actions">
-                      <button type="button" className="btn-ghost" onClick={() => openEditEmployee(emp)}>
-                        Изм.
-                      </button>
-                      <button type="button" className="btn-ghost" onClick={() => void removeEmployee(emp.id)}>
-                        ✕
-                      </button>
-                    </td>
-                  ) : null}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {pyramidEmployees.length > 0 || otherEmployees.length === 0 ? (
+            <EmployeesTable
+              employees={pyramidEmployees}
+              canManage={canManage}
+              onOpen={openEmployeeCardById}
+              onEdit={openEditEmployee}
+              onRemove={(id) => void removeEmployee(id)}
+            />
+          ) : null}
+          {otherEmployees.length > 0 ? (
+            <div className="org-employee-subsection">
+              <h3>Другие сотрудники</h3>
+              <EmployeesTable
+                employees={otherEmployees}
+                canManage={canManage}
+                onOpen={openEmployeeCardById}
+                onEdit={openEditEmployee}
+                onRemove={(id) => void removeEmployee(id)}
+              />
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -1509,6 +1556,10 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                       Не отображать в пирамиде
                     </label>
                   </div>
+                  <p className="org-hint">
+                    С этой галочкой сотрудник не попадает в пирамиду и отображается только в подразделе
+                    «Другие сотрудники».
+                  </p>
                 </section>
 
                 {!editingEmployeeId ? (
