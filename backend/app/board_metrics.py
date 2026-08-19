@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from app.boards import BoardConfig, get_boards
+from app.boards import BoardConfig, get_boards, normalize_board_code
 from app.config import settings
 from app.models import Task
 from app.completed_metrics import count_completed_rows, is_completed
@@ -12,7 +12,7 @@ from app.pilot_metrics import pilot_entered_in_period
 
 def _boards_index() -> tuple[dict[str, BoardConfig], dict[str, BoardConfig], dict[str, BoardConfig]]:
     boards = get_boards()
-    by_code = {board.code: board for board in boards}
+    by_code = {normalize_board_code(board.code): board for board in boards}
     by_name = {board.name: board for board in boards}
     by_display = {board.display_name: board for board in boards}
     return by_code, by_name, by_display
@@ -22,8 +22,10 @@ def board_for_task(task: Task) -> BoardConfig | None:
     by_code, by_name, by_display = _boards_index()
     extra = task.extra_json if isinstance(task.extra_json, dict) else {}
     code = extra.get("board_code")
-    if isinstance(code, str) and code in by_code:
-        return by_code[code]
+    if isinstance(code, str):
+        matched = by_code.get(normalize_board_code(code))
+        if matched is not None:
+            return matched
     team = task.source_team or ""
     return by_name.get(team) or by_display.get(team)
 

@@ -4,13 +4,13 @@ import asyncio
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse, Response
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.app_access import can_manage_org, is_roadmap_role, is_voice_only, sync_board_denied_reason
 from app.auth_service import login_with_app_user, login_with_pat
 from app.auth_sessions import delete_session, get_session, get_session_with_meta
-from app.boards import ALL_BOARDS_CODE, boards_for_sync, default_board, ensure_boards_loaded
+from app.boards import ALL_BOARDS_CODE, boards_for_sync, default_board, ensure_boards_loaded, is_all_boards
 from app.config import settings
 from app.db import close_db_session, ensure_startup_schema, get_db, purge_stale_b2b_audit_records
 from app.org_models import OrgUser
@@ -53,7 +53,7 @@ from app.product_status_live import (
     set_main_event_loop as set_product_status_live_event_loop,
 )
 from app.product_status_live_routes import router as product_status_live_router
-from app.report_service import export_csv, load_change_requests, load_change_requests_by_numbers
+from app.report_service import XLSX_MEDIA_TYPE, export_xlsx, load_change_requests, load_change_requests_by_numbers
 from app.business_value_service import update_business_value
 from app.roadmap_priority_service import update_roadmap_comment, update_roadmap_priority
 from app.digital_plan_service import load_digital_plan, update_digital_plan_has_uc
@@ -203,7 +203,7 @@ def voice_sso_token(
 
 @app.get("/api/auth/defaults", response_model=AuthDefaultsOut)
 def auth_defaults(db: Session = Depends(get_db)) -> AuthDefaultsOut:
-    boards = ensure_boards_loaded(db)
+    boards = ensure_boards_loaded(db, refresh=True)
     board = default_board(boards)
     return AuthDefaultsOut(
         baseUrl=settings.tfs_base_url,
@@ -294,7 +294,7 @@ def auth_logout(x_session_id: str | None = Header(default=None, alias="X-Session
 
 @app.get("/api/boards", response_model=list[BoardOut])
 def list_boards(db: Session = Depends(get_db)) -> list[BoardOut]:
-    boards = ensure_boards_loaded(db)
+    boards = ensure_boards_loaded(db, refresh=True)
     items = [
         BoardOut(code=ALL_BOARDS_CODE, name="Все доски", displayName="Все доски", project=""),
     ]
@@ -835,12 +835,12 @@ def export_report(
     board: str | None = Query(default=None),
     _: str = Depends(require_pat),
     __: None = Depends(require_full_app_access),
-) -> PlainTextResponse:
-    content = export_csv(db, board_code=board)
-    return PlainTextResponse(
-        content,
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": 'attachment; filename="zni-report.csv"'},
+) -> Response:
+    content, filename = export_xlsx(db, board_code=board)
+    return Response(
+        content=content,
+        media_type=XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -876,7 +876,16 @@ async def start_sync(
     if tfs is None:
         raise HTTPException(status_code=500, detail="source_system tfs not found")
 
-    target_boards = boards_for_sync(board, ensure_boards_loaded(db))
+    loaded = ensure_boards_loaded(db, refresh=True)
+    target_boards = boards_for_sync(board, loaded)
+    if board and not is_all_boards(board) and not target_boards:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Доска «{board}» не найдена среди активных записей zni_board. "
+                "Проверьте code и is_active."
+            ),
+        )
     sync_run = SyncRun(
         source_system_id=tfs.id,
         status="running",

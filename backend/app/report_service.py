@@ -1,15 +1,16 @@
-import csv
 import io
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.boards import (
-    ALL_BOARDS_CODE,
     BoardConfig,
     board_by_code,
-    default_board,
     ensure_boards_loaded,
     get_boards,
     is_all_boards,
@@ -63,6 +64,34 @@ INCIDENT_ERROR_ROW_TYPE = "error"
 
 def _board_out(board: BoardConfig) -> BoardOut:
     return BoardOut(code=board.code, name=board.name, displayName=board.display_name, project=board.project)
+
+
+def _board_task_clause(board: BoardConfig):
+    names = {name for name in (board.name, board.display_name) if name}
+    return or_(
+        Task.extra_json["board_code"].as_string() == board.code,
+        Task.source_team.in_(sorted(names)),
+    )
+
+
+def _boards_task_clause(boards: list[BoardConfig]):
+    clauses = [_board_task_clause(board) for board in boards]
+    if not clauses:
+        return False
+    if len(clauses) == 1:
+        return clauses[0]
+    return or_(*clauses)
+
+
+def _empty_metrics() -> DashboardMetricsOut:
+    return DashboardMetricsOut(
+        totalTasks=0,
+        inProgress=0,
+        launchingSoon=0,
+        launched=0,
+        completed=0,
+        errorsCount=0,
+    )
 
 
 def _matches_search(task: Task, search: str) -> bool:
@@ -352,13 +381,13 @@ def load_change_requests_by_numbers(db: Session, numbers: list[str]) -> list[Cha
         return []
 
     boards = ensure_boards_loaded(db)
-    board_names = [board.name for board in boards]
+    scope = _boards_task_clause(boards)
     rows = list(
         db.scalars(
             select(Task).where(
                 Task.task_type == "change_request",
                 Task.external_id.in_(normalized),
-                Task.source_team.in_(board_names),
+                scope,
             )
         )
     )
@@ -370,7 +399,7 @@ def load_change_requests_by_numbers(db: Session, numbers: list[str]) -> list[Cha
             db.scalars(
                 select(Task).where(
                     Task.task_type == "error",
-                    Task.source_team.in_(board_names),
+                    scope,
                 )
             )
         )
@@ -491,7 +520,7 @@ def _board_name_by_code(code: str | None) -> str | None:
     if not code:
         return None
     for board in get_boards():
-        if board.code == code:
+        if board.code.lower() == code.lower():
             return board.display_name
     return None
 
@@ -661,7 +690,7 @@ def load_change_requests(
     metric: str | None = None,
     tag_groups: list[str] | None = None,
 ) -> DashboardOut:
-    boards = ensure_boards_loaded(db)
+    boards = ensure_boards_loaded(db, refresh=True)
     all_boards = is_all_boards(board_code)
     board = board_by_code(board_code, boards)
     selected_tag_groups = (
@@ -671,26 +700,26 @@ def load_change_requests(
     )
 
     if all_boards:
-        board_names = [b.name for b in boards]
-        zni_query = select(Task).where(
-            Task.task_type == "change_request",
-            Task.source_team.in_(board_names),
-        )
-        error_query = select(Task).where(
-            Task.task_type == "error",
-            Task.source_team.in_(board_names),
+        scope = _boards_task_clause(boards)
+    elif board is None:
+        return DashboardOut(
+            board=None,
+            allBoards=False,
+            metrics=_empty_metrics(),
+            items=[],
+            totalShown=0,
         )
     else:
-        if board is None:
-            board = default_board(boards)
-        zni_query = select(Task).where(
-            Task.task_type == "change_request",
-            Task.source_team == board.name,
-        )
-        error_query = select(Task).where(
-            Task.task_type == "error",
-            Task.source_team == board.name,
-        )
+        scope = _board_task_clause(board)
+
+    zni_query = select(Task).where(
+        Task.task_type == "change_request",
+        scope,
+    )
+    error_query = select(Task).where(
+        Task.task_type == "error",
+        scope,
+    )
 
     rows = list(db.scalars(zni_query))
     error_rows = active_errors(list(db.scalars(error_query)))
@@ -784,61 +813,107 @@ def load_change_requests(
     )
 
 
-def _boards_for_export(board_code: str | None) -> list[BoardConfig]:
-    boards = get_boards()
+def _boards_for_export(
+    board_code: str | None,
+    boards: list[BoardConfig] | None = None,
+) -> list[BoardConfig]:
+    source = boards if boards is not None else get_boards()
     if is_all_boards(board_code) or not board_code:
-        return list(boards)
-    board = board_by_code(board_code, boards)
+        return list(source)
+    board = board_by_code(board_code, source)
     return [board] if board else []
 
 
-def _write_export_rows(writer: csv.writer, items: list[ChangeRequestOut]) -> None:
-    for item in items:
-        if is_excluded_zni_title(item.title):
-            continue
-        errors_text = "; ".join(f"{e.id}: {e.title}" for e in item.errors)
-        writer.writerow(
-            [
-                item.number,
-                item.title,
-                item.status or "",
-                item.boardColumn or "",
-                item.startDate.isoformat() if item.startDate else "",
-                item.releaseDate.isoformat() if item.releaseDate else "",
-                item.plannedLabel or (item.plannedDate.isoformat() if item.plannedDate else ""),
-                item.planQuarter or "",
-                item.plannedRelease or "",
-                ect_resource_reservation_label(item.ectResourceReservation),
-                item.boardName or "",
-                errors_text,
-            ]
-        )
+XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_EXPORT_HEADERS = [
+    "Номер ЗНИ",
+    "ЗНИ",
+    "Статус workflow",
+    "Статус доски",
+    "Дата начала",
+    "Целевая дата",
+    "Планируемая дата",
+    "План квартала",
+    "Плановый релиз",
+    "Бронь ресурса ЕЦТ",
+    "Доска",
+    "Ошибки",
+]
+_EXPORT_HEADER_FILL = PatternFill(fill_type="solid", fgColor="CCCCCC")
+_EXPORT_HEADER_FONT = Font(bold=True)
+_EXPORT_TEXT_ALIGNMENT = Alignment(wrap_text=True, vertical="top")
+_MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 
 
-def export_csv(db: Session, *, board_code: str | None = None) -> str:
-    ensure_boards_loaded(db)
-    boards_to_export = _boards_for_export(board_code)
+def _export_row_values(item: ChangeRequestOut) -> list[object]:
+    errors_text = "; ".join(f"{e.id}: {e.title}" for e in item.errors)
+    return [
+        item.number,
+        item.title,
+        item.status or "",
+        item.boardColumn or "",
+        item.startDate.isoformat() if item.startDate else "",
+        item.releaseDate.isoformat() if item.releaseDate else "",
+        item.plannedLabel or (item.plannedDate.isoformat() if item.plannedDate else ""),
+        item.planQuarter or "",
+        item.plannedRelease or "",
+        ect_resource_reservation_label(item.ectResourceReservation),
+        item.boardName or "",
+        errors_text,
+    ]
 
-    output = io.StringIO()
-    writer = csv.writer(output, delimiter=";")
-    writer.writerow(
-        [
-            "Номер ЗНИ",
-            "ЗНИ",
-            "Статус workflow",
-            "Статус доски",
-            "Дата начала",
-            "Целевая дата",
-            "Планируемая дата",
-            "План квартала",
-            "Плановый релиз",
-            "Бронь ресурса ЕЦТ",
-            "Доска",
-            "Ошибки",
-        ]
-    )
 
-    for board in boards_to_export:
+def _iter_export_items(
+    db: Session,
+    board_code: str | None,
+    boards: list[BoardConfig],
+) -> list[ChangeRequestOut]:
+    items: list[ChangeRequestOut] = []
+    for board in _boards_for_export(board_code, boards):
         single = load_change_requests(db, board_code=board.code)
-        _write_export_rows(writer, single.items)
-    return output.getvalue()
+        for item in single.items:
+            if is_excluded_zni_title(item.title):
+                continue
+            items.append(item)
+    return items
+
+
+def export_xlsx(db: Session, *, board_code: str | None = None) -> tuple[bytes, str]:
+    boards = ensure_boards_loaded(db, refresh=True)
+    items = _iter_export_items(db, board_code, boards)
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "ЗНИ"
+    for col_index, title in enumerate(_EXPORT_HEADERS, start=1):
+        cell = sheet.cell(row=1, column=col_index, value=title)
+        cell.fill = _EXPORT_HEADER_FILL
+        cell.font = _EXPORT_HEADER_FONT
+        cell.alignment = _EXPORT_TEXT_ALIGNMENT
+
+    for row_index, item in enumerate(items, start=2):
+        for col_index, value in enumerate(_export_row_values(item), start=1):
+            cell = sheet.cell(row=row_index, column=col_index, value=value)
+            cell.alignment = _EXPORT_TEXT_ALIGNMENT
+
+    last_row = max(1, len(items) + 1)
+    for col_index in range(1, len(_EXPORT_HEADERS) + 1):
+        letter = get_column_letter(col_index)
+        max_len = 12
+        for row_index in range(1, last_row + 1):
+            value = sheet.cell(row=row_index, column=col_index).value
+            if value is None:
+                continue
+            lines = str(value).splitlines() or [""]
+            max_len = max(max_len, max(len(line) for line in lines))
+        sheet.column_dimensions[letter].width = min(48, max(12, max_len + 2))
+    sheet.freeze_panes = "A2"
+    sheet.auto_filter.ref = f"A1:{get_column_letter(len(_EXPORT_HEADERS))}{last_row}"
+
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    stamp = datetime.now(_MOSCOW_TZ).strftime("%Y%m%d")
+    suffix = "all"
+    if board_code and not is_all_boards(board_code):
+        suffix = board_code.strip().lower()
+    return buffer.getvalue(), f"zni-report-{suffix}-{stamp}.xlsx"

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react'
-import { apiFetch, getJson } from './api'
+import { apiFetch, getJson, readApiError } from './api'
 import { notifyError, notifyLoading, notifyProblem, notifySuccess, notifyWarning, updateLoading } from './toast'
 import { loadDashboardUiState, saveDashboardUiState } from './uiState'
 import { boardNameLabel, setBoardDisplayLabels } from './zniDisplay'
@@ -475,14 +475,15 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set())
   const [filtersOpen, setFiltersOpen] = useState(false)
 
-  useEffect(() => {
-    void getJson<Board[]>('/api/boards')
-      .then((items) => {
-        setBoardDisplayLabels(items)
-        setBoards(items)
-      })
-      .catch((err) => notifyError(err, 'Ошибка загрузки досок'))
+  const loadBoards = useCallback(async () => {
+    const items = await getJson<Board[]>('/api/boards')
+    setBoardDisplayLabels(items)
+    setBoards(items)
   }, [])
+
+  useEffect(() => {
+    void loadBoards().catch((err) => notifyError(err, 'Ошибка загрузки досок'))
+  }, [loadBoards])
 
   useEffect(() => {
     if (prevBoardCodeRef.current !== null && prevBoardCodeRef.current !== boardCode) {
@@ -634,14 +635,20 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
     }
   }, [])
 
-  const downloadCsv = useCallback(async (targetBoard: string, filename: string) => {
+  const downloadExport = useCallback(async (targetBoard: string, fallbackName: string) => {
     const params = `?board=${encodeURIComponent(targetBoard)}`
     const response = await apiFetch(`/api/export${params}`)
     if (!response.ok) {
-      throw new Error('Не удалось выгрузить отчёт')
+      throw new Error(await readApiError(response))
     }
     const blob = await response.blob()
-    const url = URL.createObjectURL(blob)
+    const file = new Blob([blob], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    const disposition = response.headers.get('Content-Disposition') ?? ''
+    const match = disposition.match(/filename="([^"]+)"/)
+    const filename = match?.[1] ?? fallbackName
+    const url = URL.createObjectURL(file)
     const link = document.createElement('a')
     link.href = url
     link.download = filename
@@ -656,7 +663,7 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
     try {
       await waitForSync(boardCode, (message) => updateLoading(message, toastId))
       notifySuccess('Синхронизация завершена', toastId)
-      await loadDashboard()
+      await Promise.all([loadBoards(), loadDashboard()])
     } catch (err) {
       notifyError(err, 'Ошибка синхронизации', toastId)
     } finally {
@@ -670,13 +677,13 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
     try {
       if (boardCode === ALL_BOARDS) {
         await waitForSync(ALL_BOARDS, (message) => updateLoading(message, toastId))
-        updateLoading('Формирование CSV…', toastId)
-        await downloadCsv(ALL_BOARDS, 'zni-report-all.csv')
+        updateLoading('Формирование Excel…', toastId)
+        await downloadExport(ALL_BOARDS, 'zni-report-all.xlsx')
         notifySuccess('Отчёт выгружен', toastId)
-        await loadDashboard()
+        await Promise.all([loadBoards(), loadDashboard()])
         return
       }
-      await downloadCsv(boardCode, 'zni-report.csv')
+      await downloadExport(boardCode, 'zni-report.xlsx')
       notifySuccess('Отчёт выгружен', toastId)
     } catch (err) {
       notifyError(err, 'Ошибка выгрузки', toastId)

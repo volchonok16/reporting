@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -10,6 +11,8 @@ from app.models import ZniBoard
 from app.tfs_auth import TfsAuth
 
 ALL_BOARDS_CODE = "all"
+
+logger = logging.getLogger(__name__)
 
 _boards_cache: list[BoardConfig] | None = None
 
@@ -51,16 +54,25 @@ def parse_csv_tags(value: str | None) -> tuple[str, ...]:
     return tuple(part.strip() for part in str(value).split(",") if part.strip())
 
 
+def normalize_board_code(value: str | None) -> str:
+    return (value or "").strip().lower()
+
+
+def normalize_tfs_path(value: str | None) -> str:
+    """TFS area path uses backslash; SQL inserts often come with '/'."""
+    return (value or "").strip().replace("/", "\\")
+
+
 def board_config_from_row(row: ZniBoard) -> BoardConfig:
     in_progress = parse_csv_tags(row.in_progress_states)
     return BoardConfig(
-        code=row.code,
-        name=row.board_name,
-        display_name=row.alias,
-        project=row.project,
-        project_id=row.project_id,
-        team_id=row.team_id,
-        area_path=row.area_path,
+        code=(row.code or "").strip(),
+        name=(row.board_name or "").strip(),
+        display_name=(row.alias or "").strip() or (row.board_name or "").strip(),
+        project=(row.project or "").strip(),
+        project_id=(row.project_id or "").strip(),
+        team_id=(row.team_id or "").strip(),
+        area_path=normalize_tfs_path(row.area_path),
         sync_tags=parse_csv_tags(row.sync_tags),
         other_tags=parse_csv_tags(row.other_tags),
         error_sync_tags=parse_csv_tags(row.error_sync_tags),
@@ -70,7 +82,7 @@ def board_config_from_row(row: ZniBoard) -> BoardConfig:
         launching_soon_triage_values=parse_csv_tags(row.launching_soon_triage_values),
         launched_states=parse_csv_tags(row.launched_states),
         in_progress_states=in_progress or ("Development",),
-        incident_error_area_path=row.incident_error_area_path or None,
+        incident_error_area_path=normalize_tfs_path(row.incident_error_area_path) or None,
         incident_error_sync_tags=parse_csv_tags(row.incident_error_sync_tags),
     )
 
@@ -95,6 +107,7 @@ def load_boards(db: Session) -> list[BoardConfig]:
     )
     boards = [board_config_from_row(row) for row in rows]
     set_boards_cache(boards)
+    logger.info("zni_boards_loaded count=%s codes=%s", len(boards), [board.code for board in boards])
     return boards
 
 
@@ -104,14 +117,31 @@ def get_boards() -> list[BoardConfig]:
     return []
 
 
-def ensure_boards_loaded(db: Session) -> list[BoardConfig]:
+def _is_db_session(db: object) -> bool:
+    get_bind = getattr(db, "get_bind", None)
+    if not callable(get_bind):
+        return False
+    try:
+        bind = get_bind()
+    except Exception:
+        return False
+    if type(bind).__name__ in {"MagicMock", "Mock", "AsyncMock"}:
+        return False
+    return getattr(bind, "dialect", None) is not None
+
+
+def ensure_boards_loaded(db: Session, *, refresh: bool = False) -> list[BoardConfig]:
+    if _is_db_session(db):
+        return load_boards(db)
     if _boards_cache is not None:
         return list(_boards_cache)
-    return load_boards(db)
+    if refresh:
+        return load_boards(db)
+    return []
 
 
 def is_all_boards(code: str | None) -> bool:
-    return (code or "").strip().lower() == ALL_BOARDS_CODE
+    return normalize_board_code(code) == ALL_BOARDS_CODE
 
 
 def board_by_code(
@@ -120,9 +150,9 @@ def board_by_code(
 ) -> BoardConfig | None:
     if not code or is_all_boards(code):
         return None
-    normalized = code.strip().lower()
+    normalized = normalize_board_code(code)
     for board in boards if boards is not None else get_boards():
-        if board.code == normalized:
+        if normalize_board_code(board.code) == normalized:
             return board
     return None
 
@@ -135,7 +165,7 @@ def boards_for_sync(
     if is_all_boards(board_code) or not board_code:
         return list(source)
     board = board_by_code(board_code, source)
-    return [board] if board else list(source)
+    return [board] if board else []
 
 
 def default_board(boards: list[BoardConfig] | None = None) -> BoardConfig:

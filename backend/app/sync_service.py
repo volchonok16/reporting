@@ -7,7 +7,7 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.boards import BoardConfig, boards_for_sync, ensure_boards_loaded, get_boards
+from app.boards import BoardConfig, boards_for_sync, ensure_boards_loaded, is_all_boards
 from app.config import settings
 from app.db import SessionLocal, close_db_session
 from app.json_utils import as_work_item_list
@@ -195,13 +195,17 @@ def touch_sync_progress(db: Session, sync_run: SyncRun, message: str) -> None:
     db.commit()
 
 
-def ensure_reference_data(db: Session) -> tuple[int, dict[str, int], dict[str, int]]:
+def ensure_reference_data(
+    db: Session,
+    boards: list[BoardConfig] | None = None,
+) -> tuple[int, dict[str, int], dict[str, int]]:
     tfs = db.scalar(select(SourceSystem).where(SourceSystem.code == "tfs"))
     if tfs is None:
         raise RuntimeError("source_system 'tfs' not found")
     source_system_id = tfs.id
 
-    boards = ensure_boards_loaded(db)
+    if boards is None:
+        boards = ensure_boards_loaded(db, refresh=True)
     team_ids: dict[str, int] = {}
     for board in boards:
         row = db.scalar(select(Team).where(Team.code == board.code))
@@ -682,8 +686,15 @@ async def run_sync(
 ) -> SyncRun:
     db = SessionLocal()
     try:
-        source_system_id, project_ids, team_ids = ensure_reference_data(db)
-        boards = boards_for_sync(board_code, get_boards())
+        loaded = ensure_boards_loaded(db, refresh=True)
+        source_system_id, project_ids, team_ids = ensure_reference_data(db, boards=loaded)
+        boards = boards_for_sync(board_code, loaded)
+        if board_code and not is_all_boards(board_code) and not boards:
+            raise RuntimeError(
+                f"Доска «{board_code}» не найдена среди активных записей zni_board. "
+                "Проверьте code и is_active."
+            )
+        logger.info("sync_boards count=%s codes=%s", len(boards), [board.code for board in boards])
 
         sync_run: SyncRun
         if sync_run_id:
