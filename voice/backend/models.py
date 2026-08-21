@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -18,6 +19,24 @@ PANI_REGION_PREFIX_PATTERN = re.compile(
 LEGACY_PANI_REGION_PREFIX_PATTERN = re.compile(
     r"(\+?)([0-9]+)& null&D([0-9]+)\$&$"
 )
+
+
+def resolved_first_b_marker(
+    b_numbers: Sequence[str],
+    configured_marker: str = "4:4",
+) -> str:
+    """Use the short-number marker for a single 3–5 character AON."""
+
+    if is_single_short_aon(b_numbers):
+        return "4:2"
+    return configured_marker
+
+
+def is_single_short_aon(b_numbers: Sequence[str]) -> bool:
+    if len(b_numbers) != 1:
+        return False
+    value = str(b_numbers[0])
+    return value.isdigit() and 3 <= len(value) <= 5
 
 
 def canonicalize_pani_region_prefix(value: str) -> str:
@@ -206,6 +225,7 @@ class MappingFormatOverride(BaseModel):
     @field_validator("prefix")
     @classmethod
     def valid_mapping_prefix(cls, value: str) -> str:
+        value = value.strip()
         if (
             not value
             or any(char in value for char in "\r\n\x00")
@@ -217,8 +237,11 @@ class MappingFormatOverride(BaseModel):
             raise ValueError(
                 "prefix must contain four '&'-separated fields and end with &"
             )
-        validate_pani_prefix(value)
-        return value
+        # Individual formats may come from an uploaded file and are allowed to
+        # contain non-standard PANI/region values. Number quality is reported
+        # as a warning elsewhere and must not prevent raw-file processing.
+        # Keep only the structural checks that protect the output row itself.
+        return canonicalize_pani_region_prefix(value)
 
 
 class DeleteBCommand(BaseModel):
@@ -351,6 +374,7 @@ class MasterMergeRequest(BaseModel):
 
     conflictStrategy: Literal["keep_all", "replace_all", "selected"] = "keep_all"
     replaceConflictItemIds: list[str] = Field(default_factory=list)
+    mergeDuplicateANumbers: bool = False
 
 
 class MasterRecordRequest(BaseModel):
@@ -359,7 +383,7 @@ class MasterRecordRequest(BaseModel):
     aNumber: str
     bNumbers: list[str] = Field(default_factory=list)
     sourcePrefix: str | None = Field(None, max_length=256)
-    comment: str | None = Field(None, max_length=1000)
+    comment: str | None = Field(None, max_length=50000)
     expectedVersion: int | None = Field(None, ge=1)
 
 
@@ -375,11 +399,45 @@ class MasterBatchDeleteBRequest(BaseModel):
     bNumbers: list[str] = Field(min_length=1, max_length=10000)
 
 
+class MasterRecordFilterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = Field("", max_length=32000)
+    parameterGroups: list[str] = Field(default_factory=list, max_length=10)
+    regions: list[int] = Field(default_factory=list, max_length=84)
+    duplicatesOnly: bool = False
+    exactDuplicatesOnly: bool = False
+    exactDuplicateExtrasOnly: bool = False
+    shortAonOnly: bool = False
+    invalidOnly: bool = False
+    invalidStartOnly: bool = False
+
+
 class MasterScopedBatchDeleteBRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    aNumbers: list[str] = Field(min_length=1, max_length=10000)
+    aNumbers: list[str] = Field(default_factory=list, max_length=10000)
+    recordIds: list[str] = Field(default_factory=list, max_length=10000)
+    excludedRecordIds: list[str] = Field(default_factory=list, max_length=10000)
+    filter: MasterRecordFilterRequest | None = None
     bNumbers: list[str] = Field(min_length=1, max_length=10000)
+
+    @model_validator(mode="after")
+    def has_record_selection(self) -> "MasterScopedBatchDeleteBRequest":
+        if not self.aNumbers and not self.recordIds and self.filter is None:
+            raise ValueError("record selection is required")
+        if self.excludedRecordIds and self.filter is None:
+            raise ValueError("excludedRecordIds requires filter")
+        return self
+
+
+class MasterExactDuplicateCleanupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    filter: MasterRecordFilterRequest = Field(
+        default_factory=MasterRecordFilterRequest
+    )
+    excludedRecordIds: list[str] = Field(default_factory=list, max_length=10000)
 
 
 class MasterLockNotificationRequest(BaseModel):

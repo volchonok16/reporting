@@ -12,6 +12,7 @@ import {
 } from "react";
 import { AppHeader } from "./app-header";
 import { useAuth } from "./auth-provider";
+import { appHref } from "./paths";
 
 type ImportMode = "auto" | "raw" | "formatted";
 type StartVariant = "raw" | "formatted";
@@ -2113,8 +2114,12 @@ export default function Home() {
       .join("");
     const truncated =
       !options.full && selection.bNumbers.length > 4 ? ";…" : "";
+    const firstBMarker =
+      selection.bNumbers.length === 1 && firstB.length >= 3 && firstB.length <= 5
+        ? "4:2"
+        : template.firstBMarker;
     const terminator = selection.kind === "pani-region" ? ";" : "";
-    return `${prefix}${selection.aNumber}=${template.firstBMarker},${template.weight},${firstB}${rest}${truncated}${terminator}`;
+    return `${prefix}${selection.aNumber}=${firstBMarker},${template.weight},${firstB}${rest}${truncated}${terminator}`;
   };
 
   const addManualBatch = () => {
@@ -2690,10 +2695,14 @@ export default function Home() {
       if (!payload?.uploadId)
         throw new ApiError("Не удалось подготовить файл для мастер-файла.");
       persistTutorial("completed", "complete");
+      // Обязателен basePath (/voice): иначе iframe уходит на reporting SPA /master
+      // и дублируется хедер, а анализ слияния не запускается.
       window.location.assign(
-        `/master?importUploadId=${encodeURIComponent(
-          payload.uploadId,
-        )}&tutorial=master`,
+        appHref(
+          `/master?importUploadId=${encodeURIComponent(
+            payload.uploadId,
+          )}&tutorial=master`,
+        ),
       );
     } catch (requestError) {
       setError(getErrorMessage(requestError));
@@ -6354,6 +6363,11 @@ export default function Home() {
                             }))
                           }
                         />
+                      </label>
+                      <label className="field">
+                        <span>Один короткий АОН (3–5 символов)</span>
+                        <input value="4:2" readOnly />
+                        <small>Применяется автоматически вместо 4:4.</small>
                       </label>
                       <label className="field">
                         <span>Следующие АОН</span>

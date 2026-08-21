@@ -16,6 +16,9 @@ services:
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./db/init-users.sh:/docker-entrypoint-initdb.d/02-init-users.sh:ro
       - ./db/grants-app-users.sql:/docker-entrypoint-initdb.d/grants-app-users.sql:ro
+    # Только localhost (DBeaver). Порт из .env: POSTGRES_PORT (часто 5433).
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U reporting -d reporting"]
       interval: 5s
@@ -46,6 +49,7 @@ services:
       TFS_WIQL_MAX_RESULTS: ${TFS_WIQL_MAX_RESULTS:-15000}
       TFS_CLOSED_STATE_VALUES: ${TFS_CLOSED_STATE_VALUES:-Closed}
       TFS_EXCLUDE_CLOSED_OLDER_THAN_DAYS: ${TFS_EXCLUDE_CLOSED_OLDER_THAN_DAYS:-365}
+      ZNI_ACTUAL_PERIOD_EDITABLE_STATES: ${ZNI_ACTUAL_PERIOD_EDITABLE_STATES:-UAT,Pilot,Closed}
       TFS_PILOT_STATE_VALUES: ${TFS_PILOT_STATE_VALUES:-Пилот,Pilot}
       TFS_FETCH_PILOT_HISTORY: ${TFS_FETCH_PILOT_HISTORY:-true}
       LAUNCHING_SOON_DAYS: ${LAUNCHING_SOON_DAYS:-60}
@@ -144,6 +148,12 @@ services:
       CAROUSEL_AUTH_BOOTSTRAP_PASSWORD: "${CAROUSEL_AUTH_BOOTSTRAP_PASSWORD:-T2-Admin-2026!}"
       CAROUSEL_AUTH_SESSION_SECONDS: ${CAROUSEL_AUTH_SESSION_SECONDS:-43200}
       VOICE_SSO_SECRET: ${VOICE_SSO_SECRET:-reporting-voice-sso-dev-secret}
+      # Мастер-файл Voice хранится в PostgreSQL reporting (не в SQLite /data)
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://alex:alex@postgres:5432/reporting}
+      VOICE_DATABASE_URL: ${VOICE_DATABASE_URL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       # Только данные. Код — из образа (bind ./voice/backend ломает offline/prod,
       # если на хосте пустой/устаревший каталог). Live-reload — в docker-compose.dev.yml.

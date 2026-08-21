@@ -12,6 +12,7 @@ import {
 } from "react";
 import { AppHeader } from "../app-header";
 import { useAuth } from "../auth-provider";
+import { appHref } from "../paths";
 
 type MasterRecord = {
   id: string;
@@ -26,6 +27,9 @@ type MasterRecord = {
   createdRevision: number;
   updatedRevision: number;
   isDuplicate?: boolean;
+  isExactDuplicate?: boolean;
+  isExactDuplicateExtra?: boolean;
+  logicalRow?: string;
   duplicateSourceRows?: number[];
   duplicateSourceFile?: string;
 };
@@ -58,6 +62,7 @@ type HistoryItem = {
   addedBNumbers: string[];
   sourceFile: string | null;
   sourceRow: number | null;
+  actor: string;
   createdAt: number;
 };
 
@@ -85,6 +90,7 @@ type ImportAnalysis = {
     conflict: number;
     sourceRows: number;
     uniqueA: number;
+    preservedRows?: number;
     totalB: number;
     skippedRows: number;
     invalidRows: number;
@@ -194,7 +200,7 @@ const MASTER_TUTORIAL_STEPS: MasterTutorialStepDefinition[] = [
     description:
       "Одновременно изменять базу может только один пользователь. Пока файл занят вами, остальные пользователи видят данные без возможности изменения.",
     action:
-      "Если мастер-файл свободен, нажмите «Занять мастер-файл». Если он занят вами в другой сессии — «Перехватить» или «Освободить». Если занят другим пользователем, можно отправить напоминание на страницу мастер-файла (колокольчика в портале нет).",
+      "Если мастер-файл свободен, нажмите «Занять мастер-файл». Если он занят другим пользователем, здесь можно отправить владельцу напоминание.",
     target: '[data-tour="master-lock-panel"]',
     requiresAction: true,
   },
@@ -220,9 +226,9 @@ const MASTER_TUTORIAL_STEPS: MasterTutorialStepDefinition[] = [
     id: "merge",
     title: "Проверьте предложение на слияние",
     description:
-      "Предложение разделяет новые строки, совпадения и конфликты. Новые строки можно просматривать и редактировать, а для конфликтов — выбрать master или версию из CSV.",
+      "Предложение разделяет новые строки, совпадения и конфликты. Новые строки можно просматривать и редактировать, а для конфликтов — выбрать master или применить изменение из CSV.",
     action:
-      "Проверьте полные строки, дубликаты и ошибки. «Заменить все конфликты» применяет CSV ко всем конфликтам, а «Подтвердить слияние» создаёт одну новую версию.",
+      "Проверьте полные строки, дубликаты и ошибки. «Применить все конфликты» дополняет АОН у совпадающих опорных номеров и применяет остальные изменения CSV, а «Подтвердить слияние» создаёт одну новую версию.",
     target: '[data-tour="master-merge-review"]',
   },
   {
@@ -256,7 +262,7 @@ const MASTER_TUTORIAL_STEPS: MasterTutorialStepDefinition[] = [
     id: "quality",
     title: "Проверяйте дубликаты и ошибки",
     description:
-      "Навигация по дубликатам и предупреждениям последовательно переносит к проблемным опорным номерам и АОН. Длина, первая цифра и пробелы остаются только подсветкой и не мешают сохранению или слиянию.",
+      "Повторы опорных номеров и полностью одинаковые строки проверяются отдельно. Навигация последовательно переносит к нужным строкам, а ошибки длины, первой цифры и пробелов остаются только подсветкой.",
     action:
       "Приложение показывает расположение проблемы и не исправляет данные автоматически.",
     target: '[data-tour="master-quality-tools"]',
@@ -267,7 +273,7 @@ const MASTER_TUTORIAL_STEPS: MasterTutorialStepDefinition[] = [
     description:
       "В прокручиваемом списке показываются ID, опорный номер, АОН, параметр и версия строки. Следующие 200 строк подгружаются при прокрутке.",
     action:
-      "Чекбокс слева выбирает опорный номер для адресного удаления АОН; кнопка «Изменить» раскрывает редактор прямо под строкой.",
+      "Чекбокс слева выбирает конкретную физическую строку; кнопка «Отметить всю выборку» учитывает активный фильтр и все страницы.",
     target: '[data-tour="master-records-panel"]',
   },
   {
@@ -302,7 +308,7 @@ const MASTER_TUTORIAL_STEPS: MasterTutorialStepDefinition[] = [
     id: "scoped-delete",
     title: "Удаление АОН у выбранных опор",
     description:
-      "Сначала отметьте опорные номера чекбоксами в текущей базе, затем укажите АОН. У остальных опорных номеров те же АОН сохранятся.",
+      "Сначала отметьте физические строки чекбоксами или выберите всю отфильтрованную выдачу, затем укажите АОН. Остальные строки не изменятся.",
     action: "Раскройте блок адресного удаления АОН.",
     target: '[data-tour="master-scoped-delete"]',
     requiresAction: true,
@@ -352,6 +358,8 @@ type MasterDraft = {
   selectedParameterGroups: string[];
   selectedRegions: number[];
   duplicatesOnly: boolean;
+  exactDuplicatesOnly: boolean;
+  shortAonOnly?: boolean;
   historyDateFrom: string;
   historyDateTo: string;
   editor: {
@@ -456,14 +464,38 @@ function hasInvalidNumberStart(value: string) {
   return !!normalized && !normalized.startsWith("7");
 }
 
+function isSingleShortAon(numbers: string[]) {
+  return numbers.length === 1 && /^\d{3,5}$/.test(numbers[0]);
+}
+
 function invalidBNumbers(numbers: string[]) {
+  if (isSingleShortAon(numbers)) return [];
   return numbers.filter(hasInvalidNumberLength);
+}
+
+function invalidStartBNumbers(numbers: string[]) {
+  if (isSingleShortAon(numbers)) return [];
+  return numbers.filter(hasInvalidNumberStart);
+}
+
+function aonNumberClass(value: string, numbers: string[]) {
+  return [
+    invalidBNumbers(numbers).includes(value) ? "is-invalid-number" : "",
+    invalidStartBNumbers(numbers).includes(value)
+      ? "is-invalid-number-start"
+      : "",
+    isSingleShortAon(numbers) && numbers[0] === value
+      ? "is-short-aon-number"
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function recordHasInvalidNumbers(record: Pick<MasterRecord, "aNumber" | "bNumbers">) {
   return (
     hasInvalidNumberLength(record.aNumber) ||
-    record.bNumbers.some(hasInvalidNumberLength)
+    invalidBNumbers(record.bNumbers).length > 0
   );
 }
 
@@ -472,7 +504,7 @@ function recordHasInvalidNumberStart(
 ) {
   return (
     hasInvalidNumberStart(record.aNumber) ||
-    record.bNumbers.some(hasInvalidNumberStart)
+    invalidStartBNumbers(record.bNumbers).length > 0
   );
 }
 
@@ -483,6 +515,20 @@ function recordHasInvalidNumberWhitespace(
     hasInvalidNumberWhitespace(record.aNumber) ||
     record.bNumbers.some(hasInvalidNumberWhitespace)
   );
+}
+
+function conflictAddsAons(item: ImportItem) {
+  return (
+    item.current !== null &&
+    item.current.aNumber === item.incoming.aNumber &&
+    item.current.sourcePrefix === item.incoming.sourcePrefix
+  );
+}
+
+function conflictAdditionalAonCount(item: ImportItem) {
+  if (!item.current || !conflictAddsAons(item)) return 0;
+  const current = new Set(item.current.bNumbers);
+  return item.incoming.bNumbers.filter((number) => !current.has(number)).length;
 }
 
 function masterParameterParts(value: string): {
@@ -657,10 +703,13 @@ function formattedImportLine(record: ImportRecord) {
     parameter.region,
     parameter.custom,
   );
-  const terminator = parameter.kind === "pani-region" ? ";" : "";
-  return `${prefix}${record.aNumber}=4:4,1,${first}${rest
+  const firstBMarker =
+    bNumbers.length === 1 && first.length >= 3 && first.length <= 5
+      ? "4:2"
+      : "4:4";
+  return `${prefix}${record.aNumber}=${firstBMarker},1,${first}${rest
     .map((number) => `;4,1,${number}`)
-    .join("")}${terminator}`;
+    .join("")}`;
 }
 
 function importProgressLabel(task: ImportTask) {
@@ -760,10 +809,12 @@ function HighlightedTextareaValue({
   value,
   query,
   highlightInvalidNumbers = false,
+  allowedShortAon = "",
 }: {
   value: string;
   query: string;
   highlightInvalidNumbers?: boolean;
+  allowedShortAon?: string;
 }) {
   const renderLine = (line: string) => {
     if (!highlightInvalidNumbers)
@@ -775,10 +826,13 @@ function HighlightedTextareaValue({
       <>
         {parts.map((part, index) => {
           const isNumber = /^\+?[0-9]+$/.test(part);
+          const isAllowedShortAon = part === allowedShortAon;
           const classes = isNumber
             ? [
-                hasInvalidNumberLength(part) ? "is-invalid-number" : "",
-                hasInvalidNumberStart(part)
+                hasInvalidNumberLength(part) && !isAllowedShortAon
+                  ? "is-invalid-number"
+                  : "",
+                hasInvalidNumberStart(part) && !isAllowedShortAon
                   ? "is-invalid-number-start"
                   : "",
               ]
@@ -883,10 +937,18 @@ function historyItemHasInvalidNumberWhitespace(item: HistoryItem) {
   );
 }
 
-function historyNumberClass(value: string) {
+function historyNumberClass(value: string, bNumbers?: string[]) {
+  const isAllowedShortAon = bNumbers
+    ? isSingleShortAon(bNumbers) && bNumbers[0] === value
+    : false;
   return [
-    hasInvalidNumberLength(value) ? "is-invalid-number" : "",
-    hasInvalidNumberStart(value) ? "is-invalid-number-start" : "",
+    hasInvalidNumberLength(value) && !isAllowedShortAon
+      ? "is-invalid-number"
+      : "",
+    hasInvalidNumberStart(value) && !isAllowedShortAon
+      ? "is-invalid-number-start"
+      : "",
+    isAllowedShortAon ? "is-short-aon-number" : "",
     hasInvalidNumberWhitespace(value) ? "is-invalid-number-whitespace" : "",
   ]
     .filter(Boolean)
@@ -909,7 +971,7 @@ function HistoryAonDetails({ item }: { item: HistoryItem }) {
             <div>
               {item.removedBNumbers.map((number, index) => (
                 <code
-                  className={historyNumberClass(number)}
+                  className={historyNumberClass(number, before)}
                   key={`${number}-${index}`}
                 >
                   {number}
@@ -924,7 +986,7 @@ function HistoryAonDetails({ item }: { item: HistoryItem }) {
             <div>
               {item.addedBNumbers.map((number, index) => (
                 <code
-                  className={historyNumberClass(number)}
+                  className={historyNumberClass(number, after)}
                   key={`${number}-${index}`}
                 >
                   {number}
@@ -940,7 +1002,7 @@ function HistoryAonDetails({ item }: { item: HistoryItem }) {
           <div>
             {current.map((number, index) => (
               <code
-                className={historyNumberClass(number)}
+                className={historyNumberClass(number, current)}
                 key={`${number}-${index}`}
               >
                 {number}
@@ -969,6 +1031,7 @@ export default function MasterPage() {
   const importBTextareaRef = useRef<HTMLTextAreaElement>(null);
   const importBOverlayRef = useRef<HTMLPreElement>(null);
   const queuedImportRef = useRef("");
+  const queuedImportLockRef = useRef("");
   const importPollingRef = useRef("");
   const importRecoveryUserRef = useRef("");
   const notifiedLockRef = useRef("");
@@ -979,6 +1042,7 @@ export default function MasterPage() {
   const recordsLoadGenerationRef = useRef(0);
   const historyLoadGenerationRef = useRef(0);
   const tutorialInitializedRef = useRef(false);
+  const analysisImportIdRef = useRef("");
   const [view, setView] = useState<View>("records");
   const [records, setRecords] = useState<MasterRecord[]>([]);
   const [recordsHasMore, setRecordsHasMore] = useState(false);
@@ -994,6 +1058,7 @@ export default function MasterPage() {
     invalidStartANumberCount: 0,
     invalidStartBNumberCount: 0,
     invalidStartRecordCount: 0,
+    shortAonRecordCount: 0,
   });
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyHasMore, setHistoryHasMore] = useState(false);
@@ -1012,6 +1077,13 @@ export default function MasterPage() {
   const [duplicateCount, setDuplicateCount] = useState(0);
   const [duplicatesOnly, setDuplicatesOnly] = useState(false);
   const [duplicateCursor, setDuplicateCursor] = useState(0);
+  const [exactDuplicateCount, setExactDuplicateCount] = useState(0);
+  const [exactDuplicateExtraCount, setExactDuplicateExtraCount] = useState(0);
+  const [matchingExactDuplicateExtraCount, setMatchingExactDuplicateExtraCount] =
+    useState(0);
+  const [exactDuplicatesOnly, setExactDuplicatesOnly] = useState(false);
+  const [exactDuplicateCursor, setExactDuplicateCursor] = useState(0);
+  const [shortAonOnly, setShortAonOnly] = useState(false);
   const [invalidOnly, setInvalidOnly] = useState(false);
   const [invalidCursor, setInvalidCursor] = useState(0);
   const [invalidStartOnly, setInvalidStartOnly] = useState(false);
@@ -1048,8 +1120,12 @@ export default function MasterPage() {
   const [merging, setMerging] = useState(false);
   const [selectedConflicts, setSelectedConflicts] = useState<string[]>([]);
   const [replaceAll, setReplaceAll] = useState(false);
+  const [mergeDuplicateANumbers, setMergeDuplicateANumbers] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
   const [editing, setEditing] = useState<MasterRecord | null>(null);
+  const [logicalRowPreview, setLogicalRowPreview] =
+    useState<MasterRecord | null>(null);
+  const [copiedLogicalRow, setCopiedLogicalRow] = useState(false);
   const [aNumber, setANumber] = useState("");
   const [bNumbersText, setBNumbersText] = useState("");
   const [sourcePrefix, setSourcePrefix] = useState(NO_REGION_PREFIX);
@@ -1070,9 +1146,17 @@ export default function MasterPage() {
   const [bulkDeleteBNumbers, setBulkDeleteBNumbers] = useState("");
   const [scopedDeleteANumbers, setScopedDeleteANumbers] = useState("");
   const [scopedDeleteBNumbers, setScopedDeleteBNumbers] = useState("");
+  const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
+  const [selectedAllFilterKey, setSelectedAllFilterKey] = useState("");
+  const [serverSelectionMode, setServerSelectionMode] = useState<
+    "filter" | "exact-duplicate-extras" | ""
+  >("");
+  const [excludedSelectedRecordIds, setExcludedSelectedRecordIds] = useState<
+    string[]
+  >([]);
   const [batchPanel, setBatchPanel] = useState<MasterBatchPanel>("");
   const [bulkDeleting, setBulkDeleting] = useState<
-    "a" | "b" | "scoped-b" | ""
+    "a" | "b" | "scoped-b" | "exact-duplicate-extras" | ""
   >("");
   const [pendingDraft, setPendingDraft] = useState<MasterDraft | null>(null);
   const [draftDialogOpen, setDraftDialogOpen] = useState(false);
@@ -1083,6 +1167,11 @@ export default function MasterPage() {
 
   const setImportAnalysis = useCallback(
     (next: ImportAnalysis | null) => {
+      const nextImportId = next?.importId ?? "";
+      if (analysisImportIdRef.current !== nextImportId) {
+        analysisImportIdRef.current = nextImportId;
+        setMergeDuplicateANumbers(false);
+      }
       if (!next || !next.stats) {
         setNewPreviewItems([]);
         setNewPreviewOpen(false);
@@ -1128,6 +1217,15 @@ export default function MasterPage() {
     }
     sessionId.current = current;
   }, []);
+
+  useEffect(() => {
+    if (!logicalRowPreview) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setLogicalRowPreview(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [logicalRowPreview]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -1283,8 +1381,14 @@ export default function MasterPage() {
   }, [analysis, apiFetch, user, waitForImportAnalysis]);
 
   const applyMasterLock = useCallback((nextLock: MasterLockState) => {
-    ownedLockRef.current = nextLock.ownedByCurrentSession;
-    setMasterLock(nextLock);
+    const ownedHere = Boolean(
+      nextLock.ownedByCurrentUser && nextLock.ownedByCurrentSession,
+    );
+    ownedLockRef.current = ownedHere;
+    setMasterLock({
+      ...nextLock,
+      ownedByCurrentSession: Boolean(nextLock.ownedByCurrentSession),
+    });
     const notificationKey =
       nextLock.locked && !nextLock.ownedByCurrentUser && nextLock.owner
         ? `${nextLock.owner.id}:${nextLock.acquiredAt ?? ""}`
@@ -1296,7 +1400,7 @@ export default function MasterPage() {
     if (!notificationKey) notifiedLockRef.current = "";
     const ownerNotification = nextLock.notification;
     if (
-      nextLock.ownedByCurrentUser &&
+      ownedHere &&
       ownerNotification &&
       notifiedOwnerRef.current !== ownerNotification.id
     ) {
@@ -1397,6 +1501,9 @@ export default function MasterPage() {
       for (const region of selectedRegions)
         parameters.append("region", String(region));
       if (duplicatesOnly) parameters.set("duplicatesOnly", "true");
+      if (exactDuplicatesOnly)
+        parameters.set("exactDuplicatesOnly", "true");
+      if (shortAonOnly) parameters.set("shortAonOnly", "true");
       if (invalidOnly) parameters.set("invalidOnly", "true");
       if (invalidStartOnly) parameters.set("invalidStartOnly", "true");
       const response = await apiFetch(
@@ -1423,6 +1530,13 @@ export default function MasterPage() {
         Array.isArray(payload.regionOptions) ? payload.regionOptions : [],
       );
       setDuplicateCount(Number(payload.duplicateCount) || 0);
+      setExactDuplicateCount(Number(payload.exactDuplicateCount) || 0);
+      setExactDuplicateExtraCount(
+        Number(payload.exactDuplicateExtraCount) || 0,
+      );
+      setMatchingExactDuplicateExtraCount(
+        Number(payload.matchingExactDuplicateExtraCount) || 0,
+      );
       setRecordStats({
         revision: Number(payload.revision) || 0,
         total: Number(payload.total) || 0,
@@ -1437,6 +1551,7 @@ export default function MasterPage() {
           Number(payload.invalidStartBNumberCount) || 0,
         invalidStartRecordCount:
           Number(payload.invalidStartRecordCount) || 0,
+        shortAonRecordCount: Number(payload.shortAonRecordCount) || 0,
       });
       setHistoryTotal(Number(payload.historyCount) || 0);
       setError("");
@@ -1459,11 +1574,13 @@ export default function MasterPage() {
   }, [
     apiFetch,
     duplicatesOnly,
+    exactDuplicatesOnly,
     invalidOnly,
     invalidStartOnly,
     query,
     selectedParameterGroups,
     selectedRegions,
+    shortAonOnly,
   ]);
 
   const loadHistory = useCallback(async (offset = 0) => {
@@ -1684,6 +1801,10 @@ export default function MasterPage() {
     () => records.filter((record) => record.isDuplicate),
     [records],
   );
+  const exactDuplicateRecords = useMemo(
+    () => records.filter((record) => record.isExactDuplicate),
+    [records],
+  );
   const invalidRecords = useMemo(
     () => records.filter(recordHasInvalidNumbers),
     [records],
@@ -1696,10 +1817,68 @@ export default function MasterPage() {
     () => parseNumbers(scopedDeleteANumbers),
     [scopedDeleteANumbers],
   );
-  const scopedSelectedASet = useMemo(
-    () => new Set(scopedSelectedANumbers),
-    [scopedSelectedANumbers],
+  const recordFilter = useMemo(
+    () => ({
+      query,
+      parameterGroups: selectedParameterGroups,
+      regions: selectedRegions,
+      duplicatesOnly,
+      exactDuplicatesOnly,
+      shortAonOnly,
+      invalidOnly,
+      invalidStartOnly,
+    }),
+    [
+      duplicatesOnly,
+      exactDuplicatesOnly,
+      invalidOnly,
+      invalidStartOnly,
+      query,
+      selectedParameterGroups,
+      selectedRegions,
+      shortAonOnly,
+    ],
   );
+  const recordFilterKey = JSON.stringify(recordFilter);
+  const allFilteredRecordsSelected =
+    serverSelectionMode === "filter" &&
+    selectedAllFilterKey === recordFilterKey &&
+    !!selectedAllFilterKey;
+  const exactDuplicateExtrasSelected =
+    serverSelectionMode === "exact-duplicate-extras" &&
+    selectedAllFilterKey === recordFilterKey &&
+    !!selectedAllFilterKey;
+  const serverFilteredRecordsSelected =
+    allFilteredRecordsSelected || exactDuplicateExtrasSelected;
+  const selectedServerFilter = exactDuplicateExtrasSelected
+    ? { ...recordFilter, exactDuplicateExtrasOnly: true }
+    : recordFilter;
+  const selectedRecordIdSet = useMemo(
+    () => new Set(selectedRecordIds),
+    [selectedRecordIds],
+  );
+  const excludedSelectedRecordIdSet = useMemo(
+    () => new Set(excludedSelectedRecordIds),
+    [excludedSelectedRecordIds],
+  );
+  const selectedFilteredRecordCount = serverFilteredRecordsSelected
+    ? Math.max(
+        0,
+        (exactDuplicateExtrasSelected
+          ? matchingExactDuplicateExtraCount
+          : recordStats.total) - excludedSelectedRecordIds.length,
+      )
+    : selectedRecordIds.length;
+  useEffect(() => {
+    if (!selectedAllFilterKey || selectedAllFilterKey === recordFilterKey)
+      return;
+    const timeout = window.setTimeout(() => {
+      setSelectedAllFilterKey("");
+      setServerSelectionMode("");
+      setExcludedSelectedRecordIds([]);
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [recordFilterKey, selectedAllFilterKey]);
   const aonSearchMatches = useMemo(() => {
     const tokens = parseNumbers(query).filter((token) => /^\d+$/.test(token));
     return records
@@ -1736,6 +1915,12 @@ export default function MasterPage() {
     duplicatesOnly && duplicateRecords.length
       ? duplicateRecords[duplicateCursor % duplicateRecords.length].id
       : "";
+  const focusedExactDuplicateId =
+    exactDuplicatesOnly && exactDuplicateRecords.length
+      ? exactDuplicateRecords[
+          exactDuplicateCursor % exactDuplicateRecords.length
+        ].id
+      : "";
   const focusedInvalidId =
     invalidOnly && invalidRecords.length
       ? invalidRecords[invalidCursor % invalidRecords.length].id
@@ -1750,34 +1935,31 @@ export default function MasterPage() {
     selectedParameterGroups.length +
     (selectedRegions.length ? 1 : 0) +
     (duplicatesOnly ? 1 : 0) +
+    (exactDuplicatesOnly ? 1 : 0) +
+    (shortAonOnly ? 1 : 0) +
     (invalidOnly ? 1 : 0) +
     (invalidStartOnly ? 1 : 0);
-  const masterEditable = masterLock.ownedByCurrentSession;
-  const lockedByOther =
-    masterLock.locked && !masterLock.ownedByCurrentUser;
-  const lockedByOwnOtherSession =
+  const preservedImportRows =
+    analysis?.stats.preservedRows ??
+    ((analysis?.stats.uniqueA ?? 0) + (analysis?.stats.duplicateA ?? 0));
+  const masterEditable =
+    masterLock.ownedByCurrentUser && masterLock.ownedByCurrentSession;
+  const needsReclaim =
     masterLock.locked &&
     masterLock.ownedByCurrentUser &&
     !masterLock.ownedByCurrentSession;
+  const lockedByOther =
+    masterLock.locked && !masterLock.ownedByCurrentUser;
   const notifyLockOwner = useCallback(async () => {
     if (!lockedByOther || notifyingLockOwner) return;
     setNotifyingLockOwner(true);
     try {
-      const response = await apiFetch("/api/master/lock/notify", {
+      await apiFetch("/api/master/lock/notify", {
         method: "POST",
         body: JSON.stringify({ kind: "reminder" }),
       });
-      const payload = (await response.json()) as {
-        message?: string;
-        owner?: { email?: string };
-      };
       setNotice(
-        payload.message ??
-          `Напоминание для ${
-            payload.owner?.email ??
-            masterLock.owner?.email ??
-            "владельца"
-          } сохранено. Оно появится у него на странице мастер-файла в Voice — отдельного колокольчика в портале нет.`,
+        `Пользователь ${masterLock.owner?.email ?? "владелец блокировки"} получил напоминание освободить мастер-файл.`,
       );
       setLockDialogOpen(false);
       setError("");
@@ -1820,6 +2002,8 @@ export default function MasterPage() {
       selectedParameterGroups,
       selectedRegions,
       duplicatesOnly,
+      exactDuplicatesOnly,
+      shortAonOnly,
       historyDateFrom,
       historyDateTo,
       editor: editorHasWork
@@ -1844,6 +2028,7 @@ export default function MasterPage() {
     bNumbersText,
     comment,
     duplicatesOnly,
+    exactDuplicatesOnly,
     editing,
     filterOpen,
     historyDateFrom,
@@ -1854,6 +2039,7 @@ export default function MasterPage() {
     selectedParameterGroups,
     selectedRegions,
     showEditor,
+    shortAonOnly,
     sourcePrefix,
     user,
     view,
@@ -1897,6 +2083,30 @@ export default function MasterPage() {
       });
     });
   }, [duplicateCursor, duplicateRecords, duplicatesOnly, view]);
+
+  useEffect(() => {
+    if (
+      view !== "records" ||
+      !exactDuplicatesOnly ||
+      !exactDuplicateRecords.length
+    )
+      return;
+    const index = exactDuplicateCursor % exactDuplicateRecords.length;
+    const record = exactDuplicateRecords[index];
+    window.requestAnimationFrame(() => {
+      recordRefs.current.get(record.id)?.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+        block: "center",
+      });
+    });
+  }, [
+    exactDuplicateCursor,
+    exactDuplicateRecords,
+    exactDuplicatesOnly,
+    view,
+  ]);
 
   useEffect(() => {
     if (view !== "records" || !invalidOnly || !invalidRecords.length) return;
@@ -1943,6 +2153,9 @@ export default function MasterPage() {
       setInvalidCursor(0);
       setInvalidStartOnly(false);
       setInvalidStartCursor(0);
+      setExactDuplicatesOnly(false);
+      setExactDuplicateCursor(0);
+      setShortAonOnly(false);
       setDuplicatesOnly(true);
       setDuplicateCursor(0);
       return;
@@ -1962,6 +2175,42 @@ export default function MasterPage() {
     );
   };
 
+  const showNextExactDuplicate = async () => {
+    if (!exactDuplicateCount) return;
+    setView("records");
+    setFilterOpen(false);
+    if (!exactDuplicatesOnly) {
+      setQuery("");
+      setSelectedParameterGroups([]);
+      setSelectedRegions([]);
+      setDuplicatesOnly(false);
+      setDuplicateCursor(0);
+      setInvalidOnly(false);
+      setInvalidCursor(0);
+      setInvalidStartOnly(false);
+      setInvalidStartCursor(0);
+      setShortAonOnly(false);
+      setExactDuplicatesOnly(true);
+      setExactDuplicateCursor(0);
+      return;
+    }
+    const currentIndex =
+      exactDuplicateCursor % Math.max(exactDuplicateRecords.length, 1);
+    if (
+      exactDuplicateRecords.length > 0 &&
+      currentIndex === exactDuplicateRecords.length - 1 &&
+      recordsHasMore
+    ) {
+      await loadRecords(records.length);
+      setExactDuplicateCursor(exactDuplicateRecords.length);
+      return;
+    }
+    setExactDuplicateCursor(
+      (current) =>
+        (current + 1) % Math.max(exactDuplicateRecords.length, 1),
+    );
+  };
+
   const showNextInvalidNumber = async () => {
     if (!recordStats.invalidRecordCount) return;
     setView("records");
@@ -1972,6 +2221,9 @@ export default function MasterPage() {
       setSelectedRegions([]);
       setDuplicatesOnly(false);
       setDuplicateCursor(0);
+      setExactDuplicatesOnly(false);
+      setExactDuplicateCursor(0);
+      setShortAonOnly(false);
       setInvalidStartOnly(false);
       setInvalidStartCursor(0);
       setInvalidOnly(true);
@@ -2003,6 +2255,9 @@ export default function MasterPage() {
       setSelectedRegions([]);
       setDuplicatesOnly(false);
       setDuplicateCursor(0);
+      setExactDuplicatesOnly(false);
+      setExactDuplicateCursor(0);
+      setShortAonOnly(false);
       setInvalidOnly(false);
       setInvalidCursor(0);
       setInvalidStartOnly(true);
@@ -2024,6 +2279,27 @@ export default function MasterPage() {
       (current) =>
         (current + 1) % Math.max(invalidStartRecords.length, 1),
     );
+  };
+
+  const showShortAonRecords = () => {
+    setView("records");
+    setFilterOpen(false);
+    if (shortAonOnly) {
+      setShortAonOnly(false);
+      return;
+    }
+    setQuery("");
+    setSelectedParameterGroups([]);
+    setSelectedRegions([]);
+    setDuplicatesOnly(false);
+    setDuplicateCursor(0);
+    setExactDuplicatesOnly(false);
+    setExactDuplicateCursor(0);
+    setInvalidOnly(false);
+    setInvalidCursor(0);
+    setInvalidStartOnly(false);
+    setInvalidStartCursor(0);
+    setShortAonOnly(true);
   };
 
   const addRegionSelection = () => {
@@ -2049,6 +2325,70 @@ export default function MasterPage() {
         : currentNumbers.filter((number) => number !== aNumber);
       return next.join("\n");
     });
+  };
+
+  const toggleAllFilteredRecords = () => {
+    if (allFilteredRecordsSelected) {
+      setSelectedAllFilterKey("");
+      setServerSelectionMode("");
+      setExcludedSelectedRecordIds([]);
+      return;
+    }
+    setSelectedRecordIds([]);
+    setExcludedSelectedRecordIds([]);
+    setSelectedAllFilterKey(recordFilterKey);
+    setServerSelectionMode("filter");
+  };
+
+  const toggleExactDuplicateExtras = () => {
+    if (exactDuplicateExtrasSelected) {
+      clearRecordSelection();
+      return;
+    }
+    setSelectedRecordIds([]);
+    setExcludedSelectedRecordIds([]);
+    setSelectedAllFilterKey(recordFilterKey);
+    setServerSelectionMode("exact-duplicate-extras");
+  };
+
+  const toggleRecordSelection = (recordId: string, checked: boolean) => {
+    if (serverFilteredRecordsSelected) {
+      setExcludedSelectedRecordIds((current) =>
+        checked
+          ? current.filter((id) => id !== recordId)
+          : Array.from(new Set([...current, recordId])),
+      );
+      return;
+    }
+    setSelectedRecordIds((current) =>
+      checked
+        ? Array.from(new Set([...current, recordId]))
+        : current.filter((id) => id !== recordId),
+    );
+  };
+
+  const clearRecordSelection = () => {
+    setSelectedRecordIds([]);
+    setSelectedAllFilterKey("");
+    setServerSelectionMode("");
+    setExcludedSelectedRecordIds([]);
+  };
+
+  const openLogicalRowPreview = (record: MasterRecord) => {
+    setCopiedLogicalRow(false);
+    setLogicalRowPreview(record);
+  };
+
+  const copyLogicalRowPreview = async () => {
+    if (!logicalRowPreview) return;
+    const value =
+      logicalRowPreview.logicalRow ?? formattedImportLine(logicalRowPreview);
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedLogicalRow(true);
+    } catch {
+      setError("Не удалось скопировать строку. Выделите её вручную.");
+    }
   };
 
   const showNextAnalysisDuplicate = async () => {
@@ -2091,6 +2431,8 @@ export default function MasterPage() {
     setSelectedParameterGroups(pendingDraft.selectedParameterGroups);
     setSelectedRegions(pendingDraft.selectedRegions);
     setDuplicatesOnly(pendingDraft.duplicatesOnly);
+    setExactDuplicatesOnly(pendingDraft.exactDuplicatesOnly ?? false);
+    setShortAonOnly(pendingDraft.shortAonOnly ?? false);
     setHistoryDateFrom(pendingDraft.historyDateFrom);
     setHistoryDateTo(pendingDraft.historyDateTo);
     setEditing(pendingDraft.editor?.editing ?? null);
@@ -2130,9 +2472,12 @@ export default function MasterPage() {
 
   const toggleMasterLock = async () => {
     if (lockedByOther) return;
+    const reclaiming = needsReclaim;
     setLockChanging(true);
     try {
-      const releasing = masterLock.ownedByCurrentSession;
+      // Своя сессия → освободить; чужая сессия того же пользователя → перехватить (POST);
+      // свободно → занять (POST).
+      const releasing = masterEditable;
       const response = await apiFetch("/api/master/lock", {
         method: releasing ? "DELETE" : "POST",
       });
@@ -2144,9 +2489,9 @@ export default function MasterPage() {
         setSelectedConflicts([]);
         setReplaceAll(false);
         setNotice("Мастер-файл освобождён для других пользователей.");
-      } else if (lockedByOwnOtherSession) {
+      } else if (reclaiming) {
         setNotice(
-          "Блокировка перехвачена в эту сессию. Можно продолжать редактирование здесь.",
+          "Мастер-файл перехвачен в этой вкладке. Другая ваша сессия больше не редактирует файл.",
         );
       } else {
         setNotice(
@@ -2159,55 +2504,6 @@ export default function MasterPage() {
         nextError instanceof Error
           ? nextError.message
           : "Не удалось изменить состояние мастер-файла.",
-      );
-      await loadMasterLock();
-    } finally {
-      setLockChanging(false);
-    }
-  };
-
-  const releaseOwnedMasterLock = async () => {
-    if (!masterLock.ownedByCurrentUser || lockChanging) return;
-    setLockChanging(true);
-    try {
-      const response = await apiFetch("/api/master/lock", {
-        method: "DELETE",
-      });
-      applyMasterLock((await response.json()) as MasterLockState);
-      resetEditor();
-      setImportAnalysis(null);
-      setSelectedConflicts([]);
-      setReplaceAll(false);
-      setNotice("Мастер-файл освобождён для других пользователей.");
-      setError("");
-    } catch (nextError) {
-      setError(
-        nextError instanceof Error
-          ? nextError.message
-          : "Не удалось освободить мастер-файл.",
-      );
-      await loadMasterLock();
-    } finally {
-      setLockChanging(false);
-    }
-  };
-
-  const forceReleaseMasterLock = async () => {
-    if (!lockedByOther || user?.role !== "superuser" || lockChanging) return;
-    setLockChanging(true);
-    try {
-      const response = await apiFetch("/api/master/lock?force=true", {
-        method: "DELETE",
-      });
-      applyMasterLock((await response.json()) as MasterLockState);
-      setNotice("Блокировка снята принудительно (права суперпользователя).");
-      setLockDialogOpen(false);
-      setError("");
-    } catch (nextError) {
-      setError(
-        nextError instanceof Error
-          ? nextError.message
-          : "Не удалось принудительно освободить мастер-файл.",
       );
       await loadMasterLock();
     } finally {
@@ -2257,7 +2553,7 @@ export default function MasterPage() {
       });
       const nextLock = (await response.json()) as MasterLockState;
       applyMasterLock(nextLock);
-      if (!nextLock.ownedByCurrentSession) {
+      if (!nextLock.ownedByCurrentUser) {
         setLockDialogOpen(true);
         return;
       }
@@ -2474,15 +2770,18 @@ export default function MasterPage() {
     if (!masterEditable) return;
     const selectedANumbers = parseNumbers(scopedDeleteANumbers);
     const bNumbers = parseNumbers(scopedDeleteBNumbers);
-    if (!selectedANumbers.length || !bNumbers.length) {
+    if (
+      (!selectedANumbers.length && !selectedFilteredRecordCount) ||
+      !bNumbers.length
+    ) {
       setError(
-        "Укажите опорные номера и АОН, которые нужно удалить только из выбранных связок.",
+        "Отметьте строки или укажите опорные номера и АОН для удаления из выбранных связок.",
       );
       return;
     }
     if (
       !window.confirm(
-        `Удалить ${bNumbers.length} АОН только у ${selectedANumbers.length} выбранных опорных номеров? Остальные связки мастер-файла не изменятся.`,
+        `Удалить ${bNumbers.length} АОН у отмеченных строк: ${selectedFilteredRecordCount}, опорных номеров вручную: ${selectedANumbers.length}? Остальные связки мастер-файла не изменятся.`,
       )
     )
       return;
@@ -2495,6 +2794,11 @@ export default function MasterPage() {
           method: "POST",
           body: JSON.stringify({
             aNumbers: selectedANumbers,
+            recordIds: serverFilteredRecordsSelected ? [] : selectedRecordIds,
+            excludedRecordIds: serverFilteredRecordsSelected
+              ? excludedSelectedRecordIds
+              : [],
+            filter: serverFilteredRecordsSelected ? selectedServerFilter : null,
             bNumbers,
           }),
         },
@@ -2508,6 +2812,7 @@ export default function MasterPage() {
       };
       setScopedDeleteANumbers("");
       setScopedDeleteBNumbers("");
+      clearRecordSelection();
       setNotice(
         `Удаление АОН у выбранных опорных номеров завершено: обновлено связок ${result.updatedRecords}, удалено АОН ${result.removedAons}, не найдено опорных номеров ${result.notFoundRecords}. Версия ${masterVersion(result.revision)}.`,
       );
@@ -2523,6 +2828,54 @@ export default function MasterPage() {
         nextError instanceof Error
           ? nextError.message
           : "Не удалось удалить АОН у выбранных опорных номеров.",
+      );
+    } finally {
+      setBulkDeleting("");
+    }
+  };
+
+  const deleteSelectedExactDuplicateExtras = async () => {
+    if (!masterEditable || !exactDuplicateExtrasSelected) return;
+    if (!selectedFilteredRecordCount) {
+      setError("В текущей выборке нет лишних полных копий для удаления.");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Удалить ${selectedFilteredRecordCount} лишних полностью одинаковых строк? В каждой группе останется одна исходная запись.`,
+      )
+    )
+      return;
+    setWarning("");
+    setBulkDeleting("exact-duplicate-extras");
+    try {
+      const response = await apiFetch(
+        "/api/master/records/delete-exact-duplicate-extras",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            filter: recordFilter,
+            excludedRecordIds: excludedSelectedRecordIds,
+          }),
+        },
+      );
+      const result = (await response.json()) as {
+        revision: number;
+        deleted: number;
+        keptOriginalGroups: number;
+      };
+      clearRecordSelection();
+      setNotice(
+        `Удалено лишних полных копий: ${result.deleted}. Сохранено по одному оригиналу в группах: ${result.keptOriginalGroups}. Версия ${masterVersion(result.revision)}.`,
+      );
+      setError("");
+      await loadRecords(0);
+      await loadHistory(0);
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Не удалось удалить лишние полные копии.",
       );
     } finally {
       setBulkDeleting("");
@@ -2551,6 +2904,9 @@ export default function MasterPage() {
       setSelectedRegions([]);
       setDuplicatesOnly(false);
       setDuplicateCursor(0);
+      setExactDuplicatesOnly(false);
+      setExactDuplicateCursor(0);
+      setShortAonOnly(false);
       setInvalidOnly(false);
       setInvalidCursor(0);
       setNotice(
@@ -2657,12 +3013,29 @@ export default function MasterPage() {
 
   useEffect(() => {
     const uploadId = searchParams.get("importUploadId")?.trim() || "";
-    if (
-      !uploadId ||
-      !masterEditable ||
-      queuedImportRef.current === uploadId
-    )
+    if (!uploadId || queuedImportRef.current === uploadId) return;
+    if (!user) return;
+    if (!masterEditable) {
+      if (lockedByOther || lockChanging) return;
+      if (queuedImportLockRef.current === uploadId) return;
+      queuedImportLockRef.current = uploadId;
+      void (async () => {
+        try {
+          const response = await apiFetch("/api/master/lock", {
+            method: "POST",
+          });
+          applyMasterLock((await response.json()) as MasterLockState);
+        } catch (nextError) {
+          queuedImportLockRef.current = "";
+          setError(
+            nextError instanceof Error
+              ? nextError.message
+              : "Сначала займите мастер-файл, чтобы принять результат.",
+          );
+        }
+      })();
       return;
+    }
     queuedImportRef.current = uploadId;
     const analyzeQueuedResult = async () => {
       setUploading(true);
@@ -2678,13 +3051,14 @@ export default function MasterPage() {
         const task = (await response.json()) as ImportTask;
         setImportProgress(task);
         await waitForImportAnalysis(task.importId);
-        window.history.replaceState({}, "", "/master");
+        window.history.replaceState({}, "", appHref("/master"));
       } catch (nextError) {
         setError(
           nextError instanceof Error
             ? nextError.message
             : "Не удалось подготовить результат к слиянию.",
         );
+        queuedImportRef.current = "";
       } finally {
         if (!importPollingRef.current) setUploading(false);
       }
@@ -2692,9 +3066,13 @@ export default function MasterPage() {
     void analyzeQueuedResult();
   }, [
     apiFetch,
+    applyMasterLock,
+    lockChanging,
+    lockedByOther,
     masterEditable,
     searchParams,
     setImportAnalysis,
+    user,
     waitForImportAnalysis,
   ]);
 
@@ -2838,16 +3216,18 @@ export default function MasterPage() {
           body: JSON.stringify({
             conflictStrategy,
             replaceConflictItemIds: selectedConflicts,
+            mergeDuplicateANumbers,
           }),
         },
       );
       const result = await response.json();
       setNotice(
-        `Слияние выполнено: добавлено ${result.added}, заменено ${result.updated}, сохранено без замены ${result.keptConflicts}. Версия ${masterVersion(result.revision)}.`,
+        `Слияние выполнено: добавлено ${result.added}, обновлено ${result.updated}, оставлено без изменений ${result.keptConflicts}${result.separateDuplicateRows ? `, дубликатов сохранено отдельными строками ${result.separateDuplicateRows}` : ""}${result.mergedDuplicates ? `, объединено повторных строк ${result.mergedDuplicates}` : ""}. Версия ${masterVersion(result.revision)}.`,
       );
       setImportAnalysis(null);
       setSelectedConflicts([]);
       setReplaceAll(false);
+      setMergeDuplicateANumbers(false);
       await loadRecords();
     } catch (nextError) {
       setError(
@@ -3065,9 +3445,12 @@ export default function MasterPage() {
       : "";
     const invalidEditorA =
       Boolean(aNumber.trim()) && hasInvalidNumberLength(aNumber.trim());
-    const invalidEditorB = editorBNumbers.filter(hasInvalidNumberLength);
+    const invalidEditorB = invalidBNumbers(editorBNumbers);
     const invalidStartEditorA = hasInvalidNumberStart(aNumber);
-    const invalidStartEditorB = editorBNumbers.filter(hasInvalidNumberStart);
+    const invalidStartEditorB = invalidStartBNumbers(editorBNumbers);
+    const allowedShortEditorAon = isSingleShortAon(editorBNumbers)
+      ? editorBNumbers[0]
+      : "";
     const invalidWhitespaceEditorA = hasInvalidNumberWhitespace(aNumber);
     const invalidWhitespaceEditorB = editorBEntries
       .filter((entry) => hasInvalidNumberWhitespace(entry.raw))
@@ -3155,6 +3538,7 @@ export default function MasterPage() {
                   value={bNumbersText}
                   query={query}
                   highlightInvalidNumbers
+                  allowedShortAon={allowedShortEditorAon}
                 />
               </pre>
             )}
@@ -3176,6 +3560,12 @@ export default function MasterPage() {
           <small>
             Если оставить пустым, в АОН будет записан опорный номер.
           </small>
+          {allowedShortEditorAon && (
+            <small className="short-aon-note">
+              Единственный короткий АОН {allowedShortEditorAon} допустим и
+              будет сформирован с маркером 4:2.
+            </small>
+          )}
           {!!invalidEditorB.length && (
             <small className="number-length-warning">
               АОН с длиной не 11 символов: {invalidEditorB.join(", ")}.
@@ -3204,15 +3594,15 @@ export default function MasterPage() {
           <span>Комментарий к опорному номеру</span>
           <textarea
             value={comment}
-            onChange={(event) => setComment(event.target.value.slice(0, 1000))}
+            onChange={(event) => setComment(event.target.value.slice(0, 50000))}
             placeholder="Например: важное условие по этой связке"
-            maxLength={1000}
+            maxLength={50000}
             rows={3}
             disabled={!masterEditable}
           />
           <small>
             Комментарий хранится только в мастер-файле и будет заметен прямо
-            в строке. {comment.length}/1000
+            в строке. {comment.length}/50000
           </small>
         </label>
       </div>
@@ -3328,15 +3718,17 @@ export default function MasterPage() {
             {record.bNumbers.map((number, index) => (
               <div
                 className={
-                  hasInvalidNumberLength(number) ? "is-invalid-number" : ""
+                  invalidAons.includes(number) ? "is-invalid-number" : ""
                 }
                 key={`${number}-${index}`}
               >
                 <code>{number}</code>
                 <span>
-                  {hasInvalidNumberLength(number)
+                  {invalidAons.includes(number)
                     ? `${number.length} символов вместо 11`
-                    : "11 символов"}
+                    : isSingleShortAon(record.bNumbers)
+                      ? "Допустимый короткий АОН · маркер 4:2"
+                      : "11 символов"}
                 </span>
               </div>
             ))}
@@ -3350,7 +3742,7 @@ export default function MasterPage() {
   };
 
   const renderInvalidStartReveal = (record: MasterRecord) => {
-    const invalidAons = record.bNumbers.filter(hasInvalidNumberStart);
+    const invalidAons = invalidStartBNumbers(record.bNumbers);
     return (
       <div className="master-invalid-reveal is-blocking-start" role="alert">
         <div className="master-invalid-reveal-heading">
@@ -3668,8 +4060,8 @@ export default function MasterPage() {
           className={`master-lock-panel ${
             masterEditable
               ? "is-owned"
-              : lockedByOwnOtherSession
-                ? "is-owned is-stale-session"
+              : needsReclaim
+                ? "is-stale-session"
                 : lockedByOther
                   ? "is-locked"
                   : "is-free"
@@ -3679,13 +4071,7 @@ export default function MasterPage() {
         >
           <div className="master-lock-status" aria-hidden="true">
             <span>
-              {masterEditable
-                ? "✓"
-                : lockedByOwnOtherSession
-                  ? "↻"
-                  : lockedByOther
-                    ? "⌁"
-                    : "○"}
+              {masterEditable ? "✓" : needsReclaim ? "↻" : lockedByOther ? "⌁" : "○"}
             </span>
           </div>
           <div className="master-lock-copy">
@@ -3694,8 +4080,8 @@ export default function MasterPage() {
                 ? "Проверяем доступность мастер-файла…"
                 : masterEditable
                   ? "Мастер-файл занят вами"
-                  : lockedByOwnOtherSession
-                    ? "Мастер-файл занят вами в другой сессии"
+                  : needsReclaim
+                    ? "Мастер-файл занят вами в другой вкладке"
                     : lockedByOther
                       ? "Мастер-файл занят другим пользователем"
                       : "Мастер-файл свободен"}
@@ -3703,113 +4089,46 @@ export default function MasterPage() {
             <span>
               {masterEditable
                 ? "Редактирование, импорт и экспорт доступны только вам до освобождения файла."
-                : lockedByOwnOtherSession
-                  ? "После повторного входа или открытия в другой вкладке блокировка осталась на прежней сессии. Перехватите её сюда или освободите файл."
+                : needsReclaim
+                  ? "Нажмите «Перехватить», чтобы продолжить редактирование здесь. Другая вкладка перейдёт в режим просмотра."
                   : lockedByOther
-                    ? `Редактирование заблокировано. Владелец: ${masterLock.owner?.email ?? "неизвестный пользователь"}. Напоминание появится у владельца на странице мастер-файла в Voice — колокольчика в портале нет.`
+                    ? `Редактирование заблокировано. Владелец: ${masterLock.owner?.email ?? "неизвестный пользователь"}.`
                     : "Займите мастер-файл, чтобы импортировать, экспортировать или изменять данные."}
               {masterLock.acquiredAt
                 ? ` Занят ${formatDate(masterLock.acquiredAt)}.`
                 : ""}
             </span>
-            {masterLock.ownedByCurrentUser && masterLock.notification ? (
-              <span className="master-lock-reminder">
-                Ожидает ответа: {masterLock.notification.requester.email}
-                {masterLock.notification.kind === "upload_attempt"
-                  ? " (попытка загрузки)"
-                  : " (напоминание)"}
-                .
-              </span>
-            ) : null}
           </div>
-          <div className="master-lock-actions">
-            {lockedByOwnOtherSession ? (
-              <>
-                <button
-                  className="primary-button"
-                  type="button"
-                  data-tour="master-lock"
-                  onClick={() => void toggleMasterLock()}
-                  disabled={
-                    lockLoading ||
-                    lockChanging ||
-                    uploading ||
-                    merging ||
-                    saving
-                  }
-                >
-                  {lockChanging ? "Сохраняем…" : "Перехватить"}
-                </button>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => void releaseOwnedMasterLock()}
-                  disabled={
-                    lockLoading ||
-                    lockChanging ||
-                    uploading ||
-                    merging ||
-                    saving
-                  }
-                >
-                  Освободить
-                </button>
-              </>
-            ) : lockedByOther ? (
-              <>
-                <button
-                  className="primary-button"
-                  type="button"
-                  data-tour="master-lock"
-                  onClick={() => void notifyLockOwner()}
-                  disabled={
-                    lockLoading ||
-                    lockChanging ||
-                    notifyingLockOwner ||
-                    uploading ||
-                    merging ||
-                    saving
-                  }
-                >
-                  {notifyingLockOwner
-                    ? "Отправляем напоминание…"
-                    : "Напомнить владельцу"}
-                </button>
-                {user?.role === "superuser" ? (
-                  <button
-                    className="danger-button compact"
-                    type="button"
-                    onClick={() => void forceReleaseMasterLock()}
-                    disabled={lockLoading || lockChanging}
-                  >
-                    Снять блокировку
-                  </button>
-                ) : null}
-              </>
-            ) : (
-              <button
-                className={
-                  masterEditable ? "secondary-button" : "primary-button"
-                }
-                type="button"
-                data-tour="master-lock"
-                onClick={() => void toggleMasterLock()}
-                disabled={
-                  lockLoading ||
-                  lockChanging ||
-                  uploading ||
-                  merging ||
-                  saving
-                }
-              >
-                {lockChanging
-                  ? "Сохраняем…"
-                  : masterEditable
-                    ? "Освободить мастер-файл"
+          <button
+            className={
+              masterEditable ? "secondary-button" : "primary-button"
+            }
+            type="button"
+            data-tour="master-lock"
+            onClick={() =>
+              void (lockedByOther ? notifyLockOwner() : toggleMasterLock())
+            }
+            disabled={
+              lockLoading ||
+              lockChanging ||
+              notifyingLockOwner ||
+              uploading ||
+              merging ||
+              saving
+            }
+          >
+            {lockChanging
+              ? "Сохраняем…"
+              : masterEditable
+                ? "Освободить мастер-файл"
+                : needsReclaim
+                  ? "Перехватить"
+                  : lockedByOther
+                    ? notifyingLockOwner
+                      ? "Отправляем напоминание…"
+                      : "Уведомить владельца"
                     : "Занять мастер-файл"}
-              </button>
-            )}
-          </div>
+          </button>
         </section>
 
         <div className="master-stats" data-tour="master-stats">
@@ -3835,6 +4154,16 @@ export default function MasterPage() {
           <div className="master-alert is-error" role="alert">
             <strong>Не удалось выполнить действие</strong>
             <span>{error}</span>
+            {needsReclaim && (
+              <button
+                className="primary-button"
+                type="button"
+                disabled={lockChanging}
+                onClick={() => void toggleMasterLock()}
+              >
+                {lockChanging ? "Сохраняем…" : "Перехватить"}
+              </button>
+            )}
             <button type="button" onClick={() => setError("")}>
               ×
             </button>
@@ -3855,6 +4184,27 @@ export default function MasterPage() {
             <span>{notice}</span>
             <button type="button" onClick={() => setNotice("")}>
               ×
+            </button>
+          </div>
+        )}
+        {recordStats.shortAonRecordCount > 0 && (
+          <div className="master-number-warning is-short-aon" role="status">
+            <div>
+              <strong>Опорные номера с коротким АОН</strong>
+              <span>
+                Найдено строк: {recordStats.shortAonRecordCount}. Единственный
+                АОН длиной 3–5 символов считается допустимым и формируется с
+                маркером 4:2.
+              </span>
+            </div>
+            <button
+              className={shortAonOnly ? "is-active-filter" : ""}
+              type="button"
+              onClick={showShortAonRecords}
+            >
+              {shortAonOnly
+                ? `Показаны короткие АОН · ${recordStats.total}`
+                : `Показать опорные с коротким номером · ${recordStats.shortAonRecordCount}`}
             </button>
           </div>
         )}
@@ -3968,8 +4318,9 @@ export default function MasterPage() {
 
             <div className="merge-source-summary" role="status">
               Прочитано строк: {analysis.stats.sourceRows.toLocaleString("ru-RU")};
+              сохранено для загрузки: {preservedImportRows.toLocaleString("ru-RU")};
               уникальных опорных номеров: {analysis.stats.uniqueA.toLocaleString("ru-RU")};
-              повторных строк объединено: {analysis.stats.duplicateA.toLocaleString("ru-RU")};
+              повторных строк сохранено отдельно: {analysis.stats.duplicateA.toLocaleString("ru-RU")};
               некорректных строк пропущено: {analysis.stats.invalidRows.toLocaleString("ru-RU")}
               {analysis.stats.skippedRows > 0
                 ? `; пустых строк пропущено: ${analysis.stats.skippedRows.toLocaleString("ru-RU")}`
@@ -4011,22 +4362,56 @@ export default function MasterPage() {
                     </strong>
                     <span>
                       Групп: {analysis.stats.duplicateGroups}; повторных строк:{" "}
-                      {analysis.stats.duplicateA}. При слиянии АОН будут
-                      объединены в одну master‑строку со стабильным ID.
+                      {analysis.stats.duplicateA}. По умолчанию каждая строка
+                      будет загружена в master отдельно. Объединение выполняется
+                      только по вашему решению.
                     </span>
                   </div>
-                  <button
-                    className="secondary-button compact"
-                    type="button"
-                    onClick={() => void showNextAnalysisDuplicate()}
-                  >
-                    Показать дубликат{" "}
-                    {(analysisDuplicateCursor %
-                      duplicatePreviewItems.length) +
-                      1}
-                    /{analysis.stats.duplicateGroups}
-                  </button>
+                  <div className="duplicate-review-actions">
+                    <button
+                      className={
+                        !mergeDuplicateANumbers
+                          ? "primary-button compact"
+                          : "secondary-button compact"
+                      }
+                      type="button"
+                      aria-pressed={!mergeDuplicateANumbers}
+                      onClick={() => setMergeDuplicateANumbers(false)}
+                    >
+                      Добавить отдельными строками
+                    </button>
+                    <button
+                      className={
+                        mergeDuplicateANumbers
+                          ? "primary-button compact"
+                          : "secondary-button compact"
+                      }
+                      type="button"
+                      aria-pressed={mergeDuplicateANumbers}
+                      onClick={() => setMergeDuplicateANumbers(true)}
+                    >
+                      Объединить дубликаты
+                    </button>
+                    <button
+                      className="secondary-button compact"
+                      type="button"
+                      onClick={() => void showNextAnalysisDuplicate()}
+                    >
+                      Показать дубликат{" "}
+                      {(analysisDuplicateCursor %
+                        duplicatePreviewItems.length) +
+                        1}
+                      /{analysis.stats.duplicateGroups}
+                    </button>
+                  </div>
                 </div>
+                <p className="duplicate-merge-decision" role="status">
+                  {mergeDuplicateANumbers
+                    ? `При подтверждении будет загружено ${(
+                        preservedImportRows - analysis.stats.duplicateA
+                      ).toLocaleString("ru-RU")} строк: повторные опорные номера будут объединены.`
+                    : `При подтверждении будут загружены все ${preservedImportRows.toLocaleString("ru-RU")} корректных строк без автоматического объединения.`}
+                </p>
                 <div
                   className="duplicate-review-list"
                   onScroll={(event) => {
@@ -4098,7 +4483,9 @@ export default function MasterPage() {
                     <strong>Согласование конфликтов</strong>
                     <span>
                       По умолчанию сохраняется версия из master. Отметьте
-                      строки, которые нужно заменить данными CSV.
+                      изменения, которые нужно применить из CSV. Если опорный
+                      номер и параметр совпадают, новые АОН добавятся к уже
+                      существующим без удаления.
                     </span>
                   </div>
                   <label
@@ -4116,8 +4503,8 @@ export default function MasterPage() {
                       }}
                     />
                     <span>
-                      <strong>Заменить все конфликты</strong>
-                      <small>Применить версию из CSV ко всем конфликтам</small>
+                      <strong>Применить все конфликты</strong>
+                      <small>Дополнить АОН и применить остальные изменения CSV</small>
                     </span>
                   </label>
                 </div>
@@ -4137,6 +4524,8 @@ export default function MasterPage() {
                 {conflictItems.map((item) => {
                   const selected =
                     replaceAll || selectedConflicts.includes(item.id);
+                  const addsAons = conflictAddsAons(item);
+                  const additionalAonCount = conflictAdditionalAonCount(item);
                   return (
                     <article
                       className={`conflict-row ${selected ? "is-selected" : ""} ${
@@ -4172,14 +4561,10 @@ export default function MasterPage() {
                         <div className="number-chips">
                           {item.current?.bNumbers.map((number) => (
                             <code
-                              className={[
-                                hasInvalidNumberLength(number)
-                                  ? "is-invalid-number"
-                                  : "",
-                                hasInvalidNumberStart(number)
-                                  ? "is-invalid-number-start"
-                                  : "",
-                              ].filter(Boolean).join(" ")}
+                              className={aonNumberClass(
+                                number,
+                                item.current?.bNumbers ?? [],
+                              )}
                               key={number}
                             >
                               {number}
@@ -4198,14 +4583,10 @@ export default function MasterPage() {
                         <div className="number-chips">
                           {item.incoming.bNumbers.map((number) => (
                             <code
-                              className={[
-                                hasInvalidNumberLength(number)
-                                  ? "is-invalid-number"
-                                  : "",
-                                hasInvalidNumberStart(number)
-                                  ? "is-invalid-number-start"
-                                  : "",
-                              ].filter(Boolean).join(" ")}
+                              className={aonNumberClass(
+                                number,
+                                item.incoming.bNumbers,
+                              )}
                               key={number}
                             >
                               {number}
@@ -4215,15 +4596,21 @@ export default function MasterPage() {
                         <small>
                           Параметр: {item.incoming.sourcePrefix}
                         </small>
+                        {addsAons && (
+                          <small className="conflict-additive-note">
+                            Будет добавлено новых АОН: {additionalAonCount}.
+                            Текущие АОН сохранятся.
+                          </small>
+                        )}
                         {hasInvalidNumberStart(item.incoming.aNumber) && (
                           <small className="number-start-blocking-warning">
                             Опорный номер в версии из CSV начинается не с 7.
-                            Это только подсветка; замену можно подтвердить.
+                            Это только подсветка; изменение можно подтвердить.
                           </small>
                         )}
-                        {item.incoming.bNumbers.some(hasInvalidNumberStart) && (
+                        {!!invalidStartBNumbers(item.incoming.bNumbers).length && (
                           <small className="number-start-blocking-warning">
-                            АОН не с 7 подсвечены. Выбранную замену можно слить
+                            АОН не с 7 подсвечены. Выбранное изменение можно слить
                             без исправления.
                           </small>
                         )}
@@ -4241,7 +4628,11 @@ export default function MasterPage() {
                             )
                           }
                         />
-                        {selected ? "Заменить master" : "Оставить master"}
+                        {selected
+                          ? addsAons
+                            ? "Дополнить master"
+                            : "Применить CSV"
+                          : "Оставить master"}
                       </label>
                     </article>
                   );
@@ -4263,7 +4654,7 @@ export default function MasterPage() {
                 </div>
                 {conflictPreviewHasMore && (
                   <p className="merge-preview-note">
-                    Показана часть отличий. Действие «Заменить все конфликты»
+                    Показана часть отличий. Действие «Применить все конфликты»
                     применяется ко всему файлу, включая скрытые строки.
                   </p>
                 )}
@@ -4302,16 +4693,20 @@ export default function MasterPage() {
                     const importEditBEntries = editingItem
                       ? editableNumberEntries(importEditBNumbers)
                       : [];
+                    const importEditorBNumbers = importEditBEntries.map(
+                      (entry) => entry.value,
+                    );
                     const importInvalidStartBNumbers = editingItem
-                      ? importEditBEntries
-                          .map((entry) => entry.value)
-                          .filter(hasInvalidNumberStart)
+                      ? invalidStartBNumbers(importEditorBNumbers)
                       : [];
                     const importInvalidLengthBNumbers = editingItem
-                      ? importEditBEntries
-                          .map((entry) => entry.value)
-                          .filter(hasInvalidNumberLength)
+                      ? invalidBNumbers(importEditorBNumbers)
                       : [];
+                    const importAllowedShortAon = isSingleShortAon(
+                      importEditorBNumbers,
+                    )
+                      ? importEditorBNumbers[0]
+                      : "";
                     const importWhitespaceBNumbers = editingItem
                       ? importEditBEntries
                           .filter((entry) =>
@@ -4366,8 +4761,8 @@ export default function MasterPage() {
                                 {hasInvalidNumberStart(item.incoming.aNumber)
                                   ? `Опорный номер ${item.incoming.aNumber} должен начинаться с 7. `
                                   : ""}
-                                {item.incoming.bNumbers.some(hasInvalidNumberStart)
-                                  ? `АОН не с 7: ${item.incoming.bNumbers.filter(hasInvalidNumberStart).join(", ")}. Слияние разрешено.`
+                                {invalidStartBNumbers(item.incoming.bNumbers).length
+                                  ? `АОН не с 7: ${invalidStartBNumbers(item.incoming.bNumbers).join(", ")}. Слияние разрешено.`
                                   : ""}
                               </small>
                             )}
@@ -4437,6 +4832,7 @@ export default function MasterPage() {
                                       value={importEditBNumbers}
                                       query=""
                                       highlightInvalidNumbers
+                                      allowedShortAon={importAllowedShortAon}
                                     />
                                   </pre>
                                 )}
@@ -4537,7 +4933,7 @@ export default function MasterPage() {
                   Будет создана одна новая версия с полным списком изменений
                 </strong>
                 <small>
-                  Новых строк: {analysis.stats.new}; замен:
+                  Новых строк: {analysis.stats.new}; применяемых конфликтов:
                   {replaceAll
                     ? ` ${analysis.stats.conflict}`
                     : ` ${selectedConflicts.length}`}
@@ -4594,7 +4990,7 @@ export default function MasterPage() {
                   <textarea
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
-                    placeholder={"Укажите опорные номера или АОН\nпо одному в строке, через пробел, запятую или точку с запятой"}
+                    placeholder={"Вставьте часть или полную строку\nлибо несколько опорных номеров или АОН"}
                     rows={4}
                     spellCheck={false}
                   />
@@ -4605,7 +5001,7 @@ export default function MasterPage() {
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder={
                       view === "records"
-                        ? "Найти по опорному номеру, АОН или ID"
+                        ? "Найти по номеру, ID, части или полной строке"
                         : "Найти по опорному номеру, АОН, ID или файлу"
                     }
                   />
@@ -4622,9 +5018,9 @@ export default function MasterPage() {
                   </button>
                   {advancedSearchOpen && (
                     <small>
-                      Указано номеров: {parseNumbers(query).length}. Будут
-                      показаны все соответствующие опорные номера, найденные
-                      АОН подсветятся внутри связок.
+                      Поиск находит совпадение в любом месте полной строки.
+                      Несколько номеров можно указать через пробел, запятую,
+                      точку с запятой или с новой строки.
                     </small>
                   )}
                 </div>
@@ -4649,6 +5045,18 @@ export default function MasterPage() {
                 </button>
                 <button
                   className={`secondary-button compact ${
+                    allFilteredRecordsSelected ? "is-active-filter" : ""
+                  }`}
+                  type="button"
+                  disabled={!recordStats.total || !!bulkDeleting}
+                  onClick={toggleAllFilteredRecords}
+                >
+                  {allFilteredRecordsSelected
+                    ? `Отмечено ${selectedFilteredRecordCount} из ${recordStats.total}`
+                    : `Отметить всю выборку · ${recordStats.total}`}
+                </button>
+                <button
+                  className={`secondary-button compact ${
                     duplicatesOnly ? "is-active-filter" : ""
                   }`}
                   type="button"
@@ -4657,14 +5065,64 @@ export default function MasterPage() {
                 >
                   {duplicateCount
                     ? duplicatesOnly
-                      ? `Дубликат ${
+                      ? `Повтор опорного номера ${
                           (duplicateCursor %
                             Math.max(duplicateRecords.length, 1)) +
                           1
                         }/${duplicateCount}`
-                      : `Показать дубликаты · ${duplicateCount}`
-                    : "Дубликатов нет"}
+                      : `Повторяющиеся опорные · ${duplicateCount}`
+                    : "Повторов опорных нет"}
                 </button>
+                <button
+                  className={`secondary-button compact ${
+                    exactDuplicatesOnly ? "is-active-filter" : ""
+                  }`}
+                  type="button"
+                  disabled={!exactDuplicateCount}
+                  onClick={() => void showNextExactDuplicate()}
+                >
+                  {exactDuplicateCount
+                    ? exactDuplicatesOnly
+                      ? `Полный дубликат ${
+                          (exactDuplicateCursor %
+                            Math.max(exactDuplicateRecords.length, 1)) +
+                          1
+                        }/${exactDuplicateCount}`
+                      : `Полные дубликаты · ${exactDuplicateCount}`
+                    : "Полных дубликатов нет"}
+                </button>
+                {exactDuplicatesOnly && exactDuplicateExtraCount > 0 && (
+                  <button
+                    className={`secondary-button compact ${
+                      exactDuplicateExtrasSelected ? "is-active-filter" : ""
+                    }`}
+                    type="button"
+                    disabled={
+                      !matchingExactDuplicateExtraCount || !!bulkDeleting
+                    }
+                    onClick={toggleExactDuplicateExtras}
+                  >
+                    {exactDuplicateExtrasSelected
+                      ? `Отмечены только лишние · ${selectedFilteredRecordCount}`
+                      : `Отметить только лишние · ${matchingExactDuplicateExtraCount}`}
+                  </button>
+                )}
+                {exactDuplicateExtrasSelected && (
+                  <button
+                    className="danger-button compact master-duplicate-cleanup"
+                    type="button"
+                    disabled={
+                      !masterEditable ||
+                      !selectedFilteredRecordCount ||
+                      !!bulkDeleting
+                    }
+                    onClick={() => void deleteSelectedExactDuplicateExtras()}
+                  >
+                    {bulkDeleting === "exact-duplicate-extras"
+                      ? "Удаляем лишние копии…"
+                      : `Удалить лишние копии · ${selectedFilteredRecordCount}`}
+                  </button>
+                )}
                 <button
                   className="secondary-button compact"
                   type="button"
@@ -4828,6 +5286,9 @@ export default function MasterPage() {
                       setDuplicatesOnly(event.target.checked);
                       setDuplicateCursor(0);
                       if (event.target.checked) {
+                        setExactDuplicatesOnly(false);
+                        setExactDuplicateCursor(0);
+                        setShortAonOnly(false);
                         setInvalidOnly(false);
                         setInvalidCursor(0);
                         setInvalidStartOnly(false);
@@ -4835,7 +5296,49 @@ export default function MasterPage() {
                       }
                     }}
                   />
-                  Только дубликаты последнего слияния
+                  Только повторяющиеся опорные номера
+                </label>
+                <label className="master-check">
+                  <input
+                    type="checkbox"
+                    checked={exactDuplicatesOnly}
+                    disabled={!exactDuplicateCount}
+                    onChange={(event) => {
+                      setExactDuplicatesOnly(event.target.checked);
+                      setExactDuplicateCursor(0);
+                      if (event.target.checked) {
+                        setDuplicatesOnly(false);
+                        setDuplicateCursor(0);
+                        setShortAonOnly(false);
+                        setInvalidOnly(false);
+                        setInvalidCursor(0);
+                        setInvalidStartOnly(false);
+                        setInvalidStartCursor(0);
+                      }
+                    }}
+                  />
+                  Только полностью одинаковые строки
+                </label>
+                <label className="master-check">
+                  <input
+                    type="checkbox"
+                    checked={shortAonOnly}
+                    disabled={!recordStats.shortAonRecordCount}
+                    onChange={(event) => {
+                      setShortAonOnly(event.target.checked);
+                      if (event.target.checked) {
+                        setDuplicatesOnly(false);
+                        setDuplicateCursor(0);
+                        setExactDuplicatesOnly(false);
+                        setExactDuplicateCursor(0);
+                        setInvalidOnly(false);
+                        setInvalidCursor(0);
+                        setInvalidStartOnly(false);
+                        setInvalidStartCursor(0);
+                      }
+                    }}
+                  />
+                  Опорный с коротким АОН · 3–5 символов
                 </label>
                 <button
                   className="text-button"
@@ -4846,6 +5349,9 @@ export default function MasterPage() {
                     setSelectedRegions([]);
                     setDuplicatesOnly(false);
                     setDuplicateCursor(0);
+                    setExactDuplicatesOnly(false);
+                    setExactDuplicateCursor(0);
+                    setShortAonOnly(false);
                     setInvalidOnly(false);
                     setInvalidCursor(0);
                     setInvalidStartOnly(false);
@@ -4990,8 +5496,13 @@ export default function MasterPage() {
                 >
                   <span>
                     Удаление АОН у выбранных опорных номеров
-                    {!!scopedSelectedANumbers.length && (
-                      <small>Выбрано: {scopedSelectedANumbers.length}</small>
+                    {!!(
+                      selectedFilteredRecordCount ||
+                      scopedSelectedANumbers.length
+                    ) && (
+                      <small>
+                        Строк: {selectedFilteredRecordCount}; опор вручную: {scopedSelectedANumbers.length}
+                      </small>
                     )}
                   </span>
                   <span aria-hidden="true">
@@ -5013,7 +5524,8 @@ export default function MasterPage() {
                           spellCheck={false}
                         />
                         <small>
-                          Чекбоксы в текущей базе и этот список синхронизированы.
+                          Можно отметить конкретные строки в таблице, выбрать всю
+                          текущую выборку или вставить опорные номера вручную.
                         </small>
                       </label>
                       {!!scopedSelectedANumbers.length && (
@@ -5033,6 +5545,28 @@ export default function MasterPage() {
                               <span aria-hidden="true">×</span>
                             </button>
                           ))}
+                        </div>
+                      )}
+                      {!!selectedFilteredRecordCount && (
+                        <div className="master-filter-selection-summary">
+                          <strong>
+                            Отмечено строк: {selectedFilteredRecordCount}
+                          </strong>
+                          <span>
+                            {exactDuplicateExtrasSelected
+                              ? "Выбраны только лишние физические копии; по одному оригиналу в группе сохранено."
+                              : allFilteredRecordsSelected
+                              ? "Учтены все страницы и активный фильтр."
+                              : "Отмечены отдельные физические строки."}
+                          </span>
+                          <button
+                            className="text-button"
+                            type="button"
+                            onClick={clearRecordSelection}
+                            disabled={!!bulkDeleting}
+                          >
+                            Снять отметки
+                          </button>
                         </div>
                       )}
                     </div>
@@ -5068,7 +5602,8 @@ export default function MasterPage() {
                       onClick={() => void batchDeleteBForSelectedA()}
                       disabled={
                         !masterEditable ||
-                        !parseNumbers(scopedDeleteANumbers).length ||
+                        (!parseNumbers(scopedDeleteANumbers).length &&
+                          !selectedFilteredRecordCount) ||
                         !parseNumbers(scopedDeleteBNumbers).length ||
                         !!bulkDeleting
                       }
@@ -5157,6 +5692,12 @@ export default function MasterPage() {
                   </thead>
                   <tbody>
                     {records.map((record) => {
+                      const recordSelected = exactDuplicateExtrasSelected
+                        ? Boolean(record.isExactDuplicateExtra) &&
+                          !excludedSelectedRecordIdSet.has(record.id)
+                        : allFilteredRecordsSelected
+                          ? !excludedSelectedRecordIdSet.has(record.id)
+                          : selectedRecordIdSet.has(record.id);
                       const displayedBNumbers = visibleBNumbers(
                         record.bNumbers,
                         query,
@@ -5164,9 +5705,12 @@ export default function MasterPage() {
                         focusedInvalidId === record.id,
                       );
                       const invalidAons = invalidBNumbers(record.bNumbers);
-                      const invalidStartAons = record.bNumbers.filter(
-                        hasInvalidNumberStart,
+                      const invalidStartAons = invalidStartBNumbers(
+                        record.bNumbers,
                       );
+                      const shortAon = isSingleShortAon(record.bNumbers)
+                        ? record.bNumbers[0]
+                        : "";
                       const whitespaceAons = record.bNumbers.filter(
                         hasInvalidNumberWhitespace,
                       );
@@ -5180,8 +5724,14 @@ export default function MasterPage() {
                           }}
                           className={[
                             record.isDuplicate ? "is-duplicate" : "",
+                            record.isExactDuplicate
+                              ? "is-exact-duplicate"
+                              : "",
                             focusedDuplicateId === record.id
                               ? "is-duplicate-focus"
+                              : "",
+                            focusedExactDuplicateId === record.id
+                              ? "is-exact-duplicate-focus"
                               : "",
                             editing?.id === record.id
                               ? "is-editing"
@@ -5201,9 +5751,15 @@ export default function MasterPage() {
                             focusedInvalidStartId === record.id
                               ? "is-invalid-start-focus"
                               : "",
-                            scopedSelectedASet.has(record.aNumber)
+                            recordSelected
                               ? "is-selected-for-aon-delete"
                               : "",
+                            exactDuplicateExtrasSelected &&
+                            record.isExactDuplicateExtra &&
+                            recordSelected
+                              ? "is-selected-exact-duplicate-extra"
+                              : "",
+                            shortAon ? "has-short-aon" : "",
                           ]
                             .filter(Boolean)
                             .join(" ")}
@@ -5212,15 +5768,19 @@ export default function MasterPage() {
                           <label className="master-record-selection">
                             <input
                               type="checkbox"
-                              checked={scopedSelectedASet.has(record.aNumber)}
-                              disabled={!!bulkDeleting}
+                              checked={recordSelected}
+                              disabled={
+                                !!bulkDeleting ||
+                                (exactDuplicateExtrasSelected &&
+                                  !record.isExactDuplicateExtra)
+                              }
                               onChange={(event) =>
-                                toggleScopedANumber(
-                                  record.aNumber,
+                                toggleRecordSelection(
+                                  record.id,
                                   event.target.checked,
                                 )
                               }
-                              aria-label={`Выбрать опорный номер ${record.aNumber} для удаления АОН`}
+                              aria-label={`Выбрать строку ${record.lineNumber} с опорным номером ${record.aNumber}`}
                             />
                             <span className="line-number">
                               {record.lineNumber}
@@ -5250,10 +5810,25 @@ export default function MasterPage() {
                             <code>{record.id}</code>
                             {record.isDuplicate && (
                               <span className="duplicate-badge">
-                                Дубликат исходника · строки{" "}
-                                {record.duplicateSourceRows?.join(", ")}
+                                {record.duplicateSourceRows?.length
+                                  ? `Дубликат исходника · строки ${record.duplicateSourceRows.join(", ")}`
+                                  : "Повторяющийся опорный номер"}
                               </span>
                             )}
+                            {record.isExactDuplicate && (
+                              <span className="exact-duplicate-badge">
+                                {record.isExactDuplicateExtra
+                                  ? "Полностью одинаковая строка · лишняя копия"
+                                  : "Полностью одинаковая строка · оригинал группы будет сохранён"}
+                              </span>
+                            )}
+                            {exactDuplicateExtrasSelected &&
+                              record.isExactDuplicateExtra &&
+                              recordSelected && (
+                                <span className="exact-duplicate-selection-badge">
+                                  ✓ Отмечено для удаления
+                                </span>
+                              )}
                             {hasInvalidNumberLength(record.aNumber) && (
                               <span className="record-number-warning is-support-warning">
                                 Длина опорного номера не 11 символов
@@ -5283,11 +5858,14 @@ export default function MasterPage() {
                               {displayedBNumbers.map((number) => (
                                 <code
                                   className={[
-                                    hasInvalidNumberLength(number)
+                                    invalidAons.includes(number)
                                       ? "is-invalid-number"
                                       : "",
-                                    hasInvalidNumberStart(number)
+                                    invalidStartAons.includes(number)
                                       ? "is-invalid-number-start"
+                                      : "",
+                                    number === shortAon
+                                      ? "is-short-aon-number"
                                       : "",
                                     hasInvalidNumberWhitespace(number)
                                       ? "is-invalid-number-whitespace"
@@ -5315,6 +5893,11 @@ export default function MasterPage() {
                                 Имеются АОН с длиной не 11 символов
                               </span>
                             )}
+                            {shortAon && (
+                              <span className="short-aon-badge">
+                                Короткий АОН · допустимо · формат 4:2
+                              </span>
+                            )}
                             {!!invalidStartAons.length && (
                               <span className="record-number-warning is-blocking-start">
                                 Имеются АОН, которые начинаются не с 7
@@ -5331,6 +5914,13 @@ export default function MasterPage() {
                           <code className="record-parameter">
                             {record.sourcePrefix}
                           </code>
+                          <button
+                            className="master-logical-row-button"
+                            type="button"
+                            onClick={() => openLogicalRowPreview(record)}
+                          >
+                            Показать полную строку
+                          </button>
                         </td>
                         <td>
                           <div className="record-update">
@@ -5492,7 +6082,10 @@ export default function MasterPage() {
                         <strong>Удалённые АОН:</strong>
                         {item.removedBNumbers.slice(0, 3).map((number, index) => (
                           <code
-                            className={historyNumberClass(number)}
+                            className={historyNumberClass(
+                              number,
+                              item.before?.bNumbers,
+                            )}
                             key={`${number}-${index}`}
                           >
                             {number}
@@ -5505,6 +6098,11 @@ export default function MasterPage() {
                     )}
                     <HistoryAonDetails item={item} />
                     <div className="history-meta">
+                      {item.actor && (
+                        <span>
+                          Пользователь: <code>{item.actor}</code>
+                        </span>
+                      )}
                       {item.lineNumber && <span>Строка {item.lineNumber}</span>}
                       {(item.after?.sourcePrefix ??
                         item.before?.sourcePrefix) && (
@@ -5582,6 +6180,58 @@ export default function MasterPage() {
         <span>Агент мобильной карусели</span>
         <span>Master хранится локально и не удаляется по TTL</span>
       </footer>
+
+      {logicalRowPreview && (
+        <div
+          className="master-lock-backdrop"
+          onClick={() => setLogicalRowPreview(null)}
+        >
+          <section
+            className="master-logical-row-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="master-logical-row-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="master-logical-row-dialog-heading">
+              <div>
+                <span>Строка {logicalRowPreview.lineNumber}</span>
+                <h2 id="master-logical-row-title">Полная строка записи</h2>
+                <small>
+                  Опорный номер {logicalRowPreview.aNumber} · ID {logicalRowPreview.id}
+                </small>
+              </div>
+              <button
+                type="button"
+                aria-label="Закрыть полную строку"
+                onClick={() => setLogicalRowPreview(null)}
+              >
+                ×
+              </button>
+            </div>
+            <code className="master-logical-row-value" tabIndex={0}>
+              {logicalRowPreview.logicalRow ??
+                formattedImportLine(logicalRowPreview)}
+            </code>
+            <div className="master-logical-row-dialog-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setLogicalRowPreview(null)}
+              >
+                Закрыть
+              </button>
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() => void copyLogicalRowPreview()}
+              >
+                {copiedLogicalRow ? "Скопировано" : "Скопировать строку"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {!draftDialogOpen && clearDialogOpen && user?.role === "superuser" && (
         <div className="master-lock-backdrop">
@@ -5757,10 +6407,8 @@ export default function MasterPage() {
             </h2>
             <p id="master-lock-dialog-description">
               На текущий момент мастер-файл занят пользователем
-              <strong> {masterLock.owner.email}</strong>. До освобождения
+              <strong>{masterLock.owner.email}</strong>. До освобождения
               файла редактирование и остальные операции заблокированы.
-              Напоминание показывается владельцу на странице мастер-файла в
-              Voice — отдельного колокольчика в портале нет.
             </p>
             {masterLock.acquiredAt && (
               <small>
@@ -5776,18 +6424,8 @@ export default function MasterPage() {
               >
                 {notifyingLockOwner
                   ? "Отправляем…"
-                  : "Напомнить владельцу"}
+                  : "Уведомить пользователя"}
               </button>
-              {user?.role === "superuser" ? (
-                <button
-                  className="danger-button"
-                  type="button"
-                  onClick={() => void forceReleaseMasterLock()}
-                  disabled={lockChanging}
-                >
-                  Снять блокировку
-                </button>
-              ) : null}
               <button
                 className="primary-button"
                 type="button"
@@ -5804,7 +6442,7 @@ export default function MasterPage() {
       {!draftDialogOpen &&
         !clearDialogOpen &&
         ownerNotificationOpen &&
-        masterLock.ownedByCurrentUser &&
+        masterEditable &&
         masterLock.notification && (
           <div className="master-lock-backdrop">
             <section
@@ -5846,7 +6484,7 @@ export default function MasterPage() {
                   type="button"
                   onClick={() => {
                     setOwnerNotificationOpen(false);
-                    void releaseOwnedMasterLock();
+                    void toggleMasterLock();
                   }}
                 >
                   Освободить мастер-файл

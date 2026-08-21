@@ -50,6 +50,7 @@ export type DashboardUiState = {
   linkedEnvironmentFilter: boolean
   tagGroupFilter: string[]
   metricFilter: string
+  externalFieldsVisible: boolean
 }
 
 export type PlanningUiState = {

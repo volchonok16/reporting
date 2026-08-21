@@ -145,7 +145,7 @@ def test_master_requires_pani_to_contain_exactly_eleven_digits(
             sourcePrefix="79990000001& null/$ & null/$ &",
         ),
         "master-pani-session",
-    )
+        actor="tester@t2.local")
     assert (
         created["record"]["sourcePrefix"]
         == "79990000001& null/$ & null/$ &"
@@ -158,7 +158,7 @@ def test_master_requires_pani_to_contain_exactly_eleven_digits(
                 sourcePrefix="7999000000& null/$ & null/$ &",
             ),
             "master-pani-session",
-        )
+        actor="tester@t2.local")
     assert too_short.value.code == "INVALID_PREFIX"
 
     with pytest.raises(AppError) as too_long:
@@ -168,7 +168,7 @@ def test_master_requires_pani_to_contain_exactly_eleven_digits(
                 sourcePrefix="799900000012& null/$ & null/$ &",
             ),
             "master-pani-session",
-        )
+        actor="tester@t2.local")
     assert too_long.value.code == "INVALID_PREFIX"
 
 
@@ -191,7 +191,7 @@ def test_master_supports_pani_with_region_as_its_own_parameter(
             sourcePrefix="79990000001& D29$&null&",
         ),
         session_id,
-    )
+        actor="tester@t2.local")
     records = service.list_records(query="", offset=0, limit=20)
     assert created["record"]["sourcePrefix"] == "79990000001& D29$&null&"
     assert records["parameterOptions"] == [
@@ -229,7 +229,7 @@ def test_master_supports_pani_with_region_as_its_own_parameter(
                 sourcePrefix="7999000000& D29$&null&",
             ),
             session_id,
-        )
+        actor="tester@t2.local")
     assert short_pani.value.code == "INVALID_PREFIX"
 
     with pytest.raises(AppError) as invalid_region:
@@ -239,7 +239,7 @@ def test_master_supports_pani_with_region_as_its_own_parameter(
                 sourcePrefix="79990000001& D85$&null&",
             ),
             session_id,
-        )
+        actor="tester@t2.local")
     assert invalid_region.value.code == "INVALID_PREFIX"
 
 
@@ -266,7 +266,7 @@ def test_master_saves_spaces_in_support_and_aon_numbers_as_warnings(
     created = service.create_record(
         MasterRecordRequest(aNumber=a_number, bNumbers=b_numbers),
         "master-whitespace-session",
-    )
+        actor="tester@t2.local")
     assert created["record"]["aNumber"] == a_number
     assert created["record"]["bNumbers"] == b_numbers
 
@@ -289,7 +289,7 @@ def test_master_searches_for_many_a_and_aon_numbers_at_once(tmp_path) -> None:
         service.create_record(
             MasterRecordRequest(aNumber=a_number, bNumbers=[b_number]),
             session_id,
-        )
+        actor="tester@t2.local")
 
     aon_results = service.list_records(
         query="79100000081\n79100000083",
@@ -328,7 +328,7 @@ def test_master_number_start_is_warning_only_for_a_and_aon(tmp_path) -> None:
             bNumbers=["891"],
         ),
         session_id,
-    )
+        actor="tester@t2.local")
     assert created["record"]["aNumber"] == "89000000001"
     assert created["record"]["bNumbers"] == ["891"]
 
@@ -363,7 +363,7 @@ def test_master_merge_is_not_blocked_by_any_number_warning(tmp_path) -> None:
         analysis["importId"],
         MasterMergeRequest(),
         session_id,
-    )
+        actor="tester@t2.local")
     assert merged["added"] == 1
     records = service.list_records(query="89000000092", offset=0, limit=10)
     assert records["items"][0]["bNumbers"] == ["8 91"]
@@ -435,7 +435,7 @@ def test_master_pages_and_edits_all_new_rows_before_merge(tmp_path) -> None:
         analysis["importId"],
         MasterMergeRequest(),
         session_id,
-    )
+        actor="tester@t2.local")
     merged = service.list_records(
         query=edited_item["aNumber"],
         offset=0,
@@ -483,7 +483,7 @@ def test_master_merge_ids_history_crud_and_export(tmp_path) -> None:
         first_analysis["importId"],
         MasterMergeRequest(),
         session_id,
-    )
+        actor="tester@t2.local")
     assert merged == {
         "revision": 1,
         "added": 2,
@@ -525,7 +525,7 @@ def test_master_merge_ids_history_crud_and_export(tmp_path) -> None:
             replaceConflictItemIds=[conflict_id],
         ),
         session_id,
-    )
+        actor="tester@t2.local")
     assert second_merge["revision"] == 2
     assert second_merge["updated"] == 1
 
@@ -541,13 +541,13 @@ def test_master_merge_ids_history_crud_and_export(tmp_path) -> None:
             expectedVersion=after_merge["items"][0]["version"],
         ),
         session_id,
-    )
+        actor="tester@t2.local")
     assert updated["revision"] == 3
     deleted = service.delete_record(
         stable_id,
         updated["record"]["version"],
         session_id,
-    )
+        actor="tester@t2.local")
     assert deleted["revision"] == 4
 
     history = service.history(query=stable_id, action=None, offset=0, limit=20)
@@ -585,7 +585,7 @@ def test_master_can_review_an_a_number_rename_by_stable_id(tmp_path) -> None:
             bNumbers=["79100000010"],
         ),
         session_id,
-    )
+        actor="tester@t2.local")
     stable_id = initial["record"]["id"]
     upload_id = add_csv_upload(
         registry,
@@ -609,7 +609,7 @@ def test_master_can_review_an_a_number_rename_by_stable_id(tmp_path) -> None:
         analysis["importId"],
         MasterMergeRequest(conflictStrategy="replace_all"),
         session_id,
-    )
+        actor="tester@t2.local")
     record = service.list_records(query="", offset=0, limit=10)["items"][0]
     assert record["id"] == stable_id
     assert record["aNumber"] == "79000000011"
@@ -631,7 +631,7 @@ def test_master_comments_are_versioned_and_history_can_be_reset(tmp_path) -> Non
             comment="Критично: не менять маршрут",
         ),
         session_id,
-    )
+        actor="tester@t2.local")
     assert created["record"]["comment"] == "Критично: не менять маршрут"
     updated = service.update_record(
         created["record"]["id"],
@@ -642,18 +642,18 @@ def test_master_comments_are_versioned_and_history_can_be_reset(tmp_path) -> Non
             expectedVersion=created["record"]["version"],
         ),
         session_id,
-    )
+        actor="tester@t2.local")
     service.create_record(
         MasterRecordRequest(
             aNumber="79000000102",
             bNumbers=["79100000102"],
         ),
         session_id,
-    )
+        actor="tester@t2.local")
     second = service.list_records(
         query="79000000102", offset=0, limit=10
     )["items"][0]
-    service.delete_record(second["id"], second["version"], session_id)
+    service.delete_record(second["id"], second["version"], session_id, actor="tester@t2.local")
 
     history = service.history(query="79000000101", action=None, offset=0, limit=10)
     assert history["items"][0]["before"]["comment"] == (
@@ -696,7 +696,7 @@ def test_master_filters_parameters_and_filters_history_dates(
             sourcePrefix="null/$ & null&D77$&",
         ),
         session_id,
-    )
+        actor="tester@t2.local")
     monkeypatch.setattr("backend.master.time.time", lambda: 2_000.0)
     second = service.create_record(
         MasterRecordRequest(
@@ -705,7 +705,7 @@ def test_master_filters_parameters_and_filters_history_dates(
             sourcePrefix="null/$ & null&D29$&",
         ),
         session_id,
-    )
+        actor="tester@t2.local")
 
     records = service.list_records(query="D77", offset=0, limit=20)
     assert records["total"] == 0
@@ -799,7 +799,7 @@ def test_master_groups_all_pani_parameters_into_one_filter_option(
             sourcePrefix="79990000001& null/$ & null/$ &",
         ),
         session_id,
-    )
+        actor="tester@t2.local")
     service.create_record(
         MasterRecordRequest(
             aNumber="79000000042",
@@ -807,7 +807,7 @@ def test_master_groups_all_pani_parameters_into_one_filter_option(
             sourcePrefix="79990000002& null/$ & null/$ &",
         ),
         session_id,
-    )
+        actor="tester@t2.local")
     service.create_record(
         MasterRecordRequest(
             aNumber="79000000043",
@@ -815,7 +815,7 @@ def test_master_groups_all_pani_parameters_into_one_filter_option(
             sourcePrefix="null/$ & null&D77$&",
         ),
         session_id,
-    )
+        actor="tester@t2.local")
 
     records = service.list_records(query="", offset=0, limit=20)
     assert [
@@ -851,7 +851,7 @@ def test_master_copies_a_number_to_aon_when_aon_is_omitted(tmp_path) -> None:
     created = service.create_record(
         MasterRecordRequest(aNumber="79000000051"),
         "master-empty-aon-session",
-    )
+        actor="tester@t2.local")
 
     assert created["record"]["aNumber"] == "79000000051"
     assert created["record"]["bNumbers"] == ["79000000051"]
@@ -906,7 +906,7 @@ def test_master_persists_formatted_duplicate_findings_for_navigation(
         analysis["importId"],
         MasterMergeRequest(),
         session_id,
-    )
+        actor="tester@t2.local")
     duplicates = service.list_records(
         query="",
         duplicates_only=True,
@@ -1121,7 +1121,7 @@ def test_master_clear_soft_deletes_all_rows_in_one_revision(tmp_path) -> None:
             bNumbers=["79100000901", "79100000902"],
         ),
         session_id,
-    )
+        actor="tester@t2.local")
     service.create_record(
         MasterRecordRequest(
             aNumber="79000000902",
@@ -1129,10 +1129,10 @@ def test_master_clear_soft_deletes_all_rows_in_one_revision(tmp_path) -> None:
             sourcePrefix="null/$ & null&D77$&",
         ),
         session_id,
-    )
+        actor="tester@t2.local")
     before = service.list_records(query="", offset=0, limit=20)
 
-    cleared = service.clear_records(session_id)
+    cleared = service.clear_records(session_id, actor="tester@t2.local")
 
     assert cleared == {
         "revision": before["revision"] + 1,
@@ -1162,7 +1162,7 @@ def test_master_clear_soft_deletes_all_rows_in_one_revision(tmp_path) -> None:
     }
     assert all(item["after"] is None for item in history["items"])
 
-    repeated = service.clear_records(session_id)
+    repeated = service.clear_records(session_id, actor="tester@t2.local")
     assert repeated == {"revision": cleared["revision"], "deleted": 0}
 
 
@@ -1183,25 +1183,24 @@ def test_master_batch_deletes_a_numbers_and_aons_in_single_revisions(
             bNumbers=["79100000801", "79100000802"],
         ),
         session_id,
-    )
+        actor="tester@t2.local")
     service.create_record(
         MasterRecordRequest(
             aNumber="79000000802",
             bNumbers=["79100000802"],
         ),
         session_id,
-    )
+        actor="tester@t2.local")
     service.create_record(
         MasterRecordRequest(
             aNumber="79000000803",
             bNumbers=["79100000803"],
         ),
         session_id,
-    )
+        actor="tester@t2.local")
 
     aon_result = service.delete_b_numbers(
-        ["79100000802", "79100000803"], session_id
-    )
+        ["79100000802", "79100000803"], session_id, actor="tester@t2.local")
     assert aon_result["updatedRecords"] == 3
     assert aon_result["removedAons"] == 3
     after_aon = service.list_records(query="", offset=0, limit=20)
@@ -1210,8 +1209,7 @@ def test_master_batch_deletes_a_numbers_and_aons_in_single_revisions(
     assert by_a["79000000803"]["bNumbers"] == ["79000000803"]
 
     a_result = service.delete_records_by_a(
-        ["79000000801", "79000000802", "79999999999"], session_id
-    )
+        ["79000000801", "79000000802", "79999999999"], session_id, actor="tester@t2.local")
     assert a_result["deleted"] == 2
     assert a_result["notFound"] == 1
     assert a_result["revision"] == aon_result["revision"] + 1
@@ -1243,20 +1241,20 @@ def test_master_deletes_aons_only_from_selected_a_numbers(tmp_path) -> None:
             bNumbers=["79100000901", "79100000902"],
         ),
         session_id,
-    )
+        actor="tester@t2.local")
     service.create_record(
         MasterRecordRequest(
             aNumber="79000000902",
             bNumbers=["79100000902"],
         ),
         session_id,
-    )
+        actor="tester@t2.local")
 
     result = service.delete_b_numbers_for_a(
         ["79000000901", "79999999999"],
         ["79100000902", "79100000999"],
         session_id,
-    )
+        actor="tester@t2.local")
 
     assert result["updatedRecords"] == 1
     assert result["removedAons"] == 1
@@ -1292,21 +1290,21 @@ def test_master_reports_and_filters_numbers_with_nonstandard_length(
             bNumbers=["79100001001"],
         ),
         session_id,
-    )
+        actor="tester@t2.local")
     service.create_record(
         MasterRecordRequest(
             aNumber="79000001002",
             bNumbers=["791000010002"],
         ),
         session_id,
-    )
+        actor="tester@t2.local")
     service.create_record(
         MasterRecordRequest(
             aNumber="79000001003",
             bNumbers=["79100001003"],
         ),
         session_id,
-    )
+        actor="tester@t2.local")
 
     records = service.list_records(query="", offset=0, limit=20)
     assert records["invalidANumberCount"] == 1
@@ -1320,3 +1318,23 @@ def test_master_reports_and_filters_numbers_with_nonstandard_length(
         "7900000101",
         "79000001002",
     }
+
+
+def test_master_change_actor_is_user_email(tmp_path) -> None:
+    config = replace(settings, data_dir=tmp_path / "data")
+    registry = Registry(config)
+    service = MasterService(
+        config,
+        registry,
+        ValidationService(config.preview_limit),
+    )
+    session_id = "master-actor-session"
+    created = service.create_record(
+        MasterRecordRequest(aNumber="79000000111", bNumbers=["79100000111"]),
+        session_id,
+        actor="ivan@t2.ru",
+    )
+    history = service.history(query="", offset=0, limit=10)
+    assert history["items"]
+    assert history["items"][0]["actor"] == "ivan@t2.ru"
+    assert history["items"][0]["recordId"] == created["id"]

@@ -10,3 +10,6 @@
 - **Один логин:** reporting → `POST /api/voice/sso-token` → iframe → `POST /api/auth/reporting-sso` (`VOICE_SSO_SECRET`)
 - Пользователи с `org_user.voice_only = true` видят только вкладку Voice
 - Прямой доступ вне iframe: `http://localhost:3100/voice/`
+- **Мастер-файл** хранится в PostgreSQL reporting (`master_*`, миграция `050_voice_master.sql`); `voice-api` → `DATABASE_URL` / `VOICE_DATABASE_URL`. Auth/uploads/jobs — SQLite в `voice/data`
+- CSV-заголовок мастер-файла: `order=cap_idp_location_number&CAP_DRN_CLD&CAP_DRN_CLD_BCD&cap_idp_calling_party_number`
+- Комментарий к записи мастер-файла: до **50000** символов

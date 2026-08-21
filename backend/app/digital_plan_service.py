@@ -162,8 +162,12 @@ def load_digital_plan(
         )
     )
 
+    from app.zni_external_data_service import load_external_data_by_task_ids
+
+    external_by_id = load_external_data_by_task_ids(db, [row.id for row in filtered])
+
     items: list[ChangeRequestOut] = [
-        _change_request_to_out(row, errors_by_parent.get(row.id, []))
+        _change_request_to_out(row, errors_by_parent.get(row.id, []), external_by_id.get(row.id))
         for row in filtered
     ]
 

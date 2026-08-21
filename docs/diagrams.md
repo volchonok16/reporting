@@ -169,8 +169,13 @@ erDiagram
     task |o--o| task : parent_child
     task ||--o{ task_status_duration : time_in_status
     task ||--o{ youjail_card_zni : linked
+    task ||--o| zni_external_data : external
 
     org_user ||--o| employee : may_bind
+    org_user ||--o{ app_notification_recipient : receives
+    app_notification ||--o{ app_notification_recipient : to
+    master_state ||--o{ master_records : revision
+    master_records ||--o{ master_changes : history
     employee ||--o{ department_member : in
     department ||--o{ department_member : has
     employee ||--o{ employee_time_off_day : absence
@@ -197,6 +202,11 @@ erDiagram
         bigint id PK
         varchar task_type
         jsonb extra_json
+    }
+
+    zni_external_data {
+        bigint task_id PK
+        varchar priority
     }
 
     workspace_booking {

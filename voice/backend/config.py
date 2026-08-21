@@ -19,6 +19,7 @@ def _positive_int(name: str, default: int) -> int:
 @dataclass(frozen=True, slots=True)
 class Settings:
     data_dir: Path
+    database_url: str
     cors_origins: tuple[str, ...]
     max_upload_bytes: int
     max_master_rows: int
@@ -41,8 +42,14 @@ class Settings:
                 str(Path(tempfile.gettempdir()) / "carousel-ab-backend"),
             )
         ).resolve()
+        database_url = (
+            os.getenv("VOICE_DATABASE_URL")
+            or os.getenv("DATABASE_URL")
+            or ""
+        ).strip()
         return cls(
             data_dir=data_dir,
+            database_url=database_url,
             cors_origins=tuple(
                 origin.strip()
                 for origin in os.getenv(

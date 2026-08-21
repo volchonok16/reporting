@@ -12,6 +12,7 @@ import Voice from './Voice'
 import EmployeeProfile from './org/EmployeeProfile'
 import OrgPhoto from './org/OrgPhoto'
 import ThemeToggle from './ThemeToggle'
+import NotificationBell from './NotificationBell'
 import type { AppRole } from './App'
 import { loadActiveSheet, saveActiveSheet, saveDashboardSearch, type SheetId } from './uiState'
 import { setBoardDisplayLabels } from './zniDisplay'
@@ -38,6 +39,7 @@ type WorkbookAppProps = {
   canSyncTfs: boolean
   canManageOrg: boolean
   voiceOnly: boolean
+  orgUserId: number | null
   orgEmployeeId: number | null
   orgEmployeePhotoUrl: string | null
   accountLabel: string | null
@@ -50,6 +52,7 @@ export default function WorkbookApp({
   canSyncTfs,
   canManageOrg,
   voiceOnly,
+  orgUserId,
   orgEmployeeId,
   orgEmployeePhotoUrl,
   accountLabel,
@@ -143,6 +146,7 @@ export default function WorkbookApp({
           )}
           <div className="workbook-header-tools">
             <ThemeToggle compact />
+            <NotificationBell canManageOrg={canManageOrg} enabled={orgUserId != null && !voiceOnly} />
             <div className="workbook-header-account">
               {!voiceOnly ? (
                 <button
@@ -172,7 +176,7 @@ export default function WorkbookApp({
 
       <div className="workbook-content">
         {activeSheet === 'zni' ? (
-          <Dashboard canSyncTfs={canSyncTfs} />
+          <Dashboard canSyncTfs={canSyncTfs} canManageOrg={canManageOrg} />
         ) : activeSheet === 'roadmap' ? (
           <div className="app app-roadmap">
             <Roadmap

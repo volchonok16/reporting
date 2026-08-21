@@ -117,6 +117,14 @@
 | `employee_office_day` | Дни присутствия сотрудника в офисе без привязки к месту |
 | `department` | Отделы |
 | `department_member` | Состав отдела |
+| `app_notification` | Уведомления приложения (всем / пользователям / отделам) |
+| `app_notification_recipient` | Получатели уведомлений (`org_user`, прочитано / popup) |
+| `master_state` | Voice: текущая ревизия мастер-файла |
+| `master_records` | Voice: записи мастер-файла (A/B, префикс, комментарий) |
+| `master_a_counts` / `master_exact_counts` | Voice: счётчики дублей A и точных дублей |
+| `master_changes` | Voice: журнал изменений по ревизиям |
+| `master_imports` / `master_import_items` / … | Voice: импорт и анализ загрузок |
+| `master_edit_lock` | Voice: эксклюзивная блокировка редактирования |
 | `org_chart_layout` | Сохранённая ручная раскладка оргсхемы (координаты карточек и линии) |
 | `youjail_board` | Доски YouJail (общие/командные и личные по `owner_employee_id`) |
 | `youjail_board_pin` | Закреплённые доски пользователя (персональный порядок) |
@@ -171,6 +179,7 @@
 | Таблица | Назначение | Trello |
 |---------|------------|--------|
 | `task` | Задача (+ `team_id`, `source_team`) | Card |
+| `zni_external_data` | Внешние поля ЗНИ (не TFS): приоритет, коммерческий эффект, даты | — |
 | `task_release` | Несколько релизов на задачу | — |
 | `task_comment` | Комментарии | Comment |
 | `task_assignee_history` | Смена исполнителя | Member |

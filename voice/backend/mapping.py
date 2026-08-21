@@ -21,6 +21,7 @@ from .models import (
     PANI_REGION_PREFIX_PATTERN,
     TemplateSettings,
     canonicalize_pani_region_prefix,
+    resolved_first_b_marker,
 )
 from .reporting import ReportWriter
 from .security import normalize_number
@@ -402,6 +403,7 @@ class MappingBuilder:
         keep_duplicate_b: bool = False,
         replace_empty_b_with_a: bool = True,
         allow_number_whitespace: bool = False,
+        duplicate_a_callback: Callable[[str, int, int], None] | None = None,
         progress: ProgressCallback | None = None,
         cancelled: CancelCallback | None = None,
     ) -> dict[str, int]:
@@ -452,6 +454,7 @@ class MappingBuilder:
                         f"В строке {row.source_row} отсутствует A-номер",
                         source_row=row.source_row,
                     )
+                first_source_row = self.spool.source_row_for_a(a_number)
                 b_number = normalize_number(
                     raw_b,
                     source_row=row.source_row,
@@ -474,6 +477,24 @@ class MappingBuilder:
                     )
                 if not new_a:
                     stats["duplicateA"] += 1
+                    if (
+                        duplicate_a_callback is not None
+                        and first_source_row is not None
+                    ):
+                        duplicate_a_callback(
+                            a_number,
+                            first_source_row,
+                            row.source_row,
+                        )
+                    if bool(
+                        getattr(self.spool, "preserve_duplicate_a", False)
+                    ):
+                        self.report.add(
+                            source_row=row.source_row,
+                            code="DUPLICATE_A_PRESERVED",
+                            message="Повторная строка A сохранена отдельно",
+                            a_number=a_number,
+                        )
                 if duplicate:
                     stats["duplicateBRemoved"] += 1
                     self.report.add(
@@ -546,10 +567,21 @@ class MappingBuilder:
                             first_source_row,
                             row.source_row,
                         )
+                    preserve_duplicate_a = bool(
+                        getattr(self.spool, "preserve_duplicate_a", False)
+                    )
                     self.report.add(
                         source_row=row.source_row,
-                        code="DUPLICATE_A_MERGED",
-                        message="Повторная строка A объединена с первой",
+                        code=(
+                            "DUPLICATE_A_PRESERVED"
+                            if preserve_duplicate_a
+                            else "DUPLICATE_A_MERGED"
+                        ),
+                        message=(
+                            "Повторная строка A сохранена отдельно"
+                            if preserve_duplicate_a
+                            else "Повторная строка A объединена с первой"
+                        ),
                         a_number=parsed.a_number,
                     )
                 for b_number in parsed.b_numbers:
@@ -623,13 +655,9 @@ class MappingParser:
                 raise error("INVALID_PREFIX", "Некорректный параметр готовой строки")
             prefix = text[: prefix_end + 1]
             rotation = text[equals_at + 1 :]
-            pani_region_prefix = (
-                PANI_REGION_PREFIX_PATTERN.fullmatch(prefix)
-                or LEGACY_PANI_REGION_PREFIX_PATTERN.fullmatch(prefix)
-            )
             normalized_rotation = (
                 rotation[:-1]
-                if rotation.endswith(";") and pani_region_prefix
+                if rotation.endswith(";")
                 else rotation
             )
             parts = normalized_rotation.split(";")
@@ -728,10 +756,7 @@ class MappingParser:
         if payload.count("=") != 1:
             raise error("INVALID_FORMATTED_ROW", "Готовая строка должна содержать один знак =")
         raw_a, rotation = payload.split("=", 1)
-        if rotation.endswith(";") and (
-            PANI_REGION_PREFIX_PATTERN.fullmatch(resolved_prefix)
-            or LEGACY_PANI_REGION_PREFIX_PATTERN.fullmatch(resolved_prefix)
-        ):
+        if rotation.endswith(";"):
             rotation = rotation[:-1]
         a_number = normalize_number(
             raw_a,
@@ -786,8 +811,12 @@ class MappingSerializer:
     def logical_row(self, mapping: Mapping) -> str:
         if not mapping.bNumbers:
             raise AppError("EMPTY_MAPPING", "Связка без B не может быть сериализована")
+        first_b_marker = resolved_first_b_marker(
+            mapping.bNumbers,
+            self.template.first_b_marker,
+        )
         first = (
-            f"{self.template.first_b_marker},{self.template.weight},"
+            f"{first_b_marker},{self.template.weight},"
             f"{mapping.bNumbers[0]}"
         )
         rest = "".join(
@@ -799,8 +828,7 @@ class MappingSerializer:
             mapping.sourcePrefix or self.template.resolved_prefix,
         )
         prefix = canonicalize_pani_region_prefix(prefix)
-        terminator = ";" if PANI_REGION_PREFIX_PATTERN.fullmatch(prefix) else ""
-        return f"{prefix}{mapping.aNumber}={first}{rest}{terminator}"
+        return f"{prefix}{mapping.aNumber}={first}{rest}"
 
     def write(
         self,

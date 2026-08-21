@@ -16,17 +16,22 @@ from typing import Any, Iterable
 from .config import Settings
 from .errors import AppError
 from .importers import FormattedMappingImporter, importer_for
-from .mapping import MappingBuilder, MappingParser, MappingSpool
+from .mapping import MappingBuilder, MappingParser
 from .models import (
     HEADER,
     NO_REGION_PREFIX,
     MasterImportAnalyzeRequest,
     MasterMergeRequest,
+    MasterRecordFilterRequest,
     MasterRecordRequest,
+    Mapping,
     PANI_REGION_PREFIX_PATTERN,
     TemplateSettings,
     canonicalize_pani_region_prefix,
+    is_single_short_aon,
+    resolved_first_b_marker,
 )
+from .pg_db import PgConnection, configure as configure_master_db, connect as pg_connect
 from .reporting import ReportWriter
 from .security import normalize_number
 from .storage import Registry, opaque_id
@@ -38,6 +43,268 @@ logger = logging.getLogger(__name__)
 
 def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _logical_master_row(
+    a_number: str,
+    b_numbers_json: str,
+    source_prefix: str,
+) -> str:
+    try:
+        decoded = json.loads(str(b_numbers_json))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        decoded = []
+    b_numbers = [str(value) for value in decoded] if isinstance(decoded, list) else []
+    prefix = canonicalize_pani_region_prefix(str(source_prefix))
+    if not b_numbers:
+        return f"{prefix}{a_number}="
+    first_marker = resolved_first_b_marker(b_numbers)
+    first = f"{first_marker},1,{b_numbers[0]}"
+    rest = "".join(f";4,1,{number}" for number in b_numbers[1:])
+    return f"{prefix}{a_number}={first}{rest}"
+
+
+def _full_row_search_query(query: str) -> str:
+    normalized = query.strip()
+    if len(normalized) >= 2 and normalized.startswith('"') and normalized.endswith('"'):
+        normalized = normalized[1:-1].strip()
+    if "=" in normalized:
+        normalized = normalized.removesuffix(";").rstrip()
+    return normalized
+
+
+def _like_contains(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+MASTER_EXACT_DUPLICATE_EXTRA_SQL = """
+(
+    EXISTS (
+        SELECT 1
+        FROM master_exact_counts AS selected_exact_duplicate_count
+        WHERE selected_exact_duplicate_count.a_number = master_records.a_number
+          AND selected_exact_duplicate_count.b_numbers_json = master_records.b_numbers_json
+          AND selected_exact_duplicate_count.source_prefix = master_records.source_prefix
+          AND selected_exact_duplicate_count.active_count > 1
+    )
+    AND master_records.id <> (
+        SELECT original_exact_duplicate.id
+        FROM master_records AS original_exact_duplicate
+        WHERE original_exact_duplicate.deleted_at IS NULL
+          AND original_exact_duplicate.a_number = master_records.a_number
+          AND original_exact_duplicate.b_numbers_json = master_records.b_numbers_json
+          AND original_exact_duplicate.source_prefix = master_records.source_prefix
+        ORDER BY original_exact_duplicate.sort_order, original_exact_duplicate.id
+        LIMIT 1
+    )
+)
+"""
+
+MASTER_SHORT_AON_SQL = """
+(
+    json_array_length(master_records.b_numbers_json) = 1
+    AND length(
+        CAST(json_extract(master_records.b_numbers_json, '$[0]') AS TEXT)
+    ) BETWEEN 3 AND 5
+    AND master_is_digits(
+        CAST(json_extract(master_records.b_numbers_json, '$[0]') AS TEXT)
+    )
+)
+"""
+
+
+class MasterImportSpool:
+    """Disk-backed import rows that preserve every physical source row."""
+
+    preserve_duplicate_a = True
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.connection = sqlite3.connect(self.path)
+        self.connection.execute("PRAGMA journal_mode=WAL")
+        self.connection.execute("PRAGMA synchronous=NORMAL")
+        self.connection.execute("PRAGMA temp_store=FILE")
+        self.connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS first_a (
+                a_number TEXT PRIMARY KEY,
+                source_row INTEGER NOT NULL
+            ) WITHOUT ROWID;
+            CREATE TABLE IF NOT EXISTS mappings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                a_number TEXT NOT NULL,
+                first_sequence INTEGER NOT NULL,
+                source_row INTEGER NOT NULL,
+                source_prefix TEXT,
+                UNIQUE(a_number, source_row)
+            );
+            CREATE TABLE IF NOT EXISTS rows (
+                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                mapping_id INTEGER NOT NULL,
+                b_number TEXT NOT NULL,
+                source_row INTEGER NOT NULL,
+                FOREIGN KEY(mapping_id) REFERENCES mappings(id)
+                    ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS master_spool_mappings_order
+                ON mappings(first_sequence);
+            CREATE INDEX IF NOT EXISTS master_spool_rows_mapping
+                ON rows(mapping_id, sequence);
+            CREATE TABLE IF NOT EXISTS seen_b (
+                mapping_id INTEGER NOT NULL,
+                b_number TEXT NOT NULL,
+                PRIMARY KEY(mapping_id, b_number)
+            ) WITHOUT ROWID;
+            """
+        )
+        self.connection.commit()
+        self._first_sequence = int(
+            self.connection.execute(
+                "SELECT COALESCE(MAX(first_sequence), 0) + 1 FROM mappings"
+            ).fetchone()[0]
+        )
+
+    def add_a(
+        self,
+        a_number: str,
+        source_row: int,
+        *,
+        source_prefix: str | None = None,
+        linked_a_number: str | None = None,
+    ) -> bool:
+        del linked_a_number
+        first = self.connection.execute(
+            "INSERT OR IGNORE INTO first_a(a_number, source_row) VALUES (?, ?)",
+            (a_number, source_row),
+        ).rowcount == 1
+        inserted = self.connection.execute(
+            """
+            INSERT OR IGNORE INTO mappings(
+                a_number, first_sequence, source_row, source_prefix
+            ) VALUES (?, ?, ?, ?)
+            """,
+            (a_number, self._first_sequence, source_row, source_prefix),
+        ).rowcount == 1
+        if inserted:
+            self._first_sequence += 1
+        return first
+
+    def add(
+        self,
+        a_number: str,
+        b_number: str,
+        source_row: int,
+        *,
+        keep_duplicate: bool,
+        source_prefix: str | None = None,
+        linked_a_number: str | None = None,
+    ) -> tuple[bool, bool]:
+        first = self.add_a(
+            a_number,
+            source_row,
+            source_prefix=source_prefix,
+            linked_a_number=linked_a_number,
+        )
+        mapping_id = int(
+            self.connection.execute(
+                "SELECT id FROM mappings WHERE a_number = ? AND source_row = ?",
+                (a_number, source_row),
+            ).fetchone()[0]
+        )
+        duplicate = False
+        if not keep_duplicate:
+            duplicate = self.connection.execute(
+                "INSERT OR IGNORE INTO seen_b(mapping_id, b_number) VALUES (?, ?)",
+                (mapping_id, b_number),
+            ).rowcount == 0
+        if not duplicate:
+            self.connection.execute(
+                """
+                INSERT INTO rows(mapping_id, b_number, source_row)
+                VALUES (?, ?, ?)
+                """,
+                (mapping_id, b_number, source_row),
+            )
+        return first, duplicate
+
+    def source_row_for_a(self, a_number: str) -> int | None:
+        row = self.connection.execute(
+            "SELECT source_row FROM first_a WHERE a_number = ?",
+            (a_number,),
+        ).fetchone()
+        return int(row[0]) if row is not None else None
+
+    def counts(self) -> tuple[int, int]:
+        return (
+            int(self.connection.execute("SELECT COUNT(*) FROM first_a").fetchone()[0]),
+            int(self.connection.execute("SELECT COUNT(*) FROM rows").fetchone()[0]),
+        )
+
+    def mapping_count(self) -> int:
+        return int(
+            self.connection.execute("SELECT COUNT(*) FROM mappings").fetchone()[0]
+        )
+
+    def iter_mapping_entries(self) -> Iterable[tuple[Mapping, int]]:
+        cursor = self.connection.execute(
+            """
+            SELECT mapping.id, mapping.a_number, mapping.first_sequence,
+                   mapping.source_row, mapping.source_prefix, row.b_number
+            FROM mappings AS mapping
+            JOIN rows AS row ON row.mapping_id = mapping.id
+            ORDER BY mapping.first_sequence, row.sequence
+            """
+        )
+        current_id: int | None = None
+        current_a = ""
+        current_order = 0
+        current_source_row = 0
+        current_prefix: str | None = None
+        b_numbers: list[str] = []
+        for mapping_id, a_number, order, source_row, prefix, b_number in cursor:
+            mapping_id = int(mapping_id)
+            if current_id is not None and mapping_id != current_id:
+                yield (
+                    Mapping(
+                        aNumber=current_a,
+                        bNumbers=b_numbers,
+                        firstSeenOrder=current_order,
+                        sourcePrefix=current_prefix,
+                    ),
+                    current_source_row,
+                )
+                b_numbers = []
+            current_id = mapping_id
+            current_a = str(a_number)
+            current_order = int(order)
+            current_source_row = int(source_row)
+            current_prefix = str(prefix) if prefix is not None else None
+            b_numbers.append(str(b_number))
+        if current_id is not None:
+            yield (
+                Mapping(
+                    aNumber=current_a,
+                    bNumbers=b_numbers,
+                    firstSeenOrder=current_order,
+                    sourcePrefix=current_prefix,
+                ),
+                current_source_row,
+            )
+
+    def commit(self) -> None:
+        self.connection.commit()
+
+    def close(self) -> None:
+        self.connection.commit()
+        self.connection.close()
+
+    def __enter__(self) -> "MasterImportSpool":
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.close()
 
 
 def _snapshot(row: sqlite3.Row | dict[str, Any] | None) -> dict[str, Any] | None:
@@ -103,9 +370,11 @@ def _number_start_errors(
                 "aNumber": a_number,
             }
         )
-    for b_number in payload["bNumbers"]:
+    b_numbers = [str(value) for value in payload["bNumbers"]]
+    short_aon = is_single_short_aon(b_numbers)
+    for b_number in b_numbers:
         value = str(b_number)
-        if not _number_starts_with_seven(value):
+        if not short_aon and not _number_starts_with_seven(value):
             errors.append(
                 {
                     "itemId": item_id,
@@ -167,193 +436,91 @@ class MasterService:
         self._initialize()
         self._resume_interrupted_analyses()
 
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database_path, timeout=30)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA journal_mode=WAL")
-        connection.execute("PRAGMA busy_timeout=30000")
-        connection.execute("PRAGMA foreign_keys=ON")
-        return connection
+    def _connect(self) -> PgConnection:
+        if getattr(self.config, "database_url", None):
+            configure_master_db(self.config.database_url)
+        else:
+            configure_master_db()
+        return pg_connect()
 
     def _initialize(self) -> None:
+        """Ensure seed/meta rows; schema comes from reporting migration 050."""
         with self._connect() as connection:
-            connection.executescript(
+            connection.execute(
                 """
-                CREATE TABLE IF NOT EXISTS master_state (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    current_revision INTEGER NOT NULL
-                );
-                INSERT OR IGNORE INTO master_state(id, current_revision)
-                VALUES (1, 0);
-
-                CREATE TABLE IF NOT EXISTS master_records (
-                    id TEXT PRIMARY KEY,
-                    a_number TEXT NOT NULL UNIQUE,
-                    b_numbers_json TEXT NOT NULL,
-                    source_prefix TEXT NOT NULL,
-                    comment TEXT NOT NULL DEFAULT '',
-                    sort_order INTEGER NOT NULL,
-                    version INTEGER NOT NULL,
-                    created_at REAL NOT NULL,
-                    updated_at REAL NOT NULL,
-                    created_revision INTEGER NOT NULL,
-                    updated_revision INTEGER NOT NULL,
-                    deleted_at REAL,
-                    deleted_revision INTEGER
-                );
-                CREATE INDEX IF NOT EXISTS master_records_active_order
-                    ON master_records(deleted_at, sort_order);
-                CREATE INDEX IF NOT EXISTS master_records_updated
-                    ON master_records(updated_at DESC);
-
-                CREATE TABLE IF NOT EXISTS master_changes (
-                    id TEXT PRIMARY KEY,
-                    revision INTEGER NOT NULL,
-                    sequence INTEGER NOT NULL,
-                    record_id TEXT NOT NULL,
-                    action TEXT NOT NULL,
-                    line_number INTEGER,
-                    before_json TEXT,
-                    after_json TEXT,
-                    source_file TEXT,
-                    source_row INTEGER,
-                    actor TEXT NOT NULL,
-                    created_at REAL NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS master_changes_revision
-                    ON master_changes(revision DESC, sequence DESC);
-                CREATE INDEX IF NOT EXISTS master_changes_record
-                    ON master_changes(record_id, revision DESC);
-                CREATE INDEX IF NOT EXISTS master_changes_created_at
-                    ON master_changes(created_at DESC);
-
-                CREATE TABLE IF NOT EXISTS master_imports (
-                    id TEXT PRIMARY KEY,
-                    session_id TEXT NOT NULL,
-                    upload_id TEXT NOT NULL,
-                    source_name TEXT NOT NULL,
-                    detected_mode TEXT NOT NULL,
-                    base_revision INTEGER NOT NULL,
-                    status TEXT NOT NULL,
-                    stats_json TEXT NOT NULL,
-                    request_json TEXT NOT NULL DEFAULT '{}',
-                    warnings_json TEXT NOT NULL DEFAULT '{}',
-                    progress_rows INTEGER NOT NULL DEFAULT 0,
-                    progress_phase TEXT NOT NULL DEFAULT 'queued',
-                    error_code TEXT,
-                    error_message TEXT,
-                    updated_at REAL,
-                    created_at REAL NOT NULL,
-                    merged_at REAL,
-                    merged_revision INTEGER
-                );
-                CREATE INDEX IF NOT EXISTS master_imports_owner
-                    ON master_imports(id, session_id);
-                CREATE INDEX IF NOT EXISTS master_imports_active_owner
-                    ON master_imports(session_id, status, created_at DESC);
-
-                CREATE TABLE IF NOT EXISTS master_duplicate_findings (
-                    import_id TEXT NOT NULL,
-                    a_number TEXT NOT NULL,
-                    source_rows_json TEXT NOT NULL,
-                    source_file TEXT NOT NULL,
-                    created_at REAL NOT NULL,
-                    PRIMARY KEY(import_id, a_number),
-                    FOREIGN KEY(import_id) REFERENCES master_imports(id)
-                        ON DELETE CASCADE
-                );
-                CREATE INDEX IF NOT EXISTS master_duplicate_findings_a
-                    ON master_duplicate_findings(a_number, import_id);
-
-                CREATE TABLE IF NOT EXISTS master_import_items (
-                    id TEXT PRIMARY KEY,
-                    import_id TEXT NOT NULL,
-                    source_row INTEGER NOT NULL,
-                    a_number TEXT NOT NULL,
-                    incoming_json TEXT NOT NULL,
-                    incoming_b_json TEXT NOT NULL DEFAULT '[]',
-                    incoming_prefix TEXT NOT NULL DEFAULT '',
-                    existing_record_id TEXT,
-                    current_json TEXT,
-                    status TEXT NOT NULL,
-                    FOREIGN KEY(import_id) REFERENCES master_imports(id)
-                        ON DELETE CASCADE
-                );
-                CREATE INDEX IF NOT EXISTS master_import_items_status
-                    ON master_import_items(import_id, status, source_row);
-                CREATE INDEX IF NOT EXISTS master_import_items_a
-                    ON master_import_items(import_id, a_number);
-                CREATE TABLE IF NOT EXISTS master_import_number_warnings (
-                    import_id TEXT NOT NULL,
-                    item_id TEXT NOT NULL,
-                    source_row INTEGER NOT NULL,
-                    kind TEXT NOT NULL,
-                    number TEXT NOT NULL,
-                    a_number TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    FOREIGN KEY(import_id) REFERENCES master_imports(id)
-                        ON DELETE CASCADE
-                );
-                CREATE INDEX IF NOT EXISTS master_import_warnings_order
-                    ON master_import_number_warnings(import_id, source_row);
-                CREATE INDEX IF NOT EXISTS master_import_warnings_item
-                    ON master_import_number_warnings(import_id, item_id);
+                INSERT INTO master_state(id, current_revision)
+                VALUES (1, 0)
+                ON CONFLICT (id) DO NOTHING
                 """
             )
-            record_columns = {
-                str(row["name"])
-                for row in connection.execute("PRAGMA table_info(master_records)")
-            }
-            if "comment" not in record_columns:
-                connection.execute(
-                    "ALTER TABLE master_records ADD COLUMN comment TEXT NOT NULL DEFAULT ''"
-                )
-            import_columns = {
-                str(row["name"])
-                for row in connection.execute("PRAGMA table_info(master_imports)")
-            }
-            import_migrations = {
-                "request_json": "TEXT NOT NULL DEFAULT '{}'",
-                "warnings_json": "TEXT NOT NULL DEFAULT '{}'",
-                "progress_rows": "INTEGER NOT NULL DEFAULT 0",
-                "progress_phase": "TEXT NOT NULL DEFAULT 'queued'",
-                "error_code": "TEXT",
-                "error_message": "TEXT",
-                "updated_at": "REAL",
-            }
-            for column, definition in import_migrations.items():
-                if column not in import_columns:
-                    connection.execute(
-                        f"ALTER TABLE master_imports ADD COLUMN {column} {definition}"
+            if connection.execute(
+                "SELECT 1 FROM master_schema_meta "
+                "WHERE key = 'canonical_pani_region_prefixes'"
+            ).fetchone() is None:
+                legacy_prefixes = connection.execute(
+                    """
+                    SELECT DISTINCT source_prefix
+                    FROM master_records
+                    WHERE master_glob_match(source_prefix, '[0-9]*& null&D[0-9]*$&')
+                       OR master_glob_match(source_prefix, '+[0-9]*& null&D[0-9]*$&')
+                    """
+                ).fetchall()
+                for prefix_row in legacy_prefixes:
+                    legacy_prefix = str(prefix_row["source_prefix"])
+                    canonical_prefix = canonicalize_pani_region_prefix(
+                        legacy_prefix
                     )
-            item_columns = {
-                str(row["name"])
-                for row in connection.execute(
-                    "PRAGMA table_info(master_import_items)"
-                )
-            }
-            if "incoming_b_json" not in item_columns:
+                    if canonical_prefix != legacy_prefix:
+                        connection.execute(
+                            "UPDATE master_records SET source_prefix = ? "
+                            "WHERE source_prefix = ?",
+                            (canonical_prefix, legacy_prefix),
+                        )
                 connection.execute(
-                    "ALTER TABLE master_import_items "
-                    "ADD COLUMN incoming_b_json TEXT NOT NULL DEFAULT '[]'"
+                    "INSERT INTO master_schema_meta(key, value) VALUES (?, ?)",
+                    ("canonical_pani_region_prefixes", "1"),
                 )
-            if "incoming_prefix" not in item_columns:
+            if connection.execute(
+                "SELECT 1 FROM master_schema_meta "
+                "WHERE key = 'sparse_exact_duplicate_counts'"
+            ).fetchone() is None:
+                connection.execute("DELETE FROM master_exact_counts")
                 connection.execute(
-                    "ALTER TABLE master_import_items "
-                    "ADD COLUMN incoming_prefix TEXT NOT NULL DEFAULT ''"
+                    """
+                    INSERT INTO master_exact_counts(
+                        a_number, b_numbers_json, source_prefix, active_count
+                    )
+                    SELECT
+                        a_number, b_numbers_json, source_prefix, COUNT(*)
+                    FROM master_records
+                    WHERE deleted_at IS NULL
+                    GROUP BY a_number, b_numbers_json, source_prefix
+                    HAVING COUNT(*) > 1
+                    """
                 )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS master_records_signature "
-                "ON master_records(deleted_at, b_numbers_json, source_prefix)"
-            )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS master_import_items_a "
-                "ON master_import_items(import_id, a_number)"
-            )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS master_import_items_signature "
-                "ON master_import_items(import_id, incoming_b_json, incoming_prefix)"
-            )
+                connection.execute(
+                    "INSERT INTO master_schema_meta(key, value) VALUES (?, ?)",
+                    ("sparse_exact_duplicate_counts", "1"),
+                )
+            if (
+                connection.execute(
+                    "SELECT 1 FROM master_a_counts LIMIT 1"
+                ).fetchone()
+                is None
+                and connection.execute(
+                    "SELECT 1 FROM master_records WHERE deleted_at IS NULL LIMIT 1"
+                ).fetchone()
+                is not None
+            ):
+                connection.execute(
+                    """
+                    INSERT INTO master_a_counts(a_number, active_count)
+                    SELECT a_number, COUNT(*)
+                    FROM master_records
+                    WHERE deleted_at IS NULL
+                    GROUP BY a_number
+                    """
+                )
 
     @staticmethod
     def _current_revision(connection: sqlite3.Connection) -> int:
@@ -378,6 +545,11 @@ class MasterService:
 
     @staticmethod
     def _record_payload(row: sqlite3.Row, line_number: int) -> dict[str, Any]:
+        logical_row = _logical_master_row(
+            str(row["a_number"]),
+            str(row["b_numbers_json"]),
+            str(row["source_prefix"]),
+        )
         return {
             "id": str(row["id"]),
             "lineNumber": line_number,
@@ -390,6 +562,7 @@ class MasterService:
             "updatedAt": float(row["updated_at"]),
             "createdRevision": int(row["created_revision"]),
             "updatedRevision": int(row["updated_revision"]),
+            "logicalRow": logical_row,
         }
 
     @staticmethod
@@ -532,6 +705,249 @@ class MasterService:
             ),
         )
 
+    @staticmethod
+    def _record_filter_sql(
+        *,
+        query: str,
+        parameter_groups: Iterable[str] = (),
+        regions: Iterable[int] = (),
+        duplicates_only: bool = False,
+        exact_duplicates_only: bool = False,
+        exact_duplicate_extras_only: bool = False,
+        short_aon_only: bool = False,
+        invalid_only: bool = False,
+        invalid_start_only: bool = False,
+    ) -> tuple[str, list[Any]]:
+        full_row_query = _full_row_search_query(query)
+        try:
+            normalized_tokens = _query_tokens(query)
+        except AppError:
+            if "=" not in full_row_query:
+                raise
+            normalized_tokens = []
+        selected_parameter_groups = tuple(
+            dict.fromkeys(value for value in parameter_groups if value)
+        )
+        selected_regions = tuple(dict.fromkeys(int(value) for value in regions))
+        if any(value < 1 or value > 84 for value in selected_regions):
+            raise AppError(
+                "INVALID_REGION",
+                "Номер региона должен быть от 1 до 84",
+            )
+
+        clauses = ["deleted_at IS NULL"]
+        values: list[Any] = []
+        if full_row_query or normalized_tokens:
+            query_clauses: list[str] = []
+            if full_row_query:
+                query_clauses.append(
+                    "master_logical_row(a_number, b_numbers_json, source_prefix) "
+                    "LIKE ? ESCAPE '\\'"
+                )
+                values.append(_like_contains(full_row_query))
+            for token in normalized_tokens:
+                like = _like_contains(token)
+                query_clauses.append(
+                    """
+                    (
+                        a_number LIKE ? ESCAPE '\\'
+                        OR EXISTS (
+                            SELECT 1
+                            FROM json_each(b_numbers_json) AS searched_aon
+                            WHERE CAST(searched_aon.value AS TEXT) LIKE ? ESCAPE '\\'
+                        )
+                        OR id LIKE ? ESCAPE '\\'
+                    )
+                    """
+                )
+                values.extend([like, like, like])
+            clauses.append(f"({' OR '.join(query_clauses)})")
+        if selected_parameter_groups or selected_regions:
+            parameter_clauses: list[str] = []
+            parameter_values: list[str] = []
+            region_prefixes = [
+                prefix
+                for number in range(1, 85)
+                for prefix in (
+                    f"null/$ & null&D{number}$&",
+                    f"null/$ & null&{number}$&",
+                )
+            ]
+            for group in selected_parameter_groups:
+                if group == "default":
+                    parameter_clauses.append("source_prefix = ?")
+                    parameter_values.append(NO_REGION_PREFIX)
+                elif group == "pani":
+                    parameter_clauses.append(
+                        """
+                        (
+                            source_prefix GLOB ?
+                            OR source_prefix GLOB ?
+                        )
+                        """
+                    )
+                    parameter_values.extend(
+                        [
+                            "[0-9]*& null/$ & null/$ &",
+                            "+[0-9]*& null/$ & null/$ &",
+                        ]
+                    )
+                elif group == "pani_region":
+                    parameter_clauses.append(
+                        """
+                        (
+                            source_prefix GLOB ?
+                            OR source_prefix GLOB ?
+                            OR source_prefix GLOB ?
+                            OR source_prefix GLOB ?
+                        )
+                        """
+                    )
+                    parameter_values.extend(
+                        [
+                            "[0-9]*& null&D[0-9]*$&",
+                            "[0-9]*& null&[0-9]*$&",
+                            "[0-9]*& D[0-9]*$&null&",
+                            "[0-9]*& [0-9]*$&null&",
+                        ]
+                    )
+                elif group == "region":
+                    placeholders = ",".join("?" for _ in region_prefixes)
+                    parameter_clauses.append(
+                        f"source_prefix IN ({placeholders})"
+                    )
+                    parameter_values.extend(region_prefixes)
+                elif group == "custom":
+                    region_placeholders = ",".join(
+                        "?" for _ in region_prefixes
+                    )
+                    parameter_clauses.append(
+                        f"""
+                        (
+                            source_prefix <> ?
+                            AND source_prefix NOT GLOB ?
+                            AND source_prefix NOT GLOB ?
+                            AND source_prefix NOT GLOB ?
+                            AND source_prefix NOT GLOB ?
+                            AND source_prefix NOT GLOB ?
+                            AND source_prefix NOT GLOB ?
+                            AND source_prefix NOT IN ({region_placeholders})
+                        )
+                        """
+                    )
+                    parameter_values.extend(
+                        [
+                            NO_REGION_PREFIX,
+                            "[0-9]*& null/$ & null/$ &",
+                            "+[0-9]*& null/$ & null/$ &",
+                            "[0-9]*& null&D[0-9]*$&",
+                            "[0-9]*& null&[0-9]*$&",
+                            "[0-9]*& D[0-9]*$&null&",
+                            "[0-9]*& [0-9]*$&null&",
+                            *region_prefixes,
+                        ]
+                    )
+                else:
+                    raise AppError(
+                        "INVALID_PARAMETER_GROUP",
+                        "Неизвестная группа параметров",
+                    )
+            if selected_regions:
+                selected_region_prefixes = [
+                    prefix
+                    for number in selected_regions
+                    for prefix in (
+                        f"null/$ & null&D{number}$&",
+                        f"null/$ & null&{number}$&",
+                    )
+                ]
+                placeholders = ",".join(
+                    "?" for _ in selected_region_prefixes
+                )
+                combined_region_patterns = [
+                    pattern
+                    for number in selected_regions
+                    for pattern in (
+                        f"[0-9]*& null&D{number}$&",
+                        f"[0-9]*& null&{number}$&",
+                        f"[0-9]*& D{number}$&null&",
+                        f"[0-9]*& {number}$&null&",
+                    )
+                ]
+                combined_clauses = " OR ".join(
+                    "source_prefix GLOB ?"
+                    for _ in combined_region_patterns
+                )
+                parameter_clauses.append(
+                    f"(source_prefix IN ({placeholders}) OR {combined_clauses})"
+                )
+                parameter_values.extend(
+                    [*selected_region_prefixes, *combined_region_patterns]
+                )
+            clauses.append(f"({' OR '.join(parameter_clauses)})")
+            values.extend(parameter_values)
+        if duplicates_only:
+            clauses.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM master_a_counts AS duplicate_count
+                    WHERE duplicate_count.a_number = master_records.a_number
+                      AND duplicate_count.active_count > 1
+                )
+                """
+            )
+        if exact_duplicates_only:
+            clauses.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM master_exact_counts AS exact_duplicate_count
+                    WHERE exact_duplicate_count.a_number = master_records.a_number
+                      AND exact_duplicate_count.b_numbers_json = master_records.b_numbers_json
+                      AND exact_duplicate_count.source_prefix = master_records.source_prefix
+                      AND exact_duplicate_count.active_count > 1
+                )
+                """
+            )
+        if exact_duplicate_extras_only:
+            clauses.append(MASTER_EXACT_DUPLICATE_EXTRA_SQL)
+        if short_aon_only:
+            clauses.append(MASTER_SHORT_AON_SQL)
+        if invalid_only:
+            clauses.append(
+                """
+                (
+                    length(a_number) <> 11
+                    OR (
+                        NOT {MASTER_SHORT_AON_SQL}
+                        AND EXISTS (
+                            SELECT 1
+                            FROM json_each(b_numbers_json) AS invalid_aon
+                            WHERE length(CAST(invalid_aon.value AS TEXT)) <> 11
+                        )
+                    )
+                )
+                """.format(MASTER_SHORT_AON_SQL=MASTER_SHORT_AON_SQL)
+            )
+        if invalid_start_only:
+            clauses.append(
+                """
+                (
+                    substr(a_number, 1, 1) <> '7'
+                    OR (
+                        NOT {MASTER_SHORT_AON_SQL}
+                        AND EXISTS (
+                            SELECT 1
+                            FROM json_each(b_numbers_json) AS invalid_start_aon
+                            WHERE substr(CAST(invalid_start_aon.value AS TEXT), 1, 1) <> '7'
+                        )
+                    )
+                )
+                """.format(MASTER_SHORT_AON_SQL=MASTER_SHORT_AON_SQL)
+            )
+        return " AND ".join(clauses), values
+
     def list_records(
         self,
         *,
@@ -542,19 +958,12 @@ class MasterService:
         regions: Iterable[int] = (),
         sort: str = "base",
         duplicates_only: bool = False,
+        exact_duplicates_only: bool = False,
+        exact_duplicate_extras_only: bool = False,
+        short_aon_only: bool = False,
         invalid_only: bool = False,
         invalid_start_only: bool = False,
     ) -> dict[str, Any]:
-        normalized_tokens = _query_tokens(query)
-        selected_parameter_groups = tuple(
-            dict.fromkeys(value for value in parameter_groups if value)
-        )
-        selected_regions = tuple(dict.fromkeys(int(value) for value in regions))
-        if any(value < 1 or value > 84 for value in selected_regions):
-            raise AppError(
-                "INVALID_REGION",
-                "Номер региона должен быть от 1 до 84",
-            )
         order_by = {
             "base": "sort_order",
             "parameter_asc": "source_prefix COLLATE NOCASE ASC, sort_order",
@@ -562,6 +971,17 @@ class MasterService:
         }.get(sort)
         if order_by is None:
             raise AppError("INVALID_SORT", "Неизвестный порядок сортировки")
+        where, values = self._record_filter_sql(
+            query=query,
+            parameter_groups=parameter_groups,
+            regions=regions,
+            duplicates_only=duplicates_only,
+            exact_duplicates_only=exact_duplicates_only,
+            exact_duplicate_extras_only=exact_duplicate_extras_only,
+            short_aon_only=short_aon_only,
+            invalid_only=invalid_only,
+            invalid_start_only=invalid_start_only,
+        )
 
         with self._connect() as connection:
             latest_duplicate_import = connection.execute(
@@ -578,196 +998,6 @@ class MasterService:
                 if latest_duplicate_import is not None
                 else None
             )
-
-            clauses = ["deleted_at IS NULL"]
-            values: list[Any] = []
-            if normalized_tokens:
-                query_clauses: list[str] = []
-                for token in normalized_tokens:
-                    like = f"%{token}%"
-                    query_clauses.append(
-                        """
-                        (
-                            a_number LIKE ?
-                            OR EXISTS (
-                                SELECT 1
-                                FROM json_each(b_numbers_json) AS searched_aon
-                                WHERE CAST(searched_aon.value AS TEXT) LIKE ?
-                            )
-                            OR id LIKE ?
-                        )
-                        """
-                    )
-                    values.extend([like, like, like])
-                clauses.append(f"({' OR '.join(query_clauses)})")
-            if selected_parameter_groups or selected_regions:
-                parameter_clauses: list[str] = []
-                parameter_values: list[str] = []
-                region_prefixes = [
-                    prefix
-                    for number in range(1, 85)
-                    for prefix in (
-                        f"null/$ & null&D{number}$&",
-                        f"null/$ & null&{number}$&",
-                    )
-                ]
-                for group in selected_parameter_groups:
-                    if group == "default":
-                        parameter_clauses.append("source_prefix = ?")
-                        parameter_values.append(NO_REGION_PREFIX)
-                    elif group == "pani":
-                        parameter_clauses.append(
-                            """
-                            (
-                                source_prefix GLOB ?
-                                OR source_prefix GLOB ?
-                            )
-                            """
-                        )
-                        parameter_values.extend(
-                            [
-                                "[0-9]*& null/$ & null/$ &",
-                                "+[0-9]*& null/$ & null/$ &",
-                            ]
-                        )
-                    elif group == "pani_region":
-                        parameter_clauses.append(
-                            """
-                            (
-                                source_prefix GLOB ?
-                                OR source_prefix GLOB ?
-                                OR source_prefix GLOB ?
-                                OR source_prefix GLOB ?
-                            )
-                            """
-                        )
-                        parameter_values.extend(
-                            [
-                                "[0-9]*& null&D[0-9]*$&",
-                                "[0-9]*& null&[0-9]*$&",
-                                "[0-9]*& D[0-9]*$&null&",
-                                "[0-9]*& [0-9]*$&null&",
-                            ]
-                        )
-                    elif group == "region":
-                        placeholders = ",".join(
-                            "?" for _ in region_prefixes
-                        )
-                        parameter_clauses.append(
-                            f"source_prefix IN ({placeholders})"
-                        )
-                        parameter_values.extend(region_prefixes)
-                    elif group == "custom":
-                        region_placeholders = ",".join(
-                            "?" for _ in region_prefixes
-                        )
-                        parameter_clauses.append(
-                            f"""
-                            (
-                                source_prefix <> ?
-                                AND source_prefix NOT GLOB ?
-                                AND source_prefix NOT GLOB ?
-                                AND source_prefix NOT GLOB ?
-                                AND source_prefix NOT GLOB ?
-                                AND source_prefix NOT GLOB ?
-                                AND source_prefix NOT GLOB ?
-                                AND source_prefix NOT IN ({region_placeholders})
-                            )
-                            """
-                        )
-                        parameter_values.extend(
-                            [
-                                NO_REGION_PREFIX,
-                                "[0-9]*& null/$ & null/$ &",
-                                "+[0-9]*& null/$ & null/$ &",
-                                "[0-9]*& null&D[0-9]*$&",
-                                "[0-9]*& null&[0-9]*$&",
-                                "[0-9]*& D[0-9]*$&null&",
-                                "[0-9]*& [0-9]*$&null&",
-                                *region_prefixes,
-                            ]
-                        )
-                    else:
-                        raise AppError(
-                            "INVALID_PARAMETER_GROUP",
-                            "Неизвестная группа параметров",
-                        )
-                if selected_regions:
-                    selected_region_prefixes = [
-                        prefix
-                        for number in selected_regions
-                        for prefix in (
-                            f"null/$ & null&D{number}$&",
-                            f"null/$ & null&{number}$&",
-                        )
-                    ]
-                    placeholders = ",".join(
-                        "?" for _ in selected_region_prefixes
-                    )
-                    combined_region_patterns = [
-                        pattern
-                        for number in selected_regions
-                        for pattern in (
-                            f"[0-9]*& null&D{number}$&",
-                            f"[0-9]*& null&{number}$&",
-                            f"[0-9]*& D{number}$&null&",
-                            f"[0-9]*& {number}$&null&",
-                        )
-                    ]
-                    combined_clauses = " OR ".join(
-                        "source_prefix GLOB ?"
-                        for _ in combined_region_patterns
-                    )
-                    parameter_clauses.append(
-                        f"(source_prefix IN ({placeholders}) OR {combined_clauses})"
-                    )
-                    parameter_values.extend(
-                        [*selected_region_prefixes, *combined_region_patterns]
-                    )
-                clauses.append(f"({' OR '.join(parameter_clauses)})")
-                values.extend(parameter_values)
-            if duplicates_only:
-                if duplicate_import_id is None:
-                    clauses.append("0 = 1")
-                else:
-                    clauses.append(
-                        """
-                        EXISTS (
-                            SELECT 1
-                            FROM master_duplicate_findings AS duplicate
-                            WHERE duplicate.import_id = ?
-                              AND duplicate.a_number = master_records.a_number
-                        )
-                        """
-                    )
-                    values.append(duplicate_import_id)
-            if invalid_only:
-                clauses.append(
-                    """
-                    (
-                        length(a_number) <> 11
-                        OR EXISTS (
-                            SELECT 1
-                            FROM json_each(b_numbers_json) AS invalid_aon
-                            WHERE length(CAST(invalid_aon.value AS TEXT)) <> 11
-                        )
-                    )
-                    """
-                )
-            if invalid_start_only:
-                clauses.append(
-                    """
-                    (
-                        substr(a_number, 1, 1) <> '7'
-                        OR EXISTS (
-                            SELECT 1
-                            FROM json_each(b_numbers_json) AS invalid_start_aon
-                            WHERE substr(CAST(invalid_start_aon.value AS TEXT), 1, 1) <> '7'
-                        )
-                    )
-                    """
-                )
-            where = " AND ".join(clauses)
 
             total = int(
                 connection.execute(
@@ -810,6 +1040,11 @@ class MasterService:
                          json_each(record.b_numbers_json) AS aon
                     WHERE record.deleted_at IS NULL
                       AND length(CAST(aon.value AS TEXT)) <> 11
+                      AND NOT (
+                        json_array_length(record.b_numbers_json) = 1
+                        AND length(CAST(aon.value AS TEXT)) BETWEEN 3 AND 5
+                        AND CAST(aon.value AS TEXT) NOT GLOB '*[^0-9]*'
+                      )
                     """
                 ).fetchone()["count"]
             )
@@ -821,13 +1056,16 @@ class MasterService:
                     WHERE deleted_at IS NULL
                       AND (
                         length(a_number) <> 11
-                        OR EXISTS (
-                            SELECT 1
-                            FROM json_each(b_numbers_json) AS invalid_aon
-                            WHERE length(CAST(invalid_aon.value AS TEXT)) <> 11
+                        OR (
+                            NOT {MASTER_SHORT_AON_SQL}
+                            AND EXISTS (
+                                SELECT 1
+                                FROM json_each(b_numbers_json) AS invalid_aon
+                                WHERE length(CAST(invalid_aon.value AS TEXT)) <> 11
+                            )
                         )
                       )
-                    """
+                    """.format(MASTER_SHORT_AON_SQL=MASTER_SHORT_AON_SQL)
                 ).fetchone()["count"]
             )
             invalid_start_a_count = int(
@@ -848,6 +1086,11 @@ class MasterService:
                          json_each(record.b_numbers_json) AS aon
                     WHERE record.deleted_at IS NULL
                       AND substr(CAST(aon.value AS TEXT), 1, 1) <> '7'
+                      AND NOT (
+                        json_array_length(record.b_numbers_json) = 1
+                        AND length(CAST(aon.value AS TEXT)) BETWEEN 3 AND 5
+                        AND CAST(aon.value AS TEXT) NOT GLOB '*[^0-9]*'
+                      )
                     """
                 ).fetchone()["count"]
             )
@@ -859,12 +1102,25 @@ class MasterService:
                     WHERE deleted_at IS NULL
                       AND (
                         substr(a_number, 1, 1) <> '7'
-                        OR EXISTS (
-                            SELECT 1
-                            FROM json_each(b_numbers_json) AS invalid_start_aon
-                            WHERE substr(CAST(invalid_start_aon.value AS TEXT), 1, 1) <> '7'
+                        OR (
+                            NOT {MASTER_SHORT_AON_SQL}
+                            AND EXISTS (
+                                SELECT 1
+                                FROM json_each(b_numbers_json) AS invalid_start_aon
+                                WHERE substr(CAST(invalid_start_aon.value AS TEXT), 1, 1) <> '7'
+                            )
                         )
                       )
+                    """.format(MASTER_SHORT_AON_SQL=MASTER_SHORT_AON_SQL)
+                ).fetchone()["count"]
+            )
+            short_aon_record_count = int(
+                connection.execute(
+                    f"""
+                    SELECT COUNT(*) AS count
+                    FROM master_records
+                    WHERE deleted_at IS NULL
+                      AND {MASTER_SHORT_AON_SQL}
                     """
                 ).fetchone()["count"]
             )
@@ -908,7 +1164,6 @@ class MasterService:
                 ),
             )
             duplicate_findings: dict[str, sqlite3.Row] = {}
-            duplicate_count = 0
             if duplicate_import_id is not None:
                 duplicate_findings = {
                     str(row["a_number"]): row
@@ -921,22 +1176,78 @@ class MasterService:
                         (duplicate_import_id,),
                     )
                 }
-                duplicate_count = int(
+            duplicate_count = int(
+                connection.execute(
+                    """
+                    SELECT COALESCE(SUM(active_count), 0) AS count
+                    FROM master_a_counts
+                    WHERE active_count > 1
+                    """
+                ).fetchone()["count"]
+            )
+            exact_duplicate_count = int(
+                connection.execute(
+                    """
+                    SELECT COALESCE(SUM(active_count), 0) AS count
+                    FROM master_exact_counts
+                    WHERE active_count > 1
+                    """
+                ).fetchone()["count"]
+            )
+            exact_duplicate_extra_count = int(
+                connection.execute(
+                    """
+                    SELECT COALESCE(SUM(active_count - 1), 0) AS count
+                    FROM master_exact_counts
+                    WHERE active_count > 1
+                    """
+                ).fetchone()["count"]
+            )
+            matching_exact_duplicate_extra_count = exact_duplicate_extra_count
+            if exact_duplicates_only or exact_duplicate_extras_only:
+                matching_exact_duplicate_extra_count = int(
                     connection.execute(
-                        """
+                        f"""
                         SELECT COUNT(*) AS count
-                        FROM master_records AS record
-                        JOIN master_duplicate_findings AS duplicate
-                          ON duplicate.a_number = record.a_number
-                        WHERE record.deleted_at IS NULL
-                          AND duplicate.import_id = ?
+                        FROM master_records
+                        WHERE ({where})
+                          AND {MASTER_EXACT_DUPLICATE_EXTRA_SQL}
                         """,
-                        (duplicate_import_id,),
+                        values,
                     ).fetchone()["count"]
                 )
             rows = connection.execute(
                 f"""
-                SELECT *
+                SELECT master_records.*,
+                       COALESCE(
+                           (
+                               SELECT active_count
+                               FROM master_a_counts
+                               WHERE a_number = master_records.a_number
+                           ),
+                           0
+                       ) AS duplicate_group_size,
+                       COALESCE(
+                           (
+                               SELECT active_count
+                               FROM master_exact_counts
+                               WHERE a_number = master_records.a_number
+                                 AND b_numbers_json = master_records.b_numbers_json
+                                 AND source_prefix = master_records.source_prefix
+                           ),
+                           0
+                       ) AS exact_duplicate_group_size
+                       ,(
+                           SELECT original_exact_duplicate.id
+                           FROM master_records AS original_exact_duplicate
+                           WHERE original_exact_duplicate.deleted_at IS NULL
+                             AND original_exact_duplicate.a_number = master_records.a_number
+                             AND original_exact_duplicate.b_numbers_json = master_records.b_numbers_json
+                             AND original_exact_duplicate.source_prefix = master_records.source_prefix
+                           ORDER BY original_exact_duplicate.sort_order,
+                                    original_exact_duplicate.id
+                           LIMIT 1
+                       ) AS exact_duplicate_original_id
                 FROM master_records
                 WHERE {where}
                 ORDER BY {order_by}
@@ -951,20 +1262,28 @@ class MasterService:
                     self._active_line(connection, int(row["sort_order"])),
                 )
                 duplicate = duplicate_findings.get(item["aNumber"])
-                if duplicate is not None:
-                    item.update(
-                        {
-                            "isDuplicate": True,
-                            "duplicateSourceRows": json.loads(
-                                str(duplicate["source_rows_json"])
-                            ),
-                            "duplicateSourceFile": str(
-                                duplicate["source_file"]
-                            ),
-                        }
-                    )
+                if int(row["duplicate_group_size"]) > 1:
+                    item["isDuplicate"] = True
+                    if duplicate is not None:
+                        item.update(
+                            {
+                                "duplicateSourceRows": json.loads(
+                                    str(duplicate["source_rows_json"])
+                                ),
+                                "duplicateSourceFile": str(
+                                    duplicate["source_file"]
+                                ),
+                            }
+                        )
                 else:
                     item["isDuplicate"] = False
+                item["isExactDuplicate"] = (
+                    int(row["exact_duplicate_group_size"]) > 1
+                )
+                item["isExactDuplicateExtra"] = (
+                    item["isExactDuplicate"]
+                    and str(row["exact_duplicate_original_id"]) != item["id"]
+                )
                 items.append(item)
             return {
                 "revision": self._current_revision(connection),
@@ -978,12 +1297,16 @@ class MasterService:
                 "invalidStartANumberCount": invalid_start_a_count,
                 "invalidStartBNumberCount": invalid_start_b_count,
                 "invalidStartRecordCount": invalid_start_record_count,
+                "shortAonRecordCount": short_aon_record_count,
                 "parameterOptions": parameter_options,
                 "regionOptions": [
                     {"value": number, "count": region_counts[number]}
                     for number in range(1, 85)
                 ],
                 "duplicateCount": duplicate_count,
+                "exactDuplicateCount": exact_duplicate_count,
+                "exactDuplicateExtraCount": exact_duplicate_extra_count,
+                "matchingExactDuplicateExtraCount": matching_exact_duplicate_extra_count,
                 "offset": offset,
                 "limit": limit,
                 "items": items,
@@ -1477,7 +1800,7 @@ class MasterService:
                 )
 
         try:
-            with ReportWriter(report_path) as report, MappingSpool(
+            with ReportWriter(report_path) as report, MasterImportSpool(
                 spool_path
             ) as spool:
                 spool.connection.execute(
@@ -1536,8 +1859,11 @@ class MasterService:
                         b_column=b_column,
                         replace_empty_b_with_a=True,
                         allow_number_whitespace=True,
+                        duplicate_a_callback=remember_duplicate,
                         progress=report_progress,
                     )
+                parser_stats["preservedRows"] = spool.mapping_count()
+                parser_stats["resultRows"] = spool.mapping_count()
                 report_progress(int(parser_stats["inputRows"]))
                 if parser_stats["uniqueA"] == 0:
                     raise AppError(
@@ -1560,12 +1886,19 @@ class MasterService:
         source_name: str,
         mode: str,
         parser_stats: dict[str, int],
-        spool: MappingSpool,
+        spool: MasterImportSpool,
     ) -> None:
         counts = {"new": 0, "unchanged": 0, "conflict": 0}
         persisted = 0
         now = time.time()
         with self._connect() as connection:
+            connection.execute(
+                """
+                CREATE TEMP TABLE IF NOT EXISTS matched_master_records (
+                    record_id TEXT PRIMARY KEY
+                ) WITHOUT ROWID
+                """
+            )
             connection.execute(
                 """
                 UPDATE master_imports
@@ -1587,16 +1920,26 @@ class MasterService:
                     break
                 a_numbers = [mapping.aNumber for mapping, _ in batch]
                 placeholders = ",".join("?" for _ in a_numbers)
-                current_rows = {
-                    str(row["a_number"]): row
-                    for row in connection.execute(
-                        f"SELECT * FROM master_records "
-                        f"WHERE a_number IN ({placeholders})",
-                        a_numbers,
-                    )
-                }
+                current_rows: dict[str, list[sqlite3.Row]] = {}
+                for row in connection.execute(
+                    f"""
+                    SELECT record.*
+                    FROM master_records AS record
+                    LEFT JOIN matched_master_records AS matched
+                      ON matched.record_id = record.id
+                    WHERE record.a_number IN ({placeholders})
+                      AND matched.record_id IS NULL
+                    ORDER BY
+                        CASE WHEN record.deleted_at IS NULL THEN 0 ELSE 1 END,
+                        record.sort_order,
+                        record.id
+                    """,
+                    a_numbers,
+                ):
+                    current_rows.setdefault(str(row["a_number"]), []).append(row)
                 item_rows: list[tuple[Any, ...]] = []
                 warning_rows: list[tuple[Any, ...]] = []
+                matched_record_ids: list[tuple[str]] = []
                 for mapping, source_row in batch:
                     prefix = canonicalize_pani_region_prefix(
                         mapping.sourcePrefix or NO_REGION_PREFIX
@@ -1606,7 +1949,29 @@ class MasterService:
                         "bNumbers": list(mapping.bNumbers),
                         "sourcePrefix": prefix,
                     }
-                    current_row = current_rows.get(mapping.aNumber)
+                    candidates = current_rows.get(mapping.aNumber, [])
+                    current_row = next(
+                        (
+                            row
+                            for row in candidates
+                            if row["deleted_at"] is None
+                            and str(row["b_numbers_json"]) == _json(incoming["bNumbers"])
+                            and str(row["source_prefix"]) == prefix
+                        ),
+                        None,
+                    )
+                    if current_row is None:
+                        current_row = next(
+                            (
+                                row
+                                for row in candidates
+                                if row["deleted_at"] is None
+                            ),
+                            candidates[0] if candidates else None,
+                        )
+                    if current_row is not None:
+                        candidates.remove(current_row)
+                        matched_record_ids.append((str(current_row["id"]),))
                     current = (
                         _snapshot(current_row)
                         if current_row is not None
@@ -1659,7 +2024,15 @@ class MasterService:
                                 warning["aNumber"],
                                 status,
                             )
-                        )
+                    )
+                if matched_record_ids:
+                    connection.executemany(
+                        """
+                        INSERT OR IGNORE INTO matched_master_records(record_id)
+                        VALUES (?)
+                        """,
+                        matched_record_ids,
+                    )
                 connection.executemany(
                     """
                     INSERT INTO master_import_items(
@@ -1857,10 +2230,31 @@ class MasterService:
             invalid_start_rows, invalid_start_numbers = (
                 self._import_number_start_counts(connection, import_id)
             )
+            persisted_rows = int(
+                connection.execute(
+                    """
+                    SELECT COUNT(*) AS count
+                    FROM master_import_items
+                    WHERE import_id = ?
+                    """,
+                    (import_id,),
+                ).fetchone()["count"]
+            )
+            expected_rows = int(parser_stats["preservedRows"])
+            if persisted_rows != expected_rows:
+                raise AppError(
+                    "MASTER_IMPORT_ROW_MISMATCH",
+                    (
+                        "Проверка целостности импорта не пройдена: "
+                        f"ожидалось {expected_rows} отдельных строк, "
+                        f"сохранено {persisted_rows}"
+                    ),
+                )
             stats = {
                 **counts,
                 "sourceRows": int(parser_stats["inputRows"]),
                 "uniqueA": int(parser_stats["uniqueA"]),
+                "preservedRows": int(parser_stats["preservedRows"]),
                 "totalB": int(parser_stats["totalB"]),
                 "invalidRows": int(parser_stats["invalidRows"]),
                 "skippedRows": int(parser_stats["skippedRows"]),
@@ -2052,30 +2446,41 @@ class MasterService:
                     "Строка анализа не найдена",
                     status_code=404,
                 )
-            duplicate = connection.execute(
-                """
-                SELECT source_row FROM master_import_items
-                WHERE import_id = ? AND a_number = ? AND id != ?
-                LIMIT 1
-                """,
-                (import_id, payload["aNumber"], item_id),
-            ).fetchone()
-            if duplicate is not None:
-                raise AppError(
-                    "DUPLICATE_IMPORT_A",
-                    (
-                        f"Опорный номер {payload['aNumber']} уже используется "
-                        f"в строке CSV {int(duplicate['source_row'])}"
-                    ),
-                    status_code=409,
-                )
-
             current_row = connection.execute(
                 """
-                SELECT * FROM master_records
-                WHERE a_number = ?
+                SELECT record.*
+                FROM master_records AS record
+                WHERE record.a_number = ?
+                  AND (
+                      record.id = ?
+                      OR NOT EXISTS (
+                          SELECT 1
+                          FROM master_import_items AS sibling
+                          WHERE sibling.import_id = ?
+                            AND sibling.id != ?
+                            AND sibling.existing_record_id = record.id
+                      )
+                  )
+                ORDER BY
+                    CASE
+                        WHEN record.deleted_at IS NULL
+                         AND record.b_numbers_json = ?
+                         AND record.source_prefix = ? THEN 0
+                        WHEN record.deleted_at IS NULL THEN 1
+                        ELSE 2
+                    END,
+                    record.sort_order,
+                    record.id
+                LIMIT 1
                 """,
-                (payload["aNumber"],),
+                (
+                    payload["aNumber"],
+                    item["existing_record_id"],
+                    import_id,
+                    item_id,
+                    _json(payload["bNumbers"]),
+                    payload["sourcePrefix"],
+                ),
             ).fetchone()
             current = (
                 _snapshot(current_row)
@@ -2179,7 +2584,12 @@ class MasterService:
         }
 
     def merge_import(
-        self, import_id: str, body: MasterMergeRequest, session_id: str
+        self,
+        import_id: str,
+        body: MasterMergeRequest,
+        session_id: str,
+        *,
+        actor: str,
     ) -> dict[str, Any]:
         selected = set(body.replaceConflictItemIds)
         now = time.time()
@@ -2211,10 +2621,122 @@ class MasterService:
                     "Мастер файл изменился после проверки. Запустите анализ заново.",
                     status_code=409,
                 )
+            merge_table = "master_import_items"
+            merged_duplicates = 0
+            if body.mergeDuplicateANumbers:
+                merge_table = "temp.master_merge_items"
+                connection.executescript(
+                    """
+                    DROP TABLE IF EXISTS temp.master_merge_items;
+                    CREATE TEMP TABLE master_merge_items (
+                        id TEXT PRIMARY KEY,
+                        import_id TEXT NOT NULL,
+                        source_row INTEGER NOT NULL,
+                        a_number TEXT NOT NULL,
+                        incoming_json TEXT NOT NULL,
+                        existing_record_id TEXT,
+                        current_json TEXT,
+                        status TEXT NOT NULL,
+                        member_ids_json TEXT NOT NULL
+                    );
+                    """
+                )
+                source_items = connection.execute(
+                    """
+                    SELECT * FROM master_import_items
+                    WHERE import_id = ?
+                    ORDER BY a_number, source_row, id
+                    """,
+                    (import_id,),
+                )
+                current_a: str | None = None
+                grouped_rows: list[sqlite3.Row] = []
+
+                def persist_group(rows: list[sqlite3.Row]) -> None:
+                    nonlocal merged_duplicates
+                    if not rows:
+                        return
+                    first = rows[0]
+                    combined_b: list[str] = []
+                    seen_b: set[str] = set()
+                    for grouped_row in rows:
+                        incoming_row = json.loads(
+                            str(grouped_row["incoming_json"])
+                        )
+                        for b_number in incoming_row["bNumbers"]:
+                            if b_number in seen_b:
+                                continue
+                            seen_b.add(b_number)
+                            combined_b.append(b_number)
+                    first_incoming = json.loads(str(first["incoming_json"]))
+                    incoming = {
+                        "aNumber": str(first["a_number"]),
+                        "bNumbers": combined_b,
+                        "sourcePrefix": first_incoming["sourcePrefix"],
+                    }
+                    existing = next(
+                        (
+                            row
+                            for row in rows
+                            if row["existing_record_id"] is not None
+                        ),
+                        None,
+                    )
+                    current = (
+                        json.loads(str(existing["current_json"]))
+                        if existing is not None
+                        and existing["current_json"] is not None
+                        else None
+                    )
+                    if existing is None or current is None:
+                        status = "new"
+                    elif (
+                        current["aNumber"] == incoming["aNumber"]
+                        and current["bNumbers"] == incoming["bNumbers"]
+                        and current["sourcePrefix"]
+                        == incoming["sourcePrefix"]
+                    ):
+                        status = "unchanged"
+                    else:
+                        status = "conflict"
+                    connection.execute(
+                        """
+                        INSERT INTO master_merge_items(
+                            id, import_id, source_row, a_number,
+                            incoming_json, existing_record_id, current_json,
+                            status, member_ids_json
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            str(first["id"]),
+                            import_id,
+                            min(int(row["source_row"]) for row in rows),
+                            str(first["a_number"]),
+                            _json(incoming),
+                            (
+                                str(existing["existing_record_id"])
+                                if existing is not None
+                                else None
+                            ),
+                            _json(current) if current is not None else None,
+                            status,
+                            _json([str(row["id"]) for row in rows]),
+                        ),
+                    )
+                    merged_duplicates += len(rows) - 1
+
+                for source_item in source_items:
+                    a_number = str(source_item["a_number"])
+                    if current_a is not None and a_number != current_a:
+                        persist_group(grouped_rows)
+                        grouped_rows = []
+                    current_a = a_number
+                    grouped_rows.append(source_item)
+                persist_group(grouped_rows)
             conflict_total = int(
                 connection.execute(
-                    """
-                    SELECT COUNT(*) AS count FROM master_import_items
+                    f"""
+                    SELECT COUNT(*) AS count FROM {merge_table}
                     WHERE import_id = ? AND status = 'conflict'
                     """,
                     (import_id,),
@@ -2239,8 +2761,8 @@ class MasterService:
             applied_conflicts = 0
             sequence = 0
             items = connection.execute(
-                """
-                SELECT * FROM master_import_items
+                f"""
+                SELECT * FROM {merge_table}
                 WHERE import_id = ? AND status IN ('new', 'conflict')
                 ORDER BY source_row, id
                 """,
@@ -2253,17 +2775,24 @@ class MasterService:
                 for item in batch:
                     status = str(item["status"])
                     if status == "conflict":
+                        member_ids = (
+                            json.loads(str(item["member_ids_json"]))
+                            if body.mergeDuplicateANumbers
+                            else [str(item["id"])]
+                        )
                         replace = (
                             body.conflictStrategy == "replace_all"
                             or (
                                 body.conflictStrategy == "selected"
-                                and str(item["id"]) in selected
+                                and any(
+                                    member_id in selected
+                                    for member_id in member_ids
+                                )
                             )
                         )
                         if not replace:
                             continue
                         applied_conflicts += 1
-                    sequence += 1
                     incoming = json.loads(str(item["incoming_json"]))
                     record = (
                         connection.execute(
@@ -2271,12 +2800,10 @@ class MasterService:
                             (item["existing_record_id"],),
                         ).fetchone()
                         if item["existing_record_id"] is not None
-                        else connection.execute(
-                            "SELECT * FROM master_records WHERE a_number = ?",
-                            (incoming["aNumber"],),
-                        ).fetchone()
+                        else None
                     )
                     if record is None:
+                        sequence += 1
                         record_id = opaque_id()
                         connection.execute(
                             """
@@ -2318,6 +2845,32 @@ class MasterService:
                             if record["deleted_at"] is None
                             else None
                         )
+                        if (
+                            before is not None
+                            and before["aNumber"] == incoming["aNumber"]
+                            and before["sourcePrefix"]
+                            == incoming["sourcePrefix"]
+                        ):
+                            combined_b_numbers = list(before["bNumbers"])
+                            seen_b_numbers = set(combined_b_numbers)
+                            for b_number in incoming["bNumbers"]:
+                                if b_number in seen_b_numbers:
+                                    continue
+                                seen_b_numbers.add(b_number)
+                                combined_b_numbers.append(b_number)
+                            incoming = {
+                                **incoming,
+                                "bNumbers": combined_b_numbers,
+                            }
+                        if (
+                            before is not None
+                            and before["aNumber"] == incoming["aNumber"]
+                            and before["bNumbers"] == incoming["bNumbers"]
+                            and before["sourcePrefix"]
+                            == incoming["sourcePrefix"]
+                        ):
+                            continue
+                        sequence += 1
                         version = int(record["version"]) + 1
                         connection.execute(
                             """
@@ -2365,11 +2918,59 @@ class MasterService:
                         after=after,
                         source_file=str(import_row["source_name"]),
                         source_row=int(item["source_row"]),
-                        actor=session_id,
+                        actor=actor,
                         created_at=now,
                     )
+                    if not body.mergeDuplicateANumbers:
+                        connection.execute(
+                            """
+                            UPDATE master_import_items
+                            SET existing_record_id = ?
+                            WHERE import_id = ? AND id = ?
+                            """,
+                            (record_id, import_id, str(item["id"])),
+                        )
 
             kept_conflicts = conflict_total - applied_conflicts
+            import_stats = json.loads(str(import_row["stats_json"] or "{}"))
+            separate_duplicate_rows = (
+                0
+                if body.mergeDuplicateANumbers
+                else int(import_stats.get("duplicateA", 0))
+            )
+            if not body.mergeDuplicateANumbers:
+                representation = connection.execute(
+                    """
+                    SELECT
+                        COUNT(*) AS expected,
+                        COUNT(DISTINCT item.existing_record_id) AS represented,
+                        SUM(
+                            CASE
+                                WHEN item.existing_record_id IS NULL
+                                  OR record.id IS NULL
+                                  OR record.deleted_at IS NOT NULL
+                                THEN 1 ELSE 0
+                            END
+                        ) AS missing
+                    FROM master_import_items AS item
+                    LEFT JOIN master_records AS record
+                      ON record.id = item.existing_record_id
+                    WHERE item.import_id = ?
+                    """,
+                    (import_id,),
+                ).fetchone()
+                expected = int(representation["expected"])
+                represented = int(representation["represented"])
+                missing = int(representation["missing"] or 0)
+                if represented != expected or missing:
+                    raise AppError(
+                        "MASTER_MERGE_ROW_MISMATCH",
+                        (
+                            "Слияние отменено проверкой целостности: "
+                            f"для {expected} входящих строк подтверждено "
+                            f"только {represented} отдельных строк master"
+                        ),
+                    )
             if sequence == 0:
                 connection.execute(
                     """
@@ -2384,6 +2985,8 @@ class MasterService:
                     "added": 0,
                     "updated": 0,
                     "keptConflicts": kept_conflicts,
+                    "mergedDuplicates": merged_duplicates,
+                    "separateDuplicateRows": separate_duplicate_rows,
                 }
             connection.execute(
                 "UPDATE master_state SET current_revision = ? WHERE id = 1",
@@ -2402,25 +3005,26 @@ class MasterService:
                 "added": added,
                 "updated": updated,
                 "keptConflicts": kept_conflicts,
+                "mergedDuplicates": merged_duplicates,
+                "separateDuplicateRows": separate_duplicate_rows,
             }
 
     def create_record(
-        self, body: MasterRecordRequest, session_id: str
+        self, body: MasterRecordRequest, session_id: str, *, actor: str
     ) -> dict[str, Any]:
         payload = self._normalize_record(body)
         now = time.time()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
-                "SELECT * FROM master_records WHERE a_number = ?",
+                """
+                SELECT * FROM master_records
+                WHERE a_number = ? AND deleted_at IS NOT NULL
+                ORDER BY deleted_at DESC, sort_order, id
+                LIMIT 1
+                """,
                 (payload["aNumber"],),
             ).fetchone()
-            if existing is not None and existing["deleted_at"] is None:
-                raise AppError(
-                    "MASTER_A_EXISTS",
-                    "Такая связка уже есть в исходной базе",
-                    status_code=409,
-                )
             revision = self._current_revision(connection) + 1
             if existing is None:
                 record_id = opaque_id()
@@ -2488,7 +3092,7 @@ class MasterService:
                 after=after,
                 source_file=None,
                 source_row=None,
-                actor=session_id,
+                actor=actor,
                 created_at=now,
             )
             connection.execute(
@@ -2506,7 +3110,12 @@ class MasterService:
             }
 
     def update_record(
-        self, record_id: str, body: MasterRecordRequest, session_id: str
+        self,
+        record_id: str,
+        body: MasterRecordRequest,
+        session_id: str,
+        *,
+        actor: str,
     ) -> dict[str, Any]:
         payload = self._normalize_record(body)
         now = time.time()
@@ -2532,19 +3141,6 @@ class MasterService:
                 raise AppError(
                     "MASTER_RECORD_CHANGED",
                     "Строка уже была изменена. Обновите список и повторите.",
-                    status_code=409,
-                )
-            duplicate = connection.execute(
-                """
-                SELECT id FROM master_records
-                WHERE a_number = ? AND id <> ?
-                """,
-                (payload["aNumber"], record_id),
-            ).fetchone()
-            if duplicate is not None:
-                raise AppError(
-                    "MASTER_A_EXISTS",
-                    "Связка с таким опорным номером уже существует",
                     status_code=409,
                 )
             before = _snapshot(record)
@@ -2598,7 +3194,7 @@ class MasterService:
                 after=after,
                 source_file=None,
                 source_row=None,
-                actor=session_id,
+                actor=actor,
                 created_at=now,
             )
             connection.execute(
@@ -2614,7 +3210,12 @@ class MasterService:
             }
 
     def delete_record(
-        self, record_id: str, expected_version: int | None, session_id: str
+        self,
+        record_id: str,
+        expected_version: int | None,
+        session_id: str,
+        *,
+        actor: str,
     ) -> dict[str, Any]:
         now = time.time()
         with self._lock, self._connect() as connection:
@@ -2667,7 +3268,7 @@ class MasterService:
                 after=None,
                 source_file=None,
                 source_row=None,
-                actor=session_id,
+                actor=actor,
                 created_at=now,
             )
             connection.execute(
@@ -2695,7 +3296,7 @@ class MasterService:
         return normalized
 
     def delete_records_by_a(
-        self, a_numbers: Iterable[str], session_id: str
+        self, a_numbers: Iterable[str], session_id: str, *, actor: str
     ) -> dict[str, Any]:
         targets = set(self._normalize_batch_numbers(a_numbers, field="A"))
         now = time.time()
@@ -2749,7 +3350,7 @@ class MasterService:
                     after=None,
                     source_file=None,
                     source_row=None,
-                    actor=session_id,
+                    actor=actor,
                     created_at=now,
                 )
             connection.execute(
@@ -2763,12 +3364,113 @@ class MasterService:
                 "notFound": len(targets) - len(records),
             }
 
+    def delete_exact_duplicate_extras(
+        self,
+        *,
+        record_filter: MasterRecordFilterRequest,
+        excluded_record_ids: Iterable[str],
+        session_id: str,
+        actor: str,
+    ) -> dict[str, Any]:
+        excluded_ids = {
+            str(value).strip()
+            for value in excluded_record_ids
+            if str(value).strip()
+        }
+        now = time.time()
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            where, values = self._record_filter_sql(
+                query=record_filter.query,
+                parameter_groups=record_filter.parameterGroups,
+                regions=record_filter.regions,
+                duplicates_only=record_filter.duplicatesOnly,
+                exact_duplicates_only=record_filter.exactDuplicatesOnly,
+                exact_duplicate_extras_only=True,
+                short_aon_only=record_filter.shortAonOnly,
+                invalid_only=record_filter.invalidOnly,
+                invalid_start_only=record_filter.invalidStartOnly,
+            )
+            if excluded_ids:
+                placeholders = ",".join("?" for _ in excluded_ids)
+                where += f" AND id NOT IN ({placeholders})"
+                values.extend(sorted(excluded_ids))
+            records = connection.execute(
+                f"""
+                SELECT master_records.*
+                FROM (
+                    SELECT active_master_records.*,
+                           ROW_NUMBER() OVER (
+                               ORDER BY active_master_records.sort_order,
+                                        active_master_records.id
+                           ) AS active_line_number
+                    FROM master_records AS active_master_records
+                    WHERE active_master_records.deleted_at IS NULL
+                ) AS master_records
+                WHERE {where}
+                ORDER BY sort_order, id
+                """,
+                values,
+            ).fetchall()
+            current_revision = self._current_revision(connection)
+            if not records:
+                return {
+                    "revision": current_revision,
+                    "deleted": 0,
+                    "keptOriginalGroups": 0,
+                }
+            revision = current_revision + 1
+            groups = {
+                (
+                    str(record["a_number"]),
+                    str(record["b_numbers_json"]),
+                    str(record["source_prefix"]),
+                )
+                for record in records
+            }
+            for sequence, record in enumerate(records, start=1):
+                record_id = str(record["id"])
+                version = int(record["version"]) + 1
+                connection.execute(
+                    """
+                    UPDATE master_records
+                    SET version = ?, updated_at = ?, updated_revision = ?,
+                        deleted_at = ?, deleted_revision = ?
+                    WHERE id = ? AND deleted_at IS NULL
+                    """,
+                    (version, now, revision, now, revision, record_id),
+                )
+                self._append_change(
+                    connection,
+                    revision=revision,
+                    sequence=sequence,
+                    record_id=record_id,
+                    action="deleted",
+                    line_number=int(record["active_line_number"]),
+                    before=_snapshot(record),
+                    after=None,
+                    source_file=None,
+                    source_row=None,
+                    actor=actor,
+                    created_at=now,
+                )
+            connection.execute(
+                "UPDATE master_state SET current_revision = ? WHERE id = 1",
+                (revision,),
+            )
+            return {
+                "revision": revision,
+                "deleted": len(records),
+                "keptOriginalGroups": len(groups),
+            }
+
     def delete_b_numbers(
-        self, b_numbers: Iterable[str], session_id: str
+        self, b_numbers: Iterable[str], session_id: str, *, actor: str
     ) -> dict[str, Any]:
         return self._delete_b_numbers(
             b_numbers,
             session_id,
+            actor=actor,
             selected_a_numbers=None,
         )
 
@@ -2777,6 +3479,8 @@ class MasterService:
         a_numbers: Iterable[str],
         b_numbers: Iterable[str],
         session_id: str,
+        *,
+        actor: str,
     ) -> dict[str, Any]:
         selected_a_numbers = set(
             self._normalize_batch_numbers(a_numbers, field="A")
@@ -2784,7 +3488,52 @@ class MasterService:
         return self._delete_b_numbers(
             b_numbers,
             session_id,
+            actor=actor,
             selected_a_numbers=selected_a_numbers,
+        )
+
+    def delete_b_numbers_for_selection(
+        self,
+        *,
+        a_numbers: Iterable[str],
+        record_ids: Iterable[str],
+        excluded_record_ids: Iterable[str],
+        record_filter: MasterRecordFilterRequest | None,
+        b_numbers: Iterable[str],
+        session_id: str,
+        actor: str,
+    ) -> dict[str, Any]:
+        raw_a_numbers = tuple(a_numbers)
+        selected_a_numbers = (
+            set(self._normalize_batch_numbers(raw_a_numbers, field="A"))
+            if raw_a_numbers
+            else set()
+        )
+        selected_record_ids = {
+            str(value).strip() for value in record_ids if str(value).strip()
+        }
+        excluded_ids = {
+            str(value).strip()
+            for value in excluded_record_ids
+            if str(value).strip()
+        }
+        if (
+            not selected_a_numbers
+            and not selected_record_ids
+            and record_filter is None
+        ):
+            raise AppError(
+                "INVALID_RECORD_SELECTION",
+                "Выберите хотя бы одну строку мастер-файла",
+            )
+        return self._delete_b_numbers(
+            b_numbers,
+            session_id,
+            actor=actor,
+            selected_a_numbers=selected_a_numbers,
+            selected_record_ids=selected_record_ids,
+            excluded_record_ids=excluded_ids,
+            record_filter=record_filter,
         )
 
     def _delete_b_numbers(
@@ -2792,34 +3541,75 @@ class MasterService:
         b_numbers: Iterable[str],
         session_id: str,
         *,
+        actor: str,
         selected_a_numbers: set[str] | None,
+        selected_record_ids: set[str] | None = None,
+        excluded_record_ids: set[str] | None = None,
+        record_filter: MasterRecordFilterRequest | None = None,
     ) -> dict[str, Any]:
         target_numbers = self._normalize_batch_numbers(b_numbers, field="B")
         targets = set(target_numbers)
         now = time.time()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            selection_clauses: list[str] = []
+            selection_values: list[Any] = []
+            if selected_a_numbers:
+                placeholders = ",".join("?" for _ in selected_a_numbers)
+                selection_clauses.append(f"a_number IN ({placeholders})")
+                selection_values.extend(sorted(selected_a_numbers))
+            if selected_record_ids:
+                placeholders = ",".join("?" for _ in selected_record_ids)
+                selection_clauses.append(f"id IN ({placeholders})")
+                selection_values.extend(sorted(selected_record_ids))
+            if record_filter is not None:
+                filtered_where, filtered_values = self._record_filter_sql(
+                    query=record_filter.query,
+                    parameter_groups=record_filter.parameterGroups,
+                    regions=record_filter.regions,
+                    duplicates_only=record_filter.duplicatesOnly,
+                    exact_duplicates_only=record_filter.exactDuplicatesOnly,
+                    exact_duplicate_extras_only=(
+                        record_filter.exactDuplicateExtrasOnly
+                    ),
+                    short_aon_only=record_filter.shortAonOnly,
+                    invalid_only=record_filter.invalidOnly,
+                    invalid_start_only=record_filter.invalidStartOnly,
+                )
+                filtered_clause = f"({filtered_where})"
+                if excluded_record_ids:
+                    placeholders = ",".join(
+                        "?" for _ in excluded_record_ids
+                    )
+                    filtered_clause += f" AND id NOT IN ({placeholders})"
+                    filtered_values.extend(sorted(excluded_record_ids))
+                selection_clauses.append(f"({filtered_clause})")
+                selection_values.extend(filtered_values)
+            selection_where = "deleted_at IS NULL"
+            if selection_clauses:
+                selection_where += f" AND ({' OR '.join(selection_clauses)})"
             active_records = connection.execute(
-                """
+                f"""
                 SELECT * FROM master_records
-                WHERE deleted_at IS NULL
+                WHERE {selection_where}
                 ORDER BY sort_order
-                """
+                """,
+                selection_values,
             ).fetchall()
             matched_a_numbers = {
                 str(record["a_number"])
                 for record in active_records
-                if selected_a_numbers is None
-                or str(record["a_number"]) in selected_a_numbers
             }
+            matched_record_ids = {
+                str(record["id"]) for record in active_records
+            }
+            not_found_records = (
+                len((selected_a_numbers or set()) - matched_a_numbers)
+                + len((selected_record_ids or set()) - matched_record_ids)
+            )
             linked_targets: set[str] = set()
             updates: list[tuple[sqlite3.Row, list[str], int]] = []
             for record in active_records:
-                if (
-                    selected_a_numbers is not None
-                    and str(record["a_number"]) not in selected_a_numbers
-                ):
-                    continue
                 current = json.loads(str(record["b_numbers_json"]))
                 linked_targets.update(
                     number for number in current if number in targets
@@ -2839,15 +3629,11 @@ class MasterService:
                     "updatedRecords": 0,
                     "removedAons": 0,
                     "requestedRecords": (
-                        len(selected_a_numbers)
+                        len(active_records) + not_found_records
                         if selected_a_numbers is not None
                         else None
                     ),
-                    "notFoundRecords": (
-                        len(selected_a_numbers - matched_a_numbers)
-                        if selected_a_numbers is not None
-                        else 0
-                    ),
+                    "notFoundRecords": not_found_records,
                     "notLinkedBNumbers": (
                         [
                             number
@@ -2895,7 +3681,7 @@ class MasterService:
                     after=after,
                     source_file=None,
                     source_row=None,
-                    actor=session_id,
+                    actor=actor,
                     created_at=now,
                 )
             connection.execute(
@@ -2908,15 +3694,11 @@ class MasterService:
                 "updatedRecords": len(updates),
                 "removedAons": removed_aons,
                 "requestedRecords": (
-                    len(selected_a_numbers)
+                    len(active_records) + not_found_records
                     if selected_a_numbers is not None
                     else None
                 ),
-                "notFoundRecords": (
-                    len(selected_a_numbers - matched_a_numbers)
-                    if selected_a_numbers is not None
-                    else 0
-                ),
+                "notFoundRecords": not_found_records,
                 "notLinkedBNumbers": (
                     [
                         number
@@ -2928,7 +3710,7 @@ class MasterService:
                 ),
             }
 
-    def clear_records(self, session_id: str) -> dict[str, Any]:
+    def clear_records(self, session_id: str, *, actor: str) -> dict[str, Any]:
         """Soft-delete every active record in one auditable revision."""
         now = time.time()
         with self._lock, self._connect() as connection:
@@ -2968,7 +3750,7 @@ class MasterService:
                     after=None,
                     source_file=None,
                     source_row=None,
-                    actor=session_id,
+                    actor=actor,
                     created_at=now,
                 )
             connection.execute(
@@ -3057,14 +3839,12 @@ class MasterService:
                 b_numbers = json.loads(str(row["b_numbers_json"]))
                 if not b_numbers:
                     continue
-                first = f"4:4,1,{b_numbers[0]}"
-                rest = "".join(f";4,1,{number}" for number in b_numbers[1:])
-                prefix = canonicalize_pani_region_prefix(
-                    str(row["source_prefix"])
-                )
-                terminator = (
-                    ";" if PANI_REGION_PREFIX_PATTERN.fullmatch(prefix) else ""
-                )
                 writer.writerow(
-                    [f"{prefix}{row['a_number']}={first}{rest}{terminator}"]
+                    [
+                        _logical_master_row(
+                            str(row["a_number"]),
+                            str(row["b_numbers_json"]),
+                            str(row["source_prefix"]),
+                        )
+                    ]
                 )

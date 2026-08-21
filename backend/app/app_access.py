@@ -45,3 +45,8 @@ def can_manage_org(meta: dict) -> bool:
         or (auth_mode == "app_user" and app_role == FULL_APP_ROLE and org_user_role is None)
         or org_user_role == "admin"
     )
+
+
+def is_admin_user(meta: dict) -> bool:
+    """Администратор приложения: PAT или org_user.role = admin."""
+    return meta.get("auth_mode") == "pat" or meta.get("org_user_role") == "admin"

@@ -65,6 +65,7 @@ from app.report_service import XLSX_MEDIA_TYPE, export_xlsx, load_change_request
 from app.business_value_service import update_business_value
 from app.roadmap_priority_service import update_roadmap_comment, update_roadmap_priority
 from app.digital_plan_service import load_digital_plan, update_digital_plan_has_uc
+from app.zni_external_data_service import update_zni_external_data
 from app.schemas import (
     AuthDefaultsOut,
     AuthLoginOut,
@@ -74,6 +75,7 @@ from app.schemas import (
     RoadmapPriorityUpdateIn,
     DigitalPlanOut,
     DigitalPlanUcUpdateIn,
+    ZniExternalDataUpdateIn,
     ChangeRequestOut,
     DashboardOut,
     ProductStatusB2BOut,
@@ -91,6 +93,7 @@ from app.voice_sso import issue_voice_sso_token
 from app.sync_service import run_sync
 from app.tfs_auth import TfsAuth, build_tfs_auth
 from app.org_routes import profile_router, router as org_router, users_router
+from app.notification_routes import router as notification_router
 from app.youjail_routes import router as youjail_router
 from app.planning_routes import router as planning_router
 
@@ -126,6 +129,7 @@ async def startup() -> None:
 app.include_router(org_router)
 app.include_router(profile_router)
 app.include_router(users_router)
+app.include_router(notification_router)
 app.include_router(youjail_router)
 app.include_router(product_status_live_router)
 app.include_router(planning_router)
@@ -428,6 +432,39 @@ def patch_digital_plan_uc(
             db,
             external_id=external_id,
             has_uc=payload.hasUc,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    dashboard = load_change_requests(db, board_code=ALL_BOARDS_CODE, search=external_id)
+    item = next((row for row in dashboard.items if row.number == external_id), None)
+    if item is None:
+        raise HTTPException(status_code=404, detail="ЗНИ не найден после обновления")
+    return item
+
+
+@app.patch("/api/tasks/{external_id}/external-data", response_model=ChangeRequestOut)
+def patch_zni_external_data(
+    external_id: str,
+    payload: ZniExternalDataUpdateIn,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_org_manage_access),
+) -> ChangeRequestOut:
+    fields = payload.model_fields_set
+    try:
+        update_zni_external_data(
+            db,
+            external_id=external_id,
+            priority=payload.priority,
+            set_priority="priority" in fields,
+            commercial_effect=payload.commercialEffect,
+            set_commercial_effect="commercialEffect" in fields,
+            actual_period=payload.actualPeriod,
+            set_actual_period="actualPeriod" in fields,
+            desired_date=payload.desiredDate,
+            set_desired_date="desiredDate" in fields,
+            desired_quarter=payload.desiredQuarter,
+            set_desired_quarter="desiredQuarter" in fields,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

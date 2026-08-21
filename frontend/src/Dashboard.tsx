@@ -68,6 +68,11 @@ type ChangeRequest = {
   ectResourceReservation?: boolean
   linkedEnvironments?: LinkedEnvironment[]
   errors: LinkedError[]
+  externalPriority?: string | null
+  externalCommercialEffect?: string | null
+  externalActualPeriod?: string | null
+  externalDesiredDate?: string | null
+  externalDesiredQuarter?: string | null
 }
 
 type DashboardData = {
@@ -86,6 +91,7 @@ type DashboardData = {
   availableStatuses: string[]
   availableQuarters: QuarterOption[]
   availableTagGroups: TagFilterGroup[]
+  actualPeriodEditableStatuses?: string[]
 }
 
 function formatDate(value?: string | null): string {
@@ -163,8 +169,8 @@ function itemRowKey(item: ChangeRequest): string {
   return `${prefix}-${item.boardCode ?? item.boardName ?? ''}-${item.number}`
 }
 
-function tableColumnCount(allBoards: boolean): number {
-  return allBoards ? 9 : 8
+function tableColumnCount(allBoards: boolean, externalFieldsVisible: boolean): number {
+  return (allBoards ? 9 : 8) + (externalFieldsVisible ? 5 : 0)
 }
 
 type ColumnMenuOption = {
@@ -372,6 +378,94 @@ function BusinessValueEditor({ item, disabled, saving, onSave }: BusinessValueEd
   )
 }
 
+type ExternalFieldKey =
+  | 'priority'
+  | 'commercialEffect'
+  | 'actualPeriod'
+  | 'desiredDate'
+  | 'desiredQuarter'
+
+type ExternalFieldEditorProps = {
+  item: ChangeRequest
+  field: ExternalFieldKey
+  inputType?: 'text' | 'date'
+  disabled: boolean
+  saving: boolean
+  title?: string
+  onSave: (item: ChangeRequest, field: ExternalFieldKey, value: string) => void
+}
+
+function externalFieldValue(item: ChangeRequest, field: ExternalFieldKey): string {
+  switch (field) {
+    case 'priority':
+      return item.externalPriority ?? ''
+    case 'commercialEffect':
+      return item.externalCommercialEffect ?? ''
+    case 'actualPeriod':
+      return item.externalActualPeriod ?? ''
+    case 'desiredDate':
+      return item.externalDesiredDate ?? ''
+    case 'desiredQuarter':
+      return item.externalDesiredQuarter ?? ''
+  }
+}
+
+const DEFAULT_ACTUAL_PERIOD_EDITABLE_STATUSES = ['UAT', 'Pilot', 'Closed']
+
+function actualPeriodEditableStatuses(data: DashboardData | null): string[] {
+  const fromApi = data?.actualPeriodEditableStatuses
+  if (fromApi && fromApi.length > 0) return fromApi
+  return DEFAULT_ACTUAL_PERIOD_EDITABLE_STATUSES
+}
+
+function isActualPeriodEditable(item: ChangeRequest, allowed: string[]): boolean {
+  const statuses = new Set(allowed.map((value) => value.trim().toLowerCase()).filter(Boolean))
+  if (statuses.size === 0) return false
+  return [item.status, item.boardColumn].some((value) => {
+    const token = value?.trim().toLowerCase()
+    return Boolean(token && statuses.has(token))
+  })
+}
+
+function ExternalFieldEditor({
+  item,
+  field,
+  inputType = 'text',
+  disabled,
+  saving,
+  title,
+  onSave,
+}: ExternalFieldEditorProps) {
+  const [draft, setDraft] = useState(externalFieldValue(item, field))
+
+  useEffect(() => {
+    setDraft(externalFieldValue(item, field))
+  }, [item.number, item.externalPriority, item.externalCommercialEffect, item.externalActualPeriod, item.externalDesiredDate, item.externalDesiredQuarter, field])
+
+  const commit = () => {
+    if (draft === externalFieldValue(item, field)) return
+    onSave(item, field, draft)
+  }
+
+  return (
+    <input
+      type={inputType}
+      className="business-value-input"
+      value={draft}
+      disabled={disabled || saving}
+      placeholder="—"
+      title={title}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === 'Enter') {
+          event.currentTarget.blur()
+        }
+      }}
+    />
+  )
+}
+
 function isClosedStatus(value?: string | null): boolean {
   if (!value?.trim()) return false
   return value.trim().toLowerCase() === 'closed'
@@ -452,9 +546,10 @@ function isMetricFilter(value: string | undefined): value is MetricFilter {
 
 type DashboardProps = {
   canSyncTfs?: boolean
+  canManageOrg?: boolean
 }
 
-export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
+export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: DashboardProps) {
   const savedUi = loadDashboardUiState()
   const defaultQuarter = currentQuarterIsoRange()
   const [boards, setBoards] = useState<Board[]>([])
@@ -479,8 +574,12 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
   const [syncing, setSyncing] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [savingBusinessValueId, setSavingBusinessValueId] = useState<string | null>(null)
+  const [savingExternalKey, setSavingExternalKey] = useState<string | null>(null)
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set())
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [externalFieldsVisible, setExternalFieldsVisible] = useState(
+    savedUi.externalFieldsVisible === true,
+  )
 
   const loadBoards = useCallback(async () => {
     const items = await getJson<Board[]>('/api/boards')
@@ -524,6 +623,7 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
       linkedEnvironmentFilter,
       tagGroupFilter,
       metricFilter,
+      externalFieldsVisible,
     })
   }, [
     boardCode,
@@ -537,6 +637,7 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
     linkedEnvironmentFilter,
     tagGroupFilter,
     metricFilter,
+    externalFieldsVisible,
   ])
 
   const loadDashboard = useCallback(async () => {
@@ -750,10 +851,64 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
     }
   }
 
+  const saveExternalField = async (item: ChangeRequest, field: ExternalFieldKey, rawValue: string) => {
+    if (!canManageOrg) {
+      notifyWarning('Редактировать дополнительные поля может только администратор')
+      return
+    }
+    const trimmed = rawValue.trim()
+    const current = externalFieldValue(item, field)
+    if (trimmed === current) return
+
+    const body: Record<string, string | null> = { [field]: trimmed === '' ? null : trimmed }
+    const saveKey = `${item.number}:${field}`
+    setSavingExternalKey(saveKey)
+    try {
+      const response = await apiFetch(`/api/tasks/${encodeURIComponent(item.number)}/external-data`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!response.ok) {
+        const text = await response.text()
+        throw new Error(text || 'Не удалось сохранить внешние данные ЗНИ')
+      }
+      const updated = (await response.json()) as ChangeRequest
+      setData((currentData) => {
+        if (!currentData) return currentData
+        return {
+          ...currentData,
+          items: currentData.items.map((row) =>
+            row.number === updated.number
+              ? {
+                  ...row,
+                  externalPriority: updated.externalPriority,
+                  externalCommercialEffect: updated.externalCommercialEffect,
+                  externalActualPeriod: updated.externalActualPeriod,
+                  externalDesiredDate: updated.externalDesiredDate,
+                  externalDesiredQuarter: updated.externalDesiredQuarter,
+                }
+              : row,
+          ),
+        }
+      })
+    } catch (err) {
+      notifyProblem(err, 'Ошибка сохранения')
+    } finally {
+      setSavingExternalKey(null)
+    }
+  }
+
   const selectedBoard = boards.find(
     (b) => b.code === boardCode || (b.memberCodes ?? []).includes(boardCode),
   )
   const boardLabel = selectedBoard?.displayName || boardNameLabel(null, boardCode) || boardCode
+  const periodEditableStatuses = actualPeriodEditableStatuses(data)
+  const periodEditableHint = periodEditableStatuses.length
+    ? `Редактирование доступно в статусах: ${periodEditableStatuses.join(', ')}`
+    : 'Редактирование фактической даты недоступно'
+  const externalFieldsAdminHint = 'Редактировать дополнительные поля может только администратор'
+  const externalFieldsReadOnly = !canManageOrg || syncing || exporting
   const activeFilterCount = [
     search.trim(),
     dateFrom !== defaultQuarter.from ? dateFrom : '',
@@ -862,6 +1017,19 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
         <div className="toolbar-right">
           <button
             type="button"
+            className="btn-secondary dashboard-external-fields-toggle"
+            aria-pressed={externalFieldsVisible}
+            title={
+              externalFieldsVisible
+                ? 'Скрыть дополнительные поля ЗНИ'
+                : 'Показать дополнительные поля ЗНИ'
+            }
+            onClick={() => setExternalFieldsVisible((current) => !current)}
+          >
+            {externalFieldsVisible ? 'Скрыть доп. поля' : 'Показать доп. поля'}
+          </button>
+          <button
+            type="button"
             className="btn-secondary"
             onClick={handleSync}
             disabled={syncing || exporting || !canSyncTfs}
@@ -948,6 +1116,15 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
                 <col className="col-status" />
                 <col className="col-quarter" />
                 <col className="col-reservation" />
+                {externalFieldsVisible ? (
+                  <>
+                    <col className="col-external-priority" />
+                    <col className="col-external-effect" />
+                    <col className="col-external-actual" />
+                    <col className="col-external-desired-date" />
+                    <col className="col-external-desired-quarter" />
+                  </>
+                ) : null}
               </colgroup>
               <thead>
                 <tr>
@@ -994,6 +1171,15 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
                     filterValue={ectReservationFilter}
                     onFilterChange={setEctReservationFilter}
                   />
+                  {externalFieldsVisible ? (
+                    <>
+                      <th>Приоритет</th>
+                      <th>Коммерческий эффект</th>
+                      <th title={periodEditableHint}>Фактическая дата месяц/квартал</th>
+                      <th>Желаемая дата</th>
+                      <th>Желаемый квартал</th>
+                    </>
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
@@ -1004,7 +1190,7 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
                   const boardStatus = visibleBoardStatus(item, metricFilter)
                   const workflowStatus = visibleWorkflowStatus(item, metricFilter)
                   const customerParts = customerNameParts(item.customerName)
-                  const colCount = tableColumnCount(Boolean(data.allBoards))
+                  const colCount = tableColumnCount(Boolean(data.allBoards), externalFieldsVisible)
                   const rows = [
                     <tr
                       key={key}
@@ -1094,6 +1280,90 @@ export default function Dashboard({ canSyncTfs = false }: DashboardProps) {
                       >
                         {formatEctReservation(item.ectResourceReservation)}
                       </td>
+                      {externalFieldsVisible ? (
+                        <>
+                          <td className="cell-business-value">
+                            {!isErrorRow(item) ? (
+                              <ExternalFieldEditor
+                                item={item}
+                                field="priority"
+                                disabled={externalFieldsReadOnly}
+                                title={canManageOrg ? undefined : externalFieldsAdminHint}
+                                saving={savingExternalKey === `${item.number}:priority`}
+                                onSave={saveExternalField}
+                              />
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td className="cell-business-value">
+                            {!isErrorRow(item) ? (
+                              <ExternalFieldEditor
+                                item={item}
+                                field="commercialEffect"
+                                disabled={externalFieldsReadOnly}
+                                title={canManageOrg ? undefined : externalFieldsAdminHint}
+                                saving={savingExternalKey === `${item.number}:commercialEffect`}
+                                onSave={saveExternalField}
+                              />
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td className="cell-business-value">
+                            {!isErrorRow(item) ? (
+                              <ExternalFieldEditor
+                                item={item}
+                                field="actualPeriod"
+                                disabled={
+                                  externalFieldsReadOnly ||
+                                  !isActualPeriodEditable(item, periodEditableStatuses)
+                                }
+                                title={
+                                  !canManageOrg
+                                    ? externalFieldsAdminHint
+                                    : isActualPeriodEditable(item, periodEditableStatuses)
+                                      ? undefined
+                                      : periodEditableHint
+                                }
+                                saving={savingExternalKey === `${item.number}:actualPeriod`}
+                                onSave={saveExternalField}
+                              />
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td className="cell-business-value">
+                            {!isErrorRow(item) ? (
+                              <ExternalFieldEditor
+                                item={item}
+                                field="desiredDate"
+                                inputType="date"
+                                disabled={externalFieldsReadOnly}
+                                title={canManageOrg ? undefined : externalFieldsAdminHint}
+                                saving={savingExternalKey === `${item.number}:desiredDate`}
+                                onSave={saveExternalField}
+                              />
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td className="cell-business-value">
+                            {!isErrorRow(item) ? (
+                              <ExternalFieldEditor
+                                item={item}
+                                field="desiredQuarter"
+                                disabled={externalFieldsReadOnly}
+                                title={canManageOrg ? undefined : externalFieldsAdminHint}
+                                saving={savingExternalKey === `${item.number}:desiredQuarter`}
+                                onSave={saveExternalField}
+                              />
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                        </>
+                      ) : null}
                     </tr>,
                   ]
                   if (expanded && hasDetails) {

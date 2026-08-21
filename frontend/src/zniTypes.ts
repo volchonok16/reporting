@@ -41,6 +41,11 @@ export type ChangeRequest = {
   hasUc?: boolean
   linkedEnvironments?: LinkedEnvironment[]
   errors: LinkedError[]
+  externalPriority?: string | null
+  externalCommercialEffect?: string | null
+  externalActualPeriod?: string | null
+  externalDesiredDate?: string | null
+  externalDesiredQuarter?: string | null
 }
 
 export type TaskLookupResponse = {

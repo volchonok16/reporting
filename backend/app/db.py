@@ -202,6 +202,9 @@ def ensure_startup_schema() -> None:
         "045_org_user_voice_only.sql",
         "046_employee_hide_from_pyramid.sql",
         "047_b2b_product_status_projects.sql",
+        "048_zni_external_data.sql",
+        "049_app_notifications.sql",
+        "050_voice_master.sql",
     )
 
     auth_session_sql = """

@@ -71,6 +71,14 @@ class Settings(BaseSettings):
     )
     change_request_states: str = Field(default="", alias="CHANGE_REQUEST_STATES")
     tfs_closed_state_values: str = Field(default="Closed", alias="TFS_CLOSED_STATE_VALUES")
+    zni_actual_period_editable_states: str = Field(
+        default="UAT,Pilot,Closed",
+        alias="ZNI_ACTUAL_PERIOD_EDITABLE_STATES",
+        description=(
+            "Статусы ЗНИ (колонка доски или System.State), в которых можно "
+            "редактировать «Фактическая дата месяц/квартал». Через запятую."
+        ),
+    )
     tfs_exclude_closed_older_than_days: int = Field(
         default=365,
         alias="TFS_EXCLUDE_CLOSED_OLDER_THAN_DAYS",
@@ -340,6 +348,15 @@ class Settings(BaseSettings):
     @property
     def closed_state_list(self) -> list[str]:
         return [item.strip() for item in self.tfs_closed_state_values.split(",") if item.strip()]
+
+    @computed_field
+    @property
+    def actual_period_editable_state_list(self) -> list[str]:
+        return [
+            item.strip()
+            for item in self.zni_actual_period_editable_states.split(",")
+            if item.strip()
+        ]
 
     @computed_field
     @property

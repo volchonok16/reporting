@@ -109,6 +109,47 @@ package "Задачи" #FFF8E8 {
     extra_json : jsonb
   }
 
+  class zni_external_data <<table>> {
+    +task_id : FK PK
+    priority : varchar
+    commercial_effect : text
+    actual_period : varchar
+    desired_date : date
+    desired_quarter : varchar
+  }
+
+  class app_notification <<table>> {
+    +id : bigserial PK
+    title : varchar
+    body : text
+    audience : varchar
+    created_by_org_user_id : FK
+  }
+
+  class app_notification_recipient <<table>> {
+    +id : bigserial PK
+    notification_id : FK
+    org_user_id : FK
+    read_at : timestamptz
+    popup_shown_at : timestamptz
+  }
+
+  class master_records <<table>> {
+    +id : text PK
+    a_number : text
+    b_numbers_json : text
+    source_prefix : text
+    comment : text
+    sort_order : integer
+  }
+
+  class master_edit_lock <<table>> {
+    +id : smallint PK
+    owner_user_id : text
+    owner_session_hash : text
+    owner_email : text
+  }
+
   class task_release <<table>> {
     task_id : FK PK
     release_id : FK PK
@@ -350,6 +391,9 @@ task "1" -- "0..*" task_comment
 task "1" -- "0..*" task_status_history
 task "1" -- "0..*" task_status_duration
 task "1" -- "0..*" task_assignee_history
+task "1" -- "0..1" zni_external_data
+org_user "1" -- "0..*" app_notification_recipient
+app_notification "1" -- "0..*" app_notification_recipient
 task "0..*" -- "0..*" release : task_release
 
 task_status_duration ..> v_task_backlog_duration : feeds

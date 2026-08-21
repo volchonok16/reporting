@@ -67,6 +67,52 @@
 | labels | text[] | Метки |
 | extra_json | jsonb | `area_path`, `board_column` и др. |
 
+## zni_external_data — внешние поля ЗНИ
+
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| task_id | bigint PK | ЗНИ (`task.id`) |
+| priority | varchar | Приоритет (не TFS) |
+| commercial_effect | text | Коммерческий эффект |
+| actual_period | varchar | Фактическая дата месяц/квартал (правка при статусах `ZNI_ACTUAL_PERIOD_EDITABLE_STATES`) |
+| desired_date | date | Желаемая дата |
+| desired_quarter | varchar | Желаемый квартал |
+
+## app_notification — уведомления
+
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| id | bigserial | PK |
+| title | varchar | Заголовок |
+| body | text | Текст |
+| audience | varchar | `all` / `users` / `departments` |
+| created_by_org_user_id | bigint | Автор |
+
+## app_notification_recipient — получатели
+
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| notification_id | bigint | Уведомление |
+| org_user_id | bigint | Получатель |
+| read_at | timestamptz | Прочитано |
+| popup_shown_at | timestamptz | Popup показан |
+
+## master_records — мастер-файл Voice
+
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| id | text | PK |
+| a_number | text | Номер A |
+| b_numbers_json | text | JSON B-номеров |
+| source_prefix | text | Префикс строки |
+| comment | text | Комментарий |
+| sort_order / version | integer | Порядок / версия |
+| deleted_at | double precision | Soft-delete |
+
+`master_changes.actor` — email пользователя Voice, выполнившего изменение (добавление / правка / удаление / слияние).
+
+См. также `master_state`, `master_changes`, `master_imports`, `master_edit_lock` (миграция `050_voice_master.sql`).
+
 ### extra_json (TFS ЗНИ)
 
 | Ключ | Источник TFS | Описание |

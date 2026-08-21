@@ -318,6 +318,50 @@
 
 ---
 
+## zni_external_data — внешние поля ЗНИ
+
+Локальные данные карточки ЗНИ, **не приходят из TFS** и не затираются синхронизацией. Заполняются в дашборде ЗНИ (`PATCH /api/tasks/{id}/external-data`, только администратор: PAT, legacy `app_user` без org или `org_user.role=admin`). Одна строка на `task.id`.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `task_id` | bigint PK | ЗНИ (`task.id`, `task_type = change_request`); ON DELETE CASCADE |
+| `priority` | varchar(255) | Приоритет |
+| `commercial_effect` | text | Коммерческий эффект |
+| `actual_period` | varchar(128) | Фактическая дата месяц/квартал. Редактирование только в статусах из `ZNI_ACTUAL_PERIOD_EDITABLE_STATES` (по умолчанию `UAT,Pilot,Closed`) — колонка доски или `System.State` |
+| `desired_date` | date | Желаемая дата |
+| `desired_quarter` | varchar(64) | Желаемый квартал |
+| `updated_at` | timestamptz | Последнее сохранение |
+
+---
+
+## app_notification — уведомление приложения
+
+Сообщения пользователям (всем, выбранным `org_user` или по отделам). Создаёт **только администратор** (`org_user.role=admin` или PAT). В UI — колокольчик рядом с именем и всплывающий toast.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `title` | varchar(255) | Заголовок |
+| `body` | text | Текст |
+| `audience` | varchar(32) | `all` / `users` / `departments` |
+| `created_by_org_user_id` | bigint | Автор (`org_user`); NULL для PAT |
+| `created_at` | timestamptz | Когда создано |
+
+## app_notification_recipient — получатель уведомления
+
+Развёрнутый список получателей на момент отправки.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `notification_id` | bigint | Уведомление |
+| `org_user_id` | bigint | Получатель |
+| `read_at` | timestamptz | Прочитано |
+| `popup_shown_at` | timestamptz | Показано всплывающее |
+| `created_at` | timestamptz | Когда создана запись |
+
+---
+
 ## task_release — задача в нескольких релизах
 
 Связь многие-ко-многим, если в источнике у задачи несколько Fix Versions / релизов.
@@ -663,6 +707,7 @@
 | `TFS_LINKED_BATCH_SIZE` | `200` | Порция ошибок (лимит TFS workItemsBatch = 200) |
 | `TFS_EXCLUDE_CLOSED_OLDER_THAN_DAYS` | `365` | Пропуск Closed ЗНИ старше N дней |
 | `TFS_CLOSED_STATE_VALUES` | `Closed` | Статусы для фильтра |
+| `ZNI_ACTUAL_PERIOD_EDITABLE_STATES` | `UAT,Pilot,Closed` | Статусы, в которых можно править «Фактическая дата месяц/квартал» |
 | `TFS_RESOURCE_RESERVATION_TYPE_VALUES` | `Бронь ресурсов` | Тип элемента TFS «Бронь ресурсов» для колонки «Бронь ресурса ЕЦТ» |
 
 Алгоритм: WIQL по AreaPath → `workItemsBatch` (поля) → WIQL `WorkItemLinks` (ЗНИ→Ошибка, ЗНИ→Related «Бронь ресурсов») → batch ошибок → upsert в `task` → `prune_stale` (не попали в выгрузку) → `prune_closed_before_current_year` (Closed с `ClosedDate` / валидной `closed_transitions` до текущего календарного года).
@@ -678,6 +723,8 @@
 | `POST /api/sync` | Синхронизация; body `{ board }` |
 | `GET /api/sync/status` | Статус и прогресс |
 | `GET /api/export/csv?board=` | CSV: ЗНИ + ошибки |
+| `PATCH /api/tasks/{id}/external-data` | Внешние поля ЗНИ (приоритет, коммерческий эффект, даты); не в TFS. Только администратор (`canManageOrg`). `actualPeriod` — только в статусах `ZNI_ACTUAL_PERIOD_EDITABLE_STATES` |
+| `GET/POST /api/notifications` | Inbox и отправка уведомлений; колокольчик в шапке. **Отправка только для администратора** (`org_user.role=admin` или PAT); получатели — `org_user` |
 
 Диаграммы: [diagrams.md](diagrams.md) · Production: [deploy/DEPLOY.md](../deploy/DEPLOY.md).
 
@@ -700,6 +747,27 @@
 Вкладка **Voice** (`SheetId = voice`) доступна всем авторизованным пользователям (same-origin `/voice/` → frontend-nginx → `voice-web` с `basePath=/voice`, `/voice-api/` → `voice-api`). Проверка маршрута: `GET /voice/reporting-voice.txt` должен вернуть `voice-ok` (не HTML reporting). Пользователи с `voice_only = true` (**Voice сервисы**) видят только эту вкладку; остальные вкладки для них скрыты. Тема iframe синхронизируется с reporting (`?theme=light|dark`).
 
 Авторизация единая: reporting выдаёт короткий SSO-токен (`POST /api/voice/sso-token`, секрет `VOICE_SSO_SECRET`), Voice обменивает его на свою сессию (`POST /api/auth/reporting-sso`) — отдельный логин карусели не нужен.
+
+**Мастер-файл Voice** хранится в PostgreSQL reporting (миграция `050_voice_master.sql`), не в SQLite `CAROUSEL_DATA_DIR`. Auth/uploads/jobs Voice остаются в SQLite под `/data`. `voice-api` подключается через `DATABASE_URL` / `VOICE_DATABASE_URL`.
+
+---
+
+## master_records — записи мастер-файла Voice
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | text | PK (стабильный id строки) |
+| `a_number` | text | Номер A |
+| `b_numbers_json` | text | JSON-массив номеров B |
+| `source_prefix` | text | Префикс/параметры строки (PANI, регион и т.п.) |
+| `comment` | text | Комментарий (до 50000 символов, проверка в API) |
+| `sort_order` | integer | Порядок в файле |
+| `version` | integer | Версия записи (optimistic concurrency) |
+| `created_at` / `updated_at` | double precision | Unix time |
+| `created_revision` / `updated_revision` | integer | Ревизии мастер-ветки |
+| `deleted_at` / `deleted_revision` | double precision / integer | Soft-delete |
+
+Связанные таблицы: `master_state`, `master_schema_meta`, `master_a_counts`, `master_exact_counts`, `master_changes` (в `actor` — email пользователя Voice, изменившего строку), `master_imports`, `master_import_items`, `master_import_number_warnings`, `master_duplicate_findings`, `master_edit_lock`.
 
 ---
 

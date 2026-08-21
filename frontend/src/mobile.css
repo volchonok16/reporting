@@ -200,6 +200,10 @@
     gap: 8px;
   }
 
+  .toolbar-right .dashboard-external-fields-toggle {
+    grid-column: 1 / -1;
+  }
+
   .toolbar-right .btn-primary,
   .toolbar-right .btn-secondary {
     width: 100%;

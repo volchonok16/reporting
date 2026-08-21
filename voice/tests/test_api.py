@@ -309,7 +309,7 @@ def test_master_clear_is_superuser_only_and_requires_lock(monkeypatch) -> None:
 
         calls: list[str] = []
 
-        def fake_clear(session_id: str) -> dict[str, int]:
+        def fake_clear(session_id: str, *, actor: str = "") -> dict[str, int]:
             calls.append(session_id)
             return {"revision": 27, "deleted": 14}
 

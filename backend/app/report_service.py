@@ -34,9 +34,10 @@ from app.iteration_plan import (
     quarter_key_from_date,
     quarter_label_from_key,
 )
-from app.models import Task
+from app.models import Task, ZniExternalData
 from app.roadmap_priority_service import roadmap_comment_from_task, roadmap_priority_from_task
 from app.digital_plan_service import ect_acceptance_from_task, has_uc_from_task
+from app.zni_external_data_service import actual_period_editable_statuses, load_external_data_by_task_ids
 from app.completed_metrics import has_customer_name
 from app.resource_reservation import ect_resource_reservation_label
 from app.zni_description import tfs_identity_display_name
@@ -336,7 +337,11 @@ def _matches_incident_error_row(
     return True
 
 
-def _change_request_to_out(row: Task, linked_errors: list[Task]) -> ChangeRequestOut:
+def _change_request_to_out(
+    row: Task,
+    linked_errors: list[Task],
+    external: ZniExternalData | None = None,
+) -> ChangeRequestOut:
     board_code_value = _extra(row).get("board_code")
     planned_date, _, quarter_label, planned_label = _task_plan_meta(row)
     return ChangeRequestOut(
@@ -374,6 +379,11 @@ def _change_request_to_out(row: Task, linked_errors: list[Task]) -> ChangeReques
             )
             for error in linked_errors
         ],
+        externalPriority=external.priority if external else None,
+        externalCommercialEffect=external.commercial_effect if external else None,
+        externalActualPeriod=external.actual_period if external else None,
+        externalDesiredDate=external.desired_date if external else None,
+        externalDesiredQuarter=external.desired_quarter if external else None,
     )
 
 
@@ -414,8 +424,13 @@ def load_change_requests_by_numbers(db: Session, numbers: list[str]) -> list[Cha
         )
     )
     errors_by_parent = _build_errors_by_parent(rows, error_rows)
+    external_by_id = load_external_data_by_task_ids(db, [row.id for row in rows])
     by_number = {
-        row.external_id: _change_request_to_out(row, errors_by_parent.get(row.id, []))
+        row.external_id: _change_request_to_out(
+            row,
+            errors_by_parent.get(row.id, []),
+            external_by_id.get(row.id),
+        )
         for row in rows
     }
     return [by_number[number] for number in normalized if number in by_number]
@@ -718,6 +733,7 @@ def load_change_requests(
             metrics=_empty_metrics(),
             items=[],
             totalShown=0,
+            actualPeriodEditableStatuses=actual_period_editable_statuses(),
         )
     else:
         scope = _boards_task_clause(matched)
@@ -787,11 +803,17 @@ def load_change_requests(
         combined_rows.sort(key=lambda pair: _sort_key(pair[1], sort_field), reverse=reverse)
 
     items: list[ChangeRequestOut] = []
+    external_by_id = load_external_data_by_task_ids(
+        db,
+        [row.id for row_type, row in combined_rows if row_type == "change_request"],
+    )
     for row_type, row in combined_rows:
         if row_type == "error":
             items.append(_incident_error_to_item(row))
             continue
-        items.append(_change_request_to_out(row, errors_by_parent.get(row.id, [])))
+        items.append(
+            _change_request_to_out(row, errors_by_parent.get(row.id, []), external_by_id.get(row.id))
+        )
 
     return DashboardOut(
         board=_board_out(board, boards) if board and not all_boards else None,
@@ -820,6 +842,7 @@ def load_change_requests(
             if tag_filter_supported_for_board(board_code)
             else []
         ),
+        actualPeriodEditableStatuses=actual_period_editable_statuses(),
     )
 
 
@@ -848,6 +871,11 @@ _EXPORT_HEADERS = [
     "Бронь ресурса ЕЦТ",
     "Доска",
     "Ошибки",
+    "Приоритет",
+    "Коммерческий эффект",
+    "Фактическая дата месяц/квартал",
+    "Желаемая дата",
+    "Желаемый квартал",
 ]
 _EXPORT_HEADER_FILL = PatternFill(fill_type="solid", fgColor="CCCCCC")
 _EXPORT_HEADER_FONT = Font(bold=True)
@@ -870,6 +898,11 @@ def _export_row_values(item: ChangeRequestOut) -> list[object]:
         ect_resource_reservation_label(item.ectResourceReservation),
         item.boardName or "",
         errors_text,
+        item.externalPriority or "",
+        item.externalCommercialEffect or "",
+        item.externalActualPeriod or "",
+        item.externalDesiredDate.isoformat() if item.externalDesiredDate else "",
+        item.externalDesiredQuarter or "",
     ]
 
 

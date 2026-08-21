@@ -30,6 +30,7 @@ from .models import (
     LoginRequest,
     MasterBatchDeleteARequest,
     MasterBatchDeleteBRequest,
+    MasterExactDuplicateCleanupRequest,
     MasterScopedBatchDeleteBRequest,
     MasterImportAnalyzeRequest,
     MasterLockNotificationRequest,
@@ -69,7 +70,10 @@ job_service = JobService(settings, registry)
 validation_service = ValidationService(settings.preview_limit)
 mapping_index_service = MappingIndexService(validation_service)
 master_service = MasterService(settings, registry, validation_service)
-master_lock_service = MasterLockService(registry)
+master_lock_service = MasterLockService(
+    registry,
+    database_url=settings.database_url or None,
+)
 
 
 @asynccontextmanager
@@ -297,6 +301,9 @@ def list_master_records(
     region: Annotated[list[int] | None, Query()] = None,
     sort: str = "base",
     duplicatesOnly: bool = False,
+    exactDuplicatesOnly: bool = False,
+    exactDuplicateExtrasOnly: bool = False,
+    shortAonOnly: bool = False,
     invalidOnly: bool = False,
     invalidStartOnly: bool = False,
     offset: int = 0,
@@ -314,6 +321,9 @@ def list_master_records(
         regions=region or (),
         sort=sort,
         duplicates_only=duplicatesOnly,
+        exact_duplicates_only=exactDuplicatesOnly,
+        exact_duplicate_extras_only=exactDuplicateExtrasOnly,
+        short_aon_only=shortAonOnly,
         invalid_only=invalidOnly,
         invalid_start_only=invalidStartOnly,
         offset=offset,
@@ -491,43 +501,72 @@ def merge_master_import(
     import_id: str,
     body: MasterMergeRequest,
     session_id: MasterActionSessionId,
+    user: CurrentUser,
 ) -> dict[str, Any]:
-    return master_service.merge_import(import_id, body, session_id)
+    return master_service.merge_import(
+        import_id, body, session_id, actor=user.email
+    )
 
 
 @app.post("/api/master/records", status_code=201)
 def create_master_record(
     body: MasterRecordRequest,
     session_id: MasterActionSessionId,
+    user: CurrentUser,
 ) -> dict[str, Any]:
-    return master_service.create_record(body, session_id)
+    return master_service.create_record(body, session_id, actor=user.email)
 
 
 @app.post("/api/master/records/batch-delete-a")
 def batch_delete_master_records(
     body: MasterBatchDeleteARequest,
     session_id: MasterActionSessionId,
+    user: CurrentUser,
 ) -> dict[str, Any]:
-    return master_service.delete_records_by_a(body.aNumbers, session_id)
+    return master_service.delete_records_by_a(
+        body.aNumbers, session_id, actor=user.email
+    )
 
 
 @app.post("/api/master/records/batch-delete-b")
 def batch_delete_master_aons(
     body: MasterBatchDeleteBRequest,
     session_id: MasterActionSessionId,
+    user: CurrentUser,
 ) -> dict[str, Any]:
-    return master_service.delete_b_numbers(body.bNumbers, session_id)
+    return master_service.delete_b_numbers(
+        body.bNumbers, session_id, actor=user.email
+    )
 
 
 @app.post("/api/master/records/batch-delete-b-scoped")
 def batch_delete_master_aons_for_selected_records(
     body: MasterScopedBatchDeleteBRequest,
     session_id: MasterActionSessionId,
+    user: CurrentUser,
 ) -> dict[str, Any]:
-    return master_service.delete_b_numbers_for_a(
-        body.aNumbers,
-        body.bNumbers,
-        session_id,
+    return master_service.delete_b_numbers_for_selection(
+        a_numbers=body.aNumbers,
+        record_ids=body.recordIds,
+        excluded_record_ids=body.excludedRecordIds,
+        record_filter=body.filter,
+        b_numbers=body.bNumbers,
+        session_id=session_id,
+        actor=user.email,
+    )
+
+
+@app.post("/api/master/records/delete-exact-duplicate-extras")
+def delete_master_exact_duplicate_extras(
+    body: MasterExactDuplicateCleanupRequest,
+    session_id: MasterActionSessionId,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    return master_service.delete_exact_duplicate_extras(
+        record_filter=body.filter,
+        excluded_record_ids=body.excludedRecordIds,
+        session_id=session_id,
+        actor=user.email,
     )
 
 
@@ -536,25 +575,31 @@ def update_master_record(
     record_id: str,
     body: MasterRecordRequest,
     session_id: MasterActionSessionId,
+    user: CurrentUser,
 ) -> dict[str, Any]:
-    return master_service.update_record(record_id, body, session_id)
+    return master_service.update_record(
+        record_id, body, session_id, actor=user.email
+    )
 
 
 @app.delete("/api/master/records/{record_id}")
 def delete_master_record(
     record_id: str,
     session_id: MasterActionSessionId,
+    user: CurrentUser,
     expectedVersion: int | None = None,
 ) -> dict[str, Any]:
-    return master_service.delete_record(record_id, expectedVersion, session_id)
+    return master_service.delete_record(
+        record_id, expectedVersion, session_id, actor=user.email
+    )
 
 
 @app.delete("/api/master/records")
 def clear_master_records(
-    _user: Superuser,
+    user: Superuser,
     session_id: MasterActionSessionId,
 ) -> dict[str, Any]:
-    return master_service.clear_records(session_id)
+    return master_service.clear_records(session_id, actor=user.email)
 
 
 @app.get("/api/master/export")

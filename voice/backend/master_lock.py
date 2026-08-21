@@ -8,73 +8,35 @@ from typing import Any
 
 from .auth import AuthUser
 from .errors import AppError
+from .pg_db import PgConnection, PgRow, configure as configure_master_db, connect as pg_connect
 from .storage import Registry
 
 
 class MasterLockService:
-    """Persistent exclusive edit lock for the master database."""
+    """Persistent exclusive edit lock for the master database (Postgres)."""
 
-    def __init__(self, registry: Registry):
-        self.database_path = registry.database_path
+    def __init__(self, registry: Registry, database_url: str | None = None):
+        self.auth_database_path = registry.database_path
+        self._database_url = database_url
         self._lock = threading.RLock()
         self._initialize()
 
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database_path, timeout=30)
+    def _connect(self) -> PgConnection:
+        if self._database_url:
+            configure_master_db(self._database_url)
+        else:
+            configure_master_db()
+        return pg_connect()
+
+    def _auth_connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.auth_database_path, timeout=30)
         connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA journal_mode=WAL")
-        connection.execute("PRAGMA busy_timeout=30000")
         connection.execute("PRAGMA foreign_keys=ON")
         return connection
 
     def _initialize(self) -> None:
         with self._connect() as connection:
-            columns = {
-                str(row["name"])
-                for row in connection.execute(
-                    "PRAGMA table_info(master_edit_lock)"
-                )
-            }
-            if columns and "owner_session_hash" not in columns:
-                connection.execute("DROP TABLE master_edit_lock")
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS master_edit_lock (
-                    id INTEGER PRIMARY KEY CHECK(id = 1),
-                    owner_user_id TEXT NOT NULL,
-                    owner_session_hash TEXT NOT NULL,
-                    acquired_at REAL NOT NULL,
-                    notification_sequence INTEGER NOT NULL DEFAULT 0,
-                    notification_kind TEXT,
-                    notification_requester_id TEXT,
-                    notification_requester_email TEXT,
-                    notification_created_at REAL,
-                    FOREIGN KEY(owner_user_id) REFERENCES auth_users(id)
-                        ON DELETE CASCADE,
-                    FOREIGN KEY(owner_session_hash)
-                        REFERENCES auth_sessions(token_hash)
-                        ON DELETE CASCADE
-                )
-                """
-            )
-            columns = {
-                str(row["name"])
-                for row in connection.execute(
-                    "PRAGMA table_info(master_edit_lock)"
-                )
-            }
-            additions = {
-                "notification_sequence": "INTEGER NOT NULL DEFAULT 0",
-                "notification_kind": "TEXT",
-                "notification_requester_id": "TEXT",
-                "notification_requester_email": "TEXT",
-                "notification_created_at": "REAL",
-            }
-            for name, definition in additions.items():
-                if name not in columns:
-                    connection.execute(
-                        f"ALTER TABLE master_edit_lock ADD COLUMN {name} {definition}"
-                    )
+            connection.execute("SELECT 1 FROM master_edit_lock WHERE id = 1")
 
     @staticmethod
     def _token_hash(token: str) -> str:
@@ -82,7 +44,7 @@ class MasterLockService:
 
     @staticmethod
     def _payload(
-        row: sqlite3.Row | None,
+        row: PgRow | sqlite3.Row | None,
         current_user: AuthUser,
         current_session_hash: str,
     ) -> dict[str, Any]:
@@ -132,46 +94,73 @@ class MasterLockService:
             "notification": notification,
         }
 
-    @staticmethod
-    def _owner_row(connection: sqlite3.Connection) -> sqlite3.Row | None:
-        connection.execute(
-            "DELETE FROM auth_sessions WHERE expires_at <= ?",
-            (time.time(),),
-        )
+    def _auth_owner_valid(
+        self,
+        owner_user_id: str,
+        owner_session_hash: str,
+    ) -> tuple[bool, str]:
+        """Validate lock owner against SQLite auth; return (ok, email)."""
+        with self._auth_connect() as connection:
+            connection.execute(
+                "DELETE FROM auth_sessions WHERE expires_at <= ?",
+                (time.time(),),
+            )
+            row = connection.execute(
+                """
+                SELECT
+                    user.email AS owner_email,
+                    user.role AS owner_role,
+                    user.can_access_master AS owner_can_access_master,
+                    user.is_active AS owner_is_active
+                FROM auth_sessions AS session
+                JOIN auth_users AS user ON user.id = session.user_id
+                WHERE session.token_hash = ?
+                  AND session.user_id = ?
+                """,
+                (owner_session_hash, owner_user_id),
+            ).fetchone()
+            if row is None:
+                return False, ""
+            owner_has_access = (
+                str(row["owner_role"]) == "superuser"
+                or bool(row["owner_can_access_master"])
+            )
+            if not bool(row["owner_is_active"]) or not owner_has_access:
+                return False, ""
+            return True, str(row["owner_email"])
+
+    def _owner_row(self, connection: PgConnection) -> PgRow | None:
         row = connection.execute(
             """
             SELECT
-                lock.owner_user_id,
-                lock.owner_session_hash,
-                lock.acquired_at,
-                lock.notification_sequence,
-                lock.notification_kind,
-                lock.notification_requester_id,
-                lock.notification_requester_email,
-                lock.notification_created_at,
-                user.email AS owner_email,
-                user.role AS owner_role,
-                user.can_access_master AS owner_can_access_master,
-                user.is_active AS owner_is_active
-            FROM master_edit_lock AS lock
-            JOIN auth_users AS user ON user.id = lock.owner_user_id
-            JOIN auth_sessions AS session
-                ON session.token_hash = lock.owner_session_hash
-               AND session.user_id = lock.owner_user_id
-            WHERE lock.id = 1
+                owner_user_id,
+                owner_session_hash,
+                owner_email,
+                acquired_at,
+                notification_sequence,
+                notification_kind,
+                notification_requester_id,
+                notification_requester_email,
+                notification_created_at
+            FROM master_edit_lock
+            WHERE id = 1
             """
         ).fetchone()
         if row is None:
-            # Session expired/removed or user gone — drop stale lock row.
-            connection.execute("DELETE FROM master_edit_lock WHERE id = 1")
             return None
-        owner_has_access = (
-            str(row["owner_role"]) == "superuser"
-            or bool(row["owner_can_access_master"])
+        ok, email = self._auth_owner_valid(
+            str(row["owner_user_id"]),
+            str(row["owner_session_hash"]),
         )
-        if not bool(row["owner_is_active"]) or not owner_has_access:
+        if not ok:
             connection.execute("DELETE FROM master_edit_lock WHERE id = 1")
             return None
+        if email and email != str(row["owner_email"] or ""):
+            connection.execute(
+                "UPDATE master_edit_lock SET owner_email = ? WHERE id = 1",
+                (email,),
+            )
+            row["owner_email"] = email
         return row
 
     def status(
@@ -200,12 +189,12 @@ class MasterLockService:
             if row is not None:
                 if str(row["owner_session_hash"]) == session_hash:
                     return self._payload(row, current_user, session_hash)
-                # Same user, another tab/SSO session: reclaim the lock.
                 if str(row["owner_user_id"]) == current_user.id:
                     connection.execute(
                         """
                         UPDATE master_edit_lock
                         SET owner_session_hash = ?,
+                            owner_email = ?,
                             notification_sequence = 0,
                             notification_kind = NULL,
                             notification_requester_id = NULL,
@@ -213,7 +202,7 @@ class MasterLockService:
                             notification_created_at = NULL
                         WHERE id = 1
                         """,
-                        (session_hash,),
+                        (session_hash, current_user.email),
                     )
                     reclaimed = self._owner_row(connection)
                     assert reclaimed is not None
@@ -231,10 +220,10 @@ class MasterLockService:
             connection.execute(
                 """
                 INSERT INTO master_edit_lock(
-                    id, owner_user_id, owner_session_hash, acquired_at
-                ) VALUES (1, ?, ?, ?)
+                    id, owner_user_id, owner_session_hash, owner_email, acquired_at
+                ) VALUES (1, ?, ?, ?, ?)
                 """,
-                (current_user.id, session_hash, time.time()),
+                (current_user.id, session_hash, current_user.email, time.time()),
             )
             acquired = self._owner_row(connection)
             assert acquired is not None

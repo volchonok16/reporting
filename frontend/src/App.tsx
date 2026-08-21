@@ -13,6 +13,7 @@ export default function App() {
   const [canManageOrg, setCanManageOrg] = useState(false)
   const [voiceOnly, setVoiceOnly] = useState(false)
   const [orgEmployeeId, setOrgEmployeeId] = useState<number | null>(null)
+  const [orgUserId, setOrgUserId] = useState<number | null>(null)
   const [orgEmployeeName, setOrgEmployeeName] = useState<string | null>(null)
   const [orgEmployeePhotoUrl, setOrgEmployeePhotoUrl] = useState<string | null>(null)
   const [username, setUsername] = useState<string | null>(null)
@@ -43,6 +44,7 @@ export default function App() {
       setCanManageOrg(Boolean(data.canManageOrg))
       setVoiceOnly(Boolean(data.voiceOnly))
       setOrgEmployeeId(typeof data.orgEmployeeId === 'number' ? data.orgEmployeeId : null)
+      setOrgUserId(typeof data.orgUserId === 'number' ? data.orgUserId : null)
       setOrgEmployeeName(typeof data.orgEmployeeName === 'string' ? data.orgEmployeeName : null)
       setOrgEmployeePhotoUrl(
         typeof data.orgEmployeePhotoUrl === 'string' ? data.orgEmployeePhotoUrl : null,
@@ -83,6 +85,7 @@ export default function App() {
       canSyncTfs={canSyncTfs}
       canManageOrg={canManageOrg}
       voiceOnly={voiceOnly}
+      orgUserId={orgUserId}
       orgEmployeeId={orgEmployeeId}
       orgEmployeePhotoUrl={orgEmployeePhotoUrl}
       accountLabel={orgEmployeeName ?? username}

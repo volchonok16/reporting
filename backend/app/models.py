@@ -95,6 +95,18 @@ class Task(Base):
     last_synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class ZniExternalData(Base):
+    __tablename__ = "zni_external_data"
+
+    task_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("task.id", ondelete="CASCADE"), primary_key=True)
+    priority: Mapped[str | None] = mapped_column(String(255))
+    commercial_effect: Mapped[str | None] = mapped_column(Text)
+    actual_period: Mapped[str | None] = mapped_column(String(128))
+    desired_date: Mapped[date | None] = mapped_column(Date)
+    desired_quarter: Mapped[str | None] = mapped_column(String(64))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class SyncRun(Base):
     __tablename__ = "sync_run"
 

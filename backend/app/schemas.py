@@ -110,6 +110,11 @@ class ChangeRequestOut(BaseModel):
     hasUc: bool = False
     linkedEnvironments: list[LinkedEnvironmentOut] = Field(default_factory=list)
     errors: list[LinkedErrorOut] = Field(default_factory=list)
+    externalPriority: str | None = None
+    externalCommercialEffect: str | None = None
+    externalActualPeriod: str | None = None
+    externalDesiredDate: date | None = None
+    externalDesiredQuarter: str | None = None
 
 
 class DashboardMetricsOut(BaseModel):
@@ -130,6 +135,10 @@ class DashboardOut(BaseModel):
     availableStatuses: list[str] = Field(default_factory=list)
     availableQuarters: list[QuarterOptionOut] = Field(default_factory=list)
     availableTagGroups: list[TagFilterGroupOut] = Field(default_factory=list)
+    actualPeriodEditableStatuses: list[str] = Field(
+        default_factory=list,
+        description="Статусы, в которых можно править «Фактическая дата месяц/квартал»",
+    )
 
 
 class ProductStatusSheetOut(BaseModel):
@@ -255,6 +264,18 @@ class DigitalPlanUcUpdateIn(BaseModel):
         default=None,
         description="UC есть (true) / нет (false); null — сброс",
     )
+
+
+class ZniExternalDataUpdateIn(BaseModel):
+    priority: str | None = Field(default=None, max_length=255, description="Приоритет (внешний)")
+    commercialEffect: str | None = Field(default=None, max_length=4000, description="Коммерческий эффект")
+    actualPeriod: str | None = Field(
+        default=None,
+        max_length=128,
+        description="Фактическая дата месяц/квартал",
+    )
+    desiredDate: date | None = Field(default=None, description="Желаемая дата")
+    desiredQuarter: str | None = Field(default=None, max_length=64, description="Желаемый квартал")
 
 
 class SyncRunOut(BaseModel):

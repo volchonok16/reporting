@@ -435,6 +435,7 @@ class JobService:
         )
         parser = MappingParser(
             auto_detect=True,
+            allow_mixed_templates=True,
             allow_number_whitespace=True,
         )
         stats = MappingBuilder(spool, report).build_formatted(
