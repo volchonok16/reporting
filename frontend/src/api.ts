@@ -19,19 +19,22 @@ export function resolveApiBase(): string {
     return ''
   }
 
-  // Тестовый стенд: UI my-testing.ru → API api.my-testing.ru (не taskatestovaya из prod-дефолта)
+  // Тестовый стенд: всегда api.my-testing.ru (игнор prod-дефолта taskatestovaya в образе)
   if (isDevStandHost) {
     if (fromEnv.includes('my-testing.ru')) return fromEnv
     return `${protocol}//api.my-testing.ru`
   }
 
+  // Образ собран под другой стенд — не ходить на чужой API
+  if (fromEnv.includes('taskatestovaya.ru') && !isCorpUiHost) {
+    return isLocalHost ? '' : `${protocol}//api.${hostname.replace(/^www\./, '')}`
+  }
+
   const envPointsToLocal =
     !fromEnv || fromEnv.includes('localhost') || fromEnv.includes('127.0.0.1')
   if (isLocalHost && envPointsToLocal) {
-    // Vite proxy /api → backend; same-origin — работает и при SSH-туннеле только на :5173
     return ''
   }
-  // Сборка с VITE_API_URL=localhost, но UI открыт по домену/IP — same-origin через nginx
   if (!isLocalHost && envPointsToLocal) {
     return ''
   }
