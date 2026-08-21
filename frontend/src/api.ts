@@ -4,20 +4,35 @@ export function resolveApiBase(): string {
   const fromEnv = (import.meta.env.VITE_API_URL as string | undefined)?.trim().replace(/\/$/, '') ?? ''
   if (typeof window === 'undefined') return fromEnv
 
-  const { hostname } = window.location
+  const { hostname, protocol } = window.location
+  const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1'
   const isCorpUiHost =
     hostname === 'taskatestovaya.ru' || hostname === 'www.taskatestovaya.ru'
   const isPallinkHost = hostname === 'pallink.fun' || hostname === 'www.pallink.fun'
+  const isDevStandHost =
+    hostname === 'my-testing.ru' ||
+    hostname === 'www.my-testing.ru' ||
+    hostname.endsWith('.my-testing.ru')
 
   if (isCorpUiHost || isPallinkHost) {
     // nginx проксирует /api/ → backend (HTTP или HTTPS), same-origin
     return ''
   }
 
+  // Тестовый стенд: UI my-testing.ru → API api.my-testing.ru (не taskatestovaya из prod-дефолта)
+  if (isDevStandHost) {
+    if (fromEnv.includes('my-testing.ru')) return fromEnv
+    return `${protocol}//api.my-testing.ru`
+  }
+
   const envPointsToLocal =
     !fromEnv || fromEnv.includes('localhost') || fromEnv.includes('127.0.0.1')
-  if ((hostname === 'localhost' || hostname === '127.0.0.1') && envPointsToLocal) {
+  if (isLocalHost && envPointsToLocal) {
     // Vite proxy /api → backend; same-origin — работает и при SSH-туннеле только на :5173
+    return ''
+  }
+  // Сборка с VITE_API_URL=localhost, но UI открыт по домену/IP — same-origin через nginx
+  if (!isLocalHost && envPointsToLocal) {
     return ''
   }
   return fromEnv

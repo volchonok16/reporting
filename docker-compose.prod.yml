@@ -21,6 +21,8 @@ services:
     build:
       context: ./frontend
       args:
+        # Задайте VITE_API_URL в .env стенда (для my-testing.ru: http://api.my-testing.ru).
+        # Пустой дефолт опасен молча; corp: https://api.taskatestovaya.ru в .env.production.
         VITE_API_URL: ${VITE_API_URL:-https://api.taskatestovaya.ru}
     ports:
       - "127.0.0.1:5173:5173"
