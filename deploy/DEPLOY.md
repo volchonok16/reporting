@@ -1,6 +1,35 @@
-# Деплой на pallink.fun / taskatestovaya.ru
+# Деплой на pallink.fun / taskatestovaya.ru / my-testing.ru
 
-## Требования
+## Ветка `dev` (тестовый стенд)
+
+По умолчанию HTTP nginx под **`my-testing.ru`** (или `APP_DOMAIN` в `.env`). Можно указать любой домен или принять любой Host:
+
+```bash
+# my-testing.ru (или APP_DOMAIN из .env)
+sudo bash deploy/setup-nginx-http.sh
+
+# явный домен
+sudo bash deploy/setup-nginx-http.sh --domain=example.com
+
+# любой Host / IP (удобно без DNS)
+sudo bash deploy/setup-nginx-http.sh --any-host
+```
+
+Шаблоны: `deploy/nginx/dev-http.conf.template`, `deploy/nginx/dev-any-host.conf`.
+
+### DNS для my-testing.ru
+
+| Хост | Назначение |
+|------|------------|
+| `my-testing.ru` | UI |
+| `www.my-testing.ru` | UI |
+| `api.my-testing.ru` | API |
+| `minio.my-testing.ru` | MinIO (опционально) |
+| `minio-console.my-testing.ru` | MinIO Console (опционально) |
+
+## Production (corp + pallink)
+
+### Требования
 
 - Ubuntu/Debian VPS или corp Linux-сервер
 - Docker + Docker Compose (`docker compose` или `docker-compose`)

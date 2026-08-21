@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 # Деплой offline-bundle на закрытом сервере (без Docker Hub).
 #
-# Одна команда (образы + nginx pallink + туннель Postgres :5432):
+# Ветка dev / тест (my-testing.ru или APP_DOMAIN из .env):
+#   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --tunnel
+#   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --domain=example.com --tunnel
+#   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --any-host --tunnel
+#
+# Legacy:
 #   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --pallink --tunnel
 #
-# Варианты:
-#   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --pallink
-#   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx
-#   bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel
-#   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-ssl
-#
-# --with-nginx: HTTP nginx (без certbot)
-# --pallink:    только pallink.fun (иначе bootstrap corp+pallink)
+# --with-nginx: HTTP nginx (без certbot); без --pallink → APP_DOMAIN / my-testing.ru
+# --domain=X:   nginx под домен X
+# --any-host:   nginx принимает любой Host/IP
+# --pallink:    только pallink.fun
 # --tunnel:     Postgres на 127.0.0.1:5432 (SSH → DBeaver)
 # --with-ssl:   nginx + Let's Encrypt / corp-сертификат
 set -euo pipefail
@@ -30,6 +31,8 @@ TUNNEL=0
 WITH_NGINX=0
 WITH_SSL=0
 PALLINK=0
+ANY_HOST=0
+NGINX_DOMAIN=""
 
 for arg in "$@"; do
   case "$arg" in
@@ -37,6 +40,10 @@ for arg in "$@"; do
     --with-nginx) WITH_NGINX=1 ;;
     --with-ssl) WITH_SSL=1; WITH_NGINX=1 ;;
     --pallink) PALLINK=1 ;;
+    --any-host|--any) ANY_HOST=1 ;;
+    --domain=*)
+      NGINX_DOMAIN="${arg#--domain=}"
+      ;;
     --*)
       echo "Неизвестный аргумент: $arg" >&2
       exit 1
@@ -162,11 +169,21 @@ else
   echo "  Проверьте: docker ps | grep voice; docker exec reporting-frontend cat /etc/nginx/conf.d/default.conf | grep -A6 'location /voice'" >&2
 fi
 
-UI_URL="http://taskatestovaya.ru/"
-API_CHECK="http://taskatestovaya.ru/api/health"
-if [[ "$PALLINK" -eq 1 ]]; then
+UI_URL="http://my-testing.ru/"
+API_CHECK="http://my-testing.ru/api/health"
+APP_DOMAIN_HINT="$(read_env APP_DOMAIN my-testing.ru)"
+if [[ -n "$NGINX_DOMAIN" ]]; then
+  UI_URL="http://${NGINX_DOMAIN}/"
+  API_CHECK="http://${NGINX_DOMAIN}/api/health"
+elif [[ "$ANY_HOST" -eq 1 ]]; then
+  UI_URL="http://<host-or-ip>/"
+  API_CHECK="http://127.0.0.1/api/health"
+elif [[ "$PALLINK" -eq 1 ]]; then
   UI_URL="http://pallink.fun/"
   API_CHECK="http://pallink.fun/api/health"
+else
+  UI_URL="http://${APP_DOMAIN_HINT}/"
+  API_CHECK="http://${APP_DOMAIN_HINT}/api/health"
 fi
 
 if [[ "$WITH_NGINX" -eq 1 ]]; then
@@ -177,7 +194,15 @@ if [[ "$WITH_NGINX" -eq 1 ]]; then
   else
     echo "==> Nginx HTTP…"
     NGINX_ARGS=()
-    [[ "$PALLINK" -eq 1 ]] && NGINX_ARGS+=(--pallink)
+    if [[ "$PALLINK" -eq 1 ]]; then
+      NGINX_ARGS+=(--pallink)
+    elif [[ "$ANY_HOST" -eq 1 ]]; then
+      NGINX_ARGS+=(--any-host)
+    elif [[ -n "$NGINX_DOMAIN" ]]; then
+      NGINX_ARGS+=(--domain="$NGINX_DOMAIN")
+    else
+      NGINX_ARGS+=(--domain="$APP_DOMAIN_HINT")
+    fi
     bash "$ROOT/deploy/setup-nginx-http.sh" "${NGINX_ARGS[@]}" || echo "Предупреждение: nginx HTTP не настроен" >&2
   fi
 

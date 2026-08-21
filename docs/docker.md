@@ -37,17 +37,24 @@ scp dist/reporting-offline.tar root@SERVER:/tmp/
 **Деплой на сервере** (после `git pull` и `.env`) — одной командой:
 
 ```bash
-cp .env.pallink-offline.example .env   # один раз, заполнить пароли
-sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --pallink --tunnel
+# Ветка dev / тест: my-testing.ru (или APP_DOMAIN в .env)
+cp .env.example .env   # один раз; задайте APP_DOMAIN=my-testing.ru
+sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --tunnel
+
+# Любой Host/IP (без привязки к DNS-имени):
+sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --any-host --tunnel
+
+# Явный домен:
+sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --domain=example.com --tunnel
 ```
 
-Поднимает offline-образы, Voice, HTTP nginx для pallink.fun и Postgres на `127.0.0.1:5432` (SSH → DBeaver).
+Поднимает offline-образы, Voice, HTTP nginx и Postgres на `127.0.0.1:5432` (SSH → DBeaver).
 
 Другие варианты:
 
 ```bash
-# Corp taskatestovaya.ru (HTTP):
-sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --tunnel
+# Legacy pallink.fun:
+sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --pallink --tunnel
 
 # только контейнеры (без nginx):
 bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel
@@ -56,17 +63,19 @@ bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel
 sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-ssl --tunnel
 ```
 
-`--with-nginx --pallink` → `deploy/nginx/pallink-http.conf` (только pallink.fun / www / api / minio + `/voice/`).  
-`--with-nginx` без флага → bootstrap corp+pallink.  
+`--with-nginx` (dev) → `deploy/nginx/dev-http.conf.template` с `APP_DOMAIN` / `my-testing.ru` (www, api, minio + `/voice/`).  
+`--with-nginx --any-host` → `deploy/nginx/dev-any-host.conf` (любой Host/IP).  
+`--with-nginx --domain=X` → тот же шаблон под домен `X`.  
+`--with-nginx --pallink` → `deploy/nginx/pallink-http.conf` (legacy).  
 `--tunnel` → `docker-compose.db-tunnel.yml` (Postgres `:5432` на localhost).  
 `--with-ssl` → `deploy/setup-nginx-ssl.sh`.
 
-DNS для pallink HTTP: `pallink.fun`, `www.pallink.fun`, `api.pallink.fun` → IP сервера.  
+DNS для тестового HTTP: `my-testing.ru`, `www.my-testing.ru`, `api.my-testing.ru` → IP сервера (или `--any-host`).  
 UI ходит в API same-origin (`/api/…`); Voice — `/voice/` и `/voice-api/`.
 
 Compose-файлы: `docker-compose.prod.yml` + `docker-compose.offline.yml` (+ `db-tunnel.yml` при `--tunnel`).
 
-Обновление: `offline-bundle.sh` на Mac → `scp` tar → на сервере `git pull` + та же одна команда `offline-deploy.sh … --with-nginx --pallink --tunnel`.
+Обновление: `offline-bundle.sh` на Mac → `scp` tar → на сервере `git pull` + `offline-deploy.sh … --with-nginx --tunnel`.
 
 ## Полный стек вручную (dev)
 
