@@ -12,7 +12,7 @@ ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV VOICE_BASE_PATH=${VOICE_BASE_PATH}
 
 COPY app ./app
-COPY build ./build
+COPY plugins ./plugins
 COPY db ./db
 COPY public ./public
 COPY drizzle ./drizzle

@@ -26,7 +26,6 @@ dist/*.manifest.txt
 # Voice (carousel) local artifacts
 voice/node_modules/
 voice/.next/
-voice/build/
 voice/data/*.sqlite3-shm
 voice/data/*.sqlite3-wal
 voice/data/uploads/
