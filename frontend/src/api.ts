@@ -14,15 +14,9 @@ export function resolveApiBase(): string {
     hostname === 'www.my-testing.ru' ||
     hostname.endsWith('.my-testing.ru')
 
-  if (isCorpUiHost || isPallinkHost) {
+  if (isCorpUiHost || isPallinkHost || isDevStandHost) {
     // nginx проксирует /api/ → backend (HTTP или HTTPS), same-origin
     return ''
-  }
-
-  // Тестовый стенд: всегда api.my-testing.ru (игнор prod-дефолта taskatestovaya в образе)
-  if (isDevStandHost) {
-    if (fromEnv.includes('my-testing.ru')) return fromEnv
-    return `${protocol}//api.my-testing.ru`
   }
 
   // Образ собран под другой стенд — не ходить на чужой API
