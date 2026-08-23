@@ -125,6 +125,8 @@
 | `master_changes` | Voice: журнал изменений по ревизиям |
 | `master_imports` / `master_import_items` / … | Voice: импорт и анализ загрузок |
 | `master_edit_lock` | Voice: эксклюзивная блокировка редактирования |
+| `voice_uploads` | Voice: метаданные загруженных файлов |
+| `voice_jobs` | Voice: задания обработки |
 | `org_chart_layout` | Сохранённая ручная раскладка оргсхемы (координаты карточек и линии) |
 | `youjail_board` | Доски YouJail (общие/командные и личные по `owner_employee_id`) |
 | `youjail_board_pin` | Закреплённые доски пользователя (персональный порядок) |

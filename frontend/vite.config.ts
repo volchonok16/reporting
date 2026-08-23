@@ -41,9 +41,8 @@ export default defineConfig({
         ws: true,
       },
       '/voice-api': {
-        target: process.env.VITE_VOICE_API_PROXY_TARGET ?? 'http://127.0.0.1:8100',
+        target: process.env.VITE_VOICE_API_PROXY_TARGET ?? apiProxyTarget,
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/voice-api/, ''),
       },
       // vinext: basePath в HTML, статика на /assets/
       '/voice/assets': {

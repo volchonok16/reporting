@@ -314,16 +314,15 @@ A-номера raw- или готового файла. Параметр сод�
 
 ## Авторизация
 
-- `POST /api/auth/login` — вход по `email` и `password`, возвращает bearer-токен;
-- `GET /api/auth/me`, `POST /api/auth/logout`,
-  `POST /api/auth/change-password` — текущий пользователь и его сессия;
-- `GET /api/auth/users`, `POST /api/auth/users`,
-  `PUT /api/auth/users/{id}` — управление пользователями, доступно только
-  суперюзеру.
+- `POST /api/auth/reporting-sso` — обмен SSO-токена reporting
+  (`POST /api/voice/sso-token` в reporting) на bearer-сессию Voice;
+- `GET /api/auth/me`, `POST /api/auth/logout` — текущий пользователь и выход.
 
-Все рабочие API, кроме `/api/health` и `/api/auth/login`, требуют заголовок
-`Authorization: Bearer {token}`. Методы мастер-файла дополнительно проверяют
-роль суперюзера или разрешение `canAccessMaster`.
+Отдельного логина, регистрации и управления пользователями в Voice нет —
+учётные записи только в reporting.
+
+Все рабочие API, кроме `/api/health` и `/api/auth/reporting-sso`, требуют
+заголовок `Authorization: Bearer {token}`.
 
 ## Мастер файл
 

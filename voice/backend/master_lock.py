@@ -1,22 +1,28 @@
 from __future__ import annotations
 
 import hashlib
-import sqlite3
 import threading
 import time
 from typing import Any
 
-from .auth import AuthUser
+from .auth import AuthService, AuthUser
 from .errors import AppError
 from .pg_db import PgConnection, PgRow, configure as configure_master_db, connect as pg_connect
+from .reporting_sso import verify_voice_session_token
 from .storage import Registry
 
 
 class MasterLockService:
     """Persistent exclusive edit lock for the master database (Postgres)."""
 
-    def __init__(self, registry: Registry, database_url: str | None = None):
-        self.auth_database_path = registry.database_path
+    def __init__(
+        self,
+        registry: Registry,
+        auth_service: AuthService,
+        database_url: str | None = None,
+    ):
+        self.registry = registry
+        self.auth_service = auth_service
         self._database_url = database_url
         self._lock = threading.RLock()
         self._initialize()
@@ -28,12 +34,6 @@ class MasterLockService:
             configure_master_db()
         return pg_connect()
 
-    def _auth_connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.auth_database_path, timeout=30)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys=ON")
-        return connection
-
     def _initialize(self) -> None:
         with self._connect() as connection:
             connection.execute("SELECT 1 FROM master_edit_lock WHERE id = 1")
@@ -44,7 +44,7 @@ class MasterLockService:
 
     @staticmethod
     def _payload(
-        row: PgRow | sqlite3.Row | None,
+        row: PgRow | None,
         current_user: AuthUser,
         current_session_hash: str,
     ) -> dict[str, Any]:
@@ -98,36 +98,16 @@ class MasterLockService:
         self,
         owner_user_id: str,
         owner_session_hash: str,
+        owner_session_expires_at: float | None,
+        owner_email: str,
     ) -> tuple[bool, str]:
-        """Validate lock owner against SQLite auth; return (ok, email)."""
-        with self._auth_connect() as connection:
-            connection.execute(
-                "DELETE FROM auth_sessions WHERE expires_at <= ?",
-                (time.time(),),
-            )
-            row = connection.execute(
-                """
-                SELECT
-                    user.email AS owner_email,
-                    user.role AS owner_role,
-                    user.can_access_master AS owner_can_access_master,
-                    user.is_active AS owner_is_active
-                FROM auth_sessions AS session
-                JOIN auth_users AS user ON user.id = session.user_id
-                WHERE session.token_hash = ?
-                  AND session.user_id = ?
-                """,
-                (owner_session_hash, owner_user_id),
-            ).fetchone()
-            if row is None:
-                return False, ""
-            owner_has_access = (
-                str(row["owner_role"]) == "superuser"
-                or bool(row["owner_can_access_master"])
-            )
-            if not bool(row["owner_is_active"]) or not owner_has_access:
-                return False, ""
-            return True, str(row["owner_email"])
+        if owner_session_expires_at is not None and time.time() > float(
+            owner_session_expires_at
+        ):
+            return False, ""
+        if owner_email:
+            return True, owner_email
+        return False, ""
 
     def _owner_row(self, connection: PgConnection) -> PgRow | None:
         row = connection.execute(
@@ -137,6 +117,7 @@ class MasterLockService:
                 owner_session_hash,
                 owner_email,
                 acquired_at,
+                owner_session_expires_at,
                 notification_sequence,
                 notification_kind,
                 notification_requester_id,
@@ -151,6 +132,8 @@ class MasterLockService:
         ok, email = self._auth_owner_valid(
             str(row["owner_user_id"]),
             str(row["owner_session_hash"]),
+            row["owner_session_expires_at"],
+            str(row["owner_email"] or ""),
         )
         if not ok:
             connection.execute("DELETE FROM master_edit_lock WHERE id = 1")
@@ -217,13 +200,26 @@ class MasterLockService:
                     ),
                     status_code=423,
                 )
+            session_exp = self.auth_service.session_expires_at(token)
+            if session_exp is None:
+                try:
+                    session_exp = float(verify_voice_session_token(token).get("exp") or 0)
+                except ValueError:
+                    session_exp = None
             connection.execute(
                 """
                 INSERT INTO master_edit_lock(
-                    id, owner_user_id, owner_session_hash, owner_email, acquired_at
-                ) VALUES (1, ?, ?, ?, ?)
+                    id, owner_user_id, owner_session_hash, owner_email,
+                    acquired_at, owner_session_expires_at
+                ) VALUES (1, ?, ?, ?, ?, ?)
                 """,
-                (current_user.id, session_hash, current_user.email, time.time()),
+                (
+                    current_user.id,
+                    session_hash,
+                    current_user.email,
+                    time.time(),
+                    session_exp,
+                ),
             )
             acquired = self._owner_row(connection)
             assert acquired is not None

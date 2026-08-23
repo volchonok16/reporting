@@ -38,7 +38,7 @@ const API_BASE = (() => {
   if (typeof window !== "undefined") {
     return `${window.location.origin}/voice-api`;
   }
-  return "http://127.0.0.1:8100";
+  return "http://127.0.0.1:8000/voice-api";
 })();
 const TOKEN_KEY = "carousel-auth-token";
 const USER_KEY = "carousel-auth-user";
@@ -174,7 +174,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       if (
         response.status === 401 &&
-        !path.endsWith("/auth/login") &&
         !path.endsWith("/auth/reporting-sso")
       ) {
         localStorage.removeItem(TOKEN_KEY);

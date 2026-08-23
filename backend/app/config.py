@@ -92,7 +92,7 @@ class Settings(BaseSettings):
     voice_sso_secret: str = Field(
         default="reporting-voice-sso-dev-secret",
         alias="VOICE_SSO_SECRET",
-        description="Общий секрет HMAC для SSO во вкладку Voice (должен совпадать с voice-api).",
+        description="Общий секрет HMAC для SSO во вкладку Voice (должен совпадать с carousel/Voice API в backend).",
     )
     tfs_sync_pat: str = Field(
         default="",

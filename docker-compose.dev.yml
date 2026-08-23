@@ -11,6 +11,8 @@ services:
       - "8000:8000"
     volumes:
       - ./backend/app:/app/app:ro
+      - ./voice/backend:/app/carousel:ro
+      - ./voice/data:/data
 
   frontend:
     build:
@@ -23,18 +25,11 @@ services:
       NPM_CONFIG_FUND: "false"
       VITE_API_PROXY_TARGET: http://backend:8000
       VITE_VOICE_WEB_PROXY_TARGET: http://voice-web:3000
-      VITE_VOICE_API_PROXY_TARGET: http://voice-api:8000
+      VITE_VOICE_API_PROXY_TARGET: http://backend:8000
     command: sh -c "npm ci --no-fund --no-audit && npm run dev -- --host 0.0.0.0"
     volumes:
       - ./frontend:/app
       - /app/node_modules
-
-  voice-api:
-    ports:
-      - "${VOICE_API_PORT:-8100}:8000"
-    volumes:
-      - ./voice/data:/data
-      - ./voice/backend:/srv/carousel/backend:ro
 
   voice-web:
     ports:

@@ -3,7 +3,6 @@ from __future__ import annotations
 import csv
 import io
 import os
-import sqlite3
 import time
 import uuid
 import zipfile
@@ -20,16 +19,14 @@ from backend.models import HEADER
 class TestClient(FastAPITestClient):
     def __enter__(self):
         client = super().__enter__()
-        response = self.post(
-            "/api/auth/login",
-            json={
-                "email": settings.auth_bootstrap_email,
-                "password": settings.auth_bootstrap_password,
-            },
+        from backend.main import auth_service
+
+        payload = auth_service.login_with_reporting_sso(
+            email=settings.auth_bootstrap_email,
+            is_admin=True,
         )
-        assert response.status_code == 200, response.text
         self.headers.update(
-            {"Authorization": f"Bearer {response.json()['token']}"}
+            {"Authorization": f"Bearer {payload['token']}"}
         )
         return client
 
@@ -78,6 +75,8 @@ def test_health_and_session_validation() -> None:
 
 
 def test_authentication_roles_and_master_permission() -> None:
+    from backend.main import auth_service
+
     with FastAPITestClient(app) as anonymous:
         denied = anonymous.post(
             "/api/uploads",
@@ -87,78 +86,35 @@ def test_authentication_roles_and_master_permission() -> None:
         assert denied.status_code == 401
 
     email = f"standard-{uuid.uuid4().hex}@example.test"
-    password = "Standard-2026!"
-    with TestClient(app) as superuser:
-        created = superuser.post(
-            "/api/auth/users",
-            json={
-                "email": email,
-                "password": password,
-                "role": "standard",
-            },
-        )
-        assert created.status_code == 201, created.text
-        assert created.json()["user"]["canAccessMaster"] is False
-        user_id = created.json()["user"]["id"]
-
+    login = auth_service.login_with_reporting_sso(email=email, is_admin=False)
     with FastAPITestClient(app) as standard:
-        logged_in = standard.post(
-            "/api/auth/login",
-            json={"email": email, "password": password},
+        standard.headers.update(
+            {"Authorization": f"Bearer {login['token']}"}
         )
-        assert logged_in.status_code == 200
-        token = logged_in.json()["token"]
-        standard.headers.update({"Authorization": f"Bearer {token}"})
         records = standard.get(
             "/api/master/records",
             headers={"X-Session-ID": session("standard")},
-        )
-        assert records.status_code == 403
-        assert records.json()["detail"]["code"] == "MASTER_ACCESS_DENIED"
-
-    with TestClient(app) as superuser:
-        granted = superuser.put(
-            f"/api/auth/users/{user_id}",
-            json={"canAccessMaster": True},
-        )
-        assert granted.status_code == 200, granted.text
-
-    with FastAPITestClient(app) as standard:
-        logged_in = standard.post(
-            "/api/auth/login",
-            json={"email": email, "password": password},
-        )
-        standard.headers.update(
-            {"Authorization": f"Bearer {logged_in.json()['token']}"}
-        )
-        records = standard.get(
-            "/api/master/records",
-            headers={"X-Session-ID": session("standard-granted")},
         )
         assert records.status_code == 200, records.text
 
 
 def test_master_lock_blocks_other_users_and_protected_actions() -> None:
-    with sqlite3.connect(settings.data_dir / "registry.sqlite3") as connection:
-        connection.execute("DELETE FROM master_edit_lock")
+    from backend.main import auth_service
+    from backend.pg_db import configure, connect
+
+    configure(settings.database_url)
+    with connect() as connection:
+        connection.execute("DELETE FROM master_edit_lock WHERE id = 1")
 
     email = f"master-editor-{uuid.uuid4().hex}@example.test"
-    password = "Master-Editor-2026!"
     owner_session = session("master-lock-owner")
     other_session = session("master-lock-other")
+    other_login = auth_service.login_with_reporting_sso(
+        email=email,
+        is_admin=False,
+    )
 
     with TestClient(app) as owner:
-        created = owner.post(
-            "/api/auth/users",
-            json={
-                "email": email,
-                "password": password,
-                "role": "standard",
-                "canAccessMaster": True,
-            },
-        )
-        assert created.status_code == 201, created.text
-
         acquired = owner.post(
             "/api/master/lock",
             headers={"X-Session-ID": owner_session},
@@ -167,13 +123,8 @@ def test_master_lock_blocks_other_users_and_protected_actions() -> None:
         assert acquired.json()["ownedByCurrentUser"] is True
 
         with FastAPITestClient(app) as other:
-            login = other.post(
-                "/api/auth/login",
-                json={"email": email, "password": password},
-            )
-            assert login.status_code == 200, login.text
             other.headers.update(
-                {"Authorization": f"Bearer {login.json()['token']}"}
+                {"Authorization": f"Bearer {other_login['token']}"}
             )
 
             status = other.get(
@@ -243,34 +194,24 @@ def test_master_lock_blocks_other_users_and_protected_actions() -> None:
 
 
 def test_master_clear_is_superuser_only_and_requires_lock(monkeypatch) -> None:
-    with sqlite3.connect(settings.data_dir / "registry.sqlite3") as connection:
-        connection.execute("DELETE FROM master_edit_lock")
+    from backend.main import auth_service
+    from backend.pg_db import configure, connect
+
+    configure(settings.database_url)
+    with connect() as connection:
+        connection.execute("DELETE FROM master_edit_lock WHERE id = 1")
 
     email = f"master-clear-{uuid.uuid4().hex}@example.test"
-    password = "Master-Clear-2026!"
     standard_session = session("master-clear-standard")
     superuser_session = session("master-clear-superuser")
-
-    with TestClient(app) as superuser:
-        created = superuser.post(
-            "/api/auth/users",
-            json={
-                "email": email,
-                "password": password,
-                "role": "standard",
-                "canAccessMaster": True,
-            },
-        )
-        assert created.status_code == 201, created.text
+    standard_login = auth_service.login_with_reporting_sso(
+        email=email,
+        is_admin=False,
+    )
 
     with FastAPITestClient(app) as standard:
-        login = standard.post(
-            "/api/auth/login",
-            json={"email": email, "password": password},
-        )
-        assert login.status_code == 200, login.text
         standard.headers.update(
-            {"Authorization": f"Bearer {login.json()['token']}"}
+            {"Authorization": f"Bearer {standard_login['token']}"}
         )
         denied = standard.delete(
             "/api/master/records",

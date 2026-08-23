@@ -1,3 +1,5 @@
+# Deprecated: Voice API встроен в reporting backend (backend/Dockerfile → carousel/).
+# Оставлен для локального запуска voice/backend без reporting.
 FROM python:3.12-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

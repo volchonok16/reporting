@@ -26,16 +26,14 @@ from backend.reporting import ReportWriter
 class TestClient(FastAPITestClient):
     def __enter__(self):
         client = super().__enter__()
-        response = self.post(
-            "/api/auth/login",
-            json={
-                "email": settings.auth_bootstrap_email,
-                "password": settings.auth_bootstrap_password,
-            },
+        from backend.main import auth_service
+
+        payload = auth_service.login_with_reporting_sso(
+            email=settings.auth_bootstrap_email,
+            is_admin=True,
         )
-        assert response.status_code == 200, response.text
         self.headers.update(
-            {"Authorization": f"Bearer {response.json()['token']}"}
+            {"Authorization": f"Bearer {payload['token']}"}
         )
         return client
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 import io
-import sqlite3
 import time
 from dataclasses import replace
 
@@ -1070,7 +1069,7 @@ def test_interrupted_master_analysis_restarts_without_duplicate_items(
         session_id,
         reuse_existing=False,
     )
-    with sqlite3.connect(registry.database_path) as connection:
+    with service._connect() as connection:
         connection.execute(
             "UPDATE master_imports SET status = 'analyzing' WHERE id = ?",
             (import_id,),
@@ -1099,11 +1098,11 @@ def test_interrupted_master_analysis_restarts_without_duplicate_items(
 
     assert recovered["status"] == "analyzed"
     assert recovered["stats"]["uniqueA"] == 10
-    with sqlite3.connect(registry.database_path) as connection:
+    with first_service._connect() as connection:
         assert connection.execute(
-            "SELECT COUNT(*) FROM master_import_items WHERE import_id = ?",
+            "SELECT COUNT(*) AS c FROM master_import_items WHERE import_id = ?",
             (import_id,),
-        ).fetchone()[0] == 10
+        ).fetchone()["c"] == 10
 
 
 def test_master_clear_soft_deletes_all_rows_in_one_revision(tmp_path) -> None:

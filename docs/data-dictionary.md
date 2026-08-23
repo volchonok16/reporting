@@ -113,6 +113,15 @@
 
 См. также `master_state`, `master_changes`, `master_imports`, `master_edit_lock` (миграция `050_voice_master.sql`).
 
+## voice_uploads / voice_jobs — registry Voice
+
+| Таблица | Назначение |
+|---------|------------|
+| `voice_uploads` | Метаданные загруженных файлов (путь на диске в `path`) |
+| `voice_jobs` | Задания обработки (статус, прогресс, workspace) |
+
+Миграция `051_voice_registry.sql`. Auth — только SSO reporting (без таблиц в БД). Legacy SQLite `registry.sqlite3` (uploads/jobs) импортируется один раз при старте API.
+
 ### extra_json (TFS ЗНИ)
 
 | Ключ | Источник TFS | Описание |

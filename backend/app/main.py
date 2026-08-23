@@ -96,6 +96,7 @@ from app.org_routes import profile_router, router as org_router, users_router
 from app.notification_routes import router as notification_router
 from app.youjail_routes import router as youjail_router
 from app.planning_routes import router as planning_router
+from app.voice_integration import integrate_voice, start_voice_jobs, stop_voice_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,12 @@ async def startup() -> None:
     finally:
         close_db_session(db)
     purge_stale_b2b_audit_records()
+    start_voice_jobs()
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    stop_voice_jobs()
 
 
 app.include_router(org_router)
@@ -979,3 +986,6 @@ def sync_status(sync_id: int, db: Session = Depends(get_db)) -> SyncRunOut:
         startedAt=sync_run.started_at,
         finishedAt=sync_run.finished_at,
     )
+
+
+integrate_voice(app)

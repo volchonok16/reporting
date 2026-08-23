@@ -427,7 +427,6 @@ class MasterService:
         self.config = config
         self.registry = registry
         self.validation = validation
-        self.database_path = registry.database_path
         self._lock = threading.RLock()
         self._analysis_executor = ThreadPoolExecutor(
             max_workers=1,

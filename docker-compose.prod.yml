@@ -8,7 +8,8 @@ services:
     ports: []
 
   backend:
-    command: sh -c "uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${BACKEND_WORKERS:-2}"
+    # Voice job executor — один процесс uvicorn (ThreadPoolExecutor не шарится между workers).
+    command: sh -c "uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${BACKEND_WORKERS:-1}"
     ports:
       - "127.0.0.1:8000:8000"
     environment:
@@ -16,6 +17,7 @@ services:
       API_PUBLIC_URL: ${API_PUBLIC_URL:-https://api.taskatestovaya.ru}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-https://taskatestovaya.ru,https://www.taskatestovaya.ru,https://pallink.fun,https://www.pallink.fun}
       MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://minio.taskatestovaya.ru}
+      CAROUSEL_CORS_ORIGINS: ${CAROUSEL_CORS_ORIGINS:-https://taskatestovaya.ru,https://www.taskatestovaya.ru,https://pallink.fun,https://www.pallink.fun,http://localhost:5173,http://localhost:3100}
 
   frontend:
     build:
@@ -32,13 +34,6 @@ services:
     ports:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
-
-  voice-api:
-    ports:
-      - "127.0.0.1:8100:8000"
-    environment:
-      VOICE_SSO_SECRET: ${VOICE_SSO_SECRET:-reporting-voice-sso-dev-secret}
-      CAROUSEL_CORS_ORIGINS: ${CAROUSEL_CORS_ORIGINS:-https://taskatestovaya.ru,https://www.taskatestovaya.ru,https://pallink.fun,https://www.pallink.fun,http://localhost:5173,http://localhost:3100}
 
   voice-web:
     ports:

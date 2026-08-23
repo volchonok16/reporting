@@ -34,9 +34,22 @@ services:
     restart: unless-stopped
     volumes:
       - ./secrets:/app/secrets:ro
+      - ./voice/data:/data
     environment:
       VOICE_SSO_SECRET: ${VOICE_SSO_SECRET:-reporting-voice-sso-dev-secret}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://alex:alex@postgres:5432/reporting}
+      CAROUSEL_DATA_DIR: /data
+      CAROUSEL_CORS_ORIGINS: ${CAROUSEL_CORS_ORIGINS:-http://localhost:3100,http://localhost:5173,http://127.0.0.1:5173}
+      CAROUSEL_MAX_UPLOAD_BYTES: ${CAROUSEL_MAX_UPLOAD_BYTES:-8589934592}
+      CAROUSEL_MAX_MASTER_ROWS: ${CAROUSEL_MAX_MASTER_ROWS:-20000000}
+      CAROUSEL_MAX_ARCHIVE_MEMBERS: ${CAROUSEL_MAX_ARCHIVE_MEMBERS:-20000}
+      CAROUSEL_MAX_UNCOMPRESSED_BYTES: ${CAROUSEL_MAX_UNCOMPRESSED_BYTES:-2147483648}
+      CAROUSEL_MAX_COMPRESSION_RATIO: ${CAROUSEL_MAX_COMPRESSION_RATIO:-200}
+      CAROUSEL_JOB_WORKERS: ${CAROUSEL_JOB_WORKERS:-2}
+      CAROUSEL_PREVIEW_LIMIT: ${CAROUSEL_PREVIEW_LIMIT:-100}
+      CAROUSEL_OBJECT_TTL_SECONDS: ${CAROUSEL_OBJECT_TTL_SECONDS:-86400}
+      CAROUSEL_CLEANUP_INTERVAL_SECONDS: ${CAROUSEL_CLEANUP_INTERVAL_SECONDS:-300}
+      VOICE_DATABASE_URL: ${VOICE_DATABASE_URL:-}
       TFS_BASE_URL: ${TFS_BASE_URL:-https://tfs.t2.ru/tfs/Main}
       TFS_VERIFY_TLS: ${TFS_VERIFY_TLS:-true}
       TFS_BATCH_SIZE: ${TFS_BATCH_SIZE:-100}
@@ -124,50 +137,6 @@ services:
     depends_on:
       - backend
       - voice-web
-      - voice-api
-
-  voice-api:
-    build:
-      context: ./voice
-      dockerfile: Dockerfile.api
-    container_name: reporting-voice-api
-    restart: unless-stopped
-    environment:
-      CAROUSEL_DATA_DIR: /data
-      CAROUSEL_CORS_ORIGINS: ${CAROUSEL_CORS_ORIGINS:-http://localhost:3100,http://localhost:5173,http://127.0.0.1:5173}
-      CAROUSEL_MAX_UPLOAD_BYTES: ${CAROUSEL_MAX_UPLOAD_BYTES:-8589934592}
-      CAROUSEL_MAX_MASTER_ROWS: ${CAROUSEL_MAX_MASTER_ROWS:-20000000}
-      CAROUSEL_MAX_ARCHIVE_MEMBERS: ${CAROUSEL_MAX_ARCHIVE_MEMBERS:-20000}
-      CAROUSEL_MAX_UNCOMPRESSED_BYTES: ${CAROUSEL_MAX_UNCOMPRESSED_BYTES:-2147483648}
-      CAROUSEL_MAX_COMPRESSION_RATIO: ${CAROUSEL_MAX_COMPRESSION_RATIO:-200}
-      CAROUSEL_JOB_WORKERS: ${CAROUSEL_JOB_WORKERS:-2}
-      CAROUSEL_PREVIEW_LIMIT: ${CAROUSEL_PREVIEW_LIMIT:-100}
-      CAROUSEL_OBJECT_TTL_SECONDS: ${CAROUSEL_OBJECT_TTL_SECONDS:-86400}
-      CAROUSEL_CLEANUP_INTERVAL_SECONDS: ${CAROUSEL_CLEANUP_INTERVAL_SECONDS:-300}
-      CAROUSEL_AUTH_BOOTSTRAP_EMAIL: ${CAROUSEL_AUTH_BOOTSTRAP_EMAIL:-admin@t2.local}
-      CAROUSEL_AUTH_BOOTSTRAP_PASSWORD: "${CAROUSEL_AUTH_BOOTSTRAP_PASSWORD:-T2-Admin-2026!}"
-      CAROUSEL_AUTH_SESSION_SECONDS: ${CAROUSEL_AUTH_SESSION_SECONDS:-43200}
-      VOICE_SSO_SECRET: ${VOICE_SSO_SECRET:-reporting-voice-sso-dev-secret}
-      # Мастер-файл Voice хранится в PostgreSQL reporting (не в SQLite /data)
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://alex:alex@postgres:5432/reporting}
-      VOICE_DATABASE_URL: ${VOICE_DATABASE_URL:-}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    volumes:
-      # Только данные. Код — из образа (bind ./voice/backend ломает offline/prod,
-      # если на хосте пустой/устаревший каталог). Live-reload — в docker-compose.dev.yml.
-      - ./voice/data:/data
-    healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2).read()
-      interval: 15s
-      timeout: 5s
-      start_period: 30s
-      retries: 8
 
   voice-web:
     build:
@@ -183,7 +152,7 @@ services:
       PORT: 3000
       VOICE_BASE_PATH: ${VOICE_BASE_PATH:-/voice}
     depends_on:
-      voice-api:
+      backend:
         condition: service_started
     healthcheck:
       test:

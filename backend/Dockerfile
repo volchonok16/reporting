@@ -12,6 +12,9 @@ RUN pip install --upgrade pip \
 
 COPY backend/app ./app
 COPY backend/assets ./assets
+COPY voice/backend ./carousel
 COPY db/migrations ./migrations
+
+RUN mkdir -p /data
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

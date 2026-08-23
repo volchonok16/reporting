@@ -744,11 +744,11 @@
 
 Связь: `employee.user_id` → `org_user.id`. Вход по email/паролю через `POST /api/auth/login` (режим app_user).
 
-Вкладка **Voice** (`SheetId = voice`) доступна всем авторизованным пользователям (same-origin `/voice/` → frontend-nginx → `voice-web` с `basePath=/voice`, `/voice-api/` → `voice-api`). Проверка маршрута: `GET /voice/reporting-voice.txt` должен вернуть `voice-ok` (не HTML reporting). Пользователи с `voice_only = true` (**Voice сервисы**) видят только эту вкладку; остальные вкладки для них скрыты. Тема iframe синхронизируется с reporting (`?theme=light|dark`).
+Вкладка **Voice** (`SheetId = voice`) доступна всем авторизованным пользователям (same-origin `/voice/` → frontend-nginx → `voice-web` с `basePath=/voice`, `/voice-api/` → reporting **backend** mount `/voice-api`). Проверка маршрута: `GET /voice/reporting-voice.txt` должен вернуть `voice-ok` (не HTML reporting). Пользователи с `voice_only = true` (**Voice сервисы**) видят только эту вкладку; остальные вкладки для них скрыты. Тема iframe синхронизируется с reporting (`?theme=light|dark`).
 
-Авторизация единая: reporting выдаёт короткий SSO-токен (`POST /api/voice/sso-token`, секрет `VOICE_SSO_SECRET`), Voice обменивает его на свою сессию (`POST /api/auth/reporting-sso`) — отдельный логин карусели не нужен.
+Авторизация единая: reporting выдаёт короткий SSO-токен (`POST /api/voice/sso-token`, секрет `VOICE_SSO_SECRET`), Voice обменивает его на свою сессию (`POST /voice-api/api/auth/reporting-sso`) — отдельный логин карусели не нужен.
 
-**Мастер-файл Voice** хранится в PostgreSQL reporting (миграция `050_voice_master.sql`), не в SQLite `CAROUSEL_DATA_DIR`. Auth/uploads/jobs Voice остаются в SQLite под `/data`. `voice-api` подключается через `DATABASE_URL` / `VOICE_DATABASE_URL`.
+**Мастер-файл Voice** хранится в PostgreSQL reporting (миграция `050_voice_master.sql`). **Uploads и jobs** — PostgreSQL (`051_voice_registry.sql`: `voice_uploads`, `voice_jobs`). **Auth Voice** — только через reporting SSO (`POST /api/voice/sso-token` → `POST /api/auth/reporting-sso`); отдельных учёток и таблиц auth в Voice нет. Bearer-сессия — подписанный stateless-токен (`VOICE_SSO_SECRET`). На диске (`CAROUSEL_DATA_DIR`) — только файлы загрузок и workspace. Legacy `registry.sqlite3` (uploads/jobs) импортируется один раз при старте.
 
 ---
 
@@ -767,7 +767,37 @@
 | `created_revision` / `updated_revision` | integer | Ревизии мастер-ветки |
 | `deleted_at` / `deleted_revision` | double precision / integer | Soft-delete |
 
-Связанные таблицы: `master_state`, `master_schema_meta`, `master_a_counts`, `master_exact_counts`, `master_changes` (в `actor` — email пользователя Voice, изменившего строку), `master_imports`, `master_import_items`, `master_import_number_warnings`, `master_duplicate_findings`, `master_edit_lock`.
+Связанные таблицы: `master_state`, `master_schema_meta`, `master_a_counts`, `master_exact_counts`, `master_changes` (в `actor` — email пользователя Voice, изменившего строку), `master_imports`, `master_import_items`, `master_import_number_warnings`, `master_duplicate_findings`, `master_edit_lock` (`owner_session_expires_at` — срок bearer-сессии SSO).
+
+---
+
+## voice_uploads — загрузки Voice
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | text | PK |
+| `session_id` | text | Сессия обработки (X-Session-ID) |
+| `name` | text | Имя файла |
+| `size` | bigint | Размер в байтах |
+| `format` | text | `csv`, `xlsx`, … |
+| `path` | text | Путь к файлу на диске (`CAROUSEL_DATA_DIR`) |
+| `created_at` / `expires_at` | double precision | TTL |
+
+Связанные таблицы: `voice_jobs`, `master_imports` (по `upload_id`).
+
+---
+
+## voice_jobs — задания Voice
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | text | PK |
+| `session_id` | text | Владелец сессии |
+| `kind` | text | Тип задания |
+| `upload_id` | text | FK → `voice_uploads.id` |
+| `status` / `stage` / `progress` | text / text / integer | Состояние выполнения |
+| `workspace` | text | Каталог workspace на диске |
+| `error_json` / `summary_json` | text | JSON |
 
 ---
 

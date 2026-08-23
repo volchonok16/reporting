@@ -1479,6 +1479,7 @@ CREATE TABLE IF NOT EXISTS master_edit_lock (
     owner_session_hash            TEXT NOT NULL,
     owner_email                   TEXT NOT NULL,
     acquired_at                   DOUBLE PRECISION NOT NULL,
+    owner_session_expires_at      DOUBLE PRECISION,
     notification_sequence         INTEGER NOT NULL DEFAULT 0,
     notification_kind             TEXT,
     notification_requester_id     TEXT,
@@ -1486,6 +1487,42 @@ CREATE TABLE IF NOT EXISTS master_edit_lock (
     notification_created_at       DOUBLE PRECISION
 );
 
+-- Voice: uploads и jobs (PostgreSQL; auth — только SSO reporting)
+CREATE TABLE IF NOT EXISTS voice_uploads (
+    id          TEXT PRIMARY KEY,
+    session_id  TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    size        BIGINT NOT NULL,
+    format      TEXT NOT NULL,
+    path        TEXT NOT NULL,
+    created_at  DOUBLE PRECISION NOT NULL,
+    expires_at  DOUBLE PRECISION NOT NULL
+);
+CREATE INDEX IF NOT EXISTS voice_uploads_owner ON voice_uploads (id, session_id);
+CREATE INDEX IF NOT EXISTS voice_uploads_expires ON voice_uploads (expires_at);
+
+CREATE TABLE IF NOT EXISTS voice_jobs (
+    id              TEXT PRIMARY KEY,
+    session_id      TEXT NOT NULL,
+    kind            TEXT NOT NULL,
+    upload_id       TEXT NOT NULL,
+    status          TEXT NOT NULL,
+    stage           TEXT NOT NULL,
+    progress        INTEGER NOT NULL,
+    processed_rows  INTEGER NOT NULL,
+    total_rows      INTEGER NOT NULL,
+    error_json      TEXT,
+    summary_json    TEXT,
+    workspace       TEXT NOT NULL,
+    result_path     TEXT NOT NULL,
+    report_path     TEXT NOT NULL,
+    created_at      DOUBLE PRECISION NOT NULL,
+    updated_at      DOUBLE PRECISION NOT NULL,
+    expires_at      DOUBLE PRECISION NOT NULL
+);
+CREATE INDEX IF NOT EXISTS voice_jobs_owner ON voice_jobs (id, session_id);
+CREATE INDEX IF NOT EXISTS voice_jobs_upload ON voice_jobs (upload_id);
+CREATE INDEX IF NOT EXISTS voice_jobs_expires ON voice_jobs (expires_at);
 
 -- Хелперы совместимости с SQL мастер-сервиса (SQLite json_*/GLOB)
 CREATE OR REPLACE FUNCTION master_json_extract_text(data TEXT, path TEXT)

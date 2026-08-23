@@ -4,7 +4,6 @@ import json
 import os
 import secrets
 import shutil
-import sqlite3
 import threading
 import time
 from dataclasses import dataclass
@@ -15,6 +14,8 @@ from fastapi import UploadFile
 
 from .config import Settings
 from .errors import AppError
+from .pg_db import PgConnection, PgRow, configure as configure_db, connect as pg_connect
+from .registry_migrate import migrate_sqlite_registry_if_needed
 from .security import detect_file_format, safe_display_name
 
 
@@ -59,59 +60,26 @@ def opaque_id() -> str:
 
 
 class Registry:
+    """Upload/job registry in PostgreSQL (voice_uploads / voice_jobs)."""
+
     def __init__(self, config: Settings):
+        if not config.database_url:
+            raise RuntimeError(
+                "DATABASE_URL или VOICE_DATABASE_URL обязателен для Voice "
+                "(миграция db/migrations/051_voice_registry.sql)"
+            )
         self.config = config
         self.config.data_dir.mkdir(parents=True, exist_ok=True)
-        self.database_path = self.config.data_dir / "registry.sqlite3"
         self._lock = threading.RLock()
         self._initialize()
 
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database_path, timeout=30)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA journal_mode=WAL")
-        connection.execute("PRAGMA busy_timeout=30000")
-        return connection
+    def connect(self) -> PgConnection:
+        configure_db(self.config.database_url)
+        return pg_connect()
 
     def _initialize(self) -> None:
-        with self._connect() as connection:
-            connection.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS uploads (
-                    id TEXT PRIMARY KEY,
-                    session_id TEXT NOT NULL,
-                    name TEXT NOT NULL,
-                    size INTEGER NOT NULL,
-                    format TEXT NOT NULL,
-                    path TEXT NOT NULL,
-                    created_at REAL NOT NULL,
-                    expires_at REAL NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS uploads_owner
-                    ON uploads(id, session_id);
-                CREATE TABLE IF NOT EXISTS jobs (
-                    id TEXT PRIMARY KEY,
-                    session_id TEXT NOT NULL,
-                    kind TEXT NOT NULL,
-                    upload_id TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    stage TEXT NOT NULL,
-                    progress INTEGER NOT NULL,
-                    processed_rows INTEGER NOT NULL,
-                    total_rows INTEGER NOT NULL,
-                    error_json TEXT,
-                    summary_json TEXT,
-                    workspace TEXT NOT NULL,
-                    result_path TEXT NOT NULL,
-                    report_path TEXT NOT NULL,
-                    created_at REAL NOT NULL,
-                    updated_at REAL NOT NULL,
-                    expires_at REAL NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS jobs_owner
-                    ON jobs(id, session_id);
-                """
-            )
+        with self._lock, self.connect() as connection:
+            migrate_sqlite_registry_if_needed(self.config.data_dir, connection)
             now = time.time()
             interrupted_error = json.dumps(
                 {
@@ -122,7 +90,7 @@ class Registry:
             )
             connection.execute(
                 """
-                UPDATE jobs
+                UPDATE voice_jobs
                 SET status = 'failed',
                     stage = 'Прервано',
                     error_json = ?,
@@ -138,10 +106,10 @@ class Registry:
             )
 
     def add_upload(self, record: UploadRecord) -> None:
-        with self._lock, self._connect() as connection:
+        with self._lock, self.connect() as connection:
             connection.execute(
                 """
-                INSERT INTO uploads
+                INSERT INTO voice_uploads
                 (id, session_id, name, size, format, path, created_at, expires_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
@@ -160,9 +128,9 @@ class Registry:
     def get_upload(
         self, upload_id: str, session_id: str, *, touch: bool = True
     ) -> UploadRecord:
-        with self._lock, self._connect() as connection:
+        with self._lock, self.connect() as connection:
             row = connection.execute(
-                "SELECT * FROM uploads WHERE id = ? AND session_id = ?",
+                "SELECT * FROM voice_uploads WHERE id = ? AND session_id = ?",
                 (upload_id, session_id),
             ).fetchone()
             if row is None:
@@ -171,7 +139,7 @@ class Registry:
             if touch:
                 expires_at = time.time() + self.config.object_ttl_seconds
                 connection.execute(
-                    "UPDATE uploads SET expires_at = ? WHERE id = ?",
+                    "UPDATE voice_uploads SET expires_at = ? WHERE id = ?",
                     (expires_at, upload_id),
                 )
             return UploadRecord(
@@ -186,10 +154,10 @@ class Registry:
             )
 
     def add_job(self, record: JobRecord) -> None:
-        with self._lock, self._connect() as connection:
+        with self._lock, self.connect() as connection:
             connection.execute(
                 """
-                INSERT INTO jobs (
+                INSERT INTO voice_jobs (
                     id, session_id, kind, upload_id, status, stage, progress,
                     processed_rows, total_rows, error_json, summary_json,
                     workspace, result_path, report_path, created_at, updated_at,
@@ -222,7 +190,7 @@ class Registry:
             )
 
     @staticmethod
-    def _job_from_row(row: sqlite3.Row) -> JobRecord:
+    def _job_from_row(row: PgRow | dict[str, Any]) -> JobRecord:
         return JobRecord(
             id=row["id"],
             session_id=row["session_id"],
@@ -246,9 +214,9 @@ class Registry:
     def get_job(
         self, job_id: str, session_id: str, *, touch: bool = True
     ) -> JobRecord:
-        with self._lock, self._connect() as connection:
+        with self._lock, self.connect() as connection:
             row = connection.execute(
-                "SELECT * FROM jobs WHERE id = ? AND session_id = ?",
+                "SELECT * FROM voice_jobs WHERE id = ? AND session_id = ?",
                 (job_id, session_id),
             ).fetchone()
             if row is None:
@@ -256,35 +224,13 @@ class Registry:
             if touch:
                 expires_at = time.time() + self.config.object_ttl_seconds
                 connection.execute(
-                    "UPDATE jobs SET expires_at = ? WHERE id = ?",
+                    "UPDATE voice_jobs SET expires_at = ? WHERE id = ?",
                     (expires_at, job_id),
                 )
                 mutable = dict(row)
                 mutable["expires_at"] = expires_at
-                return self._job_from_mapping(mutable)
+                return self._job_from_row(mutable)
             return self._job_from_row(row)
-
-    @staticmethod
-    def _job_from_mapping(row: dict[str, Any]) -> JobRecord:
-        return JobRecord(
-            id=row["id"],
-            session_id=row["session_id"],
-            kind=row["kind"],
-            upload_id=row["upload_id"],
-            status=row["status"],
-            stage=row["stage"],
-            progress=int(row["progress"]),
-            processed_rows=int(row["processed_rows"]),
-            total_rows=int(row["total_rows"]),
-            error=json.loads(row["error_json"]) if row["error_json"] else None,
-            summary=json.loads(row["summary_json"]) if row["summary_json"] else None,
-            workspace=Path(row["workspace"]),
-            result_path=Path(row["result_path"]),
-            report_path=Path(row["report_path"]),
-            created_at=float(row["created_at"]),
-            updated_at=float(row["updated_at"]),
-            expires_at=float(row["expires_at"]),
-        )
 
     def update_job(self, job_id: str, **updates: Any) -> None:
         allowed = {
@@ -312,19 +258,19 @@ class Registry:
         now = time.time()
         columns.extend(["updated_at = ?", "expires_at = ?"])
         values.extend([now, now + self.config.object_ttl_seconds, job_id])
-        with self._lock, self._connect() as connection:
+        with self._lock, self.connect() as connection:
             connection.execute(
-                f"UPDATE jobs SET {', '.join(columns)} WHERE id = ?", values
+                f"UPDATE voice_jobs SET {', '.join(columns)} WHERE id = ?", values
             )
 
     def cleanup_expired(self) -> tuple[int, int]:
         now = time.time()
         upload_paths: list[Path] = []
         job_paths: list[Path] = []
-        with self._lock, self._connect() as connection:
+        with self._lock, self.connect() as connection:
             expired_jobs = connection.execute(
                 """
-                SELECT id, workspace FROM jobs
+                SELECT id, workspace FROM voice_jobs
                 WHERE expires_at < ?
                   AND status IN ('completed', 'failed', 'cancelled')
                 """,
@@ -332,15 +278,17 @@ class Registry:
             ).fetchall()
             for row in expired_jobs:
                 job_paths.append(Path(row["workspace"]))
-                connection.execute("DELETE FROM jobs WHERE id = ?", (row["id"],))
+                connection.execute(
+                    "DELETE FROM voice_jobs WHERE id = ?", (row["id"],)
+                )
 
             expired_uploads = connection.execute(
                 """
                 SELECT u.id, u.path
-                FROM uploads AS u
+                FROM voice_uploads AS u
                 WHERE u.expires_at < ?
                   AND NOT EXISTS (
-                    SELECT 1 FROM jobs AS j
+                    SELECT 1 FROM voice_jobs AS j
                     WHERE j.upload_id = u.id
                       AND j.status NOT IN ('completed', 'failed', 'cancelled')
                   )
@@ -354,7 +302,9 @@ class Registry:
             ).fetchall()
             for row in expired_uploads:
                 upload_paths.append(Path(row["path"]).parent)
-                connection.execute("DELETE FROM uploads WHERE id = ?", (row["id"],))
+                connection.execute(
+                    "DELETE FROM voice_uploads WHERE id = ?", (row["id"],)
+                )
         for path in job_paths + upload_paths:
             self._remove_workspace(path)
         return len(upload_paths), len(job_paths)
@@ -402,9 +352,6 @@ class UploadService:
             format_name = detect_file_format(
                 source_path, display_name, self.config
             )
-            # Validate that the workbook metadata can actually be opened before
-            # the upload becomes visible in the registry. Import is read-only;
-            # formulas/macros are never evaluated or executed.
             if format_name != "csv":
                 from .importers import importer_for
 

@@ -29,7 +29,8 @@ def database_url_from_env() -> str:
     ).strip()
     if not raw:
         raise RuntimeError(
-            "VOICE_DATABASE_URL или DATABASE_URL обязателен для мастер-файла Voice"
+            "VOICE_DATABASE_URL или DATABASE_URL обязателен для Voice "
+            "(миграции 050_voice_master.sql и 051_voice_registry.sql)"
         )
     return _normalize_database_url(raw)
 
@@ -274,6 +275,18 @@ class PgConnection:
                 continue
             if re.match(
                 r"CREATE\s+INDEX\s+(IF\s+NOT\s+EXISTS\s+)?master_",
+                statement,
+                re.IGNORECASE,
+            ):
+                continue
+            if re.match(
+                r"CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?voice_",
+                statement,
+                re.IGNORECASE,
+            ):
+                continue
+            if re.match(
+                r"CREATE\s+INDEX\s+(IF\s+NOT\s+EXISTS\s+)?voice_",
                 statement,
                 re.IGNORECASE,
             ):

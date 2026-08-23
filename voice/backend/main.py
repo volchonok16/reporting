@@ -27,7 +27,6 @@ from .models import (
     DeleteARequest,
     DeleteBRequest,
     InspectRequest,
-    LoginRequest,
     MasterBatchDeleteARequest,
     MasterBatchDeleteBRequest,
     MasterExactDuplicateCleanupRequest,
@@ -37,10 +36,7 @@ from .models import (
     MasterMergeRequest,
     MasterRecordRequest,
     MappingOptionsRequest,
-    PasswordChangeRequest,
     ReportingSsoRequest,
-    UserCreateRequest,
-    UserUpdateRequest,
 )
 from .reporting_sso import verify_reporting_sso_token
 from .security import validate_session_id
@@ -56,15 +52,7 @@ from .validation import ValidationService
 
 
 registry = Registry(settings)
-try:
-    auth_service = AuthService(settings, registry)
-except PermissionError as exc:
-    raise SystemExit(
-        f"Voice data dir не доступен для записи ({settings.data_dir}): {exc}. "
-        "На хосте: sudo chown -R 10001:10001 voice/data && chmod -R u+rwX voice/data"
-    ) from exc
-except Exception as exc:
-    raise SystemExit(f"Voice auth init failed: {exc}") from exc
+auth_service = AuthService(settings)
 upload_service = UploadService(settings, registry)
 job_service = JobService(settings, registry)
 validation_service = ValidationService(settings.preview_limit)
@@ -72,6 +60,7 @@ mapping_index_service = MappingIndexService(validation_service)
 master_service = MasterService(settings, registry, validation_service)
 master_lock_service = MasterLockService(
     registry,
+    auth_service,
     database_url=settings.database_url or None,
 )
 
@@ -227,11 +216,6 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/api/auth/login")
-def login(body: LoginRequest) -> dict[str, Any]:
-    return auth_service.login(body.email, body.password)
-
-
 @app.post("/api/auth/reporting-sso")
 def reporting_sso_login(body: ReportingSsoRequest) -> dict[str, Any]:
     try:
@@ -250,47 +234,12 @@ def current_user(user: CurrentUser) -> dict[str, Any]:
 
 
 @app.post("/api/auth/logout")
-def logout(token: AuthToken, _user: CurrentUser) -> dict[str, bool]:
-    auth_service.logout(token)
+def logout(token: AuthToken, user: CurrentUser) -> dict[str, bool]:
+    try:
+        master_lock_service.release(user, token, force=False)
+    except AppError:
+        pass
     return {"ok": True}
-
-
-@app.post("/api/auth/change-password")
-def change_password(
-    body: PasswordChangeRequest,
-    token: AuthToken,
-    user: CurrentUser,
-) -> dict[str, bool]:
-    auth_service.change_password(user, body, token)
-    return {"ok": True}
-
-
-@app.get("/api/auth/users")
-def list_users(_user: Superuser) -> dict[str, Any]:
-    return {"items": auth_service.list_users()}
-
-
-@app.post("/api/auth/users", status_code=201)
-def create_user(
-    body: UserCreateRequest,
-    _user: Superuser,
-) -> dict[str, Any]:
-    return {"user": auth_service.create_user(body)}
-
-
-@app.put("/api/auth/users/{user_id}")
-def update_user(
-    user_id: str,
-    body: UserUpdateRequest,
-    user: Superuser,
-) -> dict[str, Any]:
-    return {
-        "user": auth_service.update_user(
-            user_id,
-            body,
-            actor_id=user.id,
-        )
-    }
 
 
 @app.get("/api/master/records")
