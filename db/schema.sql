@@ -1363,8 +1363,6 @@ CREATE INDEX IF NOT EXISTS master_records_updated
     ON master_records (updated_at DESC);
 CREATE INDEX IF NOT EXISTS master_records_a
     ON master_records (a_number, deleted_at, sort_order);
-CREATE INDEX IF NOT EXISTS master_records_signature
-    ON master_records (deleted_at, b_numbers_json, source_prefix);
 
 CREATE TABLE IF NOT EXISTS master_a_counts (
     a_number      TEXT PRIMARY KEY,
@@ -1372,12 +1370,15 @@ CREATE TABLE IF NOT EXISTS master_a_counts (
 );
 
 CREATE TABLE IF NOT EXISTS master_exact_counts (
+    signature_hash   TEXT PRIMARY KEY,
     a_number         TEXT NOT NULL,
     b_numbers_json   TEXT NOT NULL,
     source_prefix    TEXT NOT NULL,
-    active_count     INTEGER NOT NULL,
-    PRIMARY KEY (a_number, b_numbers_json, source_prefix)
+    active_count     INTEGER NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS master_exact_counts_lookup
+    ON master_exact_counts (a_number, source_prefix);
 
 CREATE TABLE IF NOT EXISTS master_changes (
     id               TEXT PRIMARY KEY,
@@ -1646,6 +1647,42 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION master_exact_signature(
+    a_number TEXT,
+    b_numbers_json TEXT,
+    source_prefix TEXT
+)
+RETURNS TEXT
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT md5(
+        COALESCE(a_number, '')
+        || E'\x1f'
+        || COALESCE(b_numbers_json, '')
+        || E'\x1f'
+        || COALESCE(source_prefix, '')
+    );
+$$;
+
+CREATE OR REPLACE FUNCTION master_b_signature(
+    b_numbers_json TEXT,
+    source_prefix TEXT
+)
+RETURNS TEXT
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT md5(
+        COALESCE(b_numbers_json, '')
+        || E'\x1f'
+        || COALESCE(source_prefix, '')
+    );
+$$;
+
+CREATE INDEX IF NOT EXISTS master_records_signature
+    ON master_records (deleted_at, master_b_signature(b_numbers_json, source_prefix));
+
 COMMENT ON TABLE master_records IS 'Мастер-файл Voice (карусель): записи A/B';
 COMMENT ON TABLE master_edit_lock IS 'Эксклюзивная блокировка редактирования мастер-файла';
 COMMENT ON COLUMN master_records.comment IS 'Комментарий, до 50000 символов (проверка в API)';
@@ -1722,9 +1759,16 @@ RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.deleted_at IS NULL THEN
         INSERT INTO master_exact_counts(
-            a_number, b_numbers_json, source_prefix, active_count
+            signature_hash, a_number, b_numbers_json, source_prefix, active_count
         )
-        SELECT NEW.a_number, NEW.b_numbers_json, NEW.source_prefix, 2
+        SELECT
+            master_exact_signature(
+                NEW.a_number, NEW.b_numbers_json, NEW.source_prefix
+            ),
+            NEW.a_number,
+            NEW.b_numbers_json,
+            NEW.source_prefix,
+            2
         WHERE EXISTS (
             SELECT 1
             FROM master_records AS matching_record
@@ -1734,7 +1778,7 @@ BEGIN
               AND matching_record.b_numbers_json = NEW.b_numbers_json
               AND matching_record.source_prefix = NEW.source_prefix
         )
-        ON CONFLICT (a_number, b_numbers_json, source_prefix)
+        ON CONFLICT (signature_hash)
         DO UPDATE SET active_count = master_exact_counts.active_count + 1;
     END IF;
     RETURN NEW;
@@ -1747,13 +1791,13 @@ BEGIN
     IF OLD.deleted_at IS NULL THEN
         UPDATE master_exact_counts
         SET active_count = active_count - 1
-        WHERE a_number = OLD.a_number
-          AND b_numbers_json = OLD.b_numbers_json
-          AND source_prefix = OLD.source_prefix;
+        WHERE signature_hash = master_exact_signature(
+            OLD.a_number, OLD.b_numbers_json, OLD.source_prefix
+        );
         DELETE FROM master_exact_counts
-        WHERE a_number = OLD.a_number
-          AND b_numbers_json = OLD.b_numbers_json
-          AND source_prefix = OLD.source_prefix
+        WHERE signature_hash = master_exact_signature(
+            OLD.a_number, OLD.b_numbers_json, OLD.source_prefix
+        )
           AND active_count <= 1;
     END IF;
     RETURN OLD;
@@ -1772,13 +1816,13 @@ BEGIN
        ) THEN
         UPDATE master_exact_counts
         SET active_count = active_count - 1
-        WHERE a_number = OLD.a_number
-          AND b_numbers_json = OLD.b_numbers_json
-          AND source_prefix = OLD.source_prefix;
+        WHERE signature_hash = master_exact_signature(
+            OLD.a_number, OLD.b_numbers_json, OLD.source_prefix
+        );
         DELETE FROM master_exact_counts
-        WHERE a_number = OLD.a_number
-          AND b_numbers_json = OLD.b_numbers_json
-          AND source_prefix = OLD.source_prefix
+        WHERE signature_hash = master_exact_signature(
+            OLD.a_number, OLD.b_numbers_json, OLD.source_prefix
+        )
           AND active_count <= 1;
     END IF;
     IF NEW.deleted_at IS NULL
@@ -1789,9 +1833,16 @@ BEGIN
             OR OLD.source_prefix IS DISTINCT FROM NEW.source_prefix
        ) THEN
         INSERT INTO master_exact_counts(
-            a_number, b_numbers_json, source_prefix, active_count
+            signature_hash, a_number, b_numbers_json, source_prefix, active_count
         )
-        SELECT NEW.a_number, NEW.b_numbers_json, NEW.source_prefix, 2
+        SELECT
+            master_exact_signature(
+                NEW.a_number, NEW.b_numbers_json, NEW.source_prefix
+            ),
+            NEW.a_number,
+            NEW.b_numbers_json,
+            NEW.source_prefix,
+            2
         WHERE EXISTS (
             SELECT 1
             FROM master_records AS matching_record
@@ -1801,7 +1852,7 @@ BEGIN
               AND matching_record.b_numbers_json = NEW.b_numbers_json
               AND matching_record.source_prefix = NEW.source_prefix
         )
-        ON CONFLICT (a_number, b_numbers_json, source_prefix)
+        ON CONFLICT (signature_hash)
         DO UPDATE SET active_count = master_exact_counts.active_count + 1;
     END IF;
     RETURN NEW;

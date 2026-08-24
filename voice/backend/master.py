@@ -78,6 +78,21 @@ def _like_contains(value: str) -> str:
     return f"%{escaped}%"
 
 
+def _import_failure_message(error: BaseException) -> str:
+    detail = " ".join(str(error).split())
+    if len(detail) > 280:
+        detail = detail[:277] + "..."
+    lowered = detail.lower()
+    if "index row size" in lowered or "btree" in lowered:
+        return (
+            "Не удалось проверить файл: слишком длинная связка B для индекса "
+            f"PostgreSQL. {detail}"
+        )
+    if detail:
+        return f"Не удалось проверить файл. {detail}"
+    return "Не удалось проверить файл. Повторите загрузку."
+
+
 MASTER_EXACT_DUPLICATE_EXTRA_SQL = """
 (
     EXISTS (
@@ -487,9 +502,13 @@ class MasterService:
                 connection.execute(
                     """
                     INSERT INTO master_exact_counts(
-                        a_number, b_numbers_json, source_prefix, active_count
+                        signature_hash, a_number, b_numbers_json,
+                        source_prefix, active_count
                     )
                     SELECT
+                        master_exact_signature(
+                            a_number, b_numbers_json, source_prefix
+                        ),
                         a_number, b_numbers_json, source_prefix, COUNT(*)
                     FROM master_records
                     WHERE deleted_at IS NULL
@@ -1726,12 +1745,12 @@ class MasterService:
             self._process_import(import_id, body, session_id)
         except AppError as error:
             self._fail_import(import_id, error.code, error.message)
-        except Exception:
+        except Exception as error:
             logger.exception("Master import analysis %s failed", import_id)
             self._fail_import(
                 import_id,
                 "MASTER_IMPORT_FAILED",
-                "Не удалось проверить файл. Повторите загрузку.",
+                _import_failure_message(error),
             )
 
     def _fail_import(self, import_id: str, code: str, message: str) -> None:
@@ -2062,19 +2081,20 @@ class MasterService:
                 if len(batch) < 500:
                     break
 
+            # Без PRIMARY KEY по incoming_b_json: на PostgreSQL btree падает
+            # при связках длиннее ~2704 байт (index row size exceeds maximum).
             connection.executescript(
                 """
                 DROP TABLE IF EXISTS temp.unique_incoming_signatures;
                 DROP TABLE IF EXISTS temp.rename_matches;
                 CREATE TEMP TABLE unique_incoming_signatures (
                     incoming_b_json TEXT NOT NULL,
-                    incoming_prefix TEXT NOT NULL,
-                    PRIMARY KEY(incoming_b_json, incoming_prefix)
-                ) WITHOUT ROWID;
+                    incoming_prefix TEXT NOT NULL
+                );
                 CREATE TEMP TABLE rename_matches (
                     item_id TEXT PRIMARY KEY,
                     record_id TEXT NOT NULL
-                ) WITHOUT ROWID;
+                );
                 """
             )
             connection.execute(
@@ -2099,9 +2119,14 @@ class MasterService:
                   ON signature.incoming_b_json = item.incoming_b_json
                  AND signature.incoming_prefix = item.incoming_prefix
                 JOIN master_records AS record
-                  ON record.b_numbers_json = item.incoming_b_json
+                  ON record.deleted_at IS NULL
+                 AND master_b_signature(
+                        record.b_numbers_json, record.source_prefix
+                     ) = master_b_signature(
+                        item.incoming_b_json, item.incoming_prefix
+                     )
+                 AND record.b_numbers_json = item.incoming_b_json
                  AND record.source_prefix = item.incoming_prefix
-                 AND record.deleted_at IS NULL
                 LEFT JOIN master_import_items AS blocker
                   ON blocker.import_id = item.import_id
                  AND blocker.a_number = record.a_number

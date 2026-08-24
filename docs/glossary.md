@@ -748,7 +748,7 @@
 
 Авторизация единая: reporting выдаёт короткий SSO-токен (`POST /api/voice/sso-token`, секрет `VOICE_SSO_SECRET`), Voice обменивает его на свою сессию (`POST /voice-api/api/auth/reporting-sso`) — отдельный логин карусели не нужен.
 
-**Мастер-файл Voice** хранится в PostgreSQL reporting (миграция `050_voice_master.sql`). **Uploads и jobs** — PostgreSQL (`051_voice_registry.sql`: `voice_uploads`, `voice_jobs`). **Auth Voice** — только через reporting SSO (`POST /api/voice/sso-token` → `POST /api/auth/reporting-sso`); отдельных учёток и таблиц auth в Voice нет. Bearer-сессия — подписанный stateless-токен (`VOICE_SSO_SECRET`). На диске (`CAROUSEL_DATA_DIR`) — только файлы загрузок и workspace. Legacy `registry.sqlite3` (uploads/jobs) импортируется один раз при старте.
+**Мастер-файл Voice** хранится в PostgreSQL reporting (миграция `050_voice_master.sql`, hash-индексы — `053_voice_master_signature_hash.sql`). **Uploads и jobs** — PostgreSQL (`051_voice_registry.sql`: `voice_uploads`, `voice_jobs`). **Auth Voice** — только через reporting SSO (`POST /api/voice/sso-token` → `POST /api/auth/reporting-sso`); отдельных учёток и таблиц auth в Voice нет. Bearer-сессия — подписанный stateless-токен (`VOICE_SSO_SECRET`). На диске (`CAROUSEL_DATA_DIR`) — только файлы загрузок и workspace. Legacy `registry.sqlite3` (uploads/jobs) импортируется один раз при старте.
 
 ---
 
@@ -767,7 +767,7 @@
 | `created_revision` / `updated_revision` | integer | Ревизии мастер-ветки |
 | `deleted_at` / `deleted_revision` | double precision / integer | Soft-delete |
 
-Связанные таблицы: `master_state`, `master_schema_meta`, `master_a_counts`, `master_exact_counts`, `master_changes` (в `actor` — email пользователя Voice, изменившего строку), `master_imports`, `master_import_items`, `master_import_number_warnings`, `master_duplicate_findings`, `master_edit_lock` (`owner_session_expires_at` — срок bearer-сессии SSO).
+Связанные таблицы: `master_state`, `master_schema_meta`, `master_a_counts`, `master_exact_counts` (PK `signature_hash` = md5 связки, без btree по длинному `b_numbers_json`), `master_changes` (в `actor` — email пользователя Voice, изменившего строку), `master_imports`, `master_import_items`, `master_import_number_warnings`, `master_duplicate_findings`, `master_edit_lock` (`owner_session_expires_at` — срок bearer-сессии SSO). Индекс `master_records_signature` — по `master_b_signature(b_numbers_json, source_prefix)`.
 
 ---
 
