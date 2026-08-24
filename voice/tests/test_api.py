@@ -193,7 +193,7 @@ def test_master_lock_blocks_other_users_and_protected_actions() -> None:
             )
 
 
-def test_master_clear_is_superuser_only_and_requires_lock(monkeypatch) -> None:
+def test_master_clear_is_voice_admin_only_and_requires_lock(monkeypatch) -> None:
     from backend.main import auth_service
     from backend.pg_db import configure, connect
 
@@ -203,10 +203,16 @@ def test_master_clear_is_superuser_only_and_requires_lock(monkeypatch) -> None:
 
     email = f"master-clear-{uuid.uuid4().hex}@example.test"
     standard_session = session("master-clear-standard")
-    superuser_session = session("master-clear-superuser")
+    voice_admin_session = session("master-clear-voice-admin")
     standard_login = auth_service.login_with_reporting_sso(
         email=email,
+        is_admin=True,
+        voice_admin=False,
+    )
+    voice_admin_login = auth_service.login_with_reporting_sso(
+        email=f"voice-admin-{uuid.uuid4().hex}@example.test",
         is_admin=False,
+        voice_admin=True,
     )
 
     with FastAPITestClient(app) as standard:
@@ -218,33 +224,36 @@ def test_master_clear_is_superuser_only_and_requires_lock(monkeypatch) -> None:
             headers={"X-Session-ID": standard_session},
         )
         assert denied.status_code == 403, denied.text
-        assert denied.json()["detail"]["code"] == "SUPERUSER_REQUIRED"
+        assert denied.json()["detail"]["code"] == "VOICE_ADMIN_REQUIRED"
         denied_history = standard.delete(
             "/api/master/history",
             headers={"X-Session-ID": standard_session},
         )
         assert denied_history.status_code == 403, denied_history.text
-        assert denied_history.json()["detail"]["code"] == "SUPERUSER_REQUIRED"
+        assert denied_history.json()["detail"]["code"] == "VOICE_ADMIN_REQUIRED"
 
-    with TestClient(app) as superuser:
-        missing_lock = superuser.delete(
+    with FastAPITestClient(app) as voice_admin:
+        voice_admin.headers.update(
+            {"Authorization": f"Bearer {voice_admin_login['token']}"}
+        )
+        missing_lock = voice_admin.delete(
             "/api/master/records",
-            headers={"X-Session-ID": superuser_session},
+            headers={"X-Session-ID": voice_admin_session},
         )
         assert missing_lock.status_code == 423, missing_lock.text
         assert (
             missing_lock.json()["detail"]["code"]
             == "MASTER_LOCK_REQUIRED"
         )
-        missing_history_lock = superuser.delete(
+        missing_history_lock = voice_admin.delete(
             "/api/master/history",
-            headers={"X-Session-ID": superuser_session},
+            headers={"X-Session-ID": voice_admin_session},
         )
         assert missing_history_lock.status_code == 423, missing_history_lock.text
 
-        acquired = superuser.post(
+        acquired = voice_admin.post(
             "/api/master/lock",
-            headers={"X-Session-ID": superuser_session},
+            headers={"X-Session-ID": voice_admin_session},
         )
         assert acquired.status_code == 200, acquired.text
 
@@ -255,13 +264,13 @@ def test_master_clear_is_superuser_only_and_requires_lock(monkeypatch) -> None:
             return {"revision": 27, "deleted": 14}
 
         monkeypatch.setattr(master_service, "clear_records", fake_clear)
-        cleared = superuser.delete(
+        cleared = voice_admin.delete(
             "/api/master/records",
-            headers={"X-Session-ID": superuser_session},
+            headers={"X-Session-ID": voice_admin_session},
         )
         assert cleared.status_code == 200, cleared.text
         assert cleared.json() == {"revision": 27, "deleted": 14}
-        assert calls == [superuser_session]
+        assert calls == [voice_admin_session]
 
         reset_calls: list[str] = []
 
@@ -280,17 +289,17 @@ def test_master_clear_is_superuser_only_and_requires_lock(monkeypatch) -> None:
             "clear_history_and_reset_version",
             fake_reset_history,
         )
-        reset_history = superuser.delete(
+        reset_history = voice_admin.delete(
             "/api/master/history",
-            headers={"X-Session-ID": superuser_session},
+            headers={"X-Session-ID": voice_admin_session},
         )
         assert reset_history.status_code == 200, reset_history.text
         assert reset_history.json()["revision"] == 0
-        assert reset_calls == [superuser_session]
+        assert reset_calls == [voice_admin_session]
 
-        released = superuser.delete(
+        released = voice_admin.delete(
             "/api/master/lock",
-            headers={"X-Session-ID": superuser_session},
+            headers={"X-Session-ID": voice_admin_session},
         )
         assert released.status_code == 200, released.text
 

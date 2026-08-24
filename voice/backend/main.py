@@ -185,17 +185,17 @@ MasterActionSessionId = Annotated[
 ]
 
 
-def superuser_dependency(user: CurrentUser) -> AuthUser:
-    if not user.is_superuser:
+def voice_admin_dependency(user: CurrentUser) -> AuthUser:
+    if not user.is_voice_admin:
         raise AppError(
-            "SUPERUSER_REQUIRED",
-            "Действие доступно только суперюзеру",
+            "VOICE_ADMIN_REQUIRED",
+            "Действие доступно только администратору Voice",
             status_code=403,
         )
     return user
 
 
-Superuser = Annotated[AuthUser, Depends(superuser_dependency)]
+VoiceAdmin = Annotated[AuthUser, Depends(voice_admin_dependency)]
 
 
 def job_payload(job: JobRecord) -> dict[str, Any]:
@@ -225,6 +225,7 @@ def reporting_sso_login(body: ReportingSsoRequest) -> dict[str, Any]:
     return auth_service.login_with_reporting_sso(
         email=str(claims["email"]),
         is_admin=bool(claims["admin"]),
+        voice_admin=bool(claims.get("voiceAdmin")),
     )
 
 
@@ -359,7 +360,7 @@ def list_master_history(
 
 @app.delete("/api/master/history")
 def clear_master_history(
-    _user: Superuser,
+    _user: VoiceAdmin,
     session_id: MasterActionSessionId,
 ) -> dict[str, Any]:
     return master_service.clear_history_and_reset_version(session_id)
@@ -545,7 +546,7 @@ def delete_master_record(
 
 @app.delete("/api/master/records")
 def clear_master_records(
-    user: Superuser,
+    user: VoiceAdmin,
     session_id: MasterActionSessionId,
 ) -> dict[str, Any]:
     return master_service.clear_records(session_id, actor=user.email)

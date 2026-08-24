@@ -24,6 +24,7 @@ def issue_voice_sso_token(
     *,
     email: str,
     is_admin: bool,
+    voice_admin: bool = False,
     display_name: str | None = None,
     ttl_seconds: int = 120,
 ) -> str:
@@ -34,6 +35,7 @@ def issue_voice_sso_token(
         "v": 1,
         "email": email.strip().lower(),
         "admin": bool(is_admin),
+        "voiceAdmin": bool(voice_admin),
         "name": (display_name or "").strip() or None,
         "iat": now,
         "exp": now + max(30, ttl_seconds),
@@ -64,5 +66,6 @@ def verify_voice_sso_token(token: str) -> dict:
     return {
         "email": email,
         "admin": bool(payload.get("admin")),
+        "voiceAdmin": bool(payload.get("voiceAdmin")),
         "name": payload.get("name"),
     }

@@ -2883,7 +2883,7 @@ export default function MasterPage() {
   };
 
   const clearMaster = async () => {
-    if (!masterEditable || user?.role !== "superuser") return;
+    if (!masterEditable || !user?.voiceAdmin) return;
     setClearingMaster(true);
     try {
       const response = await apiFetch("/api/master/records", {
@@ -2927,7 +2927,7 @@ export default function MasterPage() {
   };
 
   const resetMasterHistory = async () => {
-    if (!masterEditable || user?.role !== "superuser") return;
+    if (!masterEditable || !user?.voiceAdmin) return;
     setResettingHistory(true);
     try {
       const response = await apiFetch("/api/master/history", {
@@ -3963,7 +3963,7 @@ export default function MasterPage() {
               hidden
               onChange={analyzeFile}
             />
-            {user?.role === "superuser" && (
+            {user?.voiceAdmin && (
               <button
                 className="secondary-button master-reset-history-button"
                 type="button"
@@ -3988,7 +3988,7 @@ export default function MasterPage() {
                 Очистить журнал и обнулить версию
               </button>
             )}
-            {user?.role === "superuser" && (
+            {user?.voiceAdmin && (
               <button
                 className="danger-button master-clear-button"
                 type="button"
@@ -6233,7 +6233,7 @@ export default function MasterPage() {
         </div>
       )}
 
-      {!draftDialogOpen && clearDialogOpen && user?.role === "superuser" && (
+      {!draftDialogOpen && clearDialogOpen && user?.voiceAdmin && (
         <div className="master-lock-backdrop">
           <section
             className="master-lock-dialog master-clear-dialog"
@@ -6281,7 +6281,7 @@ export default function MasterPage() {
       {!draftDialogOpen &&
         !clearDialogOpen &&
         resetHistoryDialogOpen &&
-        user?.role === "superuser" && (
+        user?.voiceAdmin && (
           <div className="master-lock-backdrop">
             <section
               className="master-lock-dialog master-clear-dialog"

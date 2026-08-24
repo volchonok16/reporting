@@ -364,6 +364,7 @@ CREATE TABLE org_user (
     role            SMALLINT     NOT NULL DEFAULT 10,
     status          SMALLINT     NOT NULL DEFAULT 10,
     voice_only      BOOLEAN      NOT NULL DEFAULT FALSE,
+    voice_admin     BOOLEAN      NOT NULL DEFAULT FALSE,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );

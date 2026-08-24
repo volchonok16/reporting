@@ -214,9 +214,24 @@ def voice_sso_token(
     if "@" not in login:
         login = f"{login}@reporting.local"
     is_admin = meta.get("org_user_role") == "admin" or meta.get("auth_mode") == "pat"
+    voice_admin = bool(meta.get("voice_admin"))
+    if meta.get("org_user_id") is not None and not voice_admin:
+        # Подтянуть актуальный флаг из БД (если сессия создана до назначения роли).
+        db = next(get_db())
+        try:
+            org_user = db.get(OrgUser, int(meta["org_user_id"]))
+            if org_user is not None:
+                voice_admin = bool(getattr(org_user, "voice_admin", False))
+        finally:
+            close_db_session(db)
     # Voice-only и обычные пользователи получают полный функционал карусели;
-    # суперюзер карусели — только админы reporting.
-    token = issue_voice_sso_token(email=login, is_admin=bool(is_admin), display_name=login)
+    # суперюзер карусели — админы reporting; очистка мастер-файла — voice_admin.
+    token = issue_voice_sso_token(
+        email=login,
+        is_admin=bool(is_admin),
+        voice_admin=bool(voice_admin),
+        display_name=login,
+    )
     return VoiceSsoTokenOut(token=token, expiresIn=120)
 
 

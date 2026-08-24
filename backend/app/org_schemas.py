@@ -147,6 +147,7 @@ class OrgUserBriefOut(BaseModel):
     role: Literal["user", "admin"]
     status: Literal["active", "inactive", "deleted"]
     voiceOnly: bool = False
+    voiceAdmin: bool = False
 
 
 class EmployeeDepartmentBriefOut(BaseModel):
@@ -214,6 +215,7 @@ class EmployeeIn(BaseModel):
     userPassword: str | None = None
     userIsAdmin: bool = False
     userVoiceOnly: bool = False
+    userVoiceAdmin: bool = False
     departmentIds: list[int] = Field(default_factory=list)
 
 
@@ -228,6 +230,7 @@ class EmployeeUpdateIn(BaseModel):
     hideFromPyramid: bool | None = None
     userIsAdmin: bool | None = None
     userVoiceOnly: bool | None = None
+    userVoiceAdmin: bool | None = None
     userPassword: str | None = None
     departmentIds: list[int] | None = None
 
@@ -308,6 +311,7 @@ class OrgUserOut(BaseModel):
     role: Literal["user", "admin"]
     status: Literal["active", "inactive", "deleted"]
     voiceOnly: bool = False
+    voiceAdmin: bool = False
     employeeId: int | None = None
     employeeName: str | None = None
 
@@ -317,6 +321,7 @@ class OrgUserIn(BaseModel):
     password: str
     isAdmin: bool = False
     voiceOnly: bool = False
+    voiceAdmin: bool = False
     status: Literal["active", "inactive"] = "active"
 
 
@@ -325,6 +330,7 @@ class OrgUserUpdateIn(BaseModel):
     password: str | None = None
     isAdmin: bool | None = None
     voiceOnly: bool | None = None
+    voiceAdmin: bool | None = None
     status: Literal["active", "inactive", "deleted"] | None = None
 
 

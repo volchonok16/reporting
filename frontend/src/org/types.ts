@@ -99,6 +99,7 @@ export type OrgUserBrief = {
   role: 'user' | 'admin'
   status: 'active' | 'inactive' | 'deleted'
   voiceOnly?: boolean
+  voiceAdmin?: boolean
 }
 
 export type Employee = {

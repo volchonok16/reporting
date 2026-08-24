@@ -739,14 +739,15 @@
 | `password_hash` | text | Хеш пароля (PBKDF2-SHA256) |
 | `role` | smallint | `10` — пользователь, `100` — администратор отделов |
 | `status` | smallint | `0` удалён, `9` неактивен, `10` активен |
-| `voice_only` | boolean | Галочка **Voice сервисы** (только админ): если true — доступна только вкладка **Voice**; если false — Voice и все остальные вкладки |
+| `voice_only` | boolean | Галочка **Voice сервисы** (только админ reporting): если true — доступна только вкладка **Voice**; если false — Voice и все остальные вкладки |
+| `voice_admin` | boolean | Галочка **Администратор Voice** (только админ reporting): если true — доступны «Очистить журнал и обнулить версию» и «Очистить мастер-файл»; без флага эти действия недоступны |
 | `created_at`, `updated_at` | timestamptz | Метки времени |
 
 Связь: `employee.user_id` → `org_user.id`. Вход по email/паролю через `POST /api/auth/login` (режим app_user).
 
 Вкладка **Voice** (`SheetId = voice`) доступна всем авторизованным пользователям (same-origin `/voice/` → frontend-nginx → `voice-web` с `basePath=/voice`, `/voice-api/` → reporting **backend** mount `/voice-api`). Проверка маршрута: `GET /voice/reporting-voice.txt` должен вернуть `voice-ok` (не HTML reporting). Пользователи с `voice_only = true` (**Voice сервисы**) видят только эту вкладку; остальные вкладки для них скрыты. Тема iframe синхронизируется с reporting (`?theme=light|dark`).
 
-Авторизация единая: reporting выдаёт короткий SSO-токен (`POST /api/voice/sso-token`, секрет `VOICE_SSO_SECRET`), Voice обменивает его на свою сессию (`POST /voice-api/api/auth/reporting-sso`) — отдельный логин карусели не нужен.
+Авторизация единая: reporting выдаёт короткий SSO-токен (`POST /api/voice/sso-token`, секрет `VOICE_SSO_SECRET`, в токене флаги `admin` и `voiceAdmin`), Voice обменивает его на свою сессию (`POST /voice-api/api/auth/reporting-sso`) — отдельный логин карусели не нужен. Очистка журнала/мастер-файла — только при `org_user.voice_admin = true` (**Администратор Voice**).
 
 **Мастер-файл Voice** хранится в PostgreSQL reporting (миграция `050_voice_master.sql`, hash-индексы — `053_voice_master_signature_hash.sql`). **Uploads и jobs** — PostgreSQL (`051_voice_registry.sql`: `voice_uploads`, `voice_jobs`). **Auth Voice** — только через reporting SSO (`POST /api/voice/sso-token` → `POST /api/auth/reporting-sso`); отдельных учёток и таблиц auth в Voice нет. Bearer-сессия — подписанный stateless-токен (`VOICE_SSO_SECRET`). На диске (`CAROUSEL_DATA_DIR`) — только файлы загрузок и workspace. Legacy `registry.sqlite3` (uploads/jobs) импортируется один раз при старте.
 

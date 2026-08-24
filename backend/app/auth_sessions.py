@@ -16,6 +16,7 @@ def _auth_to_payload(
     org_user_id: int | None = None,
     org_user_role: str | None = None,
     voice_only: bool = False,
+    voice_admin: bool = False,
 ) -> dict:
     payload = {
         "base_url": auth.base_url,
@@ -28,6 +29,7 @@ def _auth_to_payload(
         "app_login": app_login,
         "app_role": app_role,
         "voice_only": bool(voice_only),
+        "voice_admin": bool(voice_admin),
     }
     if org_user_id is not None:
         payload["org_user_id"] = org_user_id
@@ -69,6 +71,7 @@ def _session_meta_from_payload(payload: dict) -> dict:
         "org_user_id": str(org_user_id) if org_user_id is not None else None,
         "org_user_role": str(org_user_role) if org_user_role else None,
         "voice_only": bool(payload.get("voice_only")),
+        "voice_admin": bool(payload.get("voice_admin")),
     }
 
 
@@ -94,6 +97,7 @@ def create_session(
     org_user_id: int | None = None,
     org_user_role: str | None = None,
     voice_only: bool = False,
+    voice_admin: bool = False,
 ) -> str:
     session_id = secrets.token_urlsafe(32)
     db = SessionLocal()
@@ -109,6 +113,7 @@ def create_session(
                     org_user_id=org_user_id,
                     org_user_role=org_user_role,
                     voice_only=voice_only,
+                    voice_admin=voice_admin,
                 ),
             )
         )
@@ -126,6 +131,7 @@ def _empty_session_meta() -> dict:
         "org_user_id": None,
         "org_user_role": None,
         "voice_only": False,
+        "voice_admin": False,
     }
 
 

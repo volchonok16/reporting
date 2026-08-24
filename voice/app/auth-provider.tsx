@@ -16,6 +16,7 @@ export type AuthUser = {
   email: string;
   role: "superuser" | "standard";
   canAccessMaster: boolean;
+  voiceAdmin?: boolean;
   isActive: boolean;
 };
 
@@ -52,6 +53,7 @@ const REPORTING_EMBED_USER: AuthUser = {
   email: "user@reporting.local",
   role: "standard",
   canAccessMaster: true,
+  voiceAdmin: false,
   isActive: true,
 };
 

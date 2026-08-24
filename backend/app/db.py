@@ -205,6 +205,10 @@ def ensure_startup_schema() -> None:
         "048_zni_external_data.sql",
         "049_app_notifications.sql",
         "050_voice_master.sql",
+        "051_voice_registry.sql",
+        "052_voice_lock_session_exp.sql",
+        "053_voice_master_signature_hash.sql",
+        "054_org_user_voice_admin.sql",
     )
 
     auth_session_sql = """

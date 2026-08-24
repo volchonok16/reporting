@@ -55,6 +55,7 @@ def verify_reporting_sso_token(token: str) -> dict:
     return {
         "email": str(payload["email"]),
         "admin": bool(payload.get("admin")),
+        "voiceAdmin": bool(payload.get("voiceAdmin")),
         "name": payload.get("name"),
     }
 
@@ -63,6 +64,7 @@ def issue_voice_session_token(
     *,
     email: str,
     is_admin: bool,
+    voice_admin: bool = False,
     ttl_seconds: int,
 ) -> tuple[str, float]:
     """Долгоживущая bearer-сессия Voice после обмена SSO."""
@@ -73,6 +75,7 @@ def issue_voice_session_token(
         "kind": "session",
         "email": email.strip().lower(),
         "admin": bool(is_admin),
+        "voiceAdmin": bool(voice_admin),
         "iat": now,
         "exp": int(expires_at),
     }
@@ -93,6 +96,7 @@ def verify_voice_session_token(token: str) -> dict:
     return {
         "email": str(payload["email"]),
         "admin": bool(payload.get("admin")),
+        "voiceAdmin": bool(payload.get("voiceAdmin")),
         "exp": float(payload.get("exp") or 0),
     }
 

@@ -163,6 +163,7 @@ const EMPTY_EMPLOYEE = {
   userPassword: '12345678',
   userIsAdmin: false,
   userVoiceOnly: false,
+  userVoiceAdmin: false,
 }
 
 const EMPTY_DEPARTMENT = {
@@ -619,6 +620,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       userPassword: '',
       userIsAdmin: emp.user?.role === 'admin',
       userVoiceOnly: Boolean(emp.user?.voiceOnly),
+      userVoiceAdmin: Boolean(emp.user?.voiceAdmin),
     })
     setShowEmployeeModal(true)
   }
@@ -675,6 +677,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       userPassword: '12345678',
       userIsAdmin: employeeForm.userIsAdmin,
       userVoiceOnly: employeeForm.userVoiceOnly,
+      userVoiceAdmin: employeeForm.userVoiceAdmin,
       departmentIds: employeeDepartmentIds,
     }
     setSavingEmployee(true)
@@ -692,6 +695,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
           hideFromPyramid: body.hideFromPyramid,
           userIsAdmin: body.userIsAdmin,
           userVoiceOnly: body.userVoiceOnly,
+          userVoiceAdmin: body.userVoiceAdmin,
           userPassword: employeeForm.userPassword.trim() || undefined,
           departmentIds: body.departmentIds,
         })
@@ -1588,8 +1592,20 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                       />
                       Voice сервисы
                     </label>
+                    <label className="org-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={employeeForm.userVoiceAdmin}
+                        onChange={(e) =>
+                          setEmployeeForm({ ...employeeForm, userVoiceAdmin: e.target.checked })
+                        }
+                      />
+                      Администратор Voice
+                    </label>
                     <p className="org-hint">
-                      С галочкой «Voice сервисы» — только вкладка Voice. Без галочки — Voice и все остальные вкладки.
+                      С галочкой «Voice сервисы» — только вкладка Voice. Без галочки — Voice и все
+                      остальные вкладки. «Администратор Voice» — очистка журнала/версии и очистка
+                      мастер-файла.
                     </p>
                   </section>
                 ) : editingEmployee ? (
@@ -1622,6 +1638,16 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                           }
                         />
                         Voice сервисы
+                      </label>
+                      <label className="org-checkbox org-checkbox-field">
+                        <input
+                          type="checkbox"
+                          checked={employeeForm.userVoiceAdmin}
+                          onChange={(e) =>
+                            setEmployeeForm({ ...employeeForm, userVoiceAdmin: e.target.checked })
+                          }
+                        />
+                        Администратор Voice
                       </label>
                       <label>
                         Новый пароль (сброс)

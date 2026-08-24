@@ -114,6 +114,7 @@ def _employee_out(db: Session, emp: Employee) -> EmployeeOut:
             role=_user_role_label(emp.user.role),  # type: ignore[arg-type]
             status=_user_status_label(emp.user.status),  # type: ignore[arg-type]
             voiceOnly=bool(emp.user.voice_only),
+            voiceAdmin=bool(getattr(emp.user, "voice_admin", False)),
         )
     expertises = [
         EmployeeExpertiseOut(
@@ -288,6 +289,7 @@ def _create_org_user(
     password: str,
     is_admin: bool,
     voice_only: bool = False,
+    voice_admin: bool = False,
 ) -> OrgUser:
     normalized = email.strip().casefold()
     if not normalized:
@@ -303,6 +305,7 @@ def _create_org_user(
         role=ORG_USER_ROLE_ADMIN if is_admin else ORG_USER_ROLE_USER,
         status=ORG_USER_STATUS_ACTIVE,
         voice_only=bool(voice_only),
+        voice_admin=bool(voice_admin),
     )
     db.add(user)
     db.flush()
@@ -489,6 +492,7 @@ def create_employee(db: Session, data: EmployeeIn) -> EmployeeOut:
         password=password,
         is_admin=data.userIsAdmin,
         voice_only=data.userVoiceOnly,
+        voice_admin=data.userVoiceAdmin,
     )
     emp.user_id = user.id
     if data.departmentIds:
@@ -525,6 +529,8 @@ def update_employee(db: Session, employee_ref: str, data: EmployeeUpdateIn) -> E
         emp.user.role = ORG_USER_ROLE_ADMIN if data.userIsAdmin else ORG_USER_ROLE_USER
     if data.userVoiceOnly is not None and emp.user:
         emp.user.voice_only = bool(data.userVoiceOnly)
+    if data.userVoiceAdmin is not None and emp.user:
+        emp.user.voice_admin = bool(data.userVoiceAdmin)
     if data.userPassword and emp.user:
         if len(data.userPassword) < 8:
             raise HTTPException(status_code=400, detail="Пароль должен быть не короче 8 символов.")
@@ -543,6 +549,7 @@ def update_employee(db: Session, employee_ref: str, data: EmployeeUpdateIn) -> E
             password=data.userPassword,
             is_admin=bool(data.userIsAdmin),
             voice_only=bool(data.userVoiceOnly),
+            voice_admin=bool(data.userVoiceAdmin),
         )
         emp.user_id = user.id
     _sync_position_name(db, emp)
@@ -1048,6 +1055,7 @@ def list_org_users(db: Session) -> list[OrgUserOut]:
                 role=_user_role_label(user.role),  # type: ignore[arg-type]
                 status=_user_status_label(user.status),  # type: ignore[arg-type]
                 voiceOnly=bool(user.voice_only),
+                voiceAdmin=bool(getattr(user, "voice_admin", False)),
                 employeeId=emp.id if emp else None,
                 employeeName=emp.full_name if emp else None,
             )
@@ -1062,6 +1070,7 @@ def create_org_user_account(db: Session, data: OrgUserIn) -> OrgUserOut:
         password=data.password,
         is_admin=data.isAdmin,
         voice_only=data.voiceOnly,
+        voice_admin=data.voiceAdmin,
     )
     status = ORG_USER_STATUS_ACTIVE if data.status == "active" else ORG_USER_STATUS_INACTIVE
     user.status = status
@@ -1072,6 +1081,7 @@ def create_org_user_account(db: Session, data: OrgUserIn) -> OrgUserOut:
         role=_user_role_label(user.role),  # type: ignore[arg-type]
         status=_user_status_label(user.status),  # type: ignore[arg-type]
         voiceOnly=bool(user.voice_only),
+        voiceAdmin=bool(user.voice_admin),
     )
 
 
@@ -1096,6 +1106,8 @@ def update_org_user_account(db: Session, user_id: int, data: OrgUserUpdateIn) ->
         user.role = ORG_USER_ROLE_ADMIN if data.isAdmin else ORG_USER_ROLE_USER
     if data.voiceOnly is not None:
         user.voice_only = bool(data.voiceOnly)
+    if data.voiceAdmin is not None:
+        user.voice_admin = bool(data.voiceAdmin)
     if data.status is not None:
         user.status = {
             "active": ORG_USER_STATUS_ACTIVE,
@@ -1110,6 +1122,7 @@ def update_org_user_account(db: Session, user_id: int, data: OrgUserUpdateIn) ->
         role=_user_role_label(user.role),  # type: ignore[arg-type]
         status=_user_status_label(user.status),  # type: ignore[arg-type]
         voiceOnly=bool(user.voice_only),
+        voiceAdmin=bool(user.voice_admin),
         employeeId=emp.id if emp else None,
         employeeName=emp.full_name if emp else None,
     )
