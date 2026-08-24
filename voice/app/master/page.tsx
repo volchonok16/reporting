@@ -75,6 +75,15 @@ type ImportItem = {
   current: RecordSnapshot | null;
 };
 
+type ImportMergeResult = {
+  revision: number;
+  added: number;
+  updated: number;
+  keptConflicts: number;
+  mergedDuplicates: number;
+  separateDuplicateRows: number;
+};
+
 type ImportAnalysis = {
   importId: string;
   status: "analyzed" | "merged";
@@ -84,6 +93,9 @@ type ImportAnalysis = {
   baseRevision: number;
   sourceName: string;
   mode: "raw" | "formatted";
+  errorCode?: string;
+  errorMessage?: string;
+  mergeResult?: ImportMergeResult;
   stats: {
     new: number;
     unchanged: number;
@@ -118,7 +130,7 @@ type ImportAnalysis = {
 
 type ImportTask = {
   importId: string;
-  status: "queued" | "analyzing" | "failed" | "analyzed" | "merged";
+  status: "queued" | "analyzing" | "merging" | "failed" | "analyzed" | "merged";
   sourceName: string;
   mode: "auto" | "raw" | "formatted";
   baseRevision: number;
@@ -127,6 +139,7 @@ type ImportTask = {
   maxRows: number;
   errorCode?: string;
   errorMessage?: string;
+  mergeResult?: ImportMergeResult;
 };
 
 type ParameterOption = {
@@ -1306,19 +1319,59 @@ export default function MasterPage() {
           );
           const payload = (await response.json()) as ImportTask | ImportAnalysis;
           setImportProgress(payload);
-          if (payload.status === "analyzed" || payload.status === "merged") {
+          if (payload.status === "merging") {
+            setMerging(true);
+            setUploading(false);
+            await new Promise((resolve) => window.setTimeout(resolve, 1000));
+            continue;
+          }
+          if (payload.status === "merged") {
+            const mergeResult =
+              "mergeResult" in payload
+                ? payload.mergeResult
+                : "stats" in payload &&
+                    payload.stats &&
+                    typeof payload.stats === "object" &&
+                    "mergeResult" in payload.stats
+                  ? (
+                      payload.stats as {
+                        mergeResult?: ImportTask["mergeResult"];
+                      }
+                    ).mergeResult
+                  : undefined;
+            if (mergeResult) {
+              setNotice(
+                `Слияние выполнено: добавлено ${mergeResult.added}, обновлено ${mergeResult.updated}, оставлено без изменений ${mergeResult.keptConflicts}. Версия ${masterVersion(mergeResult.revision)}.`,
+              );
+            } else {
+              setNotice("Слияние выполнено.");
+            }
+            setImportAnalysis(null);
+            setMerging(false);
+            importPollingRef.current = "";
+            setImportProgress(null);
+            if (user && typeof localStorage !== "undefined")
+              localStorage.removeItem(activeMasterImportStorageKey(user.id));
+            return;
+          }
+          if (payload.status === "analyzed") {
             if (!("stats" in payload))
               throw new Error("Сервер не вернул результат анализа файла.");
             setImportAnalysis(payload);
             setAnalysisDuplicateCursor(0);
-            setNotice(
-              payload.stats.conflict > 0
-                ? "Проверка завершена. Новые строки будут добавлены автоматически, конфликты требуют решения."
-                : "Проверка завершена. Конфликтов нет. Подтвердите слияние с мастер файлом.",
-            );
-            setError("");
+            if (payload.errorMessage) {
+              setError(payload.errorMessage);
+            } else {
+              setNotice(
+                payload.stats.conflict > 0
+                  ? "Проверка завершена. Новые строки будут добавлены автоматически, конфликты требуют решения."
+                  : "Проверка завершена. Конфликтов нет. Подтвердите слияние с мастер файлом.",
+              );
+              setError("");
+            }
             importPollingRef.current = "";
             setImportProgress(null);
+            setMerging(false);
             if (user && typeof localStorage !== "undefined")
               localStorage.removeItem(activeMasterImportStorageKey(user.id));
             return;
@@ -1332,6 +1385,7 @@ export default function MasterPage() {
         }
       } catch (nextError) {
         setImportProgress(null);
+        setMerging(false);
         if (user && typeof localStorage !== "undefined")
           localStorage.removeItem(activeMasterImportStorageKey(user.id));
         throw nextError;
@@ -3203,27 +3257,61 @@ export default function MasterPage() {
   const mergeImport = async () => {
     if (!analysis || !masterEditable) return;
     setMerging(true);
+    const importId = analysis.importId;
     try {
       const conflictStrategy = replaceAll
         ? "replace_all"
         : selectedConflicts.length
           ? "selected"
           : "keep_all";
-      const response = await apiFetch(
-        `/api/master/imports/${analysis.importId}/merge`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            conflictStrategy,
-            replaceConflictItemIds: selectedConflicts,
-            mergeDuplicateANumbers,
-          }),
-        },
-      );
-      const result = await response.json();
-      setNotice(
-        `Слияние выполнено: добавлено ${result.added}, обновлено ${result.updated}, оставлено без изменений ${result.keptConflicts}${result.separateDuplicateRows ? `, дубликатов сохранено отдельными строками ${result.separateDuplicateRows}` : ""}${result.mergedDuplicates ? `, объединено повторных строк ${result.mergedDuplicates}` : ""}. Версия ${masterVersion(result.revision)}.`,
-      );
+      await apiFetch(`/api/master/imports/${importId}/merge`, {
+        method: "POST",
+        body: JSON.stringify({
+          conflictStrategy,
+          replaceConflictItemIds: selectedConflicts,
+          mergeDuplicateANumbers: false,
+        }),
+      });
+      let result: {
+        revision: number;
+        added: number;
+        updated: number;
+        keptConflicts: number;
+        mergedDuplicates: number;
+        separateDuplicateRows: number;
+      } | null = null;
+      while (true) {
+        const statusResponse = await apiFetch(
+          `/api/master/imports/${encodeURIComponent(importId)}`,
+        );
+        const payload = (await statusResponse.json()) as ImportTask & {
+          mergeResult?: typeof result;
+          stats?: { mergeResult?: typeof result };
+        };
+        if (payload.status === "merged") {
+          result =
+            payload.mergeResult ||
+            payload.stats?.mergeResult ||
+            null;
+          break;
+        }
+        if (payload.status === "analyzed" && payload.errorMessage) {
+          throw new Error(payload.errorMessage);
+        }
+        if (payload.status === "failed") {
+          throw new Error(
+            payload.errorMessage || "Не удалось выполнить слияние.",
+          );
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+      }
+      if (!result) {
+        setNotice("Слияние выполнено.");
+      } else {
+        setNotice(
+          `Слияние выполнено: добавлено ${result.added}, обновлено ${result.updated}, оставлено без изменений ${result.keptConflicts}${result.separateDuplicateRows ? `, дубликатов сохранено отдельными строками ${result.separateDuplicateRows}` : ""}${result.mergedDuplicates ? `, объединено повторных строк ${result.mergedDuplicates}` : ""}. Версия ${masterVersion(result.revision)}.`,
+        );
+      }
       setImportAnalysis(null);
       setSelectedConflicts([]);
       setReplaceAll(false);
@@ -4362,35 +4450,18 @@ export default function MasterPage() {
                     </strong>
                     <span>
                       Групп: {analysis.stats.duplicateGroups}; повторных строк:{" "}
-                      {analysis.stats.duplicateA}. По умолчанию каждая строка
-                      будет загружена в master отдельно. Объединение выполняется
-                      только по вашему решению.
+                      {analysis.stats.duplicateA}. Каждая строка будет загружена
+                      в master отдельно.
                     </span>
                   </div>
                   <div className="duplicate-review-actions">
                     <button
-                      className={
-                        !mergeDuplicateANumbers
-                          ? "primary-button compact"
-                          : "secondary-button compact"
-                      }
+                      className="primary-button compact"
                       type="button"
-                      aria-pressed={!mergeDuplicateANumbers}
-                      onClick={() => setMergeDuplicateANumbers(false)}
+                      aria-pressed
+                      disabled
                     >
                       Добавить отдельными строками
-                    </button>
-                    <button
-                      className={
-                        mergeDuplicateANumbers
-                          ? "primary-button compact"
-                          : "secondary-button compact"
-                      }
-                      type="button"
-                      aria-pressed={mergeDuplicateANumbers}
-                      onClick={() => setMergeDuplicateANumbers(true)}
-                    >
-                      Объединить дубликаты
                     </button>
                     <button
                       className="secondary-button compact"
@@ -4406,11 +4477,9 @@ export default function MasterPage() {
                   </div>
                 </div>
                 <p className="duplicate-merge-decision" role="status">
-                  {mergeDuplicateANumbers
-                    ? `При подтверждении будет загружено ${(
-                        preservedImportRows - analysis.stats.duplicateA
-                      ).toLocaleString("ru-RU")} строк: повторные опорные номера будут объединены.`
-                    : `При подтверждении будут загружены все ${preservedImportRows.toLocaleString("ru-RU")} корректных строк без автоматического объединения.`}
+                  При подтверждении будут загружены все{" "}
+                  {preservedImportRows.toLocaleString("ru-RU")} корректных
+                  строк без автоматического объединения.
                 </p>
                 <div
                   className="duplicate-review-list"

@@ -453,7 +453,7 @@ def merge_master_import(
     session_id: MasterActionSessionId,
     user: CurrentUser,
 ) -> dict[str, Any]:
-    return master_service.merge_import(
+    return master_service.queue_merge_import(
         import_id, body, session_id, actor=user.email
     )
 

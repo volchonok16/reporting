@@ -447,8 +447,10 @@ class MasterService:
             max_workers=1,
             thread_name_prefix="master-analysis",
         )
+        self._pending_merges: dict[str, tuple[MasterMergeRequest, str]] = {}
         self._initialize()
         self._resume_interrupted_analyses()
+        self._reset_interrupted_merges()
 
     def _connect(self) -> PgConnection:
         if getattr(self.config, "database_url", None):
@@ -1475,6 +1477,22 @@ class MasterService:
                 str(row["session_id"]),
             )
 
+    def _reset_interrupted_merges(self) -> None:
+        """Return half-finished merges to analyzed so the user can retry."""
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE master_imports
+                SET status = 'analyzed',
+                    progress_phase = 'completed',
+                    error_code = 'MASTER_MERGE_INTERRUPTED',
+                    error_message = 'Слияние было прервано перезапуском сервера. Подтвердите снова.',
+                    updated_at = ?
+                WHERE status = 'merging'
+                """,
+                (time.time(),),
+            )
+
     def shutdown(self) -> None:
         self._analysis_executor.shutdown(wait=False, cancel_futures=False)
 
@@ -1576,7 +1594,8 @@ class MasterService:
             row = connection.execute(
                 """
                 SELECT id FROM master_imports
-                WHERE session_id = ? AND status IN ('queued', 'analyzing')
+                WHERE session_id = ?
+                  AND status IN ('queued', 'analyzing', 'merging')
                 ORDER BY created_at DESC LIMIT 1
                 """,
                 (session_id,),
@@ -1632,6 +1651,21 @@ class MasterService:
                 }
             )
             return payload
+        if status == "merging":
+            if row["error_code"] or row["error_message"]:
+                payload.update(
+                    {
+                        "errorCode": str(row["error_code"] or ""),
+                        "errorMessage": str(row["error_message"] or ""),
+                    }
+                )
+            return payload
+        if status == "analyzed" and (
+            row["error_code"] or row["error_message"]
+        ):
+            # Merge failed and rolled back to analyzed — surface the error.
+            payload["errorCode"] = str(row["error_code"] or "")
+            payload["errorMessage"] = str(row["error_message"] or "")
         if status not in {"analyzed", "merged"}:
             return payload
         stats = json.loads(str(row["stats_json"] or "{}"))
@@ -1674,6 +1708,10 @@ class MasterService:
                 ),
             }
         )
+        if status == "merged":
+            merge_result = stats.get("mergeResult")
+            if isinstance(merge_result, dict):
+                payload["mergeResult"] = merge_result
         return payload
 
     def _update_analysis_progress(
@@ -2607,6 +2645,118 @@ class MasterService:
             "numberStartErrors": number_start_errors[:500],
         }
 
+    def queue_merge_import(
+        self,
+        import_id: str,
+        body: MasterMergeRequest,
+        session_id: str,
+        *,
+        actor: str,
+    ) -> dict[str, Any]:
+        """Start merge in background; client polls GET /imports/{id} until merged."""
+        # Duplicate A-number merge UI is disabled; always keep separate rows.
+        body = body.model_copy(update={"mergeDuplicateANumbers": False})
+        now = time.time()
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            import_row = connection.execute(
+                """
+                SELECT * FROM master_imports
+                WHERE id = ? AND session_id = ?
+                """,
+                (import_id, session_id),
+            ).fetchone()
+            if import_row is None:
+                raise AppError(
+                    "MASTER_IMPORT_NOT_FOUND",
+                    "Анализ импорта не найден",
+                    status_code=404,
+                )
+            status = str(import_row["status"])
+            if status == "merging":
+                return self._analysis_payload(connection, import_row)
+            if status == "merged":
+                return self._analysis_payload(connection, import_row)
+            if status != "analyzed":
+                raise AppError(
+                    "MASTER_IMPORT_NOT_READY",
+                    "Импорт ещё не готов к слиянию",
+                    status_code=409,
+                )
+            current_revision = self._current_revision(connection)
+            if current_revision != int(import_row["base_revision"]):
+                raise AppError(
+                    "MASTER_CHANGED",
+                    "Мастер файл изменился после проверки. Запустите анализ заново.",
+                    status_code=409,
+                )
+            claimed = connection.execute(
+                """
+                UPDATE master_imports
+                SET status = 'merging',
+                    progress_phase = 'merging',
+                    error_code = NULL,
+                    error_message = NULL,
+                    updated_at = ?
+                WHERE id = ? AND status = 'analyzed'
+                """,
+                (now, import_id),
+            ).rowcount
+            if claimed != 1:
+                raise AppError(
+                    "MASTER_IMPORT_ALREADY_MERGED",
+                    "Этот импорт уже обрабатывается или применён",
+                    status_code=409,
+                )
+            updated = connection.execute(
+                "SELECT * FROM master_imports WHERE id = ?",
+                (import_id,),
+            ).fetchone()
+            self._pending_merges[import_id] = (body, actor)
+            payload = self._analysis_payload(connection, updated)
+        self._analysis_executor.submit(
+            self._run_merge_import,
+            import_id,
+            session_id,
+        )
+        return payload
+
+    def _run_merge_import(self, import_id: str, session_id: str) -> None:
+        pending = self._pending_merges.pop(import_id, None)
+        if pending is None:
+            return
+        body, actor = pending
+        try:
+            self.merge_import(import_id, body, session_id, actor=actor)
+        except AppError as exc:
+            with self._connect() as connection:
+                connection.execute(
+                    """
+                    UPDATE master_imports
+                    SET status = 'analyzed',
+                        progress_phase = 'completed',
+                        error_code = ?,
+                        error_message = ?,
+                        updated_at = ?
+                    WHERE id = ? AND status = 'merging'
+                    """,
+                    (exc.code, exc.message, time.time(), import_id),
+                )
+        except Exception as exc:  # noqa: BLE001 — surface to UI, keep import retryable
+            with self._connect() as connection:
+                connection.execute(
+                    """
+                    UPDATE master_imports
+                    SET status = 'analyzed',
+                        progress_phase = 'completed',
+                        error_code = 'MASTER_MERGE_FAILED',
+                        error_message = ?,
+                        updated_at = ?
+                    WHERE id = ? AND status = 'merging'
+                    """,
+                    (str(exc)[:2000], time.time(), import_id),
+                )
+
     def merge_import(
         self,
         import_id: str,
@@ -2615,6 +2765,8 @@ class MasterService:
         *,
         actor: str,
     ) -> dict[str, Any]:
+        # Duplicate merge is disabled in UI; keep rows separate.
+        body = body.model_copy(update={"mergeDuplicateANumbers": False})
         selected = set(body.replaceConflictItemIds)
         now = time.time()
         with self._lock, self._connect() as connection:
@@ -2632,7 +2784,7 @@ class MasterService:
                     "Анализ импорта не найден",
                     status_code=404,
                 )
-            if import_row["status"] != "analyzed":
+            if import_row["status"] not in {"analyzed", "merging"}:
                 raise AppError(
                     "MASTER_IMPORT_ALREADY_MERGED",
                     "Этот импорт уже был применён",
@@ -2996,15 +3148,7 @@ class MasterService:
                         ),
                     )
             if sequence == 0:
-                connection.execute(
-                    """
-                    UPDATE master_imports
-                    SET status = 'merged', merged_at = ?, merged_revision = ?
-                    WHERE id = ?
-                    """,
-                    (now, current_revision, import_id),
-                )
-                return {
+                result = {
                     "revision": current_revision,
                     "added": 0,
                     "updated": 0,
@@ -3012,19 +3156,27 @@ class MasterService:
                     "mergedDuplicates": merged_duplicates,
                     "separateDuplicateRows": separate_duplicate_rows,
                 }
+                import_stats["mergeResult"] = result
+                connection.execute(
+                    """
+                    UPDATE master_imports
+                    SET status = 'merged',
+                        merged_at = ?,
+                        merged_revision = ?,
+                        stats_json = ?,
+                        error_code = NULL,
+                        error_message = NULL,
+                        progress_phase = 'merged'
+                    WHERE id = ?
+                    """,
+                    (now, current_revision, _json(import_stats), import_id),
+                )
+                return result
             connection.execute(
                 "UPDATE master_state SET current_revision = ? WHERE id = 1",
                 (revision,),
             )
-            connection.execute(
-                """
-                UPDATE master_imports
-                SET status = 'merged', merged_at = ?, merged_revision = ?
-                WHERE id = ?
-                """,
-                (now, revision, import_id),
-            )
-            return {
+            result = {
                 "revision": revision,
                 "added": added,
                 "updated": updated,
@@ -3032,6 +3184,22 @@ class MasterService:
                 "mergedDuplicates": merged_duplicates,
                 "separateDuplicateRows": separate_duplicate_rows,
             }
+            import_stats["mergeResult"] = result
+            connection.execute(
+                """
+                UPDATE master_imports
+                SET status = 'merged',
+                    merged_at = ?,
+                    merged_revision = ?,
+                    stats_json = ?,
+                    error_code = NULL,
+                    error_message = NULL,
+                    progress_phase = 'merged'
+                WHERE id = ?
+                """,
+                (now, revision, _json(import_stats), import_id),
+            )
+            return result
 
     def create_record(
         self, body: MasterRecordRequest, session_id: str, *, actor: str

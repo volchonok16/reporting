@@ -295,7 +295,7 @@ class Registry:
                   AND NOT EXISTS (
                     SELECT 1 FROM master_imports AS mi
                     WHERE mi.upload_id = u.id
-                      AND mi.status IN ('queued', 'analyzing')
+                      AND mi.status IN ('queued', 'analyzing', 'merging')
                   )
                 """,
                 (now,),

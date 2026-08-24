@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from typing import Any, Iterator, Sequence
 
 import psycopg
+from psycopg.pq import TransactionStatus
 from psycopg.rows import dict_row
 
 
@@ -236,13 +237,15 @@ class PgConnection:
         cur = PgCursor(self._conn.cursor(row_factory=dict_row))
         statement = sql.strip()
         if _BEGIN_IMMEDIATE_RE.match(statement) or statement.upper() == "BEGIN":
-            if not self._in_transaction:
+            # autocommit=False may already be inside a txn; nested BEGIN → PG warning
+            if self._conn.info.transaction_status == TransactionStatus.IDLE:
                 self._conn.execute("BEGIN")
-                self._in_transaction = True
+            self._in_transaction = True
             return cur
         upper = statement.upper()
         if upper in {"COMMIT", "ROLLBACK"}:
-            self._conn.execute(upper)
+            if self._conn.info.transaction_status != TransactionStatus.IDLE:
+                self._conn.execute(upper)
             self._in_transaction = False
             return cur
         cur.execute(sql, params)
