@@ -229,6 +229,13 @@ fi
 echo "==> Права alex/ivan…"
 bash "$(dirname "$0")/grant-db-users.sh" || echo "Предупреждение: grant-db-users.sh не выполнен" >&2
 
+# schema.sql создаёт zni_board без seed — без 043 UI падает на /api/auth/defaults
+board_n="$("${COMPOSE[@]}" exec -T postgres psql -U reporting -d reporting -tAc "SELECT count(*) FROM zni_board" 2>/dev/null | tr -d '[:space:]' || echo 0)"
+if [[ "${board_n:-0}" == "0" ]]; then
+  echo "==> Seed досок ЗНИ (043_zni_boards.sql)…"
+  bash "$(dirname "$0")/migrate.sh" db/migrations/043_zni_boards.sql || echo "Предупреждение: 043_zni_boards не применена" >&2
+fi
+
 ARGS=(up -d)
 [[ "$BUILD" -eq 1 ]] && ARGS+=(--build)
 echo "==> ${COMPOSE[*]} ${ARGS[*]}"
