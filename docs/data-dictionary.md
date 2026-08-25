@@ -103,6 +103,7 @@
 |---------|-----|----------|
 | id | text | PK |
 | a_number | text | Номер A |
+| a_number_key | bigint | Цифровой ключ A для btree (`055`) |
 | b_numbers_json | text | JSON B-номеров |
 | source_prefix | text | Префикс строки |
 | comment | text | Комментарий |
