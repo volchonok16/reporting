@@ -34,7 +34,7 @@ from .models import (
 from .pg_db import PgConnection, configure as configure_master_db, connect as pg_connect
 from .reporting import ReportWriter
 from .security import normalize_number
-from .storage import Registry, opaque_id
+from .storage import Registry
 from .validation import ValidationService
 
 
@@ -964,6 +964,28 @@ class MasterService:
         return int(row["rows"]), int(row["numbers"])
 
     @staticmethod
+    def _allocate_ids(
+        connection: sqlite3.Connection, table: str, count: int
+    ) -> list[int]:
+        if count <= 0:
+            return []
+        if table not in {
+            "master_records",
+            "master_imports",
+            "master_import_items",
+            "master_changes",
+        }:
+            raise ValueError(f"unsupported id table: {table}")
+        rows = connection.execute(
+            f"""
+            SELECT nextval(pg_get_serial_sequence('{table}', 'id')) AS id
+            FROM generate_series(1, ?)
+            """,
+            (count,),
+        ).fetchall()
+        return [int(row["id"]) for row in rows]
+
+    @staticmethod
     def _append_change(
         connection: sqlite3.Connection,
         *,
@@ -982,16 +1004,15 @@ class MasterService:
         connection.execute(
             """
             INSERT INTO master_changes(
-                id, revision, sequence, record_id, action, line_number,
+                revision, sequence, record_id, action, line_number,
                 before_json, after_json, source_file, source_row, actor,
                 created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                opaque_id(),
                 revision,
                 sequence,
-                record_id,
+                int(record_id),
                 action,
                 line_number,
                 _json(before) if before is not None else None,
@@ -1013,10 +1034,10 @@ class MasterService:
         connection.executemany(
             """
             INSERT INTO master_changes(
-                id, revision, sequence, record_id, action, line_number,
+                revision, sequence, record_id, action, line_number,
                 before_json, after_json, source_file, source_row, actor,
                 created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )
@@ -1072,7 +1093,7 @@ class MasterService:
                             FROM json_each(b_numbers_json) AS searched_aon
                             WHERE CAST(searched_aon.value AS TEXT) LIKE ? ESCAPE '\\'
                         )
-                        OR id LIKE ? ESCAPE '\\'
+                        OR CAST(id AS TEXT) LIKE ? ESCAPE '\\'
                     )
                     """
                 )
@@ -1524,7 +1545,7 @@ class MasterService:
             clauses.append(
                 """
                 (
-                    record_id LIKE ?
+                    CAST(record_id AS TEXT) LIKE ?
                     OR source_file LIKE ?
                     OR json_extract(before_json, '$.aNumber') LIKE ?
                     OR json_extract(after_json, '$.aNumber') LIKE ?
@@ -1684,19 +1705,18 @@ class MasterService:
                 ).fetchone()
                 if existing is not None:
                     return str(existing["id"])
-            import_id = opaque_id()
-            connection.execute(
+            import_row = connection.execute(
                 """
                 INSERT INTO master_imports(
-                    id, session_id, upload_id, source_name, detected_mode,
+                    session_id, upload_id, source_name, detected_mode,
                     base_revision, status, stats_json, request_json,
                     warnings_json, progress_rows, progress_phase, updated_at,
                     created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 'queued', '{}', ?, '{}', 0,
+                ) VALUES (?, ?, ?, ?, ?, 'queued', '{}', ?, '{}', 0,
                           'queued', ?, ?)
+                RETURNING id
                 """,
                 (
-                    import_id,
                     session_id,
                     body.uploadId,
                     upload.name,
@@ -1706,8 +1726,8 @@ class MasterService:
                     now,
                     now,
                 ),
-            )
-        return import_id
+            ).fetchone()
+        return str(import_row["id"])
 
     def queue_import_analysis(
         self,
@@ -2117,7 +2137,7 @@ class MasterService:
             connection.execute(
                 """
                 CREATE TEMP TABLE IF NOT EXISTS matched_master_records (
-                    record_id TEXT PRIMARY KEY
+                    record_id BIGINT PRIMARY KEY
                 ) WITHOUT ROWID
                 """
             )
@@ -2196,7 +2216,7 @@ class MasterService:
                         current_rows.setdefault(str(row["a_number"]), []).append(row)
                 item_rows: list[tuple[Any, ...]] = []
                 warning_rows: list[tuple[Any, ...]] = []
-                matched_record_ids: list[tuple[str]] = []
+                matched_record_ids: list[tuple[int]] = []
                 for mapping, source_row in batch:
                     prefix = canonicalize_pani_region_prefix(
                         mapping.sourcePrefix or NO_REGION_PREFIX
@@ -2228,7 +2248,7 @@ class MasterService:
                         )
                     if current_row is not None:
                         candidates.remove(current_row)
-                        matched_record_ids.append((str(current_row["id"]),))
+                        matched_record_ids.append((int(current_row["id"]),))
                     current = (
                         _snapshot(current_row)
                         if current_row is not None
@@ -2246,19 +2266,17 @@ class MasterService:
                     else:
                         status = "conflict"
                     counts[status] += 1
-                    item_id = opaque_id()
                     b_json = _json(incoming["bNumbers"])
                     item_rows.append(
                         (
-                            item_id,
-                            import_id,
+                            int(import_id),
                             source_row,
                             mapping.aNumber,
                             _json(incoming),
                             b_json,
                             prefix,
                             (
-                                str(current_row["id"])
+                                int(current_row["id"])
                                 if current_row is not None
                                 else None
                             ),
@@ -2266,22 +2284,20 @@ class MasterService:
                             status,
                         )
                     )
-                    for warning in _number_start_errors(
+                    pending_warnings = _number_start_errors(
                         incoming,
                         source_row=source_row,
-                        item_id=item_id,
-                    ):
+                        item_id="",
+                    )
+                    if pending_warnings:
                         warning_rows.append(
                             (
-                                import_id,
-                                item_id,
+                                len(item_rows) - 1,
                                 source_row,
-                                warning["kind"],
-                                warning["number"],
-                                warning["aNumber"],
+                                pending_warnings,
                                 status,
                             )
-                    )
+                        )
                 if matched_record_ids:
                     connection.executemany(
                         """
@@ -2290,6 +2306,9 @@ class MasterService:
                         """,
                         matched_record_ids,
                     )
+                allocated_item_ids = self._allocate_ids(
+                    connection, "master_import_items", len(item_rows)
+                )
                 connection.executemany(
                     """
                     INSERT INTO master_import_items(
@@ -2298,9 +2317,27 @@ class MasterService:
                         current_json, status
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    item_rows,
+                    [
+                        (item_id, *row)
+                        for item_id, row in zip(allocated_item_ids, item_rows)
+                    ],
                 )
                 if warning_rows:
+                    flat_warnings: list[tuple[Any, ...]] = []
+                    for item_index, source_row, warnings, status in warning_rows:
+                        item_id = allocated_item_ids[item_index]
+                        for warning in warnings:
+                            flat_warnings.append(
+                                (
+                                    int(import_id),
+                                    item_id,
+                                    source_row,
+                                    warning["kind"],
+                                    warning["number"],
+                                    warning["aNumber"],
+                                    status,
+                                )
+                            )
                     connection.executemany(
                         """
                         INSERT INTO master_import_number_warnings(
@@ -2308,7 +2345,7 @@ class MasterService:
                             a_number, status
                         ) VALUES (?, ?, ?, ?, ?, ?, ?)
                         """,
-                        warning_rows,
+                        flat_warnings,
                     )
                 connection.commit()
                 persisted += len(batch)
@@ -2331,8 +2368,8 @@ class MasterService:
                     incoming_prefix TEXT NOT NULL
                 );
                 CREATE TEMP TABLE rename_matches (
-                    item_id TEXT PRIMARY KEY,
-                    record_id TEXT NOT NULL
+                    item_id BIGINT PRIMARY KEY,
+                    record_id BIGINT NOT NULL
                 );
                 """
             )
@@ -2399,9 +2436,9 @@ class MasterService:
                     """,
                     (
                         (
-                            str(row["id"]),
+                            int(row["id"]),
                             _json(_snapshot(row)),
-                            str(row["item_id"]),
+                            int(row["item_id"]),
                         )
                         for row in rename_batch
                     ),
@@ -2412,7 +2449,10 @@ class MasterService:
                     SET status = 'conflict'
                     WHERE import_id = ? AND item_id = ?
                     """,
-                    ((import_id, str(row["item_id"])) for row in rename_batch),
+                    (
+                        (int(import_id), int(row["item_id"]))
+                        for row in rename_batch
+                    ),
                 )
                 renamed += len(rename_batch)
                 connection.commit()
@@ -2777,32 +2817,32 @@ class MasterService:
                     current_json = ?, status = ?
                 WHERE id = ?
                 """,
-                (
-                    payload["aNumber"],
-                    _json(payload),
-                    _json(payload["bNumbers"]),
-                    payload["sourcePrefix"],
                     (
-                        str(current_row["id"])
-                        if current_row is not None
-                        else None
+                        payload["aNumber"],
+                        _json(payload),
+                        _json(payload["bNumbers"]),
+                        payload["sourcePrefix"],
+                        (
+                            int(current_row["id"])
+                            if current_row is not None
+                            else None
+                        ),
+                        _json(current) if current is not None else None,
+                        next_status,
+                        int(item_id),
                     ),
-                    _json(current) if current is not None else None,
-                    next_status,
-                    item_id,
-                ),
-            )
+                )
             connection.execute(
                 """
                 DELETE FROM master_import_number_warnings
                 WHERE import_id = ? AND item_id = ?
                 """,
-                (import_id, item_id),
+                (int(import_id), int(item_id)),
             )
             item_warnings = _number_start_errors(
                 payload,
                 source_row=int(item["source_row"]),
-                item_id=item_id,
+                item_id=str(item_id),
             )
             if item_warnings:
                 connection.executemany(
@@ -2814,8 +2854,8 @@ class MasterService:
                     """,
                     (
                         (
-                            import_id,
-                            item_id,
+                            int(import_id),
+                            int(item_id),
                             int(item["source_row"]),
                             warning["kind"],
                             warning["number"],
@@ -3009,12 +3049,12 @@ class MasterService:
                     """
                     DROP TABLE IF EXISTS temp.master_merge_items;
                     CREATE TEMP TABLE master_merge_items (
-                        id TEXT PRIMARY KEY,
-                        import_id TEXT NOT NULL,
+                        id BIGINT PRIMARY KEY,
+                        import_id BIGINT NOT NULL,
                         source_row INTEGER NOT NULL,
                         a_number TEXT NOT NULL,
                         incoming_json TEXT NOT NULL,
-                        existing_record_id TEXT,
+                        existing_record_id BIGINT,
                         current_json TEXT,
                         status TEXT NOT NULL,
                         member_ids_json TEXT NOT NULL
@@ -3183,7 +3223,7 @@ class MasterService:
                     insert_rows: list[tuple[Any, ...]] = []
                     update_rows: list[tuple[Any, ...]] = []
                     change_rows: list[tuple[Any, ...]] = []
-                    item_record_links: list[tuple[str, str, str]] = []
+                    item_record_links: list[tuple[int, int, int]] = []
 
                     for item in batch:
                         status = str(item["status"])
@@ -3214,10 +3254,14 @@ class MasterService:
                         )
                         if record is None:
                             sequence += 1
-                            record_id = opaque_id()
+                            record_id = str(
+                                self._allocate_ids(
+                                    connection, "master_records", 1
+                                )[0]
+                            )
                             insert_rows.append(
                                 (
-                                    record_id,
+                                    int(record_id),
                                     incoming["aNumber"],
                                     _json(incoming["bNumbers"]),
                                     incoming["sourcePrefix"],
@@ -3305,10 +3349,9 @@ class MasterService:
                                 updated += 1
                         change_rows.append(
                             (
-                                opaque_id(),
                                 revision,
                                 sequence,
-                                record_id,
+                                int(record_id),
                                 action,
                                 line_number,
                                 _json(before) if before is not None else None,
@@ -3321,7 +3364,11 @@ class MasterService:
                         )
                         if not body.mergeDuplicateANumbers:
                             item_record_links.append(
-                                (record_id, import_id, str(item["id"]))
+                                (
+                                    int(record_id),
+                                    int(import_id),
+                                    int(item["id"]),
+                                )
                             )
 
                     if insert_rows:
@@ -3475,23 +3522,22 @@ class MasterService:
             ).fetchone()
             revision = self._current_revision(connection) + 1
             if existing is None:
-                record_id = opaque_id()
                 sort_order = int(
                     connection.execute(
                         "SELECT COALESCE(MAX(sort_order), 0) + 1 AS value FROM master_records"
                     ).fetchone()["value"]
                 )
                 version = 1
-                connection.execute(
+                inserted = connection.execute(
                     """
                     INSERT INTO master_records(
-                        id, a_number, b_numbers_json, source_prefix, comment,
+                        a_number, b_numbers_json, source_prefix, comment,
                         sort_order, version, created_at, updated_at,
                         created_revision, updated_revision
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    RETURNING id
                     """,
                     (
-                        record_id,
                         payload["aNumber"],
                         _json(payload["bNumbers"]),
                         payload["sourcePrefix"],
@@ -3503,7 +3549,8 @@ class MasterService:
                         revision,
                         revision,
                     ),
-                )
+                ).fetchone()
+                record_id = str(inserted["id"])
                 action = "added"
             else:
                 record_id = str(existing["id"])
@@ -3524,7 +3571,7 @@ class MasterService:
                         version,
                         now,
                         revision,
-                        record_id,
+                        int(record_id),
                     ),
                 )
                 action = "restored"

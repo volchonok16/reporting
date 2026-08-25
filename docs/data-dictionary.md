@@ -101,7 +101,7 @@
 
 | Колонка | Тип | Описание |
 |---------|-----|----------|
-| id | text | PK |
+| id | bigint | PK (IDENTITY) |
 | a_number | text | Номер A |
 | a_number_key | bigint | Цифровой ключ A для btree (`055`) |
 | b_numbers_json | text | JSON B-номеров |
@@ -110,7 +110,7 @@
 | sort_order / version | integer | Порядок / версия |
 | deleted_at | double precision | Soft-delete |
 
-`master_changes.actor` — email пользователя Voice, выполнившего изменение (добавление / правка / удаление / слияние).
+`master_changes.actor` — email пользователя Voice, выполнившего изменение (добавление / правка / удаление / слияние). PK/`record_id`/`import_id`/`item_id`/`existing_record_id` в master_* — `bigint` (`056_voice_master_numeric_ids.sql`).
 
 См. также `master_state`, `master_changes`, `master_imports`, `master_edit_lock` (миграция `050_voice_master.sql`).
 
