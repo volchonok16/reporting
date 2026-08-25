@@ -120,7 +120,7 @@
 | `app_notification` | Уведомления приложения (всем / пользователям / отделам) |
 | `app_notification_recipient` | Получатели уведомлений (`org_user`, прочитано / popup) |
 | `master_state` | Voice: текущая ревизия мастер-файла |
-| `master_records` | Voice: записи мастер-файла (A/B, числовой PK, префикс, комментарий) |
+| `master_records` | Voice: записи мастер-файла (A/B, числовой PK, префикс, комментарий; index `master_records_active_prefix` — `058`) |
 | `master_a_counts` / `master_exact_counts` | Voice: счётчики дублей A и точных дублей (`master_exact_counts.signature_hash`) |
 | `master_changes` | Voice: журнал изменений по ревизиям |
 | `master_imports` / `master_import_items` / … | Voice: импорт и анализ загрузок |

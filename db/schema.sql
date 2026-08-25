@@ -1364,6 +1364,9 @@ CREATE INDEX IF NOT EXISTS master_records_updated
     ON master_records (updated_at DESC);
 CREATE INDEX IF NOT EXISTS master_records_a
     ON master_records (a_number, deleted_at, sort_order);
+CREATE INDEX IF NOT EXISTS master_records_active_prefix
+    ON master_records (source_prefix)
+    WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS master_a_counts (
     a_number      TEXT PRIMARY KEY,

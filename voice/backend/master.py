@@ -1103,8 +1103,21 @@ class MasterService:
         if not prefixes:
             return "FALSE", []
         unique = list(dict.fromkeys(prefixes))
-        placeholders = ",".join("?" for _ in unique)
-        return f"source_prefix IN ({placeholders})", unique
+        # One array bind keeps the plan cheap vs thousands of scalar IN params.
+        return "source_prefix = ANY(?::text[])", [unique]
+
+    @staticmethod
+    def _qualify_order_by(order_by: str, alias: str) -> str:
+        parts: list[str] = []
+        for piece in order_by.split(","):
+            piece = piece.strip()
+            if not piece:
+                continue
+            tokens = piece.split(None, 1)
+            column = tokens[0]
+            suffix = f" {tokens[1]}" if len(tokens) > 1 else ""
+            parts.append(f"{alias}.{column}{suffix}")
+        return ", ".join(parts)
 
     @staticmethod
     def _glob_match_or_sql(patterns: Iterable[str]) -> tuple[str, list[Any]]:
@@ -1517,22 +1530,26 @@ class MasterService:
 
             rows = connection.execute(
                 f"""
-                SELECT master_records.*,
+                SELECT page.*,
                        COALESCE(a_counts.active_count, 0) AS duplicate_group_size,
                        COALESCE(exact_counts.active_count, 0)
                            AS exact_duplicate_group_size
-                FROM master_records
+                FROM (
+                    SELECT master_records.*
+                    FROM master_records
+                    WHERE {where}
+                    ORDER BY {order_by}
+                    LIMIT ? OFFSET ?
+                ) AS page
                 LEFT JOIN master_a_counts AS a_counts
-                  ON a_counts.a_number = master_records.a_number
+                  ON a_counts.a_number = page.a_number
                 LEFT JOIN master_exact_counts AS exact_counts
                   ON exact_counts.signature_hash = master_exact_signature(
-                         master_records.a_number,
-                         master_records.b_numbers_json,
-                         master_records.source_prefix
+                         page.a_number,
+                         page.b_numbers_json,
+                         page.source_prefix
                      )
-                WHERE {where}
-                ORDER BY {order_by}
-                LIMIT ? OFFSET ?
+                ORDER BY {self._qualify_order_by(order_by, "page")}
                 """,
                 [*values, limit, offset],
             ).fetchall()
