@@ -209,6 +209,7 @@ def ensure_startup_schema() -> None:
         "052_voice_lock_session_exp.sql",
         "053_voice_master_signature_hash.sql",
         "054_org_user_voice_admin.sql",
+        "055_voice_master_numeric_a_indexes.sql",
     )
 
     auth_session_sql = """
