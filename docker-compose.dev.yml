@@ -2,9 +2,9 @@
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 
 services:
-  postgres:
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+  # postgres ports НЕ дублируем здесь: в docker-compose.yml уже есть
+  # 127.0.0.1:${POSTGRES_PORT}:5432. Compose V2 мержит ports через append —
+  # второй mapping того же host-порта → «address already in use» на любом порту.
 
   backend:
     ports:
