@@ -2713,11 +2713,22 @@ textarea.is-invalid-number-whitespace,
 }
 .master-number-warning > div {
   display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 4px;
 }
 .master-number-warning strong { color: #7d2b00; font-size: 12px; }
-.master-number-warning span { color: #88401c; font-size: 10px; }
+.master-number-warning span { color: #88401c; font-size: 10px; line-height: 1.45; }
+.master-number-warning > button,
+.master-number-warning .secondary-button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.master-number-warning.is-short-aon {
+  border-color: #efb28f;
+  background: #fff8f2;
+}
 .master-invalid-reveal {
   display: grid;
   gap: 13px;
@@ -3160,6 +3171,97 @@ textarea.is-invalid-number-whitespace,
   padding: 20px;
   background: rgba(5, 5, 5, .58);
   backdrop-filter: blur(4px);
+}
+.master-logical-row-dialog {
+  display: flex;
+  width: min(100%, 720px);
+  max-height: min(88vh, 820px);
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px 24px 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 20px;
+  background: var(--panel);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, .32);
+  color: var(--ink);
+  overflow: hidden;
+}
+.master-logical-row-dialog-heading {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.master-logical-row-dialog-heading > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+.master-logical-row-dialog-heading > div > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.master-logical-row-dialog-heading h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.master-logical-row-dialog-heading small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.master-logical-row-dialog-heading > button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+}
+.master-logical-row-dialog-heading > button:hover {
+  background: var(--panel);
+  border-color: var(--line-strong);
+}
+.master-logical-row-value {
+  display: block;
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel-soft);
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow: auto;
+  max-height: min(48vh, 420px);
+}
+.master-logical-row-dialog-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.master-logical-row-dialog-actions button {
+  margin-top: 0;
 }
 .master-lock-dialog {
   display: flex;
@@ -4587,6 +4689,7 @@ html[data-theme="dark"] .master-table tbody tr.has-invalid-number:hover {
 }
 html[data-theme="dark"] .master-number-warning,
 html[data-theme="dark"] .master-number-warning.is-blocking,
+html[data-theme="dark"] .master-number-warning.is-short-aon,
 html[data-theme="dark"] .record-number-warning,
 html[data-theme="dark"] .record-number-warning.is-blocking-start,
 html[data-theme="dark"] .blocking-number-warning,
@@ -4596,9 +4699,26 @@ html[data-theme="dark"] .master-invalid-reveal.is-blocking-start {
   border-color: #7f1d1d;
   color: #fecaca;
 }
+html[data-theme="dark"] .master-number-warning strong,
+html[data-theme="dark"] .master-number-warning span,
 html[data-theme="dark"] .master-number-warning.is-blocking strong,
 html[data-theme="dark"] .master-number-warning.is-blocking span {
   color: #fecaca;
+}
+html[data-theme="dark"] .master-logical-row-dialog {
+  background: var(--panel);
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+html[data-theme="dark"] .master-logical-row-value {
+  background: var(--panel-soft);
+  border-color: var(--line);
+  color: var(--ink);
+}
+html[data-theme="dark"] .master-logical-row-dialog-heading > button {
+  background: var(--panel-soft);
+  border-color: var(--line);
+  color: var(--ink);
 }
 html[data-theme="dark"] .mapping-a-badge {
   background: var(--teal-soft);

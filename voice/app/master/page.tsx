@@ -4286,7 +4286,9 @@ export default function MasterPage() {
               </span>
             </div>
             <button
-              className={shortAonOnly ? "is-active-filter" : ""}
+              className={`secondary-button compact ${
+                shortAonOnly ? "is-active-filter" : ""
+              }`}
               type="button"
               onClick={showShortAonRecords}
             >
