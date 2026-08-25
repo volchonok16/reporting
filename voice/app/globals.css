@@ -2360,6 +2360,50 @@ footer span:first-child { color: var(--ink); font-weight: 800; }
   font-size: 9px;
 }
 .master-table-wrap { overflow: auto; }
+.master-records-pager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-soft);
+}
+.master-page-size {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.master-page-size select {
+  min-width: 72px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+.master-pager-actions {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.master-pager-actions > span {
+  min-width: 7.5rem;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
 .master-scroll-window {
   max-height: min(650px, 72vh);
   max-height: min(650px, 72dvh);
@@ -4440,6 +4484,9 @@ html[data-theme="dark"] .start-variant-card > span:not(.start-variant-number) {
   .master-batch-body.is-scoped .danger-button { grid-column: auto; }
   .master-number-warning { align-items: stretch; flex-direction: column; }
   .master-number-warning button { width: 100%; }
+  .master-records-pager { flex-direction: column; align-items: stretch; }
+  .master-pager-actions { justify-content: space-between; }
+  .master-pager-actions button { flex: 1 1 auto; }
   .master-parameter-field { grid-column: auto; }
   .master-editor-actions { flex-direction: column; }
   .master-editor-actions button { width: 100%; }

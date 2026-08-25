@@ -14,6 +14,10 @@ import { AppHeader } from "../app-header";
 import { useAuth } from "../auth-provider";
 import { appHref } from "../paths";
 
+const RECORD_PAGE_SIZES = [10, 25, 50, 100, 200] as const;
+type RecordPageSize = (typeof RECORD_PAGE_SIZES)[number];
+const DEFAULT_RECORD_PAGE_SIZE: RecordPageSize = 10;
+
 type MasterRecord = {
   id: string;
   lineNumber: number;
@@ -284,7 +288,7 @@ const MASTER_TUTORIAL_STEPS: MasterTutorialStepDefinition[] = [
     id: "records",
     title: "Работайте с текущей базой",
     description:
-      "В прокручиваемом списке показываются ID, опорный номер, АОН, параметр и версия строки. Следующие 200 строк подгружаются при прокрутке.",
+      "В списке показываются ID, опорный номер, АОН, параметр и версия строки. По умолчанию на странице 10 записей — размер страницы можно увеличить.",
     action:
       "Чекбокс слева выбирает конкретную физическую строку; кнопка «Отметить всю выборку» учитывает активный фильтр и все страницы.",
     target: '[data-tour="master-records-panel"]',
@@ -1057,6 +1061,10 @@ export default function MasterPage() {
   const tutorialInitializedRef = useRef(false);
   const analysisImportIdRef = useRef("");
   const [view, setView] = useState<View>("records");
+  const [recordsPageSize, setRecordsPageSize] = useState<RecordPageSize>(
+    DEFAULT_RECORD_PAGE_SIZE,
+  );
+  const [recordsOffset, setRecordsOffset] = useState(0);
   const [records, setRecords] = useState<MasterRecord[]>([]);
   const [recordsHasMore, setRecordsHasMore] = useState(false);
   const [recordsLoadingMore, setRecordsLoadingMore] = useState(false);
@@ -1543,12 +1551,13 @@ export default function MasterPage() {
     else {
       recordsLoadingMoreRef.current = true;
       setRecordsLoadingMore(true);
+      setLoading(true);
     }
     try {
       const parameters = new URLSearchParams({
         query,
         offset: String(offset),
-        limit: "200",
+        limit: String(recordsPageSize),
       });
       for (const group of selectedParameterGroups)
         parameters.append("parameterGroup", group);
@@ -1568,12 +1577,8 @@ export default function MasterPage() {
       const pageItems: MasterRecord[] = Array.isArray(payload.items)
         ? (payload.items as MasterRecord[])
         : [];
-      setRecords((current) => {
-        const combined = reset ? pageItems : [...current, ...pageItems];
-        return Array.from(
-          new Map(combined.map((item) => [item.id, item])).values(),
-        );
-      });
+      setRecords(pageItems);
+      setRecordsOffset(offset);
       setRecordsHasMore(offset + pageItems.length < Number(payload.total));
       setParameterOptions(
         Array.isArray(payload.parameterOptions)
@@ -1618,11 +1623,9 @@ export default function MasterPage() {
       );
     } finally {
       if (generation === recordsLoadGenerationRef.current) {
-        if (reset) setLoading(false);
-        else {
-          recordsLoadingMoreRef.current = false;
-          setRecordsLoadingMore(false);
-        }
+        setLoading(false);
+        recordsLoadingMoreRef.current = false;
+        setRecordsLoadingMore(false);
       }
     }
   }, [
@@ -1632,6 +1635,7 @@ export default function MasterPage() {
     invalidOnly,
     invalidStartOnly,
     query,
+    recordsPageSize,
     selectedParameterGroups,
     selectedRegions,
     shortAonOnly,
@@ -2220,8 +2224,8 @@ export default function MasterPage() {
       currentIndex === duplicateRecords.length - 1 &&
       recordsHasMore
     ) {
-      await loadRecords(records.length);
-      setDuplicateCursor(duplicateRecords.length);
+      await loadRecords(recordsOffset + recordsPageSize);
+      setDuplicateCursor(0);
       return;
     }
     setDuplicateCursor(
@@ -2255,8 +2259,8 @@ export default function MasterPage() {
       currentIndex === exactDuplicateRecords.length - 1 &&
       recordsHasMore
     ) {
-      await loadRecords(records.length);
-      setExactDuplicateCursor(exactDuplicateRecords.length);
+      await loadRecords(recordsOffset + recordsPageSize);
+      setExactDuplicateCursor(0);
       return;
     }
     setExactDuplicateCursor(
@@ -2290,8 +2294,8 @@ export default function MasterPage() {
       currentIndex === invalidRecords.length - 1 &&
       recordsHasMore
     ) {
-      await loadRecords(records.length);
-      setInvalidCursor(invalidRecords.length);
+      await loadRecords(recordsOffset + recordsPageSize);
+      setInvalidCursor(0);
       return;
     }
     setInvalidCursor(
@@ -2325,8 +2329,8 @@ export default function MasterPage() {
       currentIndex === invalidStartRecords.length - 1 &&
       recordsHasMore
     ) {
-      await loadRecords(records.length);
-      setInvalidStartCursor(invalidStartRecords.length);
+      await loadRecords(recordsOffset + recordsPageSize);
+      setInvalidStartCursor(0);
       return;
     }
     setInvalidStartCursor(
@@ -2696,7 +2700,7 @@ export default function MasterPage() {
       });
       setNotice(editing ? "Строка обновлена и записана в историю." : "Новая строка добавлена в исходную базу.");
       resetEditor();
-      await loadRecords();
+      await loadRecords(recordsOffset);
     } catch (nextError) {
       setError(
         nextError instanceof Error
@@ -2722,7 +2726,7 @@ export default function MasterPage() {
         { method: "DELETE" },
       );
       setNotice(`Строка ${record.lineNumber} удалена. Снимок сохранён в истории.`);
-      await loadRecords();
+      await loadRecords(recordsOffset);
     } catch (nextError) {
       setError(
         nextError instanceof Error
@@ -2967,7 +2971,7 @@ export default function MasterPage() {
         `Мастер-файл очищен. Удалено строк: ${result.deleted}. Изменения сохранены в версии ${masterVersion(result.revision)} и в истории.`,
       );
       setError("");
-      await loadRecords();
+      await loadRecords(recordsOffset);
     } catch (nextError) {
       setClearDialogOpen(false);
       setError(
@@ -3316,7 +3320,7 @@ export default function MasterPage() {
       setSelectedConflicts([]);
       setReplaceAll(false);
       setMergeDuplicateANumbers(false);
-      await loadRecords();
+      await loadRecords(recordsOffset);
     } catch (nextError) {
       setError(
         nextError instanceof Error
@@ -5737,19 +5741,58 @@ export default function MasterPage() {
             <div className="master-empty">Загружаем данные…</div>
           ) : view === "records" ? (
             records.length ? (
-              <div
-                className="master-table-wrap master-scroll-window"
-                onScroll={(event) => {
-                  const element = event.currentTarget;
-                  if (
-                    recordsHasMore &&
-                    !recordsLoadingMore &&
-                    element.scrollTop + element.clientHeight >=
-                      element.scrollHeight - 120
-                  )
-                    void loadRecords(records.length);
-                }}
-              >
+              <>
+              <div className="master-records-pager" aria-label="Пагинация записей">
+                <label className="master-page-size">
+                  <span>На странице</span>
+                  <select
+                    value={recordsPageSize}
+                    onChange={(event) => {
+                      const next = Number(event.target.value) as RecordPageSize;
+                      setRecordsPageSize(next);
+                      setRecordsOffset(0);
+                    }}
+                  >
+                    {RECORD_PAGE_SIZES.map((size) => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="master-pager-actions">
+                  <button
+                    className="secondary-button compact"
+                    type="button"
+                    disabled={recordsOffset <= 0 || loading}
+                    onClick={() =>
+                      void loadRecords(
+                        Math.max(0, recordsOffset - recordsPageSize),
+                      )
+                    }
+                  >
+                    Назад
+                  </button>
+                  <span>
+                    {recordStats.total === 0
+                      ? "0 из 0"
+                      : `${recordsOffset + 1}–${
+                          recordsOffset + records.length
+                        } из ${recordStats.total}`}
+                  </span>
+                  <button
+                    className="secondary-button compact"
+                    type="button"
+                    disabled={!recordsHasMore || loading}
+                    onClick={() =>
+                      void loadRecords(recordsOffset + recordsPageSize)
+                    }
+                  >
+                    Вперёд
+                  </button>
+                </div>
+              </div>
+              <div className="master-table-wrap master-scroll-window">
                 <table className="master-table">
                   <thead>
                     <tr>
@@ -6069,12 +6112,8 @@ export default function MasterPage() {
                     })}
                   </tbody>
                 </table>
-                {recordsLoadingMore && (
-                  <div className="master-page-loading">
-                    Загружаем следующие 200 строк…
-                  </div>
-                )}
               </div>
+              </>
             ) : (
               <div className="master-empty">
                 <strong>
@@ -6230,14 +6269,19 @@ export default function MasterPage() {
             <div className="master-list-footer">
               <span>
                 {view === "records"
-                  ? `Показано ${records.length} из ${recordStats.total}`
+                  ? recordStats.total === 0
+                    ? "Записей нет"
+                    : `Страница ${
+                        Math.floor(recordsOffset / recordsPageSize) + 1
+                      } из ${Math.max(
+                        1,
+                        Math.ceil(recordStats.total / recordsPageSize),
+                      )} · на странице ${recordsPageSize}`
                   : `Показано ${history.length} из ${historyTotal}`}
               </span>
               <small>
                 {view === "records"
-                  ? recordsHasMore
-                    ? "Следующие 200 строк загрузятся при прокрутке"
-                    : "Все найденные строки загружены"
+                  ? "Размер страницы можно изменить в блоке «На странице»."
                   : historyHasMore
                     ? "Следующие 200 изменений загрузятся при прокрутке"
                     : "Вся найденная история загружена"}
