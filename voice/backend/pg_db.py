@@ -75,8 +75,9 @@ _GLOB_OP_RE = re.compile(
 
 def translate_sql(sql: str) -> str:
     text = sql.strip()
-    if _BEGIN_IMMEDIATE_RE.match(text):
-        return "BEGIN"
+    if _BEGIN_IMMEDIATE_RE.match(text) or text.upper() == "BEGIN":
+        # No-op marker for callers; PgConnection.execute never sends BEGIN.
+        return "SELECT 1"
     if _PRAGMA_RE.match(text):
         return "SELECT 1"
     text = _COLLATE_NOCASE_RE.sub("", text)
@@ -245,9 +246,10 @@ class PgConnection:
         cur = PgCursor(self._conn.cursor(row_factory=dict_row))
         statement = sql.strip()
         if _BEGIN_IMMEDIATE_RE.match(statement) or statement.upper() == "BEGIN":
-            # autocommit=False may already be inside a txn; nested BEGIN → PG warning
-            if self._conn.info.transaction_status == TransactionStatus.IDLE:
-                self._conn.execute("BEGIN")
+            # SQLite used BEGIN IMMEDIATE for locking. With psycopg
+            # autocommit=False the first real statement already opens a
+            # transaction; sending BEGIN again logs:
+            # "there is already a transaction in progress".
             self._in_transaction = True
             return cur
         upper = statement.upper()
