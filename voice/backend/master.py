@@ -4155,7 +4155,12 @@ class MasterService:
             }
 
     def clear_records(self, session_id: str, *, actor: str) -> dict[str, Any]:
-        """Soft-delete every active record in one auditable revision."""
+        """Soft-delete every active record in one auditable revision.
+
+        Full wipe does not copy every row into master_changes (that blew up WAL
+        and held ACCESS EXCLUSIVE long enough for clients to drop). One
+        ``cleared`` history event + bulk UPDATE is enough.
+        """
         del session_id
         now = time.time()
         with self._lock, self._connect() as connection:
@@ -4174,42 +4179,11 @@ class MasterService:
                 return {"revision": current_revision, "deleted": 0}
 
             revision = current_revision + 1
+            # Краткая блокировка: без INSERT всей базы в историю.
             connection.execute(
                 "ALTER TABLE master_records DISABLE TRIGGER USER"
             )
             try:
-                # История одним INSERT…SELECT — без N round-trip UPDATE/INSERT.
-                connection.execute(
-                    """
-                    INSERT INTO master_changes(
-                        revision, sequence, record_id, action, line_number,
-                        before_json, after_json, source_file, source_row, actor,
-                        created_at
-                    )
-                    SELECT
-                        ?,
-                        ROW_NUMBER() OVER (ORDER BY sort_order, id),
-                        id,
-                        'deleted',
-                        ROW_NUMBER() OVER (ORDER BY sort_order, id),
-                        json_build_object(
-                            'id', id::text,
-                            'aNumber', a_number,
-                            'bNumbers', b_numbers_json::json,
-                            'sourcePrefix', source_prefix,
-                            'comment', COALESCE(comment, ''),
-                            'version', version
-                        )::text,
-                        NULL,
-                        NULL,
-                        NULL,
-                        ?,
-                        ?
-                    FROM master_records
-                    WHERE deleted_at IS NULL
-                    """,
-                    (revision, actor, now),
-                )
                 connection.execute(
                     """
                     UPDATE master_records
@@ -4222,13 +4196,33 @@ class MasterService:
                     """,
                     (now, revision, now, revision),
                 )
-                # Счётчики дубликатов: все активные строки сняты — обнуляем целиком.
                 connection.execute("TRUNCATE master_a_counts")
                 connection.execute("TRUNCATE master_exact_counts")
             finally:
                 connection.execute(
                     "ALTER TABLE master_records ENABLE TRIGGER USER"
                 )
+            self._append_change(
+                connection,
+                revision=revision,
+                sequence=1,
+                record_id="0",
+                action="cleared",
+                line_number=None,
+                before={
+                    "clearedCount": active,
+                    "aNumber": "",
+                    "bNumbers": [],
+                    "sourcePrefix": "",
+                    "comment": "",
+                    "version": 0,
+                },
+                after=None,
+                source_file=None,
+                source_row=None,
+                actor=actor,
+                created_at=now,
+            )
             connection.execute(
                 "UPDATE master_state SET current_revision = ? WHERE id = 1",
                 (revision,),

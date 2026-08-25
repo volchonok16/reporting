@@ -58,7 +58,7 @@ type HistoryItem = {
   revision: number;
   sequence: number;
   recordId: string;
-  action: "added" | "updated" | "deleted" | "restored";
+  action: "added" | "updated" | "deleted" | "restored" | "cleared";
   lineNumber: number | null;
   before: RecordSnapshot | null;
   after: RecordSnapshot | null;
@@ -409,6 +409,7 @@ const ACTION_LABELS = {
   updated: "Изменено",
   deleted: "Удалено",
   restored: "Восстановлено",
+  cleared: "Очистка",
 };
 
 class ApiError extends Error {}
@@ -903,6 +904,16 @@ function scrollTextareaToAon(
 function snapshotChanges(item: HistoryItem) {
   const before = item.before;
   const after = item.after;
+  if (item.action === "cleared") {
+    const count = Number(
+      (before as { clearedCount?: number } | null)?.clearedCount ?? 0,
+    );
+    return [
+      count > 0
+        ? `Полная очистка мастер-файла · удалено строк ${count}`
+        : "Полная очистка мастер-файла",
+    ];
+  }
   if (!before && after)
     return [`Создана связка с ${after.bNumbers.length} АОН`];
   if (before && !after)
@@ -937,18 +948,21 @@ function snapshotChanges(item: HistoryItem) {
 }
 
 function historyItemHasInvalidNumbers(item: HistoryItem) {
+  if (item.action === "cleared") return false;
   return [item.before, item.after].some(
     (snapshot) => snapshot && recordHasInvalidNumbers(snapshot),
   );
 }
 
 function historyItemHasInvalidNumberStart(item: HistoryItem) {
+  if (item.action === "cleared") return false;
   return [item.before, item.after].some(
     (snapshot) => snapshot && recordHasInvalidNumberStart(snapshot),
   );
 }
 
 function historyItemHasInvalidNumberWhitespace(item: HistoryItem) {
+  if (item.action === "cleared") return false;
   return [item.before, item.after].some(
     (snapshot) => snapshot && recordHasInvalidNumberWhitespace(snapshot),
   );
@@ -2968,7 +2982,7 @@ export default function MasterPage() {
       setInvalidOnly(false);
       setInvalidCursor(0);
       setNotice(
-        `Мастер-файл очищен. Удалено строк: ${result.deleted}. Изменения сохранены в версии ${masterVersion(result.revision)} и в истории.`,
+        `Мастер-файл очищен. Удалено строк: ${result.deleted}. Версия ${masterVersion(result.revision)}; в истории — одна запись «Очистка».`,
       );
       setError("");
       await loadRecords(recordsOffset);
@@ -6365,10 +6379,10 @@ export default function MasterPage() {
               Полностью очистить мастер-файл?
             </h2>
             <p id="master-clear-dialog-description">
-              Вся база номеров будет удалена. Сейчас в мастер-файле
-              <strong>{recordStats.activeCount} активных строк</strong>
-              Удаление будет записано в новую версию и останется в истории
-              изменений.
+              Вся база номеров будет удалена. Сейчас в мастер-файле{" "}
+              <strong>{recordStats.activeCount} активных строк</strong>.
+              Удаление запишется одной строкой «Очистка» в новой версии
+              журнала (без копирования каждой связки в историю).
             </p>
             <div className="master-clear-dialog-actions">
               <button

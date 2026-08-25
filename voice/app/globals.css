@@ -3762,9 +3762,9 @@ textarea.is-invalid-number-whitespace,
   font-weight: 900;
   text-transform: uppercase;
 }
-.history-action.is-added, .history-action.is-restored { background: var(--teal-soft); color: var(--teal-dark); }
-.history-action.is-updated { background: var(--warning-soft); color: var(--warning); }
-.history-action.is-deleted { background: var(--danger-soft); color: var(--danger); }
+  .history-action.is-added, .history-action.is-restored { background: var(--teal-soft); color: var(--teal-dark); }
+  .history-action.is-updated { background: var(--warning-soft); color: var(--warning); }
+  .history-action.is-deleted, .history-action.is-cleared { background: var(--danger-soft); color: var(--danger); }
 .history-body { min-width: 0; }
 .history-title { display: flex; gap: 15px; justify-content: space-between; }
 .history-title > div { display: flex; gap: 9px; align-items: baseline; min-width: 0; }

@@ -1145,21 +1145,16 @@ def test_master_clear_soft_deletes_all_rows_in_one_revision(tmp_path) -> None:
 
     history = service.history(
         query="",
-        action="deleted",
+        action="cleared",
         offset=0,
         limit=20,
     )
-    assert history["total"] == 2
-    assert {item["revision"] for item in history["items"]} == {
-        cleared["revision"]
-    }
-    assert {item["sequence"] for item in history["items"]} == {1, 2}
-    assert {item["lineNumber"] for item in history["items"]} == {1, 2}
-    assert {item["before"]["aNumber"] for item in history["items"]} == {
-        "79000000901",
-        "79000000902",
-    }
-    assert all(item["after"] is None for item in history["items"])
+    assert history["total"] == 1
+    assert history["items"][0]["revision"] == cleared["revision"]
+    assert history["items"][0]["sequence"] == 1
+    assert history["items"][0]["action"] == "cleared"
+    assert history["items"][0]["before"]["clearedCount"] == 2
+    assert history["items"][0]["after"] is None
 
     repeated = service.clear_records(session_id, actor="tester@t2.local")
     assert repeated == {"revision": cleared["revision"], "deleted": 0}
