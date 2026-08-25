@@ -471,6 +471,9 @@ class MasterService:
             thread_name_prefix="master-analysis",
         )
         self._pending_merges: dict[str, tuple[MasterMergeRequest, str]] = {}
+        self._list_stats_lock = threading.Lock()
+        self._list_stats_revision: int | None = None
+        self._list_stats_cache: dict[str, Any] | None = None
         self._initialize()
         self._resume_interrupted_analyses()
         self._reset_interrupted_merges()
@@ -585,6 +588,258 @@ class MasterService:
             (sort_order,),
         ).fetchone()
         return int(row["count"])
+
+    @staticmethod
+    def _active_lines(
+        connection: sqlite3.Connection, sort_orders: Iterable[int]
+    ) -> dict[int, int]:
+        unique_orders = list(dict.fromkeys(int(value) for value in sort_orders))
+        if not unique_orders:
+            return {}
+        if len(unique_orders) == 1:
+            order = unique_orders[0]
+            return {order: MasterService._active_line(connection, order)}
+        parts: list[str] = []
+        values: list[int] = []
+        for order in unique_orders:
+            parts.append(
+                """
+                SELECT ? AS sort_order, (
+                    SELECT COUNT(*)
+                    FROM master_records
+                    WHERE deleted_at IS NULL AND sort_order <= ?
+                ) AS count
+                """
+            )
+            values.extend([order, order])
+        rows = connection.execute(
+            " UNION ALL ".join(parts),
+            values,
+        ).fetchall()
+        return {int(row["sort_order"]): int(row["count"]) for row in rows}
+
+    def _list_global_stats(
+        self, connection: sqlite3.Connection
+    ) -> dict[str, Any]:
+        revision = self._current_revision(connection)
+        with self._list_stats_lock:
+            cached = self._list_stats_cache
+            if (
+                cached is not None
+                and self._list_stats_revision == revision
+            ):
+                return cached
+
+        active = int(
+            connection.execute(
+                "SELECT COUNT(*) AS count FROM master_records WHERE deleted_at IS NULL"
+            ).fetchone()["count"]
+        )
+        total_b = int(
+            connection.execute(
+                """
+                SELECT COALESCE(SUM(json_array_length(b_numbers_json)), 0) AS count
+                FROM master_records WHERE deleted_at IS NULL
+                """
+            ).fetchone()["count"]
+        )
+        history_count = int(
+            connection.execute(
+                "SELECT COUNT(*) AS count FROM master_changes"
+            ).fetchone()["count"]
+        )
+        invalid_a_count = int(
+            connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM master_records
+                WHERE deleted_at IS NULL AND length(a_number) <> 11
+                """
+            ).fetchone()["count"]
+        )
+        invalid_b_count = int(
+            connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM master_records AS record,
+                     json_each(record.b_numbers_json) AS aon
+                WHERE record.deleted_at IS NULL
+                  AND length(CAST(aon.value AS TEXT)) <> 11
+                  AND NOT (
+                    json_array_length(record.b_numbers_json) = 1
+                    AND length(CAST(aon.value AS TEXT)) BETWEEN 3 AND 5
+                    AND CAST(aon.value AS TEXT) NOT GLOB '*[^0-9]*'
+                  )
+                """
+            ).fetchone()["count"]
+        )
+        invalid_record_count = int(
+            connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM master_records
+                WHERE deleted_at IS NULL
+                  AND (
+                    length(a_number) <> 11
+                    OR (
+                        NOT {MASTER_SHORT_AON_SQL}
+                        AND EXISTS (
+                            SELECT 1
+                            FROM json_each(b_numbers_json) AS invalid_aon
+                            WHERE length(CAST(invalid_aon.value AS TEXT)) <> 11
+                        )
+                    )
+                  )
+                """.format(MASTER_SHORT_AON_SQL=MASTER_SHORT_AON_SQL)
+            ).fetchone()["count"]
+        )
+        invalid_start_a_count = int(
+            connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM master_records
+                WHERE deleted_at IS NULL
+                  AND substr(a_number, 1, 1) <> '7'
+                """
+            ).fetchone()["count"]
+        )
+        invalid_start_b_count = int(
+            connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM master_records AS record,
+                     json_each(record.b_numbers_json) AS aon
+                WHERE record.deleted_at IS NULL
+                  AND substr(CAST(aon.value AS TEXT), 1, 1) <> '7'
+                  AND NOT (
+                    json_array_length(record.b_numbers_json) = 1
+                    AND length(CAST(aon.value AS TEXT)) BETWEEN 3 AND 5
+                    AND CAST(aon.value AS TEXT) NOT GLOB '*[^0-9]*'
+                  )
+                """
+            ).fetchone()["count"]
+        )
+        invalid_start_record_count = int(
+            connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM master_records
+                WHERE deleted_at IS NULL
+                  AND (
+                    substr(a_number, 1, 1) <> '7'
+                    OR (
+                        NOT {MASTER_SHORT_AON_SQL}
+                        AND EXISTS (
+                            SELECT 1
+                            FROM json_each(b_numbers_json) AS invalid_start_aon
+                            WHERE substr(CAST(invalid_start_aon.value AS TEXT), 1, 1) <> '7'
+                        )
+                    )
+                  )
+                """.format(MASTER_SHORT_AON_SQL=MASTER_SHORT_AON_SQL)
+            ).fetchone()["count"]
+        )
+        short_aon_record_count = int(
+            connection.execute(
+                f"""
+                SELECT COUNT(*) AS count
+                FROM master_records
+                WHERE deleted_at IS NULL
+                  AND {MASTER_SHORT_AON_SQL}
+                """
+            ).fetchone()["count"]
+        )
+        grouped_parameters: dict[str, dict[str, Any]] = {}
+        region_counts = {number: 0 for number in range(1, 85)}
+        for row in connection.execute(
+            """
+            SELECT source_prefix, COUNT(*) AS count
+            FROM master_records
+            WHERE deleted_at IS NULL
+            GROUP BY source_prefix
+            ORDER BY count DESC, source_prefix COLLATE NOCASE
+            """
+        ):
+            group_id, label = _parameter_group(str(row["source_prefix"]))
+            group = grouped_parameters.setdefault(
+                group_id,
+                {"id": group_id, "label": label, "count": 0},
+            )
+            group["count"] += int(row["count"])
+            region_number = _region_number(str(row["source_prefix"]))
+            if region_number is not None:
+                region_counts[region_number] += int(row["count"])
+        group_order = {
+            "default": 0,
+            "pani": 1,
+            "region": 2,
+            "pani_region": 3,
+            "custom": 4,
+        }
+        parameter_options = sorted(
+            grouped_parameters.values(),
+            key=lambda item: (
+                group_order.get(str(item["id"]), 4),
+                str(item["label"]),
+            ),
+        )
+        duplicate_count = int(
+            connection.execute(
+                """
+                SELECT COALESCE(SUM(active_count), 0) AS count
+                FROM master_a_counts
+                WHERE active_count > 1
+                """
+            ).fetchone()["count"]
+        )
+        exact_duplicate_count = int(
+            connection.execute(
+                """
+                SELECT COALESCE(SUM(active_count), 0) AS count
+                FROM master_exact_counts
+                WHERE active_count > 1
+                """
+            ).fetchone()["count"]
+        )
+        exact_duplicate_extra_count = int(
+            connection.execute(
+                """
+                SELECT COALESCE(SUM(active_count - 1), 0) AS count
+                FROM master_exact_counts
+                WHERE active_count > 1
+                """
+            ).fetchone()["count"]
+        )
+        stats = {
+            "revision": revision,
+            "activeCount": active,
+            "totalB": total_b,
+            "historyCount": history_count,
+            "invalidANumberCount": invalid_a_count,
+            "invalidBNumberCount": invalid_b_count,
+            "invalidRecordCount": invalid_record_count,
+            "invalidStartANumberCount": invalid_start_a_count,
+            "invalidStartBNumberCount": invalid_start_b_count,
+            "invalidStartRecordCount": invalid_start_record_count,
+            "shortAonRecordCount": short_aon_record_count,
+            "parameterOptions": parameter_options,
+            "regionOptions": [
+                {"value": number, "count": region_counts[number]}
+                for number in range(1, 85)
+            ],
+            "duplicateCount": duplicate_count,
+            "exactDuplicateCount": exact_duplicate_count,
+            "exactDuplicateExtraCount": exact_duplicate_extra_count,
+        }
+        with self._list_stats_lock:
+            self._list_stats_revision = revision
+            self._list_stats_cache = stats
+        return stats
+
+    def _invalidate_list_stats_cache(self) -> None:
+        with self._list_stats_lock:
+            self._list_stats_revision = None
+            self._list_stats_cache = None
 
     @staticmethod
     def _record_payload(row: sqlite3.Row, line_number: int) -> dict[str, Any]:
@@ -1049,226 +1304,21 @@ class MasterService:
         )
 
         with self._connect() as connection:
-            latest_duplicate_import = connection.execute(
-                """
-                SELECT id
-                FROM master_imports
-                WHERE status = 'merged'
-                ORDER BY merged_at DESC, created_at DESC
-                LIMIT 1
-                """
-            ).fetchone()
-            duplicate_import_id = (
-                str(latest_duplicate_import["id"])
-                if latest_duplicate_import is not None
-                else None
-            )
+            stats = self._list_global_stats(connection)
+            unfiltered_active = where == "deleted_at IS NULL" and not values
+            if unfiltered_active:
+                total = int(stats["activeCount"])
+            else:
+                total = int(
+                    connection.execute(
+                        f"SELECT COUNT(*) AS count FROM master_records WHERE {where}",
+                        values,
+                    ).fetchone()["count"]
+                )
 
-            total = int(
-                connection.execute(
-                    f"SELECT COUNT(*) AS count FROM master_records WHERE {where}",
-                    values,
-                ).fetchone()["count"]
+            matching_exact_duplicate_extra_count = int(
+                stats["exactDuplicateExtraCount"]
             )
-            active = int(
-                connection.execute(
-                    "SELECT COUNT(*) AS count FROM master_records WHERE deleted_at IS NULL"
-                ).fetchone()["count"]
-            )
-            total_b = int(
-                connection.execute(
-                    """
-                    SELECT COALESCE(SUM(json_array_length(b_numbers_json)), 0) AS count
-                    FROM master_records WHERE deleted_at IS NULL
-                    """
-                ).fetchone()["count"]
-            )
-            history_count = int(
-                connection.execute(
-                    "SELECT COUNT(*) AS count FROM master_changes"
-                ).fetchone()["count"]
-            )
-            invalid_a_count = int(
-                connection.execute(
-                    """
-                    SELECT COUNT(*) AS count
-                    FROM master_records
-                    WHERE deleted_at IS NULL AND length(a_number) <> 11
-                    """
-                ).fetchone()["count"]
-            )
-            invalid_b_count = int(
-                connection.execute(
-                    """
-                    SELECT COUNT(*) AS count
-                    FROM master_records AS record,
-                         json_each(record.b_numbers_json) AS aon
-                    WHERE record.deleted_at IS NULL
-                      AND length(CAST(aon.value AS TEXT)) <> 11
-                      AND NOT (
-                        json_array_length(record.b_numbers_json) = 1
-                        AND length(CAST(aon.value AS TEXT)) BETWEEN 3 AND 5
-                        AND CAST(aon.value AS TEXT) NOT GLOB '*[^0-9]*'
-                      )
-                    """
-                ).fetchone()["count"]
-            )
-            invalid_record_count = int(
-                connection.execute(
-                    """
-                    SELECT COUNT(*) AS count
-                    FROM master_records
-                    WHERE deleted_at IS NULL
-                      AND (
-                        length(a_number) <> 11
-                        OR (
-                            NOT {MASTER_SHORT_AON_SQL}
-                            AND EXISTS (
-                                SELECT 1
-                                FROM json_each(b_numbers_json) AS invalid_aon
-                                WHERE length(CAST(invalid_aon.value AS TEXT)) <> 11
-                            )
-                        )
-                      )
-                    """.format(MASTER_SHORT_AON_SQL=MASTER_SHORT_AON_SQL)
-                ).fetchone()["count"]
-            )
-            invalid_start_a_count = int(
-                connection.execute(
-                    """
-                    SELECT COUNT(*) AS count
-                    FROM master_records
-                    WHERE deleted_at IS NULL
-                      AND substr(a_number, 1, 1) <> '7'
-                    """
-                ).fetchone()["count"]
-            )
-            invalid_start_b_count = int(
-                connection.execute(
-                    """
-                    SELECT COUNT(*) AS count
-                    FROM master_records AS record,
-                         json_each(record.b_numbers_json) AS aon
-                    WHERE record.deleted_at IS NULL
-                      AND substr(CAST(aon.value AS TEXT), 1, 1) <> '7'
-                      AND NOT (
-                        json_array_length(record.b_numbers_json) = 1
-                        AND length(CAST(aon.value AS TEXT)) BETWEEN 3 AND 5
-                        AND CAST(aon.value AS TEXT) NOT GLOB '*[^0-9]*'
-                      )
-                    """
-                ).fetchone()["count"]
-            )
-            invalid_start_record_count = int(
-                connection.execute(
-                    """
-                    SELECT COUNT(*) AS count
-                    FROM master_records
-                    WHERE deleted_at IS NULL
-                      AND (
-                        substr(a_number, 1, 1) <> '7'
-                        OR (
-                            NOT {MASTER_SHORT_AON_SQL}
-                            AND EXISTS (
-                                SELECT 1
-                                FROM json_each(b_numbers_json) AS invalid_start_aon
-                                WHERE substr(CAST(invalid_start_aon.value AS TEXT), 1, 1) <> '7'
-                            )
-                        )
-                      )
-                    """.format(MASTER_SHORT_AON_SQL=MASTER_SHORT_AON_SQL)
-                ).fetchone()["count"]
-            )
-            short_aon_record_count = int(
-                connection.execute(
-                    f"""
-                    SELECT COUNT(*) AS count
-                    FROM master_records
-                    WHERE deleted_at IS NULL
-                      AND {MASTER_SHORT_AON_SQL}
-                    """
-                ).fetchone()["count"]
-            )
-            grouped_parameters: dict[str, dict[str, Any]] = {}
-            region_counts = {number: 0 for number in range(1, 85)}
-            for row in connection.execute(
-                    """
-                    SELECT source_prefix, COUNT(*) AS count
-                    FROM master_records
-                    WHERE deleted_at IS NULL
-                    GROUP BY source_prefix
-                    ORDER BY count DESC, source_prefix COLLATE NOCASE
-                    """
-                ):
-                group_id, label = _parameter_group(
-                    str(row["source_prefix"])
-                )
-                group = grouped_parameters.setdefault(
-                    group_id,
-                    {"id": group_id, "label": label, "count": 0},
-                )
-                group["count"] += int(row["count"])
-                region_number = _region_number(str(row["source_prefix"]))
-                if region_number is not None:
-                    region_counts[region_number] += int(row["count"])
-            group_order = {
-                "default": 0,
-                "pani": 1,
-                "region": 2,
-                "pani_region": 3,
-                "custom": 4,
-            }
-            parameter_options = sorted(
-                grouped_parameters.values(),
-                key=lambda item: (
-                    group_order.get(
-                        str(item["id"]),
-                        4,
-                    ),
-                    str(item["label"]),
-                ),
-            )
-            duplicate_findings: dict[str, sqlite3.Row] = {}
-            if duplicate_import_id is not None:
-                duplicate_findings = {
-                    str(row["a_number"]): row
-                    for row in connection.execute(
-                        """
-                        SELECT a_number, source_rows_json, source_file
-                        FROM master_duplicate_findings
-                        WHERE import_id = ?
-                        """,
-                        (duplicate_import_id,),
-                    )
-                }
-            duplicate_count = int(
-                connection.execute(
-                    """
-                    SELECT COALESCE(SUM(active_count), 0) AS count
-                    FROM master_a_counts
-                    WHERE active_count > 1
-                    """
-                ).fetchone()["count"]
-            )
-            exact_duplicate_count = int(
-                connection.execute(
-                    """
-                    SELECT COALESCE(SUM(active_count), 0) AS count
-                    FROM master_exact_counts
-                    WHERE active_count > 1
-                    """
-                ).fetchone()["count"]
-            )
-            exact_duplicate_extra_count = int(
-                connection.execute(
-                    """
-                    SELECT COALESCE(SUM(active_count - 1), 0) AS count
-                    FROM master_exact_counts
-                    WHERE active_count > 1
-                    """
-                ).fetchone()["count"]
-            )
-            matching_exact_duplicate_extra_count = exact_duplicate_extra_count
             if exact_duplicates_only or exact_duplicate_extras_only:
                 matching_exact_duplicate_extra_count = int(
                     connection.execute(
@@ -1281,64 +1331,115 @@ class MasterService:
                         values,
                     ).fetchone()["count"]
                 )
+
             rows = connection.execute(
                 f"""
                 SELECT master_records.*,
-                       COALESCE(
-                           (
-                               SELECT active_count
-                               FROM master_a_counts
-                               WHERE a_number_key IS NOT DISTINCT FROM
-                                     master_records.a_number_key
-                                 AND a_number = master_records.a_number
-                           ),
-                           0
-                       ) AS duplicate_group_size,
-                       COALESCE(
-                           (
-                               SELECT active_count
-                               FROM master_exact_counts
-                               WHERE signature_hash = master_exact_signature(
-                                       master_records.a_number,
-                                       master_records.b_numbers_json,
-                                       master_records.source_prefix
-                                     )
-                           ),
-                           0
-                       ) AS exact_duplicate_group_size
-                       ,(
-                           SELECT original_exact_duplicate.id
-                           FROM master_records AS original_exact_duplicate
-                           WHERE original_exact_duplicate.deleted_at IS NULL
-                             AND original_exact_duplicate.a_number_key IS NOT DISTINCT FROM
-                                 master_records.a_number_key
-                             AND original_exact_duplicate.a_number = master_records.a_number
-                             AND original_exact_duplicate.source_prefix =
-                                 master_records.source_prefix
-                             AND master_b_signature(
-                                   original_exact_duplicate.b_numbers_json,
-                                   original_exact_duplicate.source_prefix
-                                 ) = master_b_signature(
-                                   master_records.b_numbers_json,
-                                   master_records.source_prefix
-                                 )
-                           ORDER BY original_exact_duplicate.sort_order,
-                                    original_exact_duplicate.id
-                           LIMIT 1
-                       ) AS exact_duplicate_original_id
+                       COALESCE(a_counts.active_count, 0) AS duplicate_group_size,
+                       COALESCE(exact_counts.active_count, 0)
+                           AS exact_duplicate_group_size
                 FROM master_records
+                LEFT JOIN master_a_counts AS a_counts
+                  ON a_counts.a_number_key IS NOT DISTINCT FROM
+                     master_records.a_number_key
+                 AND a_counts.a_number = master_records.a_number
+                LEFT JOIN master_exact_counts AS exact_counts
+                  ON exact_counts.signature_hash = master_exact_signature(
+                         master_records.a_number,
+                         master_records.b_numbers_json,
+                         master_records.source_prefix
+                     )
                 WHERE {where}
                 ORDER BY {order_by}
                 LIMIT ? OFFSET ?
                 """,
                 [*values, limit, offset],
             ).fetchall()
-            items: list[dict[str, Any]] = []
-            for row in rows:
-                item = self._record_payload(
-                    row,
-                    self._active_line(connection, int(row["sort_order"])),
+
+            exact_original_ids: dict[str, str] = {}
+            exact_duplicate_rows = [
+                row
+                for row in rows
+                if int(row["exact_duplicate_group_size"]) > 1
+            ]
+            for row in exact_duplicate_rows:
+                original = connection.execute(
+                    """
+                    SELECT id
+                    FROM master_records AS original_exact_duplicate
+                    WHERE original_exact_duplicate.deleted_at IS NULL
+                      AND original_exact_duplicate.a_number_key IS NOT DISTINCT FROM ?
+                      AND original_exact_duplicate.a_number = ?
+                      AND original_exact_duplicate.source_prefix = ?
+                      AND master_b_signature(
+                            original_exact_duplicate.b_numbers_json,
+                            original_exact_duplicate.source_prefix
+                          ) = master_b_signature(?, ?)
+                    ORDER BY original_exact_duplicate.sort_order,
+                             original_exact_duplicate.id
+                    LIMIT 1
+                    """,
+                    (
+                        row["a_number_key"],
+                        row["a_number"],
+                        row["source_prefix"],
+                        row["b_numbers_json"],
+                        row["source_prefix"],
+                    ),
+                ).fetchone()
+                if original is not None:
+                    exact_original_ids[str(row["id"])] = str(original["id"])
+
+            duplicate_a_numbers = [
+                str(row["a_number"])
+                for row in rows
+                if int(row["duplicate_group_size"]) > 1
+            ]
+            duplicate_findings: dict[str, Any] = {}
+            if duplicate_a_numbers:
+                latest_duplicate_import = connection.execute(
+                    """
+                    SELECT id
+                    FROM master_imports
+                    WHERE status = 'merged'
+                    ORDER BY merged_at DESC, created_at DESC
+                    LIMIT 1
+                    """
+                ).fetchone()
+                if latest_duplicate_import is not None:
+                    placeholders = ",".join("?" for _ in duplicate_a_numbers)
+                    duplicate_findings = {
+                        str(row["a_number"]): row
+                        for row in connection.execute(
+                            f"""
+                            SELECT a_number, source_rows_json, source_file
+                            FROM master_duplicate_findings
+                            WHERE import_id = ?
+                              AND a_number IN ({placeholders})
+                            """,
+                            [
+                                str(latest_duplicate_import["id"]),
+                                *duplicate_a_numbers,
+                            ],
+                        )
+                    }
+
+            use_offset_lines = unfiltered_active and sort == "base"
+            line_numbers = (
+                {}
+                if use_offset_lines
+                else self._active_lines(
+                    connection,
+                    (int(row["sort_order"]) for row in rows),
                 )
+            )
+            items: list[dict[str, Any]] = []
+            for index, row in enumerate(rows):
+                if use_offset_lines:
+                    line_number = offset + index + 1
+                else:
+                    line_number = line_numbers[int(row["sort_order"])]
+                item = self._record_payload(row, line_number)
                 duplicate = duplicate_findings.get(item["aNumber"])
                 if int(row["duplicate_group_size"]) > 1:
                     item["isDuplicate"] = True
@@ -1358,33 +1459,40 @@ class MasterService:
                 item["isExactDuplicate"] = (
                     int(row["exact_duplicate_group_size"]) > 1
                 )
+                original_id = exact_original_ids.get(item["id"], item["id"])
                 item["isExactDuplicateExtra"] = (
-                    item["isExactDuplicate"]
-                    and str(row["exact_duplicate_original_id"]) != item["id"]
+                    item["isExactDuplicate"] and original_id != item["id"]
                 )
                 items.append(item)
             return {
-                "revision": self._current_revision(connection),
+                "revision": int(stats["revision"]),
                 "total": total,
-                "activeCount": active,
-                "totalB": total_b,
-                "historyCount": history_count,
-                "invalidANumberCount": invalid_a_count,
-                "invalidBNumberCount": invalid_b_count,
-                "invalidRecordCount": invalid_record_count,
-                "invalidStartANumberCount": invalid_start_a_count,
-                "invalidStartBNumberCount": invalid_start_b_count,
-                "invalidStartRecordCount": invalid_start_record_count,
-                "shortAonRecordCount": short_aon_record_count,
-                "parameterOptions": parameter_options,
-                "regionOptions": [
-                    {"value": number, "count": region_counts[number]}
-                    for number in range(1, 85)
-                ],
-                "duplicateCount": duplicate_count,
-                "exactDuplicateCount": exact_duplicate_count,
-                "exactDuplicateExtraCount": exact_duplicate_extra_count,
-                "matchingExactDuplicateExtraCount": matching_exact_duplicate_extra_count,
+                "activeCount": int(stats["activeCount"]),
+                "totalB": int(stats["totalB"]),
+                "historyCount": int(stats["historyCount"]),
+                "invalidANumberCount": int(stats["invalidANumberCount"]),
+                "invalidBNumberCount": int(stats["invalidBNumberCount"]),
+                "invalidRecordCount": int(stats["invalidRecordCount"]),
+                "invalidStartANumberCount": int(
+                    stats["invalidStartANumberCount"]
+                ),
+                "invalidStartBNumberCount": int(
+                    stats["invalidStartBNumberCount"]
+                ),
+                "invalidStartRecordCount": int(
+                    stats["invalidStartRecordCount"]
+                ),
+                "shortAonRecordCount": int(stats["shortAonRecordCount"]),
+                "parameterOptions": stats["parameterOptions"],
+                "regionOptions": stats["regionOptions"],
+                "duplicateCount": int(stats["duplicateCount"]),
+                "exactDuplicateCount": int(stats["exactDuplicateCount"]),
+                "exactDuplicateExtraCount": int(
+                    stats["exactDuplicateExtraCount"]
+                ),
+                "matchingExactDuplicateExtraCount": (
+                    matching_exact_duplicate_extra_count
+                ),
                 "offset": offset,
                 "limit": limit,
                 "items": items,
