@@ -4396,6 +4396,10 @@ html[data-theme="dark"] .start-variant-card > span:not(.start-variant-number) {
   .master-lock-panel > button { grid-column: auto; }
   .master-lock-dialog { padding: 23px 20px; }
   .master-lock-dialog h2 { font-size: 22px; }
+  .master-logical-row-dialog { padding: 18px 16px 16px; border-radius: 16px; }
+  .master-logical-row-dialog-heading h2 { font-size: 18px; }
+  .master-logical-row-dialog-actions { flex-direction: column-reverse; }
+  .master-logical-row-dialog-actions button { width: 100%; }
   .master-draft-dialog-actions { grid-template-columns: 1fr; }
   .master-lock-dialog-actions { grid-template-columns: 1fr; }
   .master-stats { grid-template-columns: repeat(2, 1fr); }
