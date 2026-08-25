@@ -1102,7 +1102,14 @@ class MasterService:
             clauses.append(f"({' OR '.join(query_clauses)})")
         if selected_parameter_groups or selected_regions:
             parameter_clauses: list[str] = []
-            parameter_values: list[str] = []
+            parameter_values: list[Any] = []
+            # Keep SQL aligned with _parameter_group / _pani_region_parts —
+            # GLOB [0-9]* is "one digit + anything" and drifts from the UI counts.
+            pani_regex = r"^[0-9]{11}& null/\$ & null/\$ &$"
+            pani_region_regexes = (
+                r"^\+?[0-9]{11}& D([1-9]|[1-7][0-9]|8[0-4])\$&null&$",
+                r"^\+?[0-9]{11}& null&D([1-9]|[1-7][0-9]|8[0-4])\$&$",
+            )
             region_prefixes = [
                 prefix
                 for number in range(1, 85)
@@ -1116,39 +1123,13 @@ class MasterService:
                     parameter_clauses.append("source_prefix = ?")
                     parameter_values.append(NO_REGION_PREFIX)
                 elif group == "pani":
-                    parameter_clauses.append(
-                        """
-                        (
-                            source_prefix GLOB ?
-                            OR source_prefix GLOB ?
-                        )
-                        """
-                    )
-                    parameter_values.extend(
-                        [
-                            "[0-9]*& null/$ & null/$ &",
-                            "+[0-9]*& null/$ & null/$ &",
-                        ]
-                    )
+                    parameter_clauses.append("source_prefix ~ ?")
+                    parameter_values.append(pani_regex)
                 elif group == "pani_region":
                     parameter_clauses.append(
-                        """
-                        (
-                            source_prefix GLOB ?
-                            OR source_prefix GLOB ?
-                            OR source_prefix GLOB ?
-                            OR source_prefix GLOB ?
-                        )
-                        """
+                        "(source_prefix ~ ? OR source_prefix ~ ?)"
                     )
-                    parameter_values.extend(
-                        [
-                            "[0-9]*& null&D[0-9]*$&",
-                            "[0-9]*& null&[0-9]*$&",
-                            "[0-9]*& D[0-9]*$&null&",
-                            "[0-9]*& [0-9]*$&null&",
-                        ]
-                    )
+                    parameter_values.extend(pani_region_regexes)
                 elif group == "region":
                     placeholders = ",".join("?" for _ in region_prefixes)
                     parameter_clauses.append(
@@ -1163,12 +1144,9 @@ class MasterService:
                         f"""
                         (
                             source_prefix <> ?
-                            AND source_prefix NOT GLOB ?
-                            AND source_prefix NOT GLOB ?
-                            AND source_prefix NOT GLOB ?
-                            AND source_prefix NOT GLOB ?
-                            AND source_prefix NOT GLOB ?
-                            AND source_prefix NOT GLOB ?
+                            AND source_prefix !~ ?
+                            AND source_prefix !~ ?
+                            AND source_prefix !~ ?
                             AND source_prefix NOT IN ({region_placeholders})
                         )
                         """
@@ -1176,12 +1154,8 @@ class MasterService:
                     parameter_values.extend(
                         [
                             NO_REGION_PREFIX,
-                            "[0-9]*& null/$ & null/$ &",
-                            "+[0-9]*& null/$ & null/$ &",
-                            "[0-9]*& null&D[0-9]*$&",
-                            "[0-9]*& null&[0-9]*$&",
-                            "[0-9]*& D[0-9]*$&null&",
-                            "[0-9]*& [0-9]*$&null&",
+                            pani_regex,
+                            *pani_region_regexes,
                             *region_prefixes,
                         ]
                     )
@@ -1202,25 +1176,22 @@ class MasterService:
                 placeholders = ",".join(
                     "?" for _ in selected_region_prefixes
                 )
-                combined_region_patterns = [
+                pani_region_patterns = [
                     pattern
                     for number in selected_regions
                     for pattern in (
-                        f"[0-9]*& null&D{number}$&",
-                        f"[0-9]*& null&{number}$&",
-                        f"[0-9]*& D{number}$&null&",
-                        f"[0-9]*& {number}$&null&",
+                        rf"^\+?[0-9]{{11}}& D{number}\$&null&$",
+                        rf"^\+?[0-9]{{11}}& null&D{number}\$&$",
                     )
                 ]
                 combined_clauses = " OR ".join(
-                    "source_prefix GLOB ?"
-                    for _ in combined_region_patterns
+                    "source_prefix ~ ?" for _ in pani_region_patterns
                 )
                 parameter_clauses.append(
                     f"(source_prefix IN ({placeholders}) OR {combined_clauses})"
                 )
                 parameter_values.extend(
-                    [*selected_region_prefixes, *combined_region_patterns]
+                    [*selected_region_prefixes, *pani_region_patterns]
                 )
             clauses.append(f"({' OR '.join(parameter_clauses)})")
             values.extend(parameter_values)

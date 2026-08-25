@@ -1605,6 +1605,10 @@ export default function MasterPage() {
       recordsLoadingMoreRef.current = false;
       setRecordsLoadingMore(false);
       setLoading(true);
+      // Avoid showing a stale unfiltered page under an active filter.
+      setRecords([]);
+      setRecordsHasMore(false);
+      setRecordStats((current) => ({ ...current, total: 0 }));
     }
     else {
       recordsLoadingMoreRef.current = true;
