@@ -1605,12 +1605,7 @@ export default function MasterPage() {
       recordsLoadingMoreRef.current = false;
       setRecordsLoadingMore(false);
       setLoading(true);
-      // Avoid showing a stale unfiltered page under an active filter.
-      setRecords([]);
-      setRecordsHasMore(false);
-      setRecordStats((current) => ({ ...current, total: 0 }));
-    }
-    else {
+    } else {
       recordsLoadingMoreRef.current = true;
       setRecordsLoadingMore(true);
       setLoading(true);
@@ -1678,6 +1673,10 @@ export default function MasterPage() {
       setError("");
     } catch (nextError) {
       if (generation !== recordsLoadGenerationRef.current) return;
+      if (reset) {
+        setRecords([]);
+        setRecordsHasMore(false);
+      }
       setError(
         nextError instanceof Error
           ? nextError.message
@@ -5272,10 +5271,12 @@ export default function MasterPage() {
                     allFilteredRecordsSelected ? "is-active-filter" : ""
                   }`}
                   type="button"
-                  disabled={!recordStats.total || !!bulkDeleting}
+                  disabled={!recordStats.total || !!bulkDeleting || loading}
                   onClick={toggleAllFilteredRecords}
                 >
-                  {allFilteredRecordsSelected
+                  {loading
+                    ? "Загрузка выборки…"
+                    : allFilteredRecordsSelected
                     ? `Отмечено ${selectedFilteredRecordCount} из ${recordStats.total}`
                     : `Отметить всю выборку · ${recordStats.total}`}
                 </button>
@@ -5390,15 +5391,19 @@ export default function MasterPage() {
                       <input
                         type="checkbox"
                         checked={selectedParameterGroups.includes(parameter.id)}
-                        onChange={(event) =>
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          const parameterId = parameter.id;
                           setSelectedParameterGroups((current) =>
-                            event.target.checked
-                              ? [...current, parameter.id]
+                            checked
+                              ? current.includes(parameterId)
+                                ? current
+                                : [...current, parameterId]
                               : current.filter(
-                                  (value) => value !== parameter.id,
+                                  (value) => value !== parameterId,
                                 ),
-                          )
-                        }
+                          );
+                        }}
                       />
                       <span>
                         <strong>{parameter.label}</strong>

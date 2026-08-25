@@ -431,6 +431,51 @@ def _parameter_group(value: str) -> tuple[str, str]:
     return "custom", "Другие параметры"
 
 
+# GLOB [0-9]* means "one digit + anything"; use eleven explicit digits
+# so SQL filters stay aligned with _parameter_group / _pani_region_parts.
+_ELEVEN_DIGIT_GLOB = "[0-9]" * 11
+_MAX_CACHED_FILTER_PREFIXES = 8000
+
+
+def _pani_glob_patterns() -> tuple[str, ...]:
+    return (
+        f"{_ELEVEN_DIGIT_GLOB}& null/$ & null/$ &",
+        f"+{_ELEVEN_DIGIT_GLOB}& null/$ & null/$ &",
+    )
+
+
+def _pani_region_glob_patterns() -> tuple[str, ...]:
+    patterns: list[str] = []
+    for sign in ("", "+"):
+        body = f"{sign}{_ELEVEN_DIGIT_GLOB}"
+        patterns.extend(
+            (
+                f"{body}& D[0-9]*$&null&",
+                f"{body}& [0-9]*$&null&",
+                f"{body}& null&D[0-9]*$&",
+                f"{body}& null&[0-9]*$&",
+            )
+        )
+    return tuple(patterns)
+
+
+def _remember_filter_prefix(
+    buckets: dict[str, list[str] | None],
+    group_id: str,
+    prefix: str,
+) -> None:
+    current = buckets.get(group_id)
+    if group_id in buckets and current is None:
+        return
+    if current is None:
+        buckets[group_id] = [prefix]
+        return
+    if len(current) >= _MAX_CACHED_FILTER_PREFIXES:
+        buckets[group_id] = None
+        return
+    current.append(prefix)
+
+
 class MasterService:
     """Durable local master branch with optimistic, revisioned merges."""
 
@@ -752,6 +797,10 @@ class MasterService:
         )
         grouped_parameters: dict[str, dict[str, Any]] = {}
         region_counts = {number: 0 for number in range(1, 85)}
+        prefixes_by_group: dict[str, list[str] | None] = {}
+        prefixes_by_region: dict[int, list[str]] = {
+            number: [] for number in range(1, 85)
+        }
         for row in connection.execute(
             """
             SELECT source_prefix, COUNT(*) AS count
@@ -761,15 +810,18 @@ class MasterService:
             ORDER BY count DESC, source_prefix COLLATE NOCASE
             """
         ):
-            group_id, label = _parameter_group(str(row["source_prefix"]))
+            prefix = str(row["source_prefix"])
+            group_id, label = _parameter_group(prefix)
             group = grouped_parameters.setdefault(
                 group_id,
                 {"id": group_id, "label": label, "count": 0},
             )
             group["count"] += int(row["count"])
-            region_number = _region_number(str(row["source_prefix"]))
+            _remember_filter_prefix(prefixes_by_group, group_id, prefix)
+            region_number = _region_number(prefix)
             if region_number is not None:
                 region_counts[region_number] += int(row["count"])
+                prefixes_by_region[region_number].append(prefix)
         group_order = {
             "default": 0,
             "pani": 1,
@@ -831,6 +883,9 @@ class MasterService:
             "duplicateCount": duplicate_count,
             "exactDuplicateCount": exact_duplicate_count,
             "exactDuplicateExtraCount": exact_duplicate_extra_count,
+            # Server-only: used to build fast IN filters (not returned to UI).
+            "prefixesByGroup": prefixes_by_group,
+            "prefixesByRegion": prefixes_by_region,
         }
         with self._list_stats_lock:
             self._list_stats_revision = revision
@@ -1044,6 +1099,91 @@ class MasterService:
         )
 
     @staticmethod
+    def _prefix_in_sql(prefixes: list[str]) -> tuple[str, list[Any]]:
+        if not prefixes:
+            return "FALSE", []
+        unique = list(dict.fromkeys(prefixes))
+        placeholders = ",".join("?" for _ in unique)
+        return f"source_prefix IN ({placeholders})", unique
+
+    @staticmethod
+    def _glob_match_or_sql(patterns: Iterable[str]) -> tuple[str, list[Any]]:
+        values = list(patterns)
+        if not values:
+            return "FALSE", []
+        clause = " OR ".join(
+            "master_glob_match(source_prefix, ?)" for _ in values
+        )
+        return f"({clause})", values
+
+    @staticmethod
+    def _filtered_total_from_stats(
+        stats: dict[str, Any],
+        *,
+        query: str,
+        parameter_groups: Iterable[str] = (),
+        regions: Iterable[int] = (),
+        duplicates_only: bool = False,
+        exact_duplicates_only: bool = False,
+        exact_duplicate_extras_only: bool = False,
+        short_aon_only: bool = False,
+        invalid_only: bool = False,
+        invalid_start_only: bool = False,
+    ) -> int | None:
+        """Return a cached total when COUNT(*) would only recompute known stats."""
+
+        if query.strip():
+            return None
+        selected_parameter_groups = tuple(
+            dict.fromkeys(value for value in parameter_groups if value)
+        )
+        selected_regions = tuple(dict.fromkeys(int(value) for value in regions))
+        quality_flags = (
+            duplicates_only,
+            exact_duplicates_only,
+            exact_duplicate_extras_only,
+            short_aon_only,
+            invalid_only,
+            invalid_start_only,
+        )
+        quality_count = sum(1 for flag in quality_flags if flag)
+        if quality_count > 1:
+            return None
+        if quality_count == 1 and (
+            selected_parameter_groups or selected_regions
+        ):
+            return None
+        if selected_parameter_groups and selected_regions:
+            return None
+        if duplicates_only:
+            return int(stats["duplicateCount"])
+        if exact_duplicates_only:
+            return int(stats["exactDuplicateCount"])
+        if exact_duplicate_extras_only:
+            return int(stats["exactDuplicateExtraCount"])
+        if short_aon_only:
+            return int(stats["shortAonRecordCount"])
+        if invalid_only:
+            return int(stats["invalidRecordCount"])
+        if invalid_start_only:
+            return int(stats["invalidStartRecordCount"])
+        if selected_parameter_groups:
+            counts = {
+                str(option["id"]): int(option["count"])
+                for option in stats["parameterOptions"]
+            }
+            return sum(
+                counts.get(group, 0) for group in selected_parameter_groups
+            )
+        if selected_regions:
+            counts = {
+                int(option["value"]): int(option["count"])
+                for option in stats["regionOptions"]
+            }
+            return sum(counts.get(number, 0) for number in selected_regions)
+        return None
+
+    @staticmethod
     def _record_filter_sql(
         *,
         query: str,
@@ -1055,6 +1195,8 @@ class MasterService:
         short_aon_only: bool = False,
         invalid_only: bool = False,
         invalid_start_only: bool = False,
+        group_prefixes: dict[str, list[str] | None] | None = None,
+        region_prefixes_by_number: dict[int, list[str]] | None = None,
     ) -> tuple[str, list[Any]]:
         full_row_query = _full_row_search_query(query)
         try:
@@ -1103,14 +1245,9 @@ class MasterService:
         if selected_parameter_groups or selected_regions:
             parameter_clauses: list[str] = []
             parameter_values: list[Any] = []
-            # Keep SQL aligned with _parameter_group / _pani_region_parts —
-            # GLOB [0-9]* is "one digit + anything" and drifts from the UI counts.
-            pani_regex = r"^[0-9]{11}& null/\$ & null/\$ &$"
-            pani_region_regexes = (
-                r"^\+?[0-9]{11}& D([1-9]|[1-7][0-9]|8[0-4])\$&null&$",
-                r"^\+?[0-9]{11}& null&D([1-9]|[1-7][0-9]|8[0-4])\$&$",
-            )
-            region_prefixes = [
+            pani_globs = _pani_glob_patterns()
+            pani_region_globs = _pani_region_glob_patterns()
+            standalone_region_prefixes = [
                 prefix
                 for number in range(1, 85)
                 for prefix in (
@@ -1118,45 +1255,67 @@ class MasterService:
                     f"null/$ & null&{number}$&",
                 )
             ]
-            for group in selected_parameter_groups:
+
+            def append_group_clause(group: str) -> None:
+                cached = (
+                    None
+                    if group_prefixes is None
+                    else group_prefixes.get(group)
+                )
+                if cached is not None:
+                    clause, clause_values = MasterService._prefix_in_sql(
+                        cached
+                    )
+                    parameter_clauses.append(clause)
+                    parameter_values.extend(clause_values)
+                    return
                 if group == "default":
                     parameter_clauses.append("source_prefix = ?")
                     parameter_values.append(NO_REGION_PREFIX)
                 elif group == "pani":
-                    parameter_clauses.append("source_prefix ~ ?")
-                    parameter_values.append(pani_regex)
+                    clause, clause_values = MasterService._glob_match_or_sql(
+                        pani_globs
+                    )
+                    parameter_clauses.append(clause)
+                    parameter_values.extend(clause_values)
                 elif group == "pani_region":
-                    parameter_clauses.append(
-                        "(source_prefix ~ ? OR source_prefix ~ ?)"
+                    clause, clause_values = MasterService._glob_match_or_sql(
+                        pani_region_globs
                     )
-                    parameter_values.extend(pani_region_regexes)
+                    parameter_clauses.append(clause)
+                    parameter_values.extend(clause_values)
                 elif group == "region":
-                    placeholders = ",".join("?" for _ in region_prefixes)
-                    parameter_clauses.append(
-                        f"source_prefix IN ({placeholders})"
+                    clause, clause_values = MasterService._prefix_in_sql(
+                        standalone_region_prefixes
                     )
-                    parameter_values.extend(region_prefixes)
+                    parameter_clauses.append(clause)
+                    parameter_values.extend(clause_values)
                 elif group == "custom":
-                    region_placeholders = ",".join(
-                        "?" for _ in region_prefixes
+                    region_clause, region_values = MasterService._prefix_in_sql(
+                        standalone_region_prefixes
+                    )
+                    pani_clause, pani_values = MasterService._glob_match_or_sql(
+                        pani_globs
+                    )
+                    pani_region_clause, pani_region_values = (
+                        MasterService._glob_match_or_sql(pani_region_globs)
                     )
                     parameter_clauses.append(
                         f"""
                         (
                             source_prefix <> ?
-                            AND source_prefix !~ ?
-                            AND source_prefix !~ ?
-                            AND source_prefix !~ ?
-                            AND source_prefix NOT IN ({region_placeholders})
+                            AND NOT {pani_clause}
+                            AND NOT {pani_region_clause}
+                            AND NOT ({region_clause})
                         )
                         """
                     )
                     parameter_values.extend(
                         [
                             NO_REGION_PREFIX,
-                            pani_regex,
-                            *pani_region_regexes,
-                            *region_prefixes,
+                            *pani_values,
+                            *pani_region_values,
+                            *region_values,
                         ]
                     )
                 else:
@@ -1164,35 +1323,51 @@ class MasterService:
                         "INVALID_PARAMETER_GROUP",
                         "Неизвестная группа параметров",
                     )
+
+            for group in selected_parameter_groups:
+                append_group_clause(group)
             if selected_regions:
-                selected_region_prefixes = [
-                    prefix
-                    for number in selected_regions
-                    for prefix in (
-                        f"null/$ & null&D{number}$&",
-                        f"null/$ & null&{number}$&",
+                if region_prefixes_by_number is not None:
+                    selected_prefixes = [
+                        prefix
+                        for number in selected_regions
+                        for prefix in region_prefixes_by_number.get(number, [])
+                    ]
+                    clause, clause_values = MasterService._prefix_in_sql(
+                        selected_prefixes
                     )
-                ]
-                placeholders = ",".join(
-                    "?" for _ in selected_region_prefixes
-                )
-                pani_region_patterns = [
-                    pattern
-                    for number in selected_regions
-                    for pattern in (
-                        rf"^\+?[0-9]{{11}}& D{number}\$&null&$",
-                        rf"^\+?[0-9]{{11}}& null&D{number}\$&$",
+                    parameter_clauses.append(clause)
+                    parameter_values.extend(clause_values)
+                else:
+                    selected_region_prefixes = [
+                        prefix
+                        for number in selected_regions
+                        for prefix in (
+                            f"null/$ & null&D{number}$&",
+                            f"null/$ & null&{number}$&",
+                        )
+                    ]
+                    pani_region_patterns = [
+                        pattern
+                        for number in selected_regions
+                        for sign in ("", "+")
+                        for pattern in (
+                            f"{sign}{_ELEVEN_DIGIT_GLOB}& D{number}$&null&",
+                            f"{sign}{_ELEVEN_DIGIT_GLOB}& {number}$&null&",
+                            f"{sign}{_ELEVEN_DIGIT_GLOB}& null&D{number}$&",
+                            f"{sign}{_ELEVEN_DIGIT_GLOB}& null&{number}$&",
+                        )
+                    ]
+                    in_clause, in_values = MasterService._prefix_in_sql(
+                        selected_region_prefixes
                     )
-                ]
-                combined_clauses = " OR ".join(
-                    "source_prefix ~ ?" for _ in pani_region_patterns
-                )
-                parameter_clauses.append(
-                    f"(source_prefix IN ({placeholders}) OR {combined_clauses})"
-                )
-                parameter_values.extend(
-                    [*selected_region_prefixes, *pani_region_patterns]
-                )
+                    glob_clause, glob_values = MasterService._glob_match_or_sql(
+                        pani_region_patterns
+                    )
+                    parameter_clauses.append(
+                        f"({in_clause} OR {glob_clause})"
+                    )
+                    parameter_values.extend([*in_values, *glob_values])
             clauses.append(f"({' OR '.join(parameter_clauses)})")
             values.extend(parameter_values)
         if duplicates_only:
@@ -1282,30 +1457,47 @@ class MasterService:
         }.get(sort)
         if order_by is None:
             raise AppError("INVALID_SORT", "Неизвестный порядок сортировки")
-        where, values = self._record_filter_sql(
-            query=query,
-            parameter_groups=parameter_groups,
-            regions=regions,
-            duplicates_only=duplicates_only,
-            exact_duplicates_only=exact_duplicates_only,
-            exact_duplicate_extras_only=exact_duplicate_extras_only,
-            short_aon_only=short_aon_only,
-            invalid_only=invalid_only,
-            invalid_start_only=invalid_start_only,
-        )
-
         with self._connect() as connection:
             stats = self._list_global_stats(connection)
+            where, values = self._record_filter_sql(
+                query=query,
+                parameter_groups=parameter_groups,
+                regions=regions,
+                duplicates_only=duplicates_only,
+                exact_duplicates_only=exact_duplicates_only,
+                exact_duplicate_extras_only=exact_duplicate_extras_only,
+                short_aon_only=short_aon_only,
+                invalid_only=invalid_only,
+                invalid_start_only=invalid_start_only,
+                group_prefixes=stats.get("prefixesByGroup"),
+                region_prefixes_by_number=stats.get("prefixesByRegion"),
+            )
+
             unfiltered_active = where == "deleted_at IS NULL" and not values
             if unfiltered_active:
                 total = int(stats["activeCount"])
             else:
-                total = int(
-                    connection.execute(
-                        f"SELECT COUNT(*) AS count FROM master_records WHERE {where}",
-                        values,
-                    ).fetchone()["count"]
+                cached_total = self._filtered_total_from_stats(
+                    stats,
+                    query=query,
+                    parameter_groups=parameter_groups,
+                    regions=regions,
+                    duplicates_only=duplicates_only,
+                    exact_duplicates_only=exact_duplicates_only,
+                    exact_duplicate_extras_only=exact_duplicate_extras_only,
+                    short_aon_only=short_aon_only,
+                    invalid_only=invalid_only,
+                    invalid_start_only=invalid_start_only,
                 )
+                if cached_total is not None:
+                    total = cached_total
+                else:
+                    total = int(
+                        connection.execute(
+                            f"SELECT COUNT(*) AS count FROM master_records WHERE {where}",
+                            values,
+                        ).fetchone()["count"]
+                    )
 
             matching_exact_duplicate_extra_count = int(
                 stats["exactDuplicateExtraCount"]
@@ -3984,6 +4176,7 @@ class MasterService:
         now = time.time()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            stats = self._list_global_stats(connection)
             where, values = self._record_filter_sql(
                 query=record_filter.query,
                 parameter_groups=record_filter.parameterGroups,
@@ -3994,6 +4187,8 @@ class MasterService:
                 short_aon_only=record_filter.shortAonOnly,
                 invalid_only=record_filter.invalidOnly,
                 invalid_start_only=record_filter.invalidStartOnly,
+                group_prefixes=stats.get("prefixesByGroup"),
+                region_prefixes_by_number=stats.get("prefixesByRegion"),
             )
             if excluded_ids:
                 placeholders = ",".join("?" for _ in excluded_ids)
@@ -4167,6 +4362,7 @@ class MasterService:
                 selection_clauses.append(f"id IN ({placeholders})")
                 selection_values.extend(sorted(selected_record_ids))
             if record_filter is not None:
+                stats = self._list_global_stats(connection)
                 filtered_where, filtered_values = self._record_filter_sql(
                     query=record_filter.query,
                     parameter_groups=record_filter.parameterGroups,
@@ -4179,6 +4375,8 @@ class MasterService:
                     short_aon_only=record_filter.shortAonOnly,
                     invalid_only=record_filter.invalidOnly,
                     invalid_start_only=record_filter.invalidStartOnly,
+                    group_prefixes=stats.get("prefixesByGroup"),
+                    region_prefixes_by_number=stats.get("prefixesByRegion"),
                 )
                 filtered_clause = f"({filtered_where})"
                 if excluded_record_ids:
