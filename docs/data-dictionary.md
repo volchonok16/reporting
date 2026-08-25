@@ -77,6 +77,7 @@
 | actual_period | varchar | Фактическая дата месяц/квартал (правка при статусах `ZNI_ACTUAL_PERIOD_EDITABLE_STATES`) |
 | desired_date | date | Желаемая дата |
 | desired_quarter | varchar | Желаемый квартал |
+| comment | text | Комментарий |
 
 ## app_notification — уведомления
 

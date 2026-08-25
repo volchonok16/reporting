@@ -46,6 +46,7 @@ export type ChangeRequest = {
   externalActualPeriod?: string | null
   externalDesiredDate?: string | null
   externalDesiredQuarter?: string | null
+  externalComment?: string | null
 }
 
 export type TaskLookupResponse = {

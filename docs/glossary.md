@@ -330,6 +330,7 @@
 | `actual_period` | varchar(128) | Фактическая дата месяц/квартал. Редактирование только в статусах из `ZNI_ACTUAL_PERIOD_EDITABLE_STATES` (по умолчанию `UAT,Pilot,Closed`) — колонка доски или `System.State` |
 | `desired_date` | date | Желаемая дата |
 | `desired_quarter` | varchar(64) | Желаемый квартал |
+| `comment` | text | Комментарий |
 | `updated_at` | timestamptz | Последнее сохранение |
 
 ---

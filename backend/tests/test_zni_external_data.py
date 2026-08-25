@@ -32,6 +32,8 @@ def test_update_zni_external_data_creates_row() -> None:
         set_commercial_effect=True,
         desired_date=date(2026, 9, 1),
         set_desired_date=True,
+        comment="  ждём согласование  ",
+        set_comment=True,
     )
 
     assert updated is task
@@ -40,6 +42,7 @@ def test_update_zni_external_data_creates_row() -> None:
     assert added.priority == "высокий"
     assert added.commercial_effect == "рост ARPU"
     assert added.desired_date == date(2026, 9, 1)
+    assert added.comment == "ждём согласование"
     db.commit.assert_called_once()
 
 

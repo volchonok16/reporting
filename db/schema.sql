@@ -254,6 +254,7 @@ CREATE TABLE zni_external_data (
     actual_period        VARCHAR(128),
     desired_date         DATE,
     desired_quarter      VARCHAR(64),
+    comment              TEXT,
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -264,6 +265,7 @@ COMMENT ON COLUMN zni_external_data.commercial_effect IS 'Коммерчески
 COMMENT ON COLUMN zni_external_data.actual_period IS 'Фактическая дата: месяц/квартал';
 COMMENT ON COLUMN zni_external_data.desired_date IS 'Желаемая дата';
 COMMENT ON COLUMN zni_external_data.desired_quarter IS 'Желаемый квартал';
+COMMENT ON COLUMN zni_external_data.comment IS 'Комментарий (внешнее поле, не TFS)';
 
 -- Связь задачи с несколькими релизами (если в источнике несколько fix versions)
 CREATE TABLE task_release (

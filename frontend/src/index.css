@@ -1011,7 +1011,8 @@ body {
 
 .zni-table col.col-external-actual,
 .zni-table col.col-external-desired-date,
-.zni-table col.col-external-desired-quarter {
+.zni-table col.col-external-desired-quarter,
+.zni-table col.col-external-comment {
   width: 120px;
 }
 

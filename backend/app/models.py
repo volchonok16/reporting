@@ -104,6 +104,7 @@ class ZniExternalData(Base):
     actual_period: Mapped[str | None] = mapped_column(String(128))
     desired_date: Mapped[date | None] = mapped_column(Date)
     desired_quarter: Mapped[str | None] = mapped_column(String(64))
+    comment: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

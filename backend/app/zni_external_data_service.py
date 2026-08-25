@@ -9,6 +9,7 @@ from app.models import Task, ZniExternalData
 
 PRIORITY_MAX_LENGTH = 255
 COMMERCIAL_EFFECT_MAX_LENGTH = 4000
+COMMENT_MAX_LENGTH = 4000
 ACTUAL_PERIOD_MAX_LENGTH = 128
 DESIRED_QUARTER_MAX_LENGTH = 64
 
@@ -51,6 +52,8 @@ def update_zni_external_data(
     set_desired_date: bool = False,
     desired_quarter: str | None = None,
     set_desired_quarter: bool = False,
+    comment: str | None = None,
+    set_comment: bool = False,
 ) -> Task:
     task = db.scalar(
         select(Task).where(
@@ -82,6 +85,8 @@ def update_zni_external_data(
         row.desired_date = desired_date
     if set_desired_quarter:
         row.desired_quarter = _clean_text(desired_quarter, max_length=DESIRED_QUARTER_MAX_LENGTH)
+    if set_comment:
+        row.comment = _clean_text(comment, max_length=COMMENT_MAX_LENGTH)
 
     row.updated_at = datetime.now(timezone.utc)
     db.commit()

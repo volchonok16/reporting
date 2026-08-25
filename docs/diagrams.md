@@ -207,6 +207,7 @@ erDiagram
     zni_external_data {
         bigint task_id PK
         varchar priority
+        text comment
     }
 
     workspace_booking {

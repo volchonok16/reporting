@@ -115,6 +115,7 @@ class ChangeRequestOut(BaseModel):
     externalActualPeriod: str | None = None
     externalDesiredDate: date | None = None
     externalDesiredQuarter: str | None = None
+    externalComment: str | None = None
 
 
 class DashboardMetricsOut(BaseModel):
@@ -276,6 +277,7 @@ class ZniExternalDataUpdateIn(BaseModel):
     )
     desiredDate: date | None = Field(default=None, description="Желаемая дата")
     desiredQuarter: str | None = Field(default=None, max_length=64, description="Желаемый квартал")
+    comment: str | None = Field(default=None, max_length=4000, description="Комментарий")
 
 
 class SyncRunOut(BaseModel):

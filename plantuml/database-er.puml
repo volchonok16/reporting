@@ -116,6 +116,7 @@ package "Задачи" #FFF8E8 {
     actual_period : varchar
     desired_date : date
     desired_quarter : varchar
+    comment : text
   }
 
   class app_notification <<table>> {

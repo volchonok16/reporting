@@ -487,6 +487,8 @@ def patch_zni_external_data(
             set_desired_date="desiredDate" in fields,
             desired_quarter=payload.desiredQuarter,
             set_desired_quarter="desiredQuarter" in fields,
+            comment=payload.comment,
+            set_comment="comment" in fields,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

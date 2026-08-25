@@ -384,6 +384,7 @@ def _change_request_to_out(
         externalActualPeriod=external.actual_period if external else None,
         externalDesiredDate=external.desired_date if external else None,
         externalDesiredQuarter=external.desired_quarter if external else None,
+        externalComment=external.comment if external else None,
     )
 
 
@@ -876,6 +877,7 @@ _EXPORT_HEADERS = [
     "Фактическая дата месяц/квартал",
     "Желаемая дата",
     "Желаемый квартал",
+    "Комментарий",
 ]
 _EXPORT_HEADER_FILL = PatternFill(fill_type="solid", fgColor="CCCCCC")
 _EXPORT_HEADER_FONT = Font(bold=True)
@@ -903,6 +905,7 @@ def _export_row_values(item: ChangeRequestOut) -> list[object]:
         item.externalActualPeriod or "",
         item.externalDesiredDate.isoformat() if item.externalDesiredDate else "",
         item.externalDesiredQuarter or "",
+        item.externalComment or "",
     ]
 
 

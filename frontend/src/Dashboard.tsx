@@ -73,6 +73,7 @@ type ChangeRequest = {
   externalActualPeriod?: string | null
   externalDesiredDate?: string | null
   externalDesiredQuarter?: string | null
+  externalComment?: string | null
 }
 
 type DashboardData = {
@@ -170,7 +171,7 @@ function itemRowKey(item: ChangeRequest): string {
 }
 
 function tableColumnCount(allBoards: boolean, externalFieldsVisible: boolean): number {
-  return (allBoards ? 9 : 8) + (externalFieldsVisible ? 5 : 0)
+  return (allBoards ? 9 : 8) + (externalFieldsVisible ? 6 : 0)
 }
 
 type ColumnMenuOption = {
@@ -384,6 +385,7 @@ type ExternalFieldKey =
   | 'actualPeriod'
   | 'desiredDate'
   | 'desiredQuarter'
+  | 'comment'
 
 type ExternalFieldEditorProps = {
   item: ChangeRequest
@@ -407,6 +409,8 @@ function externalFieldValue(item: ChangeRequest, field: ExternalFieldKey): strin
       return item.externalDesiredDate ?? ''
     case 'desiredQuarter':
       return item.externalDesiredQuarter ?? ''
+    case 'comment':
+      return item.externalComment ?? ''
   }
 }
 
@@ -440,7 +444,7 @@ function ExternalFieldEditor({
 
   useEffect(() => {
     setDraft(externalFieldValue(item, field))
-  }, [item.number, item.externalPriority, item.externalCommercialEffect, item.externalActualPeriod, item.externalDesiredDate, item.externalDesiredQuarter, field])
+  }, [item.number, item.externalPriority, item.externalCommercialEffect, item.externalActualPeriod, item.externalDesiredDate, item.externalDesiredQuarter, item.externalComment, field])
 
   const commit = () => {
     if (draft === externalFieldValue(item, field)) return
@@ -887,6 +891,7 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                   externalActualPeriod: updated.externalActualPeriod,
                   externalDesiredDate: updated.externalDesiredDate,
                   externalDesiredQuarter: updated.externalDesiredQuarter,
+                  externalComment: updated.externalComment,
                 }
               : row,
           ),
@@ -1123,6 +1128,7 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                     <col className="col-external-actual" />
                     <col className="col-external-desired-date" />
                     <col className="col-external-desired-quarter" />
+                    <col className="col-external-comment" />
                   </>
                 ) : null}
               </colgroup>
@@ -1178,6 +1184,7 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                       <th title={periodEditableHint}>Фактическая дата месяц/квартал</th>
                       <th>Желаемая дата</th>
                       <th>Желаемый квартал</th>
+                      <th>Комментарий</th>
                     </>
                   ) : null}
                 </tr>
@@ -1356,6 +1363,20 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                                 disabled={externalFieldsReadOnly}
                                 title={canManageOrg ? undefined : externalFieldsAdminHint}
                                 saving={savingExternalKey === `${item.number}:desiredQuarter`}
+                                onSave={saveExternalField}
+                              />
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td className="cell-business-value">
+                            {!isErrorRow(item) ? (
+                              <ExternalFieldEditor
+                                item={item}
+                                field="comment"
+                                disabled={externalFieldsReadOnly}
+                                title={canManageOrg ? undefined : externalFieldsAdminHint}
+                                saving={savingExternalKey === `${item.number}:comment`}
                                 onSave={saveExternalField}
                               />
                             ) : (
