@@ -4344,53 +4344,29 @@ class MasterService:
             }
 
     def clear_records(self, session_id: str, *, actor: str) -> dict[str, Any]:
-        """Soft-delete every active record in one auditable revision.
+        """Remove every master row in one auditable revision.
 
-        Full wipe does not copy every row into master_changes (that blew up WAL
-        and held ACCESS EXCLUSIVE long enough for clients to drop). One
-        ``cleared`` history event + bulk UPDATE is enough.
+        Full wipe does not soft-delete row-by-row (that rewrites the heap and
+        held ACCESS EXCLUSIVE via DISABLE TRIGGER). TRUNCATE empties the table
+        and counter caches; history gets a single ``cleared`` event.
         """
         del session_id
         now = time.time()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            active = int(
-                connection.execute(
-                    """
-                    SELECT COUNT(*) AS count
-                    FROM master_records
-                    WHERE deleted_at IS NULL
-                    """
-                ).fetchone()["count"]
-            )
+            active = int(self._list_global_stats(connection)["activeCount"])
             current_revision = self._current_revision(connection)
             if active == 0:
                 return {"revision": current_revision, "deleted": 0}
 
             revision = current_revision + 1
-            # Краткая блокировка: без INSERT всей базы в историю.
+            # One metadata truncate — no per-row UPDATE and no trigger storm.
             connection.execute(
-                "ALTER TABLE master_records DISABLE TRIGGER USER"
+                """
+                TRUNCATE master_records, master_a_counts, master_exact_counts
+                RESTART IDENTITY
+                """
             )
-            try:
-                connection.execute(
-                    """
-                    UPDATE master_records
-                    SET version = version + 1,
-                        updated_at = ?,
-                        updated_revision = ?,
-                        deleted_at = ?,
-                        deleted_revision = ?
-                    WHERE deleted_at IS NULL
-                    """,
-                    (now, revision, now, revision),
-                )
-                connection.execute("TRUNCATE master_a_counts")
-                connection.execute("TRUNCATE master_exact_counts")
-            finally:
-                connection.execute(
-                    "ALTER TABLE master_records ENABLE TRIGGER USER"
-                )
             self._append_change(
                 connection,
                 revision=revision,
