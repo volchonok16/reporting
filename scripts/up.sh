@@ -14,6 +14,9 @@ case "$MODE" in
   dev|local)
     exec bash "$(dirname "$0")/dev.sh" "$@"
     ;;
+  server|server-dev)
+    exec bash "$(dirname "$0")/server-dev-up.sh" "$@"
+    ;;
   prod|production)
     exec bash "$(dirname "$0")/deploy-prod.sh" "$@"
     ;;
@@ -21,7 +24,12 @@ case "$MODE" in
     cat >&2 <<EOF
 Использование:
   bash scripts/up.sh              # локальная разработка
+  bash scripts/up.sh server       # сервер: свободный POSTGRES_PORT + wait healthy + стек
   bash scripts/up.sh prod         # production: git pull + docker compose + db tunnel
+
+Опции server:
+  --no-build   без пересборки образов
+  --reset-db   down -v (стереть volume postgres)
 
 Опции prod (передаются в deploy-prod.sh):
   --no-pull    без git pull
