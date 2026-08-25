@@ -4156,52 +4156,85 @@ class MasterService:
 
     def clear_records(self, session_id: str, *, actor: str) -> dict[str, Any]:
         """Soft-delete every active record in one auditable revision."""
+        del session_id
         now = time.time()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            records = connection.execute(
-                """
-                SELECT * FROM master_records
-                WHERE deleted_at IS NULL
-                ORDER BY sort_order
-                """
-            ).fetchall()
+            active = int(
+                connection.execute(
+                    """
+                    SELECT COUNT(*) AS count
+                    FROM master_records
+                    WHERE deleted_at IS NULL
+                    """
+                ).fetchone()["count"]
+            )
             current_revision = self._current_revision(connection)
-            if not records:
+            if active == 0:
                 return {"revision": current_revision, "deleted": 0}
 
             revision = current_revision + 1
-            for sequence, record in enumerate(records, start=1):
-                record_id = str(record["id"])
-                version = int(record["version"]) + 1
+            connection.execute(
+                "ALTER TABLE master_records DISABLE TRIGGER USER"
+            )
+            try:
+                # История одним INSERT…SELECT — без N round-trip UPDATE/INSERT.
+                connection.execute(
+                    """
+                    INSERT INTO master_changes(
+                        revision, sequence, record_id, action, line_number,
+                        before_json, after_json, source_file, source_row, actor,
+                        created_at
+                    )
+                    SELECT
+                        ?,
+                        ROW_NUMBER() OVER (ORDER BY sort_order, id),
+                        id,
+                        'deleted',
+                        ROW_NUMBER() OVER (ORDER BY sort_order, id),
+                        json_build_object(
+                            'id', id::text,
+                            'aNumber', a_number,
+                            'bNumbers', b_numbers_json::json,
+                            'sourcePrefix', source_prefix,
+                            'comment', COALESCE(comment, ''),
+                            'version', version
+                        )::text,
+                        NULL,
+                        NULL,
+                        NULL,
+                        ?,
+                        ?
+                    FROM master_records
+                    WHERE deleted_at IS NULL
+                    """,
+                    (revision, actor, now),
+                )
                 connection.execute(
                     """
                     UPDATE master_records
-                    SET version = ?, updated_at = ?, updated_revision = ?,
-                        deleted_at = ?, deleted_revision = ?
-                    WHERE id = ? AND deleted_at IS NULL
+                    SET version = version + 1,
+                        updated_at = ?,
+                        updated_revision = ?,
+                        deleted_at = ?,
+                        deleted_revision = ?
+                    WHERE deleted_at IS NULL
                     """,
-                    (version, now, revision, now, revision, record_id),
+                    (now, revision, now, revision),
                 )
-                self._append_change(
-                    connection,
-                    revision=revision,
-                    sequence=sequence,
-                    record_id=record_id,
-                    action="deleted",
-                    line_number=sequence,
-                    before=_snapshot(record),
-                    after=None,
-                    source_file=None,
-                    source_row=None,
-                    actor=actor,
-                    created_at=now,
+                # Счётчики дубликатов: все активные строки сняты — обнуляем целиком.
+                connection.execute("TRUNCATE master_a_counts")
+                connection.execute("TRUNCATE master_exact_counts")
+            finally:
+                connection.execute(
+                    "ALTER TABLE master_records ENABLE TRIGGER USER"
                 )
             connection.execute(
                 "UPDATE master_state SET current_revision = ? WHERE id = 1",
                 (revision,),
             )
-            return {"revision": revision, "deleted": len(records)}
+            self._invalidate_list_stats_cache()
+            return {"revision": revision, "deleted": active}
 
     def clear_history_and_reset_version(
         self, session_id: str
@@ -4237,26 +4270,36 @@ class MasterService:
                     """
                 ).fetchone()["count"]
             )
-            connection.execute("DELETE FROM master_changes")
-            # Import items and duplicate findings are part of the review journal
-            # and are removed through their ON DELETE CASCADE relationships.
-            connection.execute("DELETE FROM master_imports")
             connection.execute(
-                "DELETE FROM master_records WHERE deleted_at IS NOT NULL"
+                "ALTER TABLE master_records DISABLE TRIGGER USER"
             )
-            connection.execute(
-                """
-                UPDATE master_records
-                SET version = 1,
-                    created_revision = 0,
-                    updated_revision = 0,
-                    deleted_revision = NULL
-                WHERE deleted_at IS NULL
-                """
-            )
+            try:
+                connection.execute("TRUNCATE master_changes")
+                # items / findings / warnings — через CASCADE по FK.
+                connection.execute("TRUNCATE master_imports CASCADE")
+                if discarded_records:
+                    connection.execute(
+                        "DELETE FROM master_records WHERE deleted_at IS NOT NULL"
+                    )
+                if active_records:
+                    connection.execute(
+                        """
+                        UPDATE master_records
+                        SET version = 1,
+                            created_revision = 0,
+                            updated_revision = 0,
+                            deleted_revision = NULL
+                        WHERE deleted_at IS NULL
+                        """
+                    )
+            finally:
+                connection.execute(
+                    "ALTER TABLE master_records ENABLE TRIGGER USER"
+                )
             connection.execute(
                 "UPDATE master_state SET current_revision = 0 WHERE id = 1"
             )
+            self._invalidate_list_stats_cache()
             return {
                 "revision": 0,
                 "clearedChanges": history_count,
