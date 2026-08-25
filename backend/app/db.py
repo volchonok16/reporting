@@ -211,6 +211,7 @@ def ensure_startup_schema() -> None:
         "054_org_user_voice_admin.sql",
         "055_voice_master_numeric_a_indexes.sql",
         "056_voice_master_numeric_ids.sql",
+        "057_voice_master_rollback_numeric_a_indexes.sql",
     )
 
     auth_session_sql = """

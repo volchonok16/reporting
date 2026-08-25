@@ -749,7 +749,7 @@
 
 Авторизация единая: reporting выдаёт короткий SSO-токен (`POST /api/voice/sso-token`, секрет `VOICE_SSO_SECRET`, в токене флаги `admin` и `voiceAdmin`), Voice обменивает его на свою сессию (`POST /voice-api/api/auth/reporting-sso`) — отдельный логин карусели не нужен. Очистка журнала/мастер-файла — только при `org_user.voice_admin = true` (**Администратор Voice**).
 
-**Мастер-файл Voice** хранится в PostgreSQL reporting (миграция `050_voice_master.sql`, hash-индексы — `053_voice_master_signature_hash.sql`, числовые индексы A — `055_voice_master_numeric_a_indexes.sql`, числовые PK — `056_voice_master_numeric_ids.sql`). **Uploads и jobs** — PostgreSQL (`051_voice_registry.sql`: `voice_uploads`, `voice_jobs`). **Auth Voice** — только через reporting SSO (`POST /api/voice/sso-token` → `POST /api/auth/reporting-sso`); отдельных учёток и таблиц auth в Voice нет. Bearer-сессия — подписанный stateless-токен (`VOICE_SSO_SECRET`). На диске (`CAROUSEL_DATA_DIR`) — только файлы загрузок и workspace. Legacy `registry.sqlite3` (uploads/jobs) импортируется один раз при старте.
+**Мастер-файл Voice** хранится в PostgreSQL reporting (миграция `050_voice_master.sql`, hash-индексы — `053_voice_master_signature_hash.sql`, числовые PK — `056_voice_master_numeric_ids.sql`; откат числовых индексов A — `057_voice_master_rollback_numeric_a_indexes.sql`). **Uploads и jobs** — PostgreSQL (`051_voice_registry.sql`: `voice_uploads`, `voice_jobs`). **Auth Voice** — только через reporting SSO (`POST /api/voice/sso-token` → `POST /api/auth/reporting-sso`); отдельных учёток и таблиц auth в Voice нет. Bearer-сессия — подписанный stateless-токен (`VOICE_SSO_SECRET`). На диске (`CAROUSEL_DATA_DIR`) — только файлы загрузок и workspace. Legacy `registry.sqlite3` (uploads/jobs) импортируется один раз при старте.
 
 ---
 
@@ -758,8 +758,7 @@
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `id` | bigint (identity) | PK (числовой id строки) |
-| `a_number` | text | Номер A (отображение / точное сравнение) |
-| `a_number_key` | bigint (generated) | Цифровой ключ A (`master_number_key`) для btree |
+| `a_number` | text | Номер A (отображение / сравнение / btree) |
 | `b_numbers_json` | text | JSON-массив номеров B |
 | `source_prefix` | text | Префикс/параметры строки (PANI, регион и т.п.) |
 | `comment` | text | Комментарий (до 50000 символов, проверка в API) |
@@ -769,7 +768,7 @@
 | `created_revision` / `updated_revision` | integer | Ревизии мастер-ветки |
 | `deleted_at` / `deleted_revision` | double precision / integer | Soft-delete |
 
-Связанные таблицы: `master_state`, `master_schema_meta`, `master_a_counts`, `master_exact_counts` (PK `signature_hash` = md5 связки, без btree по длинному `b_numbers_json`), `master_changes` (`id`/`record_id` — bigint), `master_imports` (`id` — bigint identity), `master_import_items` (`id`/`import_id`/`existing_record_id` — bigint), `master_import_number_warnings` (`import_id`/`item_id` — bigint), `master_duplicate_findings` (`import_id` — bigint), `master_edit_lock` (`owner_session_expires_at` — срок bearer-сессии SSO). Индекс `master_records_a_key` — по `a_number_key` (BIGINT); `master_records_signature` — по `master_b_signature(b_numbers_json, source_prefix)`. Числовые PK — миграция `056_voice_master_numeric_ids.sql`.
+Связанные таблицы: `master_state`, `master_schema_meta`, `master_a_counts`, `master_exact_counts` (PK `signature_hash` = md5 связки, без btree по длинному `b_numbers_json`), `master_changes` (`id`/`record_id` — bigint), `master_imports` (`id` — bigint identity), `master_import_items` (`id`/`import_id`/`existing_record_id` — bigint), `master_import_number_warnings` (`import_id`/`item_id` — bigint), `master_duplicate_findings` (`import_id` — bigint), `master_edit_lock` (`owner_session_expires_at` — срок bearer-сессии SSO). Индекс `master_records_a` — по `a_number` (TEXT); `master_records_signature` — по `master_b_signature(b_numbers_json, source_prefix)`. Числовые PK — миграция `056_voice_master_numeric_ids.sql` (откат `a_number_key` — `057`).
 
 ---
 

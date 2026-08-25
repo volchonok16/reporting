@@ -48,16 +48,6 @@ def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
-def master_number_key(value: str | None) -> int | None:
-    """Цифровой ключ A/B для btree (совпадает с SQL master_number_key)."""
-    if value is None:
-        return None
-    digits = "".join(ch for ch in value if ch.isdigit())
-    if not digits or len(digits) > 18:
-        return None
-    return int(digits)
-
-
 def _logical_master_row(
     a_number: str,
     b_numbers_json: str,
@@ -122,8 +112,6 @@ MASTER_EXACT_DUPLICATE_EXTRA_SQL = """
         SELECT original_exact_duplicate.id
         FROM master_records AS original_exact_duplicate
         WHERE original_exact_duplicate.deleted_at IS NULL
-          AND original_exact_duplicate.a_number_key IS NOT DISTINCT FROM
-              master_records.a_number_key
           AND original_exact_duplicate.a_number = master_records.a_number
           AND original_exact_duplicate.source_prefix = master_records.source_prefix
           AND master_b_signature(
@@ -1229,9 +1217,7 @@ class MasterService:
                 EXISTS (
                     SELECT 1
                     FROM master_a_counts AS duplicate_count
-                    WHERE duplicate_count.a_number_key IS NOT DISTINCT FROM
-                          master_records.a_number_key
-                      AND duplicate_count.a_number = master_records.a_number
+                    WHERE duplicate_count.a_number = master_records.a_number
                       AND duplicate_count.active_count > 1
                 )
                 """
@@ -1361,9 +1347,7 @@ class MasterService:
                            AS exact_duplicate_group_size
                 FROM master_records
                 LEFT JOIN master_a_counts AS a_counts
-                  ON a_counts.a_number_key IS NOT DISTINCT FROM
-                     master_records.a_number_key
-                 AND a_counts.a_number = master_records.a_number
+                  ON a_counts.a_number = master_records.a_number
                 LEFT JOIN master_exact_counts AS exact_counts
                   ON exact_counts.signature_hash = master_exact_signature(
                          master_records.a_number,
@@ -1389,7 +1373,6 @@ class MasterService:
                     SELECT id
                     FROM master_records AS original_exact_duplicate
                     WHERE original_exact_duplicate.deleted_at IS NULL
-                      AND original_exact_duplicate.a_number_key IS NOT DISTINCT FROM ?
                       AND original_exact_duplicate.a_number = ?
                       AND original_exact_duplicate.source_prefix = ?
                       AND master_b_signature(
@@ -1401,7 +1384,6 @@ class MasterService:
                     LIMIT 1
                     """,
                     (
-                        row["a_number_key"],
                         row["a_number"],
                         row["source_prefix"],
                         row["b_numbers_json"],
@@ -2161,43 +2143,10 @@ class MasterService:
                 if not batch:
                     break
                 a_numbers = [mapping.aNumber for mapping, _ in batch]
-                wanted_a = set(a_numbers)
-                a_keys = list(
-                    {
-                        key
-                        for key in (master_number_key(value) for value in a_numbers)
-                        if key is not None
-                    }
-                )
                 current_rows: dict[str, list[sqlite3.Row]] = {}
-                if a_keys:
-                    placeholders = ",".join("?" for _ in a_keys)
-                    for row in connection.execute(
-                        f"""
-                        SELECT record.*
-                        FROM master_records AS record
-                        LEFT JOIN matched_master_records AS matched
-                          ON matched.record_id = record.id
-                        WHERE record.a_number_key IN ({placeholders})
-                          AND matched.record_id IS NULL
-                        ORDER BY
-                            CASE WHEN record.deleted_at IS NULL THEN 0 ELSE 1 END,
-                            record.sort_order,
-                            record.id
-                        """,
-                        a_keys,
-                    ):
-                        a_text = str(row["a_number"])
-                        if a_text in wanted_a:
-                            current_rows.setdefault(a_text, []).append(row)
-                # Fallback: номера без цифр (редко) — текстовый IN
-                missing_text = [
-                    value
-                    for value in dict.fromkeys(a_numbers)
-                    if value not in current_rows and master_number_key(value) is None
-                ]
-                if missing_text:
-                    placeholders = ",".join("?" for _ in missing_text)
+                if a_numbers:
+                    unique_a = list(dict.fromkeys(a_numbers))
+                    placeholders = ",".join("?" for _ in unique_a)
                     for row in connection.execute(
                         f"""
                         SELECT record.*
@@ -2211,7 +2160,7 @@ class MasterService:
                             record.sort_order,
                             record.id
                         """,
-                        missing_text,
+                        unique_a,
                     ):
                         current_rows.setdefault(str(row["a_number"]), []).append(row)
                 item_rows: list[tuple[Any, ...]] = []
