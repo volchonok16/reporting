@@ -624,6 +624,27 @@ class MasterService:
         if len(unique_orders) == 1:
             order = unique_orders[0]
             return {order: MasterService._active_line(connection, order)}
+        # One window scan for large batches; per-order COUNT for small sets.
+        if len(unique_orders) >= 64:
+            rows = connection.execute(
+                """
+                SELECT sort_order, MAX(line_number) AS count
+                FROM (
+                    SELECT
+                        sort_order,
+                        ROW_NUMBER() OVER (ORDER BY sort_order, id)
+                            AS line_number
+                    FROM master_records
+                    WHERE deleted_at IS NULL
+                ) AS numbered
+                WHERE sort_order = ANY(?)
+                GROUP BY sort_order
+                """,
+                (unique_orders,),
+            ).fetchall()
+            return {
+                int(row["sort_order"]): int(row["count"]) for row in rows
+            }
         parts: list[str] = []
         values: list[int] = []
         for order in unique_orders:
@@ -1931,7 +1952,7 @@ class MasterService:
         sql = """
             UPDATE master_imports
             SET progress_phase = ?, progress_rows = ?, updated_at = ?
-            WHERE id = ? AND status IN ('queued', 'analyzing')
+            WHERE id = ? AND status IN ('queued', 'analyzing', 'merging')
             """
         if connection is not None:
             connection.execute(sql, params)
@@ -3002,6 +3023,41 @@ class MasterService:
                     (str(exc)[:2000], time.time(), import_id),
                 )
 
+    @staticmethod
+    def _rebuild_duplicate_counts(connection: sqlite3.Connection) -> None:
+        """Пересчёт master_a_counts / master_exact_counts после bulk-записи без триггеров."""
+        connection.execute("TRUNCATE master_a_counts")
+        connection.execute(
+            """
+            INSERT INTO master_a_counts(a_number, active_count)
+            SELECT a_number, COUNT(*)::INTEGER
+            FROM master_records
+            WHERE deleted_at IS NULL
+            GROUP BY a_number
+            """
+        )
+        connection.execute("TRUNCATE master_exact_counts")
+        connection.execute(
+            """
+            INSERT INTO master_exact_counts(
+                signature_hash, a_number, b_numbers_json, source_prefix,
+                active_count
+            )
+            SELECT
+                master_exact_signature(
+                    a_number, b_numbers_json, source_prefix
+                ),
+                a_number,
+                b_numbers_json,
+                source_prefix,
+                COUNT(*)::INTEGER
+            FROM master_records
+            WHERE deleted_at IS NULL
+            GROUP BY a_number, b_numbers_json, source_prefix
+            HAVING COUNT(*) > 1
+            """
+        )
+
     def merge_import(
         self,
         import_id: str,
@@ -3181,59 +3237,68 @@ class MasterService:
             updated = 0
             applied_conflicts = 0
             sequence = 0
+            merge_progress = 0
+            member_json_sql = (
+                ", member_ids_json" if body.mergeDuplicateANumbers else ""
+            )
             items = connection.execute(
                 f"""
-                SELECT * FROM {merge_table}
+                SELECT
+                    id,
+                    source_row,
+                    status,
+                    incoming_json,
+                    existing_record_id
+                    {member_json_sql}
+                FROM {merge_table}
                 WHERE import_id = ? AND status IN ('new', 'conflict')
                 ORDER BY source_row, id
                 """,
                 (import_id,),
             )
-            line_by_sort: dict[int, int] = {
-                int(row["sort_order"]): int(row["line"])
-                for row in connection.execute(
-                    """
-                    SELECT sort_order,
-                           ROW_NUMBER() OVER (
-                               ORDER BY sort_order, id
-                           ) AS line
-                    FROM master_records
-                    WHERE deleted_at IS NULL
-                    """
+            triggers_disabled = False
+            try:
+                connection.execute(
+                    "ALTER TABLE master_records DISABLE TRIGGER USER"
                 )
-            }
+                triggers_disabled = True
+            except Exception:  # noqa: BLE001
+                triggers_disabled = False
             try:
                 while True:
                     batch = items.fetchmany(MASTER_IMPORT_BATCH_SIZE)
                     if not batch:
                         break
                     existing_ids = [
-                        str(item["existing_record_id"])
+                        int(item["existing_record_id"])
                         for item in batch
                         if item["existing_record_id"] is not None
                     ]
-                    records_by_id: dict[str, sqlite3.Row] = {}
+                    records_by_id: dict[str, Any] = {}
                     if existing_ids:
-                        placeholders = ",".join("?" for _ in existing_ids)
                         for row in connection.execute(
-                            f"SELECT * FROM master_records WHERE id IN ({placeholders})",
-                            existing_ids,
+                            """
+                            SELECT
+                                id, a_number, b_numbers_json, source_prefix,
+                                comment, version, deleted_at, sort_order
+                            FROM master_records
+                            WHERE id = ANY(?)
+                            """,
+                            (existing_ids,),
                         ):
                             records_by_id[str(row["id"])] = row
 
-                    insert_rows: list[tuple[Any, ...]] = []
-                    update_rows: list[tuple[Any, ...]] = []
-                    change_rows: list[tuple[Any, ...]] = []
-                    item_record_links: list[tuple[int, int, int]] = []
-
+                    planned: list[dict[str, Any]] = []
+                    insert_count = 0
                     for item in batch:
                         status = str(item["status"])
                         if status == "conflict":
-                            member_ids = (
-                                json.loads(str(item["member_ids_json"]))
-                                if body.mergeDuplicateANumbers
-                                else [str(item["id"])]
-                            )
+                            if body.mergeDuplicateANumbers:
+                                member_ids = json.loads(
+                                    str(item["member_ids_json"])
+                                )
+                            else:
+                                member_ids = [str(item["id"])]
                             replace = (
                                 body.conflictStrategy == "replace_all"
                                 or (
@@ -3254,12 +3319,81 @@ class MasterService:
                             else None
                         )
                         if record is None:
-                            sequence += 1
-                            record_id = str(
-                                self._allocate_ids(
-                                    connection, "master_records", 1
-                                )[0]
+                            insert_count += 1
+                            planned.append(
+                                {
+                                    "kind": "insert",
+                                    "item": item,
+                                    "incoming": incoming,
+                                }
                             )
+                            continue
+                        before = (
+                            _snapshot(record)
+                            if record["deleted_at"] is None
+                            else None
+                        )
+                        merged_incoming = incoming
+                        if (
+                            before is not None
+                            and before["aNumber"] == incoming["aNumber"]
+                            and before["sourcePrefix"]
+                            == incoming["sourcePrefix"]
+                        ):
+                            combined_b_numbers = list(before["bNumbers"])
+                            seen_b_numbers = set(combined_b_numbers)
+                            for b_number in incoming["bNumbers"]:
+                                if b_number in seen_b_numbers:
+                                    continue
+                                seen_b_numbers.add(b_number)
+                                combined_b_numbers.append(b_number)
+                            merged_incoming = {
+                                **incoming,
+                                "bNumbers": combined_b_numbers,
+                            }
+                        if (
+                            before is not None
+                            and before["aNumber"] == merged_incoming["aNumber"]
+                            and before["bNumbers"]
+                            == merged_incoming["bNumbers"]
+                            and before["sourcePrefix"]
+                            == merged_incoming["sourcePrefix"]
+                        ):
+                            continue
+                        planned.append(
+                            {
+                                "kind": "update",
+                                "item": item,
+                                "incoming": merged_incoming,
+                                "record": record,
+                                "before": before,
+                            }
+                        )
+
+                    allocated_ids = self._allocate_ids(
+                        connection, "master_records", insert_count
+                    )
+                    insert_id_iter = iter(allocated_ids)
+                    insert_rows: list[tuple[Any, ...]] = []
+                    update_rows: list[tuple[Any, ...]] = []
+                    change_rows: list[tuple[Any, ...]] = []
+                    item_record_links: list[tuple[int, int, int]] = []
+                    line_by_sort = self._active_lines(
+                        connection,
+                        (
+                            int(plan["record"]["sort_order"])
+                            for plan in planned
+                            if plan["kind"] == "update"
+                            and plan.get("before") is not None
+                        ),
+                    )
+
+                    for plan in planned:
+                        item = plan["item"]
+                        incoming = plan["incoming"]
+                        if plan["kind"] == "insert":
+                            sequence += 1
+                            record_id = str(next(insert_id_iter))
                             insert_rows.append(
                                 (
                                     int(record_id),
@@ -3275,7 +3409,6 @@ class MasterService:
                             )
                             active_count += 1
                             line_number = active_count
-                            line_by_sort[next_sort] = line_number
                             next_sort += 1
                             after = {
                                 "id": record_id,
@@ -3287,37 +3420,9 @@ class MasterService:
                             action = "added"
                             added += 1
                         else:
+                            record = plan["record"]
+                            before = plan["before"]
                             record_id = str(record["id"])
-                            before = (
-                                _snapshot(record)
-                                if record["deleted_at"] is None
-                                else None
-                            )
-                            if (
-                                before is not None
-                                and before["aNumber"] == incoming["aNumber"]
-                                and before["sourcePrefix"]
-                                == incoming["sourcePrefix"]
-                            ):
-                                combined_b_numbers = list(before["bNumbers"])
-                                seen_b_numbers = set(combined_b_numbers)
-                                for b_number in incoming["bNumbers"]:
-                                    if b_number in seen_b_numbers:
-                                        continue
-                                    seen_b_numbers.add(b_number)
-                                    combined_b_numbers.append(b_number)
-                                incoming = {
-                                    **incoming,
-                                    "bNumbers": combined_b_numbers,
-                                }
-                            if (
-                                before is not None
-                                and before["aNumber"] == incoming["aNumber"]
-                                and before["bNumbers"] == incoming["bNumbers"]
-                                and before["sourcePrefix"]
-                                == incoming["sourcePrefix"]
-                            ):
-                                continue
                             sequence += 1
                             version = int(record["version"]) + 1
                             update_rows.append(
@@ -3328,22 +3433,26 @@ class MasterService:
                                     version,
                                     now,
                                     revision,
-                                    record_id,
+                                    int(record_id),
                                 )
                             )
                             if before is None:
                                 active_count += 1
-                            line_number = line_by_sort.get(
-                                int(record["sort_order"]),
-                                active_count,
-                            )
+                                line_number = active_count
+                            else:
+                                line_number = line_by_sort.get(
+                                    int(record["sort_order"]),
+                                    active_count,
+                                )
                             after = {
                                 "id": record_id,
                                 **incoming,
                                 "comment": str(record["comment"] or ""),
                                 "version": version,
                             }
-                            action = "restored" if before is None else "updated"
+                            action = (
+                                "restored" if before is None else "updated"
+                            )
                             if before is None:
                                 added += 1
                             else:
@@ -3406,8 +3515,21 @@ class MasterService:
                             """,
                             item_record_links,
                         )
+                    merge_progress += len(batch)
+                    self._update_analysis_progress(
+                        import_id,
+                        phase="merging",
+                        rows=merge_progress,
+                        connection=connection,
+                    )
             finally:
                 items.close()
+                if triggers_disabled:
+                    connection.execute(
+                        "ALTER TABLE master_records ENABLE TRIGGER USER"
+                    )
+                    if sequence > 0:
+                        self._rebuild_duplicate_counts(connection)
 
             kept_conflicts = conflict_total - applied_conflicts
             import_stats = json.loads(str(import_row["stats_json"] or "{}"))
@@ -3502,6 +3624,7 @@ class MasterService:
                 """,
                 (now, revision, _json(import_stats), import_id),
             )
+            self._invalidate_list_stats_cache()
             connection.commit()
             return result
 

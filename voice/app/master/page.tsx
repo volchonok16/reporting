@@ -735,6 +735,8 @@ function importProgressLabel(task: ImportTask) {
   if (task.progressPhase === "reading") return "Читаем и проверяем строки";
   if (task.progressPhase === "comparing")
     return "Сравниваем уникальные связки с мастер-файлом";
+  if (task.progressPhase === "merging")
+    return "Сливаем строки с мастер-файлом";
   return "Обрабатываем мастер-файл";
 }
 
