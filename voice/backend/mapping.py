@@ -56,8 +56,10 @@ class MappingSpool:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(self.path)
         self.connection.execute("PRAGMA journal_mode=WAL")
-        self.connection.execute("PRAGMA synchronous=NORMAL")
-        self.connection.execute("PRAGMA temp_store=FILE")
+        self.connection.execute("PRAGMA synchronous=OFF")
+        self.connection.execute("PRAGMA temp_store=MEMORY")
+        self.connection.execute("PRAGMA cache_size=-65536")
+        self.connection.execute("PRAGMA locking_mode=EXCLUSIVE")
         self.connection.executescript(
             """
             CREATE TABLE IF NOT EXISTS mappings (
@@ -513,7 +515,7 @@ class MappingBuilder:
                     a_number=raw_a,
                     b_number=raw_b,
                 )
-            if stats["inputRows"] % 1_000 == 0:
+            if stats["inputRows"] % 10_000 == 0:
                 self.spool.commit()
                 if progress is not None:
                     progress(stats["inputRows"])
@@ -609,7 +611,7 @@ class MappingBuilder:
                     code=exc.code,
                     message=exc.message,
                 )
-            if stats["inputRows"] % 1_000 == 0:
+            if stats["inputRows"] % 10_000 == 0:
                 self.spool.commit()
                 if progress is not None:
                     progress(stats["inputRows"])

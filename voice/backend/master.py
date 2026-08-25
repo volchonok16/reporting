@@ -183,14 +183,17 @@ class MasterImportSpool:
     """Disk-backed import rows that preserve every physical source row."""
 
     preserve_duplicate_a = True
+    _FLUSH_EVERY = 4_000
 
     def __init__(self, path: Path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(self.path)
         self.connection.execute("PRAGMA journal_mode=WAL")
-        self.connection.execute("PRAGMA synchronous=NORMAL")
-        self.connection.execute("PRAGMA temp_store=FILE")
+        self.connection.execute("PRAGMA synchronous=OFF")
+        self.connection.execute("PRAGMA temp_store=MEMORY")
+        self.connection.execute("PRAGMA cache_size=-65536")
+        self.connection.execute("PRAGMA locking_mode=EXCLUSIVE")
         self.connection.executescript(
             """
             CREATE TABLE IF NOT EXISTS first_a (
@@ -198,7 +201,7 @@ class MasterImportSpool:
                 source_row INTEGER NOT NULL
             ) WITHOUT ROWID;
             CREATE TABLE IF NOT EXISTS mappings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER PRIMARY KEY,
                 a_number TEXT NOT NULL,
                 first_sequence INTEGER NOT NULL,
                 source_row INTEGER NOT NULL,
@@ -225,11 +228,50 @@ class MasterImportSpool:
             """
         )
         self.connection.commit()
-        self._first_sequence = int(
-            self.connection.execute(
-                "SELECT COALESCE(MAX(first_sequence), 0) + 1 FROM mappings"
-            ).fetchone()[0]
-        )
+        self._first_sequence = 1
+        self._next_mapping_id = 1
+        self._first_a: dict[str, int] = {}
+        self._mappings: dict[tuple[str, int], int] = {}
+        self._seen_b: dict[int, set[str]] = {}
+        self._pending_first_a: list[tuple[str, int]] = []
+        self._pending_mappings: list[tuple[int, str, int, int, str | None]] = []
+        self._pending_seen_b: list[tuple[int, str]] = []
+        self._pending_rows: list[tuple[int, str, int]] = []
+        self._row_count = 0
+
+    def _flush_pending(self) -> None:
+        connection = self.connection
+        if self._pending_first_a:
+            connection.executemany(
+                "INSERT OR IGNORE INTO first_a(a_number, source_row) VALUES (?, ?)",
+                self._pending_first_a,
+            )
+            self._pending_first_a.clear()
+        if self._pending_mappings:
+            connection.executemany(
+                """
+                INSERT INTO mappings(
+                    id, a_number, first_sequence, source_row, source_prefix
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                self._pending_mappings,
+            )
+            self._pending_mappings.clear()
+        if self._pending_seen_b:
+            connection.executemany(
+                "INSERT OR IGNORE INTO seen_b(mapping_id, b_number) VALUES (?, ?)",
+                self._pending_seen_b,
+            )
+            self._pending_seen_b.clear()
+        if self._pending_rows:
+            connection.executemany(
+                """
+                INSERT INTO rows(mapping_id, b_number, source_row)
+                VALUES (?, ?, ?)
+                """,
+                self._pending_rows,
+            )
+            self._pending_rows.clear()
 
     def add_a(
         self,
@@ -240,19 +282,25 @@ class MasterImportSpool:
         linked_a_number: str | None = None,
     ) -> bool:
         del linked_a_number
-        first = self.connection.execute(
-            "INSERT OR IGNORE INTO first_a(a_number, source_row) VALUES (?, ?)",
-            (a_number, source_row),
-        ).rowcount == 1
-        inserted = self.connection.execute(
-            """
-            INSERT OR IGNORE INTO mappings(
-                a_number, first_sequence, source_row, source_prefix
-            ) VALUES (?, ?, ?, ?)
-            """,
-            (a_number, self._first_sequence, source_row, source_prefix),
-        ).rowcount == 1
-        if inserted:
+        first = a_number not in self._first_a
+        if first:
+            self._first_a[a_number] = source_row
+            self._pending_first_a.append((a_number, source_row))
+        key = (a_number, source_row)
+        if key not in self._mappings:
+            mapping_id = self._next_mapping_id
+            self._next_mapping_id += 1
+            self._mappings[key] = mapping_id
+            self._seen_b[mapping_id] = set()
+            self._pending_mappings.append(
+                (
+                    mapping_id,
+                    a_number,
+                    self._first_sequence,
+                    source_row,
+                    source_prefix,
+                )
+            )
             self._first_sequence += 1
         return first
 
@@ -272,47 +320,33 @@ class MasterImportSpool:
             source_prefix=source_prefix,
             linked_a_number=linked_a_number,
         )
-        mapping_id = int(
-            self.connection.execute(
-                "SELECT id FROM mappings WHERE a_number = ? AND source_row = ?",
-                (a_number, source_row),
-            ).fetchone()[0]
-        )
+        mapping_id = self._mappings[(a_number, source_row)]
         duplicate = False
         if not keep_duplicate:
-            duplicate = self.connection.execute(
-                "INSERT OR IGNORE INTO seen_b(mapping_id, b_number) VALUES (?, ?)",
-                (mapping_id, b_number),
-            ).rowcount == 0
+            seen = self._seen_b[mapping_id]
+            if b_number in seen:
+                duplicate = True
+            else:
+                seen.add(b_number)
+                self._pending_seen_b.append((mapping_id, b_number))
         if not duplicate:
-            self.connection.execute(
-                """
-                INSERT INTO rows(mapping_id, b_number, source_row)
-                VALUES (?, ?, ?)
-                """,
-                (mapping_id, b_number, source_row),
-            )
+            self._pending_rows.append((mapping_id, b_number, source_row))
+            self._row_count += 1
+            if len(self._pending_rows) >= self._FLUSH_EVERY:
+                self._flush_pending()
         return first, duplicate
 
     def source_row_for_a(self, a_number: str) -> int | None:
-        row = self.connection.execute(
-            "SELECT source_row FROM first_a WHERE a_number = ?",
-            (a_number,),
-        ).fetchone()
-        return int(row[0]) if row is not None else None
+        return self._first_a.get(a_number)
 
     def counts(self) -> tuple[int, int]:
-        return (
-            int(self.connection.execute("SELECT COUNT(*) FROM first_a").fetchone()[0]),
-            int(self.connection.execute("SELECT COUNT(*) FROM rows").fetchone()[0]),
-        )
+        return len(self._first_a), self._row_count
 
     def mapping_count(self) -> int:
-        return int(
-            self.connection.execute("SELECT COUNT(*) FROM mappings").fetchone()[0]
-        )
+        return len(self._mappings)
 
     def iter_mapping_entries(self) -> Iterable[tuple[Mapping, int]]:
+        self._flush_pending()
         cursor = self.connection.execute(
             """
             SELECT mapping.id, mapping.a_number, mapping.first_sequence,
@@ -359,10 +393,11 @@ class MasterImportSpool:
             )
 
     def commit(self) -> None:
+        self._flush_pending()
         self.connection.commit()
 
     def close(self) -> None:
-        self.connection.commit()
+        self.commit()
         self.connection.close()
 
     def __enter__(self) -> "MasterImportSpool":
@@ -370,6 +405,7 @@ class MasterImportSpool:
 
     def __exit__(self, *_args: object) -> None:
         self.close()
+
 
 
 def _snapshot(row: sqlite3.Row | dict[str, Any] | None) -> dict[str, Any] | None:
@@ -2179,23 +2215,30 @@ class MasterService:
                     ) WITHOUT ROWID
                     """
                 )
+                pending_duplicates: list[tuple[str, int]] = []
 
-                def remember_duplicate(
-                    a_number: str,
-                    first_source_row: int,
-                    duplicate_source_row: int,
-                ) -> None:
+                def flush_duplicates() -> None:
+                    if not pending_duplicates:
+                        return
                     spool.connection.executemany(
                         """
                         INSERT OR IGNORE INTO duplicate_source_rows(
                             a_number, source_row
                         ) VALUES (?, ?)
                         """,
-                        (
-                            (a_number, first_source_row),
-                            (a_number, duplicate_source_row),
-                        ),
+                        pending_duplicates,
                     )
+                    pending_duplicates.clear()
+
+                def remember_duplicate(
+                    a_number: str,
+                    first_source_row: int,
+                    duplicate_source_row: int,
+                ) -> None:
+                    pending_duplicates.append((a_number, first_source_row))
+                    pending_duplicates.append((a_number, duplicate_source_row))
+                    if len(pending_duplicates) >= 4_000:
+                        flush_duplicates()
 
                 builder = MappingBuilder(spool, report)
                 if mode == "formatted":
@@ -2229,6 +2272,8 @@ class MasterService:
                         duplicate_a_callback=remember_duplicate,
                         progress=report_progress,
                     )
+                flush_duplicates()
+                spool.commit()
                 parser_stats["preservedRows"] = spool.mapping_count()
                 parser_stats["resultRows"] = spool.mapping_count()
                 report_progress(int(parser_stats["inputRows"]))
