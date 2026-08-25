@@ -41,11 +41,48 @@ from .validation import ValidationService
 logger = logging.getLogger(__name__)
 
 # Размер батча compare/merge (раньше 500): меньше round-trip к PostgreSQL.
-MASTER_IMPORT_BATCH_SIZE = 2000
+MASTER_IMPORT_BATCH_SIZE = 5000
 
 
 def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _pick_compare_master_row(
+    candidates: list[Any],
+    *,
+    b_json: str,
+    prefix: str,
+) -> Any | None:
+    """Жадный 1:1 match: точная активная связка → любая активная → soft-deleted."""
+    if not candidates:
+        return None
+    exact_active: list[Any] = []
+    active: list[Any] = []
+    soft: list[Any] = []
+    for row in candidates:
+        if row["deleted_at"] is not None:
+            soft.append(row)
+            continue
+        if (
+            str(row["b_numbers_json"]) == b_json
+            and str(row["source_prefix"]) == prefix
+        ):
+            exact_active.append(row)
+        else:
+            active.append(row)
+    chosen = (
+        exact_active[0]
+        if exact_active
+        else active[0]
+        if active
+        else soft[0]
+        if soft
+        else None
+    )
+    if chosen is not None:
+        candidates.remove(chosen)
+    return chosen
 
 
 def _logical_master_row(
@@ -1888,16 +1925,19 @@ class MasterService:
         *,
         phase: str,
         rows: int,
+        connection: sqlite3.Connection | None = None,
     ) -> None:
-        with self._connect() as connection:
-            connection.execute(
-                """
-                UPDATE master_imports
-                SET progress_phase = ?, progress_rows = ?, updated_at = ?
-                WHERE id = ? AND status IN ('queued', 'analyzing')
-                """,
-                (phase, rows, time.time(), import_id),
-            )
+        params = (phase, rows, time.time(), import_id)
+        sql = """
+            UPDATE master_imports
+            SET progress_phase = ?, progress_rows = ?, updated_at = ?
+            WHERE id = ? AND status IN ('queued', 'analyzing')
+            """
+        if connection is not None:
+            connection.execute(sql, params)
+            return
+        with self._connect() as owned:
+            owned.execute(sql, params)
 
     def _run_import_analysis(
         self,
@@ -2143,24 +2183,31 @@ class MasterService:
                 if not batch:
                     break
                 a_numbers = [mapping.aNumber for mapping, _ in batch]
-                current_rows: dict[str, list[sqlite3.Row]] = {}
+                current_rows: dict[str, list[Any]] = {}
                 if a_numbers:
                     unique_a = list(dict.fromkeys(a_numbers))
-                    placeholders = ",".join("?" for _ in unique_a)
                     for row in connection.execute(
-                        f"""
-                        SELECT record.*
+                        """
+                        SELECT
+                            record.id,
+                            record.a_number,
+                            record.b_numbers_json,
+                            record.source_prefix,
+                            record.comment,
+                            record.version,
+                            record.deleted_at,
+                            record.sort_order
                         FROM master_records AS record
                         LEFT JOIN matched_master_records AS matched
                           ON matched.record_id = record.id
-                        WHERE record.a_number IN ({placeholders})
+                        WHERE record.a_number = ANY(?)
                           AND matched.record_id IS NULL
                         ORDER BY
                             CASE WHEN record.deleted_at IS NULL THEN 0 ELSE 1 END,
                             record.sort_order,
                             record.id
                         """,
-                        unique_a,
+                        (unique_a,),
                     ):
                         current_rows.setdefault(str(row["a_number"]), []).append(row)
                 item_rows: list[tuple[Any, ...]] = []
@@ -2175,28 +2222,12 @@ class MasterService:
                         "bNumbers": list(mapping.bNumbers),
                         "sourcePrefix": prefix,
                     }
+                    b_json = _json(incoming["bNumbers"])
                     candidates = current_rows.get(mapping.aNumber, [])
-                    current_row = next(
-                        (
-                            row
-                            for row in candidates
-                            if row["deleted_at"] is None
-                            and str(row["b_numbers_json"]) == _json(incoming["bNumbers"])
-                            and str(row["source_prefix"]) == prefix
-                        ),
-                        None,
+                    current_row = _pick_compare_master_row(
+                        candidates, b_json=b_json, prefix=prefix
                     )
-                    if current_row is None:
-                        current_row = next(
-                            (
-                                row
-                                for row in candidates
-                                if row["deleted_at"] is None
-                            ),
-                            candidates[0] if candidates else None,
-                        )
                     if current_row is not None:
-                        candidates.remove(current_row)
                         matched_record_ids.append((int(current_row["id"]),))
                     current = (
                         _snapshot(current_row)
@@ -2215,7 +2246,6 @@ class MasterService:
                     else:
                         status = "conflict"
                     counts[status] += 1
-                    b_json = _json(incoming["bNumbers"])
                     item_rows.append(
                         (
                             int(import_id),
@@ -2296,121 +2326,143 @@ class MasterService:
                         """,
                         flat_warnings,
                     )
-                connection.commit()
                 persisted += len(batch)
                 self._update_analysis_progress(
                     import_id,
                     phase="comparing",
                     rows=persisted,
+                    connection=connection,
                 )
+                connection.commit()
                 if len(batch) < MASTER_IMPORT_BATCH_SIZE:
                     break
 
-            # Без PRIMARY KEY по incoming_b_json: на PostgreSQL btree падает
-            # при связках длиннее ~2704 байт (index row size exceeds maximum).
-            connection.executescript(
-                """
-                DROP TABLE IF EXISTS temp.unique_incoming_signatures;
-                DROP TABLE IF EXISTS temp.rename_matches;
-                CREATE TEMP TABLE unique_incoming_signatures (
-                    incoming_b_json TEXT NOT NULL,
-                    incoming_prefix TEXT NOT NULL
-                );
-                CREATE TEMP TABLE rename_matches (
-                    item_id BIGINT PRIMARY KEY,
-                    record_id BIGINT NOT NULL
-                );
-                """
-            )
-            connection.execute(
-                """
-                INSERT INTO unique_incoming_signatures(
-                    incoming_b_json, incoming_prefix
-                )
-                SELECT incoming_b_json, incoming_prefix
-                FROM master_import_items
-                WHERE import_id = ?
-                GROUP BY incoming_b_json, incoming_prefix
-                HAVING COUNT(*) = 1
-                """,
-                (import_id,),
-            )
-            connection.execute(
-                """
-                INSERT INTO rename_matches(item_id, record_id)
-                SELECT item.id, MIN(record.id)
-                FROM master_import_items AS item
-                JOIN unique_incoming_signatures AS signature
-                  ON signature.incoming_b_json = item.incoming_b_json
-                 AND signature.incoming_prefix = item.incoming_prefix
-                JOIN master_records AS record
-                  ON record.deleted_at IS NULL
-                 AND master_b_signature(
-                        record.b_numbers_json, record.source_prefix
-                     ) = master_b_signature(
-                        item.incoming_b_json, item.incoming_prefix
-                     )
-                 AND record.b_numbers_json = item.incoming_b_json
-                 AND record.source_prefix = item.incoming_prefix
-                LEFT JOIN master_import_items AS blocker
-                  ON blocker.import_id = item.import_id
-                 AND blocker.a_number = record.a_number
-                WHERE item.import_id = ?
-                  AND item.existing_record_id IS NULL
-                  AND blocker.id IS NULL
-                GROUP BY item.id
-                HAVING COUNT(*) = 1
-                """,
-                (import_id,),
-            )
-            renamed = 0
-            rename_cursor = connection.execute(
-                """
-                SELECT matches.item_id, item.incoming_json, record.*
-                FROM rename_matches AS matches
-                JOIN master_import_items AS item ON item.id = matches.item_id
-                JOIN master_records AS record ON record.id = matches.record_id
-                """
-            )
-            while True:
-                rename_batch = rename_cursor.fetchmany(MASTER_IMPORT_BATCH_SIZE)
-                if not rename_batch:
-                    break
-                connection.executemany(
+            # Rename-match: только new-строки с уникальной B+prefix связкой.
+            # Подпись заранее — чтобы попасть в индекс master_records_signature.
+            if counts["new"] > 0:
+                connection.executescript(
                     """
-                    UPDATE master_import_items
-                    SET existing_record_id = ?, current_json = ?,
-                        status = 'conflict'
-                    WHERE id = ?
+                    DROP TABLE IF EXISTS temp.unique_incoming_signatures;
+                    DROP TABLE IF EXISTS temp.rename_matches;
+                    CREATE TEMP TABLE unique_incoming_signatures (
+                        incoming_b_json TEXT NOT NULL,
+                        incoming_prefix TEXT NOT NULL,
+                        signature TEXT NOT NULL
+                    );
+                    CREATE TEMP TABLE rename_matches (
+                        item_id BIGINT PRIMARY KEY,
+                        record_id BIGINT NOT NULL
+                    );
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO unique_incoming_signatures(
+                        incoming_b_json, incoming_prefix, signature
+                    )
+                    SELECT
+                        incoming_b_json,
+                        incoming_prefix,
+                        master_b_signature(incoming_b_json, incoming_prefix)
+                    FROM master_import_items
+                    WHERE import_id = ?
+                      AND status = 'new'
+                      AND existing_record_id IS NULL
+                    GROUP BY incoming_b_json, incoming_prefix
+                    HAVING COUNT(*) = 1
                     """,
-                    (
+                    (import_id,),
+                )
+                connection.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS unique_incoming_signatures_sig
+                        ON unique_incoming_signatures (signature, incoming_prefix)
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO rename_matches(item_id, record_id)
+                    SELECT item.id, MIN(record.id)
+                    FROM master_import_items AS item
+                    JOIN unique_incoming_signatures AS signature
+                      ON signature.incoming_b_json = item.incoming_b_json
+                     AND signature.incoming_prefix = item.incoming_prefix
+                    JOIN master_records AS record
+                      ON record.deleted_at IS NULL
+                     AND master_b_signature(
+                            record.b_numbers_json, record.source_prefix
+                         ) = signature.signature
+                     AND record.source_prefix = signature.incoming_prefix
+                     AND record.b_numbers_json = signature.incoming_b_json
+                    LEFT JOIN master_import_items AS blocker
+                      ON blocker.import_id = item.import_id
+                     AND blocker.a_number = record.a_number
+                    WHERE item.import_id = ?
+                      AND item.status = 'new'
+                      AND item.existing_record_id IS NULL
+                      AND blocker.id IS NULL
+                    GROUP BY item.id
+                    HAVING COUNT(*) = 1
+                    """,
+                    (import_id,),
+                )
+                renamed = 0
+                rename_cursor = connection.execute(
+                    """
+                    SELECT
+                        matches.item_id,
+                        item.incoming_json,
+                        record.id,
+                        record.a_number,
+                        record.b_numbers_json,
+                        record.source_prefix,
+                        record.comment,
+                        record.version,
+                        record.deleted_at
+                    FROM rename_matches AS matches
+                    JOIN master_import_items AS item ON item.id = matches.item_id
+                    JOIN master_records AS record ON record.id = matches.record_id
+                    """
+                )
+                while True:
+                    rename_batch = rename_cursor.fetchmany(MASTER_IMPORT_BATCH_SIZE)
+                    if not rename_batch:
+                        break
+                    connection.executemany(
+                        """
+                        UPDATE master_import_items
+                        SET existing_record_id = ?, current_json = ?,
+                            status = 'conflict'
+                        WHERE id = ?
+                        """,
                         (
-                            int(row["id"]),
-                            _json(_snapshot(row)),
-                            int(row["item_id"]),
-                        )
-                        for row in rename_batch
-                    ),
-                )
-                connection.executemany(
-                    """
-                    UPDATE master_import_number_warnings
-                    SET status = 'conflict'
-                    WHERE import_id = ? AND item_id = ?
-                    """,
-                    (
-                        (int(import_id), int(row["item_id"]))
-                        for row in rename_batch
-                    ),
-                )
-                renamed += len(rename_batch)
+                            (
+                                int(row["id"]),
+                                _json(_snapshot(row)),
+                                int(row["item_id"]),
+                            )
+                            for row in rename_batch
+                        ),
+                    )
+                    connection.executemany(
+                        """
+                        UPDATE master_import_number_warnings
+                        SET status = 'conflict'
+                        WHERE import_id = ? AND item_id = ?
+                        """,
+                        (
+                            (int(import_id), int(row["item_id"]))
+                            for row in rename_batch
+                        ),
+                    )
+                    renamed += len(rename_batch)
+                    connection.commit()
                 connection.commit()
-            # The rename scan may legitimately return no rows. End its read
-            # snapshot before writing duplicate findings so a concurrent lock
-            # status poll cannot make SQLite reject a read-to-write upgrade.
-            connection.commit()
-            counts["new"] -= renamed
-            counts["conflict"] += renamed
+                counts["new"] -= renamed
+                counts["conflict"] += renamed
+            else:
+                renamed = 0
+                connection.commit()
 
             duplicate_groups = int(
                 spool.connection.execute(
