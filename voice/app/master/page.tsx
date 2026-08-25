@@ -1066,6 +1066,7 @@ export default function MasterPage() {
   const queuedImportRef = useRef("");
   const queuedImportLockRef = useRef("");
   const importPollingRef = useRef("");
+  const mergePollingRef = useRef("");
   const importRecoveryUserRef = useRef("");
   const notifiedLockRef = useRef("");
   const notifiedOwnerRef = useRef("");
@@ -1381,6 +1382,18 @@ export default function MasterPage() {
           if (payload.status === "analyzed") {
             if (!("stats" in payload))
               throw new Error("Сервер не вернул результат анализа файла.");
+            if (payload.errorCode === "MASTER_MERGE_CANCELLED") {
+              setNotice(
+                "Слияние отменено. Изменения в мастер-файле не применены.",
+              );
+              setImportAnalysis(null);
+              setMerging(false);
+              importPollingRef.current = "";
+              setImportProgress(null);
+              if (user && typeof localStorage !== "undefined")
+                localStorage.removeItem(activeMasterImportStorageKey(user.id));
+              return;
+            }
             setImportAnalysis(payload);
             setAnalysisDuplicateCursor(0);
             if (payload.errorMessage) {
@@ -3277,7 +3290,9 @@ export default function MasterPage() {
   const mergeImport = async () => {
     if (!analysis || !masterEditable) return;
     setMerging(true);
+    setError("");
     const importId = analysis.importId;
+    mergePollingRef.current = importId;
     try {
       const conflictStrategy = replaceAll
         ? "replace_all"
@@ -3300,7 +3315,7 @@ export default function MasterPage() {
         mergedDuplicates: number;
         separateDuplicateRows: number;
       } | null = null;
-      while (true) {
+      while (mergePollingRef.current === importId) {
         const statusResponse = await apiFetch(
           `/api/master/imports/${encodeURIComponent(importId)}`,
         );
@@ -3308,6 +3323,7 @@ export default function MasterPage() {
           mergeResult?: typeof result;
           stats?: { mergeResult?: typeof result };
         };
+        setImportProgress(payload);
         if (payload.status === "merged") {
           result =
             payload.mergeResult ||
@@ -3315,8 +3331,16 @@ export default function MasterPage() {
             null;
           break;
         }
-        if (payload.status === "analyzed" && payload.errorMessage) {
-          throw new Error(payload.errorMessage);
+        if (payload.status === "analyzed") {
+          if (payload.errorCode === "MASTER_MERGE_CANCELLED") {
+            setNotice("Слияние отменено. Изменения в мастер-файле не применены.");
+            setImportProgress(null);
+            return;
+          }
+          if (payload.errorMessage) {
+            throw new Error(payload.errorMessage);
+          }
+          throw new Error("Слияние прервано без результата.");
         }
         if (payload.status === "failed") {
           throw new Error(
@@ -3324,6 +3348,10 @@ export default function MasterPage() {
           );
         }
         await new Promise((resolve) => window.setTimeout(resolve, 1000));
+      }
+      if (mergePollingRef.current !== importId) {
+        setImportProgress(null);
+        return;
       }
       if (!result) {
         setNotice("Слияние выполнено.");
@@ -3336,6 +3364,7 @@ export default function MasterPage() {
       setSelectedConflicts([]);
       setReplaceAll(false);
       setMergeDuplicateANumbers(false);
+      setImportProgress(null);
       await loadRecords(recordsOffset);
     } catch (nextError) {
       setError(
@@ -3344,8 +3373,46 @@ export default function MasterPage() {
           : "Не удалось выполнить слияние.",
       );
     } finally {
+      if (mergePollingRef.current === importId) mergePollingRef.current = "";
       setMerging(false);
     }
+  };
+
+  const cancelImportOrMerge = async () => {
+    const importId =
+      analysis?.importId ||
+      importProgress?.importId ||
+      mergePollingRef.current ||
+      importPollingRef.current;
+    const shouldCancelMerge =
+      merging ||
+      importProgress?.status === "merging" ||
+      analysis?.status === "merging";
+    mergePollingRef.current = "";
+    importPollingRef.current = "";
+    if (shouldCancelMerge && importId) {
+      try {
+        await apiFetch(
+          `/api/master/imports/${encodeURIComponent(importId)}/cancel`,
+          { method: "POST" },
+        );
+        setNotice("Слияние отменено. Транзакция в БД откатывается.");
+      } catch (nextError) {
+        setError(
+          nextError instanceof Error
+            ? nextError.message
+            : "Не удалось отменить слияние.",
+        );
+      }
+    }
+    setImportAnalysis(null);
+    setImportProgress(null);
+    setMerging(false);
+    setUploading(false);
+    setSelectedConflicts([]);
+    setReplaceAll(false);
+    if (user && typeof localStorage !== "undefined")
+      localStorage.removeItem(activeMasterImportStorageKey(user.id));
   };
 
   const downloadMaster = async () => {
@@ -4164,6 +4231,29 @@ export default function MasterPage() {
           </section>
         )}
 
+        {merging && !uploading && (
+          <section className="card merge-progress" aria-live="polite">
+            <strong>
+              {importProgress
+                ? importProgressLabel(importProgress)
+                : "Выполняем слияние…"}
+            </strong>
+            <span>
+              {importProgress
+                ? `${importProgress.progressRows.toLocaleString("ru-RU")} строк обработано.`
+                : "Применяем изменения к мастер-файлу."}{" "}
+              Отмена остановит транзакцию в БД и откатит незавершённое слияние.
+            </span>
+            <button
+              className="text-button"
+              type="button"
+              onClick={() => void cancelImportOrMerge()}
+            >
+              Отменить слияние
+            </button>
+          </section>
+        )}
+
         <section
           className={`master-lock-panel ${
             masterEditable
@@ -4388,9 +4478,9 @@ export default function MasterPage() {
               <button
                 className="text-button"
                 type="button"
-                onClick={() => setImportAnalysis(null)}
+                onClick={() => void cancelImportOrMerge()}
               >
-                Отменить импорт
+                {merging ? "Отменить слияние" : "Отменить импорт"}
               </button>
             </div>
             <div className="merge-stats">

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .config import Settings
-from .errors import AppError
+from .errors import AppError, CancelledError
 from .importers import FormattedMappingImporter, importer_for
 from .mapping import MappingBuilder, MappingParser
 from .models import (
@@ -36,6 +36,8 @@ from .reporting import ReportWriter
 from .security import normalize_number
 from .storage import Registry
 from .validation import ValidationService
+
+from psycopg.pq import TransactionStatus
 
 
 logger = logging.getLogger(__name__)
@@ -496,6 +498,8 @@ class MasterService:
             thread_name_prefix="master-analysis",
         )
         self._pending_merges: dict[str, tuple[MasterMergeRequest, str]] = {}
+        self._merge_cancellations: dict[str, threading.Event] = {}
+        self._merge_backends: dict[str, int] = {}
         self._list_stats_lock = threading.Lock()
         self._list_stats_revision: int | None = None
         self._list_stats_cache: dict[str, Any] | None = None
@@ -1720,7 +1724,85 @@ class MasterService:
                 (time.time(),),
             )
 
+    def _merge_cancel_event(self, import_id: str) -> threading.Event:
+        event = self._merge_cancellations.get(import_id)
+        if event is None:
+            event = threading.Event()
+            self._merge_cancellations[import_id] = event
+        return event
+
+    def _raise_if_merge_cancelled(self, import_id: str) -> None:
+        event = self._merge_cancellations.get(import_id)
+        if event is not None and event.is_set():
+            raise CancelledError()
+
+    def _mark_merge_cancelled(self, import_id: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE master_imports
+                SET status = 'analyzed',
+                    progress_phase = 'completed',
+                    error_code = 'MASTER_MERGE_CANCELLED',
+                    error_message = 'Слияние отменено',
+                    updated_at = ?
+                WHERE id = ? AND status = 'merging'
+                """,
+                (time.time(), import_id),
+            )
+
+    def _cancel_merge_backend(self, import_id: str) -> None:
+        pid = self._merge_backends.get(import_id)
+        if pid is None:
+            return
+        try:
+            with self._connect() as connection:
+                connection.execute(
+                    "SELECT pg_cancel_backend(?)",
+                    (pid,),
+                )
+                connection.commit()
+        except Exception:  # noqa: BLE001 — best-effort interrupt
+            logging.getLogger(__name__).exception(
+                "Failed to cancel merge backend pid=%s import_id=%s",
+                pid,
+                import_id,
+            )
+
+    def cancel_merge_import(
+        self, import_id: str, session_id: str
+    ) -> dict[str, Any]:
+        """Stop an in-flight merge and roll back its DB transaction."""
+        with self._connect() as connection:
+            import_row = connection.execute(
+                """
+                SELECT * FROM master_imports
+                WHERE id = ? AND session_id = ?
+                """,
+                (import_id, session_id),
+            ).fetchone()
+            if import_row is None:
+                raise AppError(
+                    "MASTER_IMPORT_NOT_FOUND",
+                    "Анализ импорта не найден",
+                    status_code=404,
+                )
+            status = str(import_row["status"])
+            if status != "merging":
+                return self._analysis_payload(connection, import_row)
+
+        event = self._merge_cancel_event(import_id)
+        event.set()
+        self._pending_merges.pop(import_id, None)
+        self._cancel_merge_backend(import_id)
+        self._mark_merge_cancelled(import_id)
+        return self.get_import(import_id, session_id)
+
     def shutdown(self) -> None:
+        for event in list(self._merge_cancellations.values()):
+            event.set()
+        for import_id in list(self._merge_backends):
+            self._cancel_merge_backend(import_id)
         self._analysis_executor.shutdown(wait=False, cancel_futures=False)
 
     def _create_import(
@@ -2977,6 +3059,7 @@ class MasterService:
                 "SELECT * FROM master_imports WHERE id = ?",
                 (import_id,),
             ).fetchone()
+            self._merge_cancel_event(import_id).clear()
             self._pending_merges[import_id] = (body, actor)
             payload = self._analysis_payload(connection, updated)
             connection.commit()
@@ -2990,10 +3073,16 @@ class MasterService:
     def _run_merge_import(self, import_id: str, session_id: str) -> None:
         pending = self._pending_merges.pop(import_id, None)
         if pending is None:
+            # Cancelled before the worker started.
+            self._mark_merge_cancelled(import_id)
+            self._merge_cancellations.pop(import_id, None)
             return
         body, actor = pending
         try:
+            self._raise_if_merge_cancelled(import_id)
             self.merge_import(import_id, body, session_id, actor=actor)
+        except CancelledError:
+            self._mark_merge_cancelled(import_id)
         except AppError as exc:
             with self._connect() as connection:
                 connection.execute(
@@ -3009,19 +3098,26 @@ class MasterService:
                     (exc.code, exc.message, time.time(), import_id),
                 )
         except Exception as exc:  # noqa: BLE001 — surface to UI, keep import retryable
-            with self._connect() as connection:
-                connection.execute(
-                    """
-                    UPDATE master_imports
-                    SET status = 'analyzed',
-                        progress_phase = 'completed',
-                        error_code = 'MASTER_MERGE_FAILED',
-                        error_message = ?,
-                        updated_at = ?
-                    WHERE id = ? AND status = 'merging'
-                    """,
-                    (str(exc)[:2000], time.time(), import_id),
-                )
+            event = self._merge_cancellations.get(import_id)
+            if event is not None and event.is_set():
+                self._mark_merge_cancelled(import_id)
+            else:
+                with self._connect() as connection:
+                    connection.execute(
+                        """
+                        UPDATE master_imports
+                        SET status = 'analyzed',
+                            progress_phase = 'completed',
+                            error_code = 'MASTER_MERGE_FAILED',
+                            error_message = ?,
+                            updated_at = ?
+                        WHERE id = ? AND status = 'merging'
+                        """,
+                        (str(exc)[:2000], time.time(), import_id),
+                    )
+        finally:
+            self._merge_backends.pop(import_id, None)
+            self._merge_cancellations.pop(import_id, None)
 
     @staticmethod
     def _rebuild_duplicate_counts(connection: sqlite3.Connection) -> None:
@@ -3072,6 +3168,8 @@ class MasterService:
         now = time.time()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            self._merge_backends[import_id] = connection.backend_pid
+            self._raise_if_merge_cancelled(import_id)
             import_row = connection.execute(
                 """
                 SELECT * FROM master_imports
@@ -3266,6 +3364,7 @@ class MasterService:
                 triggers_disabled = False
             try:
                 while True:
+                    self._raise_if_merge_cancelled(import_id)
                     batch = items.fetchmany(MASTER_IMPORT_BATCH_SIZE)
                     if not batch:
                         break
@@ -3522,15 +3621,29 @@ class MasterService:
                         rows=merge_progress,
                         connection=connection,
                     )
+                    self._raise_if_merge_cancelled(import_id)
             finally:
-                items.close()
+                try:
+                    items.close()
+                except Exception:  # noqa: BLE001
+                    pass
                 if triggers_disabled:
-                    connection.execute(
-                        "ALTER TABLE master_records ENABLE TRIGGER USER"
-                    )
-                    if sequence > 0:
-                        self._rebuild_duplicate_counts(connection)
+                    try:
+                        # After pg_cancel the txn is aborted; rollback restores
+                        # trigger state. Only re-enable while still in-trans.
+                        if (
+                            connection.transaction_status
+                            == TransactionStatus.INTRANS
+                        ):
+                            connection.execute(
+                                "ALTER TABLE master_records ENABLE TRIGGER USER"
+                            )
+                            if sequence > 0:
+                                self._rebuild_duplicate_counts(connection)
+                    except Exception:  # noqa: BLE001
+                        pass
 
+            self._raise_if_merge_cancelled(import_id)
             kept_conflicts = conflict_total - applied_conflicts
             import_stats = json.loads(str(import_row["stats_json"] or "{}"))
             separate_duplicate_rows = (
@@ -3595,6 +3708,7 @@ class MasterService:
                     """,
                     (now, current_revision, _json(import_stats), import_id),
                 )
+                self._raise_if_merge_cancelled(import_id)
                 connection.commit()
                 return result
             connection.execute(
@@ -3625,6 +3739,7 @@ class MasterService:
                 (now, revision, _json(import_stats), import_id),
             )
             self._invalidate_list_stats_cache()
+            self._raise_if_merge_cancelled(import_id)
             connection.commit()
             return result
 

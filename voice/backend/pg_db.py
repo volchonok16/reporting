@@ -233,6 +233,14 @@ class PgConnection:
         self._conn = conn
         self._in_transaction = False
 
+    @property
+    def backend_pid(self) -> int:
+        return int(self._conn.info.backend_pid)
+
+    @property
+    def transaction_status(self) -> TransactionStatus:
+        return self._conn.info.transaction_status
+
     def execute(self, sql: str, params: Sequence[Any] | None = None) -> PgCursor:
         cur = PgCursor(self._conn.cursor(row_factory=dict_row))
         statement = sql.strip()

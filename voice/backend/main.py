@@ -71,6 +71,7 @@ async def lifespan(_app: FastAPI):
     try:
         yield
     finally:
+        master_service.shutdown()
         job_service.shutdown()
 
 
@@ -456,6 +457,15 @@ def merge_master_import(
     return master_service.queue_merge_import(
         import_id, body, session_id, actor=user.email
     )
+
+
+@app.post("/api/master/imports/{import_id}/cancel")
+def cancel_master_import_merge(
+    import_id: str,
+    session_id: MasterActionSessionId,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    return master_service.cancel_merge_import(import_id, session_id)
 
 
 @app.post("/api/master/records", status_code=201)
