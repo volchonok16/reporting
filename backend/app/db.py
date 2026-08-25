@@ -271,7 +271,13 @@ def ensure_startup_schema() -> None:
                 if migration_path is None:
                     logger.warning("Миграция не найдена: %s", migration_name)
                     continue
-                _execute_startup_sql(conn, migration_path.read_text(encoding="utf-8"))
+                try:
+                    _execute_startup_sql(
+                        conn, migration_path.read_text(encoding="utf-8")
+                    )
+                except Exception:
+                    logger.exception("Ошибка миграции %s", migration_name)
+                    raise
                 _mark_migration_applied(conn, migration_name)
                 logger.info("Применена миграция %s", migration_name)
 
