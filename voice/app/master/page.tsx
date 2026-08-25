@@ -730,6 +730,34 @@ function formattedImportLine(record: ImportRecord) {
     .join("")}`;
 }
 
+async function copyTextToClipboard(value: string): Promise<boolean> {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      // Non-secure context, denied permission, or iframe policy — fall back.
+    }
+  }
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = value;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.top = "0";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, value.length);
+    const copied = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return copied;
+  } catch {
+    return false;
+  }
+}
+
 function importProgressLabel(task: ImportTask) {
   if (task.progressPhase === "queued") return "Файл поставлен в очередь";
   if (task.progressPhase === "reading") return "Читаем и проверяем строки";
@@ -1068,6 +1096,7 @@ export default function MasterPage() {
   const importPollingRef = useRef("");
   const mergePollingRef = useRef("");
   const importRecoveryUserRef = useRef("");
+  const logicalRowValueRef = useRef<HTMLElement | null>(null);
   const notifiedLockRef = useRef("");
   const notifiedOwnerRef = useRef("");
   const ownedLockRef = useRef(false);
@@ -2470,12 +2499,22 @@ export default function MasterPage() {
     if (!logicalRowPreview) return;
     const value =
       logicalRowPreview.logicalRow ?? formattedImportLine(logicalRowPreview);
-    try {
-      await navigator.clipboard.writeText(value);
+    if (await copyTextToClipboard(value)) {
       setCopiedLogicalRow(true);
-    } catch {
-      setError("Не удалось скопировать строку. Выделите её вручную.");
+      setError("");
+      return;
     }
+    const node = logicalRowValueRef.current;
+    if (node) {
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }
+    setError(
+      "Не удалось скопировать автоматически. Строка выделена — нажмите Ctrl+C / ⌘C.",
+    );
   };
 
   const showNextAnalysisDuplicate = async () => {
@@ -6430,7 +6469,11 @@ export default function MasterPage() {
                 ×
               </button>
             </div>
-            <code className="master-logical-row-value" tabIndex={0}>
+            <code
+              className="master-logical-row-value"
+              tabIndex={0}
+              ref={logicalRowValueRef}
+            >
               {logicalRowPreview.logicalRow ??
                 formattedImportLine(logicalRowPreview)}
             </code>
