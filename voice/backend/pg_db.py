@@ -316,10 +316,15 @@ class PgConnection:
 
     def __exit__(self, exc_type, exc, tb) -> None:
         try:
+            if self._conn.closed:
+                return
+            status = self._conn.info.transaction_status
             if exc_type is None:
-                self.commit()
+                if status != TransactionStatus.IDLE:
+                    self.commit()
             else:
-                self.rollback()
+                if status != TransactionStatus.IDLE:
+                    self.rollback()
         finally:
             self.close()
 

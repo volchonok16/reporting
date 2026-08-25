@@ -2435,6 +2435,8 @@ class MasterService:
                     import_id,
                 ),
             )
+            # Явно закрываем транзакцию анализа (не полагаемся только на __exit__).
+            connection.commit()
 
     def list_import_items(
         self,
@@ -2807,6 +2809,7 @@ class MasterService:
             ).fetchone()
             self._pending_merges[import_id] = (body, actor)
             payload = self._analysis_payload(connection, updated)
+            connection.commit()
         self._analysis_executor.submit(
             self._run_merge_import,
             import_id,
@@ -3050,202 +3053,205 @@ class MasterService:
                     """
                 )
             }
-            while True:
-                batch = items.fetchmany(MASTER_IMPORT_BATCH_SIZE)
-                if not batch:
-                    break
-                existing_ids = [
-                    str(item["existing_record_id"])
-                    for item in batch
-                    if item["existing_record_id"] is not None
-                ]
-                records_by_id: dict[str, sqlite3.Row] = {}
-                if existing_ids:
-                    placeholders = ",".join("?" for _ in existing_ids)
-                    for row in connection.execute(
-                        f"SELECT * FROM master_records WHERE id IN ({placeholders})",
-                        existing_ids,
-                    ):
-                        records_by_id[str(row["id"])] = row
+            try:
+                while True:
+                    batch = items.fetchmany(MASTER_IMPORT_BATCH_SIZE)
+                    if not batch:
+                        break
+                    existing_ids = [
+                        str(item["existing_record_id"])
+                        for item in batch
+                        if item["existing_record_id"] is not None
+                    ]
+                    records_by_id: dict[str, sqlite3.Row] = {}
+                    if existing_ids:
+                        placeholders = ",".join("?" for _ in existing_ids)
+                        for row in connection.execute(
+                            f"SELECT * FROM master_records WHERE id IN ({placeholders})",
+                            existing_ids,
+                        ):
+                            records_by_id[str(row["id"])] = row
 
-                insert_rows: list[tuple[Any, ...]] = []
-                update_rows: list[tuple[Any, ...]] = []
-                change_rows: list[tuple[Any, ...]] = []
-                item_record_links: list[tuple[str, str, str]] = []
+                    insert_rows: list[tuple[Any, ...]] = []
+                    update_rows: list[tuple[Any, ...]] = []
+                    change_rows: list[tuple[Any, ...]] = []
+                    item_record_links: list[tuple[str, str, str]] = []
 
-                for item in batch:
-                    status = str(item["status"])
-                    if status == "conflict":
-                        member_ids = (
-                            json.loads(str(item["member_ids_json"]))
-                            if body.mergeDuplicateANumbers
-                            else [str(item["id"])]
-                        )
-                        replace = (
-                            body.conflictStrategy == "replace_all"
-                            or (
-                                body.conflictStrategy == "selected"
-                                and any(
-                                    member_id in selected
-                                    for member_id in member_ids
+                    for item in batch:
+                        status = str(item["status"])
+                        if status == "conflict":
+                            member_ids = (
+                                json.loads(str(item["member_ids_json"]))
+                                if body.mergeDuplicateANumbers
+                                else [str(item["id"])]
+                            )
+                            replace = (
+                                body.conflictStrategy == "replace_all"
+                                or (
+                                    body.conflictStrategy == "selected"
+                                    and any(
+                                        member_id in selected
+                                        for member_id in member_ids
+                                    )
                                 )
                             )
-                        )
-                        if not replace:
-                            continue
-                        applied_conflicts += 1
-                    incoming = json.loads(str(item["incoming_json"]))
-                    record = (
-                        records_by_id.get(str(item["existing_record_id"]))
-                        if item["existing_record_id"] is not None
-                        else None
-                    )
-                    if record is None:
-                        sequence += 1
-                        record_id = opaque_id()
-                        insert_rows.append(
-                            (
-                                record_id,
-                                incoming["aNumber"],
-                                _json(incoming["bNumbers"]),
-                                incoming["sourcePrefix"],
-                                next_sort,
-                                now,
-                                now,
-                                revision,
-                                revision,
-                            )
-                        )
-                        active_count += 1
-                        line_number = active_count
-                        line_by_sort[next_sort] = line_number
-                        next_sort += 1
-                        after = {
-                            "id": record_id,
-                            **incoming,
-                            "comment": "",
-                            "version": 1,
-                        }
-                        before = None
-                        action = "added"
-                        added += 1
-                    else:
-                        record_id = str(record["id"])
-                        before = (
-                            _snapshot(record)
-                            if record["deleted_at"] is None
+                            if not replace:
+                                continue
+                            applied_conflicts += 1
+                        incoming = json.loads(str(item["incoming_json"]))
+                        record = (
+                            records_by_id.get(str(item["existing_record_id"]))
+                            if item["existing_record_id"] is not None
                             else None
                         )
-                        if (
-                            before is not None
-                            and before["aNumber"] == incoming["aNumber"]
-                            and before["sourcePrefix"]
-                            == incoming["sourcePrefix"]
-                        ):
-                            combined_b_numbers = list(before["bNumbers"])
-                            seen_b_numbers = set(combined_b_numbers)
-                            for b_number in incoming["bNumbers"]:
-                                if b_number in seen_b_numbers:
-                                    continue
-                                seen_b_numbers.add(b_number)
-                                combined_b_numbers.append(b_number)
-                            incoming = {
-                                **incoming,
-                                "bNumbers": combined_b_numbers,
-                            }
-                        if (
-                            before is not None
-                            and before["aNumber"] == incoming["aNumber"]
-                            and before["bNumbers"] == incoming["bNumbers"]
-                            and before["sourcePrefix"]
-                            == incoming["sourcePrefix"]
-                        ):
-                            continue
-                        sequence += 1
-                        version = int(record["version"]) + 1
-                        update_rows.append(
-                            (
-                                incoming["aNumber"],
-                                _json(incoming["bNumbers"]),
-                                incoming["sourcePrefix"],
-                                version,
-                                now,
-                                revision,
-                                record_id,
+                        if record is None:
+                            sequence += 1
+                            record_id = opaque_id()
+                            insert_rows.append(
+                                (
+                                    record_id,
+                                    incoming["aNumber"],
+                                    _json(incoming["bNumbers"]),
+                                    incoming["sourcePrefix"],
+                                    next_sort,
+                                    now,
+                                    now,
+                                    revision,
+                                    revision,
+                                )
                             )
-                        )
-                        if before is None:
                             active_count += 1
-                        line_number = line_by_sort.get(
-                            int(record["sort_order"]),
-                            active_count,
-                        )
-                        after = {
-                            "id": record_id,
-                            **incoming,
-                            "comment": str(record["comment"] or ""),
-                            "version": version,
-                        }
-                        action = "restored" if before is None else "updated"
-                        if before is None:
+                            line_number = active_count
+                            line_by_sort[next_sort] = line_number
+                            next_sort += 1
+                            after = {
+                                "id": record_id,
+                                **incoming,
+                                "comment": "",
+                                "version": 1,
+                            }
+                            before = None
+                            action = "added"
                             added += 1
                         else:
-                            updated += 1
-                    change_rows.append(
-                        (
-                            opaque_id(),
-                            revision,
-                            sequence,
-                            record_id,
-                            action,
-                            line_number,
-                            _json(before) if before is not None else None,
-                            _json(after) if after is not None else None,
-                            str(import_row["source_name"]),
-                            int(item["source_row"]),
-                            actor,
-                            now,
+                            record_id = str(record["id"])
+                            before = (
+                                _snapshot(record)
+                                if record["deleted_at"] is None
+                                else None
+                            )
+                            if (
+                                before is not None
+                                and before["aNumber"] == incoming["aNumber"]
+                                and before["sourcePrefix"]
+                                == incoming["sourcePrefix"]
+                            ):
+                                combined_b_numbers = list(before["bNumbers"])
+                                seen_b_numbers = set(combined_b_numbers)
+                                for b_number in incoming["bNumbers"]:
+                                    if b_number in seen_b_numbers:
+                                        continue
+                                    seen_b_numbers.add(b_number)
+                                    combined_b_numbers.append(b_number)
+                                incoming = {
+                                    **incoming,
+                                    "bNumbers": combined_b_numbers,
+                                }
+                            if (
+                                before is not None
+                                and before["aNumber"] == incoming["aNumber"]
+                                and before["bNumbers"] == incoming["bNumbers"]
+                                and before["sourcePrefix"]
+                                == incoming["sourcePrefix"]
+                            ):
+                                continue
+                            sequence += 1
+                            version = int(record["version"]) + 1
+                            update_rows.append(
+                                (
+                                    incoming["aNumber"],
+                                    _json(incoming["bNumbers"]),
+                                    incoming["sourcePrefix"],
+                                    version,
+                                    now,
+                                    revision,
+                                    record_id,
+                                )
+                            )
+                            if before is None:
+                                active_count += 1
+                            line_number = line_by_sort.get(
+                                int(record["sort_order"]),
+                                active_count,
+                            )
+                            after = {
+                                "id": record_id,
+                                **incoming,
+                                "comment": str(record["comment"] or ""),
+                                "version": version,
+                            }
+                            action = "restored" if before is None else "updated"
+                            if before is None:
+                                added += 1
+                            else:
+                                updated += 1
+                        change_rows.append(
+                            (
+                                opaque_id(),
+                                revision,
+                                sequence,
+                                record_id,
+                                action,
+                                line_number,
+                                _json(before) if before is not None else None,
+                                _json(after) if after is not None else None,
+                                str(import_row["source_name"]),
+                                int(item["source_row"]),
+                                actor,
+                                now,
+                            )
                         )
-                    )
-                    if not body.mergeDuplicateANumbers:
-                        item_record_links.append(
-                            (record_id, import_id, str(item["id"]))
-                        )
+                        if not body.mergeDuplicateANumbers:
+                            item_record_links.append(
+                                (record_id, import_id, str(item["id"]))
+                            )
 
-                if insert_rows:
-                    connection.executemany(
-                        """
-                        INSERT INTO master_records(
-                            id, a_number, b_numbers_json, source_prefix,
-                            sort_order, version, created_at, updated_at,
-                            created_revision, updated_revision, deleted_at,
-                            deleted_revision
-                        ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NULL, NULL)
-                        """,
-                        insert_rows,
-                    )
-                if update_rows:
-                    connection.executemany(
-                        """
-                        UPDATE master_records
-                        SET a_number = ?, b_numbers_json = ?,
-                            source_prefix = ?, version = ?, updated_at = ?,
-                            updated_revision = ?, deleted_at = NULL,
-                            deleted_revision = NULL
-                        WHERE id = ?
-                        """,
-                        update_rows,
-                    )
-                self._append_changes_many(connection, change_rows)
-                if item_record_links:
-                    connection.executemany(
-                        """
-                        UPDATE master_import_items
-                        SET existing_record_id = ?
-                        WHERE import_id = ? AND id = ?
-                        """,
-                        item_record_links,
-                    )
+                    if insert_rows:
+                        connection.executemany(
+                            """
+                            INSERT INTO master_records(
+                                id, a_number, b_numbers_json, source_prefix,
+                                sort_order, version, created_at, updated_at,
+                                created_revision, updated_revision, deleted_at,
+                                deleted_revision
+                            ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NULL, NULL)
+                            """,
+                            insert_rows,
+                        )
+                    if update_rows:
+                        connection.executemany(
+                            """
+                            UPDATE master_records
+                            SET a_number = ?, b_numbers_json = ?,
+                                source_prefix = ?, version = ?, updated_at = ?,
+                                updated_revision = ?, deleted_at = NULL,
+                                deleted_revision = NULL
+                            WHERE id = ?
+                            """,
+                            update_rows,
+                        )
+                    self._append_changes_many(connection, change_rows)
+                    if item_record_links:
+                        connection.executemany(
+                            """
+                            UPDATE master_import_items
+                            SET existing_record_id = ?
+                            WHERE import_id = ? AND id = ?
+                            """,
+                            item_record_links,
+                        )
+            finally:
+                items.close()
 
             kept_conflicts = conflict_total - applied_conflicts
             import_stats = json.loads(str(import_row["stats_json"] or "{}"))
@@ -3311,6 +3317,7 @@ class MasterService:
                     """,
                     (now, current_revision, _json(import_stats), import_id),
                 )
+                connection.commit()
                 return result
             connection.execute(
                 "UPDATE master_state SET current_revision = ? WHERE id = 1",
@@ -3339,6 +3346,7 @@ class MasterService:
                 """,
                 (now, revision, _json(import_stats), import_id),
             )
+            connection.commit()
             return result
 
     def create_record(
