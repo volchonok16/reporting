@@ -180,98 +180,24 @@ MASTER_SHORT_AON_SQL = """
 
 
 class MasterImportSpool:
-    """Disk-backed import rows that preserve every physical source row."""
+    """In-memory import rows that preserve every physical source row.
+
+    Voice master storage is PostgreSQL; this spool is only a transient parse
+    buffer for the reading phase (no SQLite).
+    """
 
     preserve_duplicate_a = True
-    _FLUSH_EVERY = 4_000
 
-    def __init__(self, path: Path):
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.connection = sqlite3.connect(self.path)
-        self.connection.execute("PRAGMA journal_mode=WAL")
-        self.connection.execute("PRAGMA synchronous=OFF")
-        self.connection.execute("PRAGMA temp_store=MEMORY")
-        self.connection.execute("PRAGMA cache_size=-65536")
-        self.connection.execute("PRAGMA locking_mode=EXCLUSIVE")
-        self.connection.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS first_a (
-                a_number TEXT PRIMARY KEY,
-                source_row INTEGER NOT NULL
-            ) WITHOUT ROWID;
-            CREATE TABLE IF NOT EXISTS mappings (
-                id INTEGER PRIMARY KEY,
-                a_number TEXT NOT NULL,
-                first_sequence INTEGER NOT NULL,
-                source_row INTEGER NOT NULL,
-                source_prefix TEXT,
-                UNIQUE(a_number, source_row)
-            );
-            CREATE TABLE IF NOT EXISTS rows (
-                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-                mapping_id INTEGER NOT NULL,
-                b_number TEXT NOT NULL,
-                source_row INTEGER NOT NULL,
-                FOREIGN KEY(mapping_id) REFERENCES mappings(id)
-                    ON DELETE CASCADE
-            );
-            CREATE INDEX IF NOT EXISTS master_spool_mappings_order
-                ON mappings(first_sequence);
-            CREATE INDEX IF NOT EXISTS master_spool_rows_mapping
-                ON rows(mapping_id, sequence);
-            CREATE TABLE IF NOT EXISTS seen_b (
-                mapping_id INTEGER NOT NULL,
-                b_number TEXT NOT NULL,
-                PRIMARY KEY(mapping_id, b_number)
-            ) WITHOUT ROWID;
-            """
-        )
-        self.connection.commit()
+    def __init__(self, path: Path | None = None):
+        del path  # kept for call-site compatibility; unused
         self._first_sequence = 1
-        self._next_mapping_id = 1
         self._first_a: dict[str, int] = {}
-        self._mappings: dict[tuple[str, int], int] = {}
-        self._seen_b: dict[int, set[str]] = {}
-        self._pending_first_a: list[tuple[str, int]] = []
-        self._pending_mappings: list[tuple[int, str, int, int, str | None]] = []
-        self._pending_seen_b: list[tuple[int, str]] = []
-        self._pending_rows: list[tuple[int, str, int]] = []
+        # (a_number, source_row) -> index into _entries
+        self._entry_index: dict[tuple[str, int], int] = {}
+        self._entries: list[dict[str, Any]] = []
         self._row_count = 0
-
-    def _flush_pending(self) -> None:
-        connection = self.connection
-        if self._pending_first_a:
-            connection.executemany(
-                "INSERT OR IGNORE INTO first_a(a_number, source_row) VALUES (?, ?)",
-                self._pending_first_a,
-            )
-            self._pending_first_a.clear()
-        if self._pending_mappings:
-            connection.executemany(
-                """
-                INSERT INTO mappings(
-                    id, a_number, first_sequence, source_row, source_prefix
-                ) VALUES (?, ?, ?, ?, ?)
-                """,
-                self._pending_mappings,
-            )
-            self._pending_mappings.clear()
-        if self._pending_seen_b:
-            connection.executemany(
-                "INSERT OR IGNORE INTO seen_b(mapping_id, b_number) VALUES (?, ?)",
-                self._pending_seen_b,
-            )
-            self._pending_seen_b.clear()
-        if self._pending_rows:
-            connection.executemany(
-                """
-                INSERT INTO rows(mapping_id, b_number, source_row)
-                VALUES (?, ?, ?)
-                """,
-                self._pending_rows,
-            )
-            self._pending_rows.clear()
+        # a_number -> ordered unique source rows (first + duplicates)
+        self._duplicate_rows: dict[str, list[int]] = {}
 
     def add_a(
         self,
@@ -285,21 +211,18 @@ class MasterImportSpool:
         first = a_number not in self._first_a
         if first:
             self._first_a[a_number] = source_row
-            self._pending_first_a.append((a_number, source_row))
         key = (a_number, source_row)
-        if key not in self._mappings:
-            mapping_id = self._next_mapping_id
-            self._next_mapping_id += 1
-            self._mappings[key] = mapping_id
-            self._seen_b[mapping_id] = set()
-            self._pending_mappings.append(
-                (
-                    mapping_id,
-                    a_number,
-                    self._first_sequence,
-                    source_row,
-                    source_prefix,
-                )
+        if key not in self._entry_index:
+            self._entry_index[key] = len(self._entries)
+            self._entries.append(
+                {
+                    "a_number": a_number,
+                    "first_sequence": self._first_sequence,
+                    "source_row": source_row,
+                    "source_prefix": source_prefix,
+                    "b_numbers": [],
+                    "seen_b": set(),
+                }
             )
             self._first_sequence += 1
         return first
@@ -320,85 +243,77 @@ class MasterImportSpool:
             source_prefix=source_prefix,
             linked_a_number=linked_a_number,
         )
-        mapping_id = self._mappings[(a_number, source_row)]
+        entry = self._entries[self._entry_index[(a_number, source_row)]]
+        if entry["source_prefix"] is None and source_prefix is not None:
+            entry["source_prefix"] = source_prefix
         duplicate = False
         if not keep_duplicate:
-            seen = self._seen_b[mapping_id]
+            seen: set[str] = entry["seen_b"]
             if b_number in seen:
                 duplicate = True
             else:
                 seen.add(b_number)
-                self._pending_seen_b.append((mapping_id, b_number))
         if not duplicate:
-            self._pending_rows.append((mapping_id, b_number, source_row))
+            entry["b_numbers"].append(b_number)
             self._row_count += 1
-            if len(self._pending_rows) >= self._FLUSH_EVERY:
-                self._flush_pending()
         return first, duplicate
 
     def source_row_for_a(self, a_number: str) -> int | None:
         return self._first_a.get(a_number)
 
+    def remember_duplicate(
+        self,
+        a_number: str,
+        first_source_row: int,
+        duplicate_source_row: int,
+    ) -> None:
+        rows = self._duplicate_rows.get(a_number)
+        if rows is None:
+            self._duplicate_rows[a_number] = [first_source_row, duplicate_source_row]
+            return
+        if first_source_row not in rows:
+            rows.append(first_source_row)
+        if duplicate_source_row not in rows:
+            rows.append(duplicate_source_row)
+
+    def duplicate_group_count(self) -> int:
+        return len(self._duplicate_rows)
+
+    def iter_duplicate_findings(self) -> Iterable[tuple[str, list[int]]]:
+        for a_number in sorted(self._duplicate_rows):
+            rows = sorted(set(self._duplicate_rows[a_number]))[:500]
+            yield a_number, rows
+
     def counts(self) -> tuple[int, int]:
         return len(self._first_a), self._row_count
 
     def mapping_count(self) -> int:
-        return len(self._mappings)
+        return len(self._entries)
 
     def iter_mapping_entries(self) -> Iterable[tuple[Mapping, int]]:
-        self._flush_pending()
-        cursor = self.connection.execute(
-            """
-            SELECT mapping.id, mapping.a_number, mapping.first_sequence,
-                   mapping.source_row, mapping.source_prefix, row.b_number
-            FROM mappings AS mapping
-            JOIN rows AS row ON row.mapping_id = mapping.id
-            ORDER BY mapping.first_sequence, row.sequence
-            """
-        )
-        current_id: int | None = None
-        current_a = ""
-        current_order = 0
-        current_source_row = 0
-        current_prefix: str | None = None
-        b_numbers: list[str] = []
-        for mapping_id, a_number, order, source_row, prefix, b_number in cursor:
-            mapping_id = int(mapping_id)
-            if current_id is not None and mapping_id != current_id:
-                yield (
-                    Mapping(
-                        aNumber=current_a,
-                        bNumbers=b_numbers,
-                        firstSeenOrder=current_order,
-                        sourcePrefix=current_prefix,
-                    ),
-                    current_source_row,
-                )
-                b_numbers = []
-            current_id = mapping_id
-            current_a = str(a_number)
-            current_order = int(order)
-            current_source_row = int(source_row)
-            current_prefix = str(prefix) if prefix is not None else None
-            b_numbers.append(str(b_number))
-        if current_id is not None:
+        for entry in self._entries:
+            b_numbers = list(entry["b_numbers"])
+            if not b_numbers:
+                continue
             yield (
                 Mapping(
-                    aNumber=current_a,
+                    aNumber=str(entry["a_number"]),
                     bNumbers=b_numbers,
-                    firstSeenOrder=current_order,
-                    sourcePrefix=current_prefix,
+                    firstSeenOrder=int(entry["first_sequence"]),
+                    sourcePrefix=(
+                        str(entry["source_prefix"])
+                        if entry["source_prefix"] is not None
+                        else None
+                    ),
                 ),
-                current_source_row,
+                int(entry["source_row"]),
             )
 
     def commit(self) -> None:
-        self._flush_pending()
-        self.connection.commit()
+        return
 
     def close(self) -> None:
-        self.commit()
-        self.connection.close()
+        return
 
     def __enter__(self) -> "MasterImportSpool":
         return self
@@ -2179,7 +2094,6 @@ class MasterService:
         temporary_dir = Path(
             tempfile.mkdtemp(prefix="master-import-", dir=self.config.data_dir)
         )
-        spool_path = temporary_dir / "spool.sqlite3"
         report_path = temporary_dir / "report.csv"
         last_progress = 0
 
@@ -2203,43 +2117,7 @@ class MasterService:
                 )
 
         try:
-            with ReportWriter(report_path) as report, MasterImportSpool(
-                spool_path
-            ) as spool:
-                spool.connection.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS duplicate_source_rows (
-                        a_number TEXT NOT NULL,
-                        source_row INTEGER NOT NULL,
-                        PRIMARY KEY(a_number, source_row)
-                    ) WITHOUT ROWID
-                    """
-                )
-                pending_duplicates: list[tuple[str, int]] = []
-
-                def flush_duplicates() -> None:
-                    if not pending_duplicates:
-                        return
-                    spool.connection.executemany(
-                        """
-                        INSERT OR IGNORE INTO duplicate_source_rows(
-                            a_number, source_row
-                        ) VALUES (?, ?)
-                        """,
-                        pending_duplicates,
-                    )
-                    pending_duplicates.clear()
-
-                def remember_duplicate(
-                    a_number: str,
-                    first_source_row: int,
-                    duplicate_source_row: int,
-                ) -> None:
-                    pending_duplicates.append((a_number, first_source_row))
-                    pending_duplicates.append((a_number, duplicate_source_row))
-                    if len(pending_duplicates) >= 4_000:
-                        flush_duplicates()
-
+            with ReportWriter(report_path) as report, MasterImportSpool() as spool:
                 builder = MappingBuilder(spool, report)
                 if mode == "formatted":
                     parser_stats = builder.build_formatted(
@@ -2249,7 +2127,7 @@ class MasterService:
                             allow_mixed_templates=True,
                             allow_number_whitespace=True,
                         ),
-                        duplicate_a_callback=remember_duplicate,
+                        duplicate_a_callback=spool.remember_duplicate,
                         progress=report_progress,
                     )
                 else:
@@ -2269,11 +2147,9 @@ class MasterService:
                         b_column=b_column,
                         replace_empty_b_with_a=True,
                         allow_number_whitespace=True,
-                        duplicate_a_callback=remember_duplicate,
+                        duplicate_a_callback=spool.remember_duplicate,
                         progress=report_progress,
                     )
-                flush_duplicates()
-                spool.commit()
                 parser_stats["preservedRows"] = spool.mapping_count()
                 parser_stats["resultRows"] = spool.mapping_count()
                 report_progress(int(parser_stats["inputRows"]))
@@ -2612,31 +2488,9 @@ class MasterService:
                 renamed = 0
                 connection.commit()
 
-            duplicate_groups = int(
-                spool.connection.execute(
-                    "SELECT COUNT(DISTINCT a_number) FROM duplicate_source_rows"
-                ).fetchone()[0]
-            )
-            duplicate_cursor = spool.connection.execute(
-                """
-                SELECT DISTINCT a_number
-                FROM duplicate_source_rows
-                ORDER BY a_number
-                """
-            )
+            duplicate_groups = spool.duplicate_group_count()
             duplicate_batch: list[tuple[Any, ...]] = []
-            for duplicate_row in duplicate_cursor:
-                a_number = str(duplicate_row[0])
-                source_rows = [
-                    int(row[0])
-                    for row in spool.connection.execute(
-                        """
-                        SELECT source_row FROM duplicate_source_rows
-                        WHERE a_number = ? ORDER BY source_row LIMIT 500
-                        """,
-                        (a_number,),
-                    )
-                ]
+            for a_number, source_rows in spool.iter_duplicate_findings():
                 duplicate_batch.append(
                     (import_id, a_number, _json(source_rows), source_name, now)
                 )

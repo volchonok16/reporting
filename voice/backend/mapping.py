@@ -378,7 +378,7 @@ def _cancel_if_requested(cancelled: CancelCallback | None) -> None:
 
 
 class MappingBuilder:
-    def __init__(self, spool: MappingSpool, report: ReportWriter):
+    def __init__(self, spool: Any, report: ReportWriter):
         self.spool = spool
         self.report = report
 
