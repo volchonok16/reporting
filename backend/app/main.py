@@ -119,6 +119,7 @@ async def startup() -> None:
     set_main_event_loop(loop)
     set_product_status_live_event_loop(loop)
     ensure_startup_schema()
+    integrate_voice(app)
     db = next(get_db())
     try:
         ensure_boards_loaded(db)
@@ -1003,6 +1004,3 @@ def sync_status(sync_id: int, db: Session = Depends(get_db)) -> SyncRunOut:
         startedAt=sync_run.started_at,
         finishedAt=sync_run.finished_at,
     )
-
-
-integrate_voice(app)

@@ -97,7 +97,7 @@ echo "==> docker load ← ${TAR}"
 docker load -i "$TAR"
 
 # Voice uploads/workspaces на диске (backend пишет в /data).
-mkdir -p voice/data
+mkdir -p voice/data/uploads voice/data/workspaces
 chmod -R a+rwX voice/data 2>/dev/null || true
 
 # shellcheck source=compose-v1-purge.sh
@@ -106,6 +106,10 @@ if [[ "$COMPOSE_CMD" == "docker-compose" ]]; then
   purge_reporting_containers_v1
   echo "==> docker-compose v1: после purge — up -d --no-build"
 fi
+
+echo ""
+echo "==> SQL-миграции (Voice и др.) перед стартом backend…"
+bash "$(dirname "$0")/ensure-db-schema.sh" "$MODE"
 
 UP_ARGS=(up -d --no-build)
 if [[ "$COMPOSE_CMD" != "docker-compose" ]]; then
