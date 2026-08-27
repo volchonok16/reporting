@@ -121,7 +121,16 @@ def _load_active_places(db: Session) -> list[WorkspacePlace]:
 
 def _load_booking_employees(db: Session) -> list[Employee]:
     return list(
-        db.scalars(select(Employee).where(Employee.is_active.is_(True)).order_by(Employee.full_name)).unique().all()
+        db.scalars(
+            select(Employee)
+            .where(
+                Employee.is_active.is_(True),
+                Employee.hide_from_pyramid.is_(False),
+            )
+            .order_by(Employee.full_name)
+        )
+        .unique()
+        .all()
     )
 
 
@@ -213,6 +222,8 @@ def get_workspace_booking_schedule(
             .order_by(WorkspaceBooking.day, WorkspaceBooking.place_id)
         ).unique().all()
         for row in rows:
+            if row.employee is not None and row.employee.hide_from_pyramid:
+                continue
             can_release = can_edit_employee_vacation(meta, actor_employee_id, row.employee_id)
             bookings_out.append(
                 WorkspaceBookingCellOut(

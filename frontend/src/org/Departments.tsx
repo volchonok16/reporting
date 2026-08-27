@@ -444,35 +444,42 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
 
   const rosterRows = useMemo(() => {
     const baseRows = isAllCompanyView
-      ? employees.map((emp) => ({
-          key: `emp-${emp.id}`,
-          employeeId: emp.id,
-          fullName: emp.fullName,
-          photoUrl: emp.photoUrl,
-          secondary: formatDepartments(emp.departments),
-          position: emp.position ?? '—',
-          managerName: emp.managerName ?? '—',
-          email: emp.email ?? '—',
-          dailyWorkHours: String(emp.dailyWorkHours),
-          expertise: formatExpertises(emp.expertises),
-          memberId: null as number | null,
-        }))
-      : members.map((member) => {
-          const emp = employeeById.get(member.employeeId)
-          return {
-            key: `member-${member.id}`,
-            employeeId: member.employeeId,
-            fullName: member.employeeName,
-            photoUrl: member.photoUrl ?? emp?.photoUrl,
-            secondary: member.teamRoleName ?? '—',
-            position: member.displayPosition ?? '—',
-            managerName: member.managerName ?? '—',
-            email: member.displayEmail ?? emp?.email ?? '—',
-            dailyWorkHours: String(emp?.dailyWorkHours ?? '—'),
-            expertise: formatExpertises(emp?.expertises),
-            memberId: member.id,
-          }
-        })
+      ? employees
+          .filter((emp) => !emp.hideFromPyramid)
+          .map((emp) => ({
+            key: `emp-${emp.id}`,
+            employeeId: emp.id,
+            fullName: emp.fullName,
+            photoUrl: emp.photoUrl,
+            secondary: formatDepartments(emp.departments),
+            position: emp.position ?? '—',
+            managerName: emp.managerName ?? '—',
+            email: emp.email ?? '—',
+            dailyWorkHours: String(emp.dailyWorkHours),
+            expertise: formatExpertises(emp.expertises),
+            memberId: null as number | null,
+          }))
+      : members
+          .filter((member) => {
+            const emp = employeeById.get(member.employeeId)
+            return emp ? !emp.hideFromPyramid : true
+          })
+          .map((member) => {
+            const emp = employeeById.get(member.employeeId)
+            return {
+              key: `member-${member.id}`,
+              employeeId: member.employeeId,
+              fullName: member.employeeName,
+              photoUrl: member.photoUrl ?? emp?.photoUrl,
+              secondary: member.teamRoleName ?? '—',
+              position: member.displayPosition ?? '—',
+              managerName: member.managerName ?? '—',
+              email: member.displayEmail ?? emp?.email ?? '—',
+              dailyWorkHours: String(emp?.dailyWorkHours ?? '—'),
+              expertise: formatExpertises(emp?.expertises),
+              memberId: member.id,
+            }
+          })
 
     const normalizedPrefix = rosterNamePrefix.trim().toLowerCase()
     return baseRows
@@ -1561,8 +1568,8 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                     </label>
                   </div>
                   <p className="org-hint">
-                    С этой галочкой сотрудник не попадает в пирамиду и отображается только в подразделе
-                    «Другие сотрудники».
+                    С этой галочкой сотрудник не попадает в пирамиду, состав, график отпусков, бронь мест и
+                    «Сотрудники в офисе»; в списке сотрудников остаётся только в подразделе «Другие сотрудники».
                   </p>
                 </section>
 

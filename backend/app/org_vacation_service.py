@@ -64,7 +64,14 @@ def can_edit_employee_vacation(
 
 
 def _load_employees(db: Session, department_id: int | None) -> list[Employee]:
-    stmt = select(Employee).where(Employee.is_active.is_(True)).order_by(Employee.full_name)
+    stmt = (
+        select(Employee)
+        .where(
+            Employee.is_active.is_(True),
+            Employee.hide_from_pyramid.is_(False),
+        )
+        .order_by(Employee.full_name)
+    )
     if department_id is not None:
         stmt = (
             select(Employee)
@@ -72,6 +79,7 @@ def _load_employees(db: Session, department_id: int | None) -> list[Employee]:
             .where(
                 DepartmentMember.department_id == department_id,
                 Employee.is_active.is_(True),
+                Employee.hide_from_pyramid.is_(False),
             )
             .order_by(DepartmentMember.sort_order, Employee.full_name)
         )
