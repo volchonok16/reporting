@@ -39,6 +39,8 @@ type WorkbookAppProps = {
   canSyncTfs: boolean
   canManageOrg: boolean
   voiceOnly: boolean
+  otherUser: boolean
+  allowedPageKeys: string[]
   orgUserId: number | null
   orgEmployeeId: number | null
   orgEmployeePhotoUrl: string | null
@@ -52,6 +54,8 @@ export default function WorkbookApp({
   canSyncTfs,
   canManageOrg,
   voiceOnly,
+  otherUser,
+  allowedPageKeys,
   orgUserId,
   orgEmployeeId,
   orgEmployeePhotoUrl,
@@ -77,8 +81,12 @@ export default function WorkbookApp({
     if (!canSyncTfs) {
       sheets = sheets.filter((sheet) => sheet.id !== 'roadmap')
     }
+    if (otherUser) {
+      const allowed = new Set(allowedPageKeys)
+      sheets = sheets.filter((sheet) => allowed.has(sheet.id))
+    }
     return sheets
-  }, [appRole, canSyncTfs, voiceOnly])
+  }, [appRole, canSyncTfs, voiceOnly, otherUser, allowedPageKeys])
   const visibleSheetIds = useMemo(() => new Set(visibleSheets.map((sheet) => sheet.id)), [visibleSheets])
   const [activeSheet, setActiveSheet] = useState<SheetId>(() => {
     const saved = loadActiveSheet()

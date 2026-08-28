@@ -30,6 +30,39 @@ class OrgUser(Base):
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
     employee: Mapped["Employee | None"] = relationship(back_populates="user", uselist=False)
+    page_access: Mapped[list["OrgUserPageAccess"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class AppPage(Base):
+    __tablename__ = "app_page"
+
+    page_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    user_access: Mapped[list["OrgUserPageAccess"]] = relationship(back_populates="page")
+
+
+class OrgUserPageAccess(Base):
+    __tablename__ = "org_user_page_access"
+
+    org_user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("org_user.id", ondelete="CASCADE"), primary_key=True
+    )
+    page_key: Mapped[str] = mapped_column(
+        String(64), ForeignKey("app_page.page_key", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    user: Mapped[OrgUser] = relationship(back_populates="page_access")
+    page: Mapped[AppPage] = relationship(back_populates="user_access")
 
 
 class JobPosition(Base):

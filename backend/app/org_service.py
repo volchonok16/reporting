@@ -9,6 +9,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.org_chart_service import build_company_chart, build_department_tree, tree_to_dict
+from app.app_page_service import (
+    clear_user_page_access,
+    get_user_allowed_page_keys,
+    is_other_user_employee,
+    set_user_page_access,
+)
 from app.org_models import (
     ORG_USER_ROLE_ADMIN,
     ORG_USER_ROLE_USER,
@@ -107,7 +113,10 @@ def _employee_out(db: Session, emp: Employee) -> EmployeeOut:
             manager_name = manager.full_name
             manager_public_id = str(manager.public_id)
     user_out = None
+    allowed_page_keys: list[str] = []
     if emp.user:
+        if is_other_user_employee(emp):
+            allowed_page_keys = get_user_allowed_page_keys(db, emp.user.id)
         user_out = OrgUserBriefOut(
             id=emp.user.id,
             email=emp.user.email,
@@ -115,6 +124,7 @@ def _employee_out(db: Session, emp: Employee) -> EmployeeOut:
             status=_user_status_label(emp.user.status),  # type: ignore[arg-type]
             voiceOnly=bool(emp.user.voice_only),
             voiceAdmin=bool(getattr(emp.user, "voice_admin", False)),
+            allowedPageKeys=allowed_page_keys,
         )
     expertises = [
         EmployeeExpertiseOut(
@@ -147,6 +157,7 @@ def _employee_out(db: Session, emp: Employee) -> EmployeeOut:
         isActive=emp.is_active,
         isOrganizationHead=emp.is_organization_head,
         hideFromPyramid=bool(emp.hide_from_pyramid),
+        allowedPageKeys=allowed_page_keys,
         user=user_out,
         expertises=expertises,
         departments=departments,
@@ -495,6 +506,8 @@ def create_employee(db: Session, data: EmployeeIn) -> EmployeeOut:
         voice_admin=data.userVoiceAdmin,
     )
     emp.user_id = user.id
+    if is_other_user_employee(emp) and data.allowedPageKeys:
+        set_user_page_access(db, user.id, data.allowedPageKeys)
     if data.departmentIds:
         _sync_employee_departments(db, emp.id, data.departmentIds)
     db.commit()
@@ -525,6 +538,14 @@ def update_employee(db: Session, employee_ref: str, data: EmployeeUpdateIn) -> E
             _ensure_single_org_head(db, employee_id)
     if data.hideFromPyramid is not None:
         emp.hide_from_pyramid = bool(data.hideFromPyramid)
+        if emp.user:
+            if emp.hide_from_pyramid:
+                if data.allowedPageKeys is not None:
+                    set_user_page_access(db, emp.user.id, data.allowedPageKeys)
+            else:
+                clear_user_page_access(db, emp.user.id)
+    elif data.allowedPageKeys is not None and emp.user and is_other_user_employee(emp):
+        set_user_page_access(db, emp.user.id, data.allowedPageKeys)
     if data.userIsAdmin is not None and emp.user:
         emp.user.role = ORG_USER_ROLE_ADMIN if data.userIsAdmin else ORG_USER_ROLE_USER
     if data.userVoiceOnly is not None and emp.user:

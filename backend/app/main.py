@@ -8,6 +8,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.app_access import can_manage_org, is_roadmap_role, is_voice_only, sync_board_denied_reason
+from app.app_page_service import get_user_allowed_page_keys, is_other_user_employee, sync_app_pages
 from app.auth_service import login_with_app_user, login_with_pat
 from app.auth_sessions import delete_session, get_session, get_session_with_meta
 from app.boards import (
@@ -122,6 +123,7 @@ async def startup() -> None:
     integrate_voice(app)
     db = next(get_db())
     try:
+        sync_app_pages(db)
         ensure_boards_loaded(db)
     finally:
         close_db_session(db)
@@ -261,6 +263,8 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
     org_employee_id: int | None = None
     org_employee_name: str | None = None
     org_employee_photo_url: str | None = None
+    other_user_flag = False
+    allowed_page_keys: list[str] = []
     if org_user_id is not None:
         db = next(get_db())
         try:
@@ -275,6 +279,9 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
                 org_employee_id = emp.id
                 org_employee_name = emp.full_name
                 org_employee_photo_url = photo_public_url(emp.photo_path)
+                other_user_flag = is_other_user_employee(emp)
+                if other_user_flag:
+                    allowed_page_keys = get_user_allowed_page_keys(db, org_user_id)
         finally:
             close_db_session(db)
     return TfsAuthStatusOut(
@@ -287,6 +294,8 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
         canSyncTfs=can_sync_tfs,
         canManageOrg=can_manage_org_flag,
         voiceOnly=voice_only_flag,
+        otherUser=other_user_flag,
+        allowedPageKeys=allowed_page_keys,
         orgUserId=org_user_id,
         orgEmployeeId=org_employee_id,
         orgEmployeeName=org_employee_name,

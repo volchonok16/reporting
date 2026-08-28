@@ -3,10 +3,13 @@ from datetime import date
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from app.app_access import ensure_page_access
+from app.app_page_service import list_app_pages
 from app.auth_sessions import get_session_with_meta
 from app.db import get_db
 from app.org_photo_service import load_photo_content
 from app.org_schemas import (
+    AppPageOut,
     DepartmentIn,
     DepartmentMemberIn,
     DepartmentMemberOut,
@@ -104,7 +107,24 @@ from app.org_workspace_service import (
 router = APIRouter(prefix="/api/org", tags=["org"])
 
 
-def _load_session_meta(x_session_id: str | None = Header(default=None, alias="X-Session-Id")) -> dict:
+def _load_session_meta(
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    db: Session = Depends(get_db),
+) -> dict:
+    from app.app_access import is_voice_only
+
+    auth, meta = get_session_with_meta(x_session_id)
+    if auth is None:
+        raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
+    if is_voice_only(meta):
+        raise HTTPException(status_code=403, detail="Доступен только раздел Voice.")
+    ensure_page_access(db, meta, "departments")
+    return meta
+
+
+def _load_session_meta_basic(
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+) -> dict:
     from app.app_access import is_voice_only
 
     auth, meta = get_session_with_meta(x_session_id)
@@ -125,6 +145,22 @@ def require_org_admin(meta: dict = Depends(_load_session_meta)) -> dict:
     if meta.get("auth_mode") == "pat":
         return meta
     raise HTTPException(status_code=403, detail="Недостаточно прав для управления отделами.")
+
+
+@router.get("/app-pages", response_model=list[AppPageOut])
+def api_list_app_pages(
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_org_admin),
+) -> list[AppPageOut]:
+    return [
+        AppPageOut(
+            pageKey=page.page_key,
+            label=page.label,
+            sortOrder=page.sort_order,
+            isActive=page.is_active,
+        )
+        for page in list_app_pages(db)
+    ]
 
 
 @router.get("/job-positions", response_model=list[JobPositionOut])
@@ -519,7 +555,7 @@ profile_router = APIRouter(prefix="/api/profile", tags=["profile"])
 @profile_router.get("", response_model=ProfileOut)
 def api_profile(
     db: Session = Depends(get_db),
-    meta: dict = Depends(_load_session_meta),
+    meta: dict = Depends(_load_session_meta_basic),
 ) -> ProfileOut:
     org_user_id = int(meta["org_user_id"]) if meta.get("org_user_id") else None
     return load_profile(
@@ -534,7 +570,7 @@ def api_profile(
 def api_update_profile(
     data: ProfileUpdateIn,
     db: Session = Depends(get_db),
-    meta: dict = Depends(_load_session_meta),
+    meta: dict = Depends(_load_session_meta_basic),
 ) -> ProfileOut:
     org_user_id = meta.get("org_user_id")
     if not org_user_id:
@@ -546,7 +582,7 @@ def api_update_profile(
 async def api_profile_photo(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    meta: dict = Depends(_load_session_meta),
+    meta: dict = Depends(_load_session_meta_basic),
 ) -> ProfileOut:
     org_user_id = meta.get("org_user_id")
     if not org_user_id:
@@ -558,7 +594,7 @@ async def api_profile_photo(
 def api_change_password(
     data: PasswordChangeIn,
     db: Session = Depends(get_db),
-    meta: dict = Depends(_load_session_meta),
+    meta: dict = Depends(_load_session_meta_basic),
 ) -> dict[str, bool]:
     org_user_id = int(meta["org_user_id"]) if meta.get("org_user_id") else None
     change_password(db, org_user_id, meta.get("app_login"), data)
@@ -570,7 +606,7 @@ def api_profile_office_days(
     year: int = Query(default=date.today().year),
     month: int = Query(default=date.today().month, ge=1, le=12),
     db: Session = Depends(get_db),
-    meta: dict = Depends(_load_session_meta),
+    meta: dict = Depends(_load_session_meta_basic),
 ) -> list[OfficeDayOut]:
     return get_profile_office_days(db, year=year, month=month, meta=meta)
 
@@ -579,7 +615,7 @@ def api_profile_office_days(
 def api_profile_office_days_range(
     data: OfficeDayRangeIn,
     db: Session = Depends(get_db),
-    meta: dict = Depends(_load_session_meta),
+    meta: dict = Depends(_load_session_meta_basic),
 ) -> OfficeDayRangeOut:
     return upsert_profile_office_days(db, data, meta)
 

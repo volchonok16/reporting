@@ -48,14 +48,18 @@ from app.planning_service import (
 router = APIRouter(prefix="/api/planning", tags=["planning"])
 
 
-def _load_session_meta(x_session_id: str | None = Header(default=None, alias="X-Session-Id")) -> dict:
-    from app.app_access import is_voice_only
+def _load_session_meta(
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    db: Session = Depends(get_db),
+) -> dict:
+    from app.app_access import ensure_page_access, is_voice_only
 
     auth, meta = get_session_with_meta(x_session_id)
     if auth is None:
         raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
     if is_voice_only(meta):
         raise HTTPException(status_code=403, detail="Доступен только раздел Voice.")
+    ensure_page_access(db, meta, "planning")
     return meta
 
 

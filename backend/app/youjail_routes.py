@@ -89,19 +89,23 @@ from app.youjail_terminal import (
 router = APIRouter(prefix="/api/youjail", tags=["youjail"])
 
 
-def _require_session_meta(x_session_id: str | None) -> dict:
-    from app.app_access import is_voice_only
+def _require_session_meta(x_session_id: str | None, db: Session) -> dict:
+    from app.app_access import ensure_page_access, is_voice_only
 
     auth, meta = get_session_with_meta(x_session_id)
     if auth is None:
         raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
     if is_voice_only(meta):
         raise HTTPException(status_code=403, detail="Доступен только раздел Voice.")
+    ensure_page_access(db, meta, "youjail-board")
     return meta
 
 
-def _load_session_meta(x_session_id: str | None = Header(default=None, alias="X-Session-Id")) -> dict:
-    return _require_session_meta(x_session_id)
+def _load_session_meta(
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    db: Session = Depends(get_db),
+) -> dict:
+    return _require_session_meta(x_session_id, db)
 
 
 @router.get("/teams", response_model=list[YouJailTeamOut])
@@ -416,7 +420,11 @@ async def api_execution_terminal(
     x_session_id: str | None = Query(default=None, alias="X-Session-Id"),
 ) -> None:
     try:
-        _require_session_meta(x_session_id)
+        db = next(get_db())
+        try:
+            _require_session_meta(x_session_id, db)
+        finally:
+            db.close()
     except HTTPException:
         await websocket.close(code=4401)
         return

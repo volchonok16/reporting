@@ -11,9 +11,11 @@ import EmployeeCardModal from './EmployeeCardModal'
 import { employeeApiRef, employeeApiRefFromId } from './employeeMentions'
 import OrgPhoto from './OrgPhoto'
 import OrgFilterIcon from './OrgFilterIcon'
+import AppPageMultiSelect from './AppPageMultiSelect'
 import { buildHolidayKeySet } from './ruPublicHolidays'
 import { MONTH_NAMES_FULL, WEEKDAY_NAMES, getMonthDays, isWeekendDay, toDayKey } from './scheduleUtils'
 import type {
+  AppPage,
   Department,
   DepartmentMember,
   Employee,
@@ -159,6 +161,7 @@ const EMPTY_EMPLOYEE = {
   isActive: true,
   isOrganizationHead: false,
   hideFromPyramid: false,
+  allowedPageKeys: [] as string[],
   createUserAccount: true,
   userPassword: '12345678',
   userIsAdmin: false,
@@ -200,6 +203,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
   const [loading, setLoading] = useState(false)
   const [exportingExcel, setExportingExcel] = useState(false)
 
+  const [appPages, setAppPages] = useState<AppPage[]>([])
   const [employeeForm, setEmployeeForm] = useState({ ...EMPTY_EMPLOYEE })
   const [editingEmployeeId, setEditingEmployeeId] = useState<number | null>(null)
   const [departmentForm, setDepartmentForm] = useState({ ...EMPTY_DEPARTMENT })
@@ -338,6 +342,15 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       notifyProblem(err, 'Ошибка загрузки')
     }
   }, [])
+
+  useEffect(() => {
+    if (!canManage) return
+    void getJson<AppPage[]>('/api/org/app-pages')
+      .then(setAppPages)
+      .catch(() => {
+        /* справочник страниц подтянется при открытии формы */
+      })
+  }, [canManage])
 
   const exportEmployeesExcel = useCallback(async () => {
     setExportingExcel(true)
@@ -623,6 +636,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       isActive: emp.isActive,
       isOrganizationHead: emp.isOrganizationHead,
       hideFromPyramid: Boolean(emp.hideFromPyramid),
+      allowedPageKeys: emp.allowedPageKeys ?? emp.user?.allowedPageKeys ?? [],
       createUserAccount: false,
       userPassword: '',
       userIsAdmin: emp.user?.role === 'admin',
@@ -680,6 +694,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       isActive: employeeForm.isActive,
       isOrganizationHead: employeeForm.isOrganizationHead,
       hideFromPyramid: employeeForm.hideFromPyramid,
+      allowedPageKeys: employeeForm.hideFromPyramid ? employeeForm.allowedPageKeys : [],
       createUserAccount: true,
       userPassword: '12345678',
       userIsAdmin: employeeForm.userIsAdmin,
@@ -700,6 +715,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
           isActive: body.isActive,
           isOrganizationHead: body.isOrganizationHead,
           hideFromPyramid: body.hideFromPyramid,
+          allowedPageKeys: body.allowedPageKeys,
           userIsAdmin: body.userIsAdmin,
           userVoiceOnly: body.userVoiceOnly,
           userVoiceAdmin: body.userVoiceAdmin,
@@ -1561,16 +1577,34 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                         type="checkbox"
                         checked={employeeForm.hideFromPyramid}
                         onChange={(e) =>
-                          setEmployeeForm({ ...employeeForm, hideFromPyramid: e.target.checked })
+                          setEmployeeForm({
+                            ...employeeForm,
+                            hideFromPyramid: e.target.checked,
+                            allowedPageKeys: e.target.checked ? employeeForm.allowedPageKeys : [],
+                          })
                         }
                       />
-                      Не отображать в пирамиде
+                      Другие пользователи
                     </label>
                   </div>
                   <p className="org-hint">
                     С этой галочкой сотрудник не попадает в пирамиду, состав, график отпусков, бронь мест и
                     «Сотрудники в офисе»; в списке сотрудников остаётся только в подразделе «Другие сотрудники».
+                    Для таких учётных записей можно ограничить доступ к вкладкам приложения.
                   </p>
+                  {employeeForm.hideFromPyramid ? (
+                    <label>
+                      Доступ к страницам
+                      <AppPageMultiSelect
+                        pages={appPages.map((page) => ({ pageKey: page.pageKey, label: page.label }))}
+                        value={employeeForm.allowedPageKeys}
+                        onChange={(allowedPageKeys) =>
+                          setEmployeeForm({ ...employeeForm, allowedPageKeys })
+                        }
+                        disabled={appPages.length === 0}
+                      />
+                    </label>
+                  ) : null}
                 </section>
 
                 {!editingEmployeeId ? (

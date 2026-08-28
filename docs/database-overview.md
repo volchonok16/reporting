@@ -106,6 +106,8 @@
 | `zni_board` | Конфиг досок ЗНИ: alias, board_name, area_path, теги, TFS project/team, метрики |
 | `auth_session` | Сессии PAT для веб-приложения |
 | `org_user` | Учётные записи сотрудников (email/пароль; `voice_only` — только вкладка Voice) |
+| `app_page` | Справочник вкладок reporting (`page_key` = `SheetId`) |
+| `org_user_page_access` | Разрешённые вкладки для «других пользователей» (`employee.hide_from_pyramid`) |
 | `job_position` | Справочник должностей |
 | `team_role` | Роли в составе отдела |
 | `expertise_direction` | Направления экспертизы |

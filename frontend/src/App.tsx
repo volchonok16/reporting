@@ -12,6 +12,8 @@ export default function App() {
   const [canSyncTfs, setCanSyncTfs] = useState(false)
   const [canManageOrg, setCanManageOrg] = useState(false)
   const [voiceOnly, setVoiceOnly] = useState(false)
+  const [otherUser, setOtherUser] = useState(false)
+  const [allowedPageKeys, setAllowedPageKeys] = useState<string[]>([])
   const [orgEmployeeId, setOrgEmployeeId] = useState<number | null>(null)
   const [orgUserId, setOrgUserId] = useState<number | null>(null)
   const [orgEmployeeName, setOrgEmployeeName] = useState<string | null>(null)
@@ -32,6 +34,8 @@ export default function App() {
         canSyncTfs?: boolean
         canManageOrg?: boolean
         voiceOnly?: boolean
+        otherUser?: boolean
+        allowedPageKeys?: string[]
         orgUserId?: number | null
         orgEmployeeId?: number | null
         orgEmployeeName?: string | null
@@ -43,6 +47,8 @@ export default function App() {
       setCanSyncTfs(Boolean(data.canSyncTfs))
       setCanManageOrg(Boolean(data.canManageOrg))
       setVoiceOnly(Boolean(data.voiceOnly))
+      setOtherUser(Boolean(data.otherUser))
+      setAllowedPageKeys(Array.isArray(data.allowedPageKeys) ? data.allowedPageKeys : [])
       setOrgEmployeeId(typeof data.orgEmployeeId === 'number' ? data.orgEmployeeId : null)
       setOrgUserId(typeof data.orgUserId === 'number' ? data.orgUserId : null)
       setOrgEmployeeName(typeof data.orgEmployeeName === 'string' ? data.orgEmployeeName : null)
@@ -85,6 +91,8 @@ export default function App() {
       canSyncTfs={canSyncTfs}
       canManageOrg={canManageOrg}
       voiceOnly={voiceOnly}
+      otherUser={otherUser}
+      allowedPageKeys={allowedPageKeys}
       orgUserId={orgUserId}
       orgEmployeeId={orgEmployeeId}
       orgEmployeePhotoUrl={orgEmployeePhotoUrl}

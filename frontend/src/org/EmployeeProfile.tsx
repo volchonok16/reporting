@@ -6,6 +6,18 @@ import OrgPhoto from './OrgPhoto'
 import PasswordInput from './PasswordInput'
 import ProfileOfficeCalendar from './ProfileOfficeCalendar'
 
+const APP_PAGE_LABELS: Record<string, string> = {
+  zni: 'ЗНИ',
+  'product-status-b2b': 'Статус продукта B2B',
+  'revenue-activities': 'Активности по выручкам',
+  roadmap: 'Планы Digital',
+  'youjail-board': 'Доска',
+  departments: 'Staffing',
+  diagrams: 'Диаграммы',
+  planning: 'Планирование',
+  voice: 'Voice',
+}
+
 type EmployeeProfileProps = {
   onClose: () => void
 }
@@ -127,6 +139,23 @@ export default function EmployeeProfile({ onClose }: EmployeeProfileProps) {
                     ) : null}
                     <dt>Роль</dt>
                     <dd>{profile.role}</dd>
+                    {profile.employee.hideFromPyramid ? (
+                      <>
+                        <dt>Другие пользователи</dt>
+                        <dd>Да</dd>
+                        <dt>Доступ к страницам</dt>
+                        <dd>
+                          {(() => {
+                            const keys =
+                              profile.employee?.allowedPageKeys ??
+                              profile.employee?.user?.allowedPageKeys ??
+                              []
+                            if (keys.length === 0) return 'не задан'
+                            return keys.map((key) => APP_PAGE_LABELS[key] ?? key).join(', ')
+                          })()}
+                        </dd>
+                      </>
+                    ) : null}
                   </dl>
                   <button type="submit" className="btn-primary">
                     Сохранить профиль

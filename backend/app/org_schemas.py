@@ -148,6 +148,14 @@ class OrgUserBriefOut(BaseModel):
     status: Literal["active", "inactive", "deleted"]
     voiceOnly: bool = False
     voiceAdmin: bool = False
+    allowedPageKeys: list[str] = Field(default_factory=list)
+
+
+class AppPageOut(BaseModel):
+    pageKey: str
+    label: str
+    sortOrder: int
+    isActive: bool
 
 
 class EmployeeDepartmentBriefOut(BaseModel):
@@ -170,6 +178,7 @@ class EmployeeOut(BaseModel):
     isActive: bool
     isOrganizationHead: bool
     hideFromPyramid: bool = False
+    allowedPageKeys: list[str] = Field(default_factory=list)
     user: OrgUserBriefOut | None = None
     expertises: list[EmployeeExpertiseOut] = Field(default_factory=list)
     departments: list[EmployeeDepartmentBriefOut] = Field(default_factory=list)
@@ -211,6 +220,7 @@ class EmployeeIn(BaseModel):
     isActive: bool = True
     isOrganizationHead: bool = False
     hideFromPyramid: bool = False
+    allowedPageKeys: list[str] = Field(default_factory=list)
     createUserAccount: bool = False
     userPassword: str | None = None
     userIsAdmin: bool = False
@@ -228,6 +238,7 @@ class EmployeeUpdateIn(BaseModel):
     isActive: bool | None = None
     isOrganizationHead: bool | None = None
     hideFromPyramid: bool | None = None
+    allowedPageKeys: list[str] | None = None
     userIsAdmin: bool | None = None
     userVoiceOnly: bool | None = None
     userVoiceAdmin: bool | None = None

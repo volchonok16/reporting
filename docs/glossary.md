@@ -750,7 +750,37 @@
 
 Авторизация единая: reporting выдаёт короткий SSO-токен (`POST /api/voice/sso-token`, секрет `VOICE_SSO_SECRET`, в токене флаги `admin` и `voiceAdmin`), Voice обменивает его на свою сессию (`POST /voice-api/api/auth/reporting-sso`) — отдельный логин карусели не нужен. Очистка журнала/мастер-файла — только при `org_user.voice_admin = true` (**Администратор Voice**).
 
+Для сотрудников с `employee.hide_from_pyramid = true` (**Другие пользователи**) список разрешённых вкладок хранится в `org_user_page_access` (см. `app_page`). API: `GET /api/org/app-pages` (админ), поле `allowedPageKeys` в карточке сотрудника; в `/api/auth/status` — `otherUser` и `allowedPageKeys`.
+
 **Мастер-файл Voice** хранится в PostgreSQL reporting (миграция `050_voice_master.sql`, hash-индексы — `053_voice_master_signature_hash.sql`, числовые PK — `056_voice_master_numeric_ids.sql`; откат числовых индексов A — `057_voice_master_rollback_numeric_a_indexes.sql`; индекс активных префиксов — `058_voice_master_prefix_index.sql`). **Uploads и jobs** — PostgreSQL (`051_voice_registry.sql`: `voice_uploads`, `voice_jobs`). **Auth Voice** — только через reporting SSO (`POST /api/voice/sso-token` → `POST /api/auth/reporting-sso`); отдельных учёток и таблиц auth в Voice нет. Bearer-сессия — подписанный stateless-токен (`VOICE_SSO_SECRET`). На диске (`CAROUSEL_DATA_DIR`) — только файлы загрузок и workspace. Legacy `registry.sqlite3` (uploads/jobs) импортируется один раз при старте.
+
+---
+
+## app_page — справочник вкладок reporting
+
+Синхронизируется при старте backend из `backend/app/app_pages.py` (ключи совпадают с `SheetId` во frontend).
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `page_key` | varchar(64) | PK, стабильный ключ (`zni`, `departments`, `voice`, …) |
+| `label` | varchar(255) | Подпись вкладки в UI |
+| `sort_order` | int | Порядок в списке |
+| `is_active` | boolean | `false` — страница удалена из кода, но ключ сохранён в БД |
+| `created_at`, `updated_at` | timestamptz | Метки времени |
+
+Миграция: `060_app_pages.sql`.
+
+---
+
+## org_user_page_access — доступ «других пользователей» к вкладкам
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `org_user_id` | bigint | FK → `org_user` |
+| `page_key` | varchar(64) | FK → `app_page` |
+| `created_at` | timestamptz | Когда выдан доступ |
+
+PK: (`org_user_id`, `page_key`). Используется только при `employee.hide_from_pyramid = true`.
 
 ---
 
@@ -819,7 +849,7 @@
 | `daily_work_hours` | numeric(4,2) | Рабочих часов в день (по умолчанию 8) |
 | `is_active` | boolean | Активен |
 | `is_organization_head` | boolean | Директор организации (вершина пирамиды) |
-| `hide_from_pyramid` | boolean | Если true — не показывать в пирамиде, составе, графике отпусков, брони мест и «Сотрудники в офисе» (Staffing → «Не отображать в пирамиде»; в списке сотрудников — только «Другие сотрудники») |
+| `hide_from_pyramid` | boolean | Если true — флаг **«Другие пользователи»**: не показывать в пирамиде, составе, графике отпусков, брони мест и «Сотрудники в офисе»; в списке сотрудников — только «Другие сотрудники». Для учётной записи можно ограничить вкладки через `org_user_page_access` |
 
 ---
 

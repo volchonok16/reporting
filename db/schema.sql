@@ -371,6 +371,24 @@ CREATE TABLE org_user (
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE app_page (
+    page_key        VARCHAR(64)  PRIMARY KEY,
+    label           VARCHAR(255) NOT NULL,
+    sort_order      INT          NOT NULL DEFAULT 0,
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE org_user_page_access (
+    org_user_id     BIGINT       NOT NULL REFERENCES org_user(id) ON DELETE CASCADE,
+    page_key        VARCHAR(64)  NOT NULL REFERENCES app_page(page_key) ON DELETE CASCADE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (org_user_id, page_key)
+);
+
+CREATE INDEX org_user_page_access_user_idx ON org_user_page_access (org_user_id);
+
 CREATE TABLE job_position (
     id              BIGSERIAL PRIMARY KEY,
     name            VARCHAR(255) NOT NULL UNIQUE,

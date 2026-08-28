@@ -100,6 +100,7 @@ export type OrgUserBrief = {
   status: 'active' | 'inactive' | 'deleted'
   voiceOnly?: boolean
   voiceAdmin?: boolean
+  allowedPageKeys?: string[]
 }
 
 export type Employee = {
@@ -117,6 +118,7 @@ export type Employee = {
   isActive: boolean
   isOrganizationHead: boolean
   hideFromPyramid?: boolean
+  allowedPageKeys?: string[]
   user?: OrgUserBrief | null
   expertises: EmployeeExpertise[]
   departments: EmployeeDepartmentBrief[]
@@ -179,6 +181,13 @@ export type DepartmentMember = {
   displayEmail?: string | null
   sortOrder: number
   photoUrl?: string | null
+}
+
+export type AppPage = {
+  pageKey: string
+  label: string
+  sortOrder: number
+  isActive: boolean
 }
 
 export type ProfileData = {

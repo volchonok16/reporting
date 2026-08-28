@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 import logging
 
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
+from sqlalchemy.orm import Session
 
-from app.app_access import is_roadmap_role, is_voice_only
+from app.app_access import ensure_page_access, is_roadmap_role, is_voice_only
 from app.auth_sessions import get_session_with_meta
+from app.db import get_db
 from app.product_status_live import ALLOWED_WORKBOOKS, product_status_live_broker
 
 logger = logging.getLogger(__name__)
@@ -14,7 +16,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/product-status/live", tags=["product-status-live"])
 
 
-def _require_live_session(session_id: str | None) -> dict:
+def _require_live_session(session_id: str | None, db: Session) -> dict:
     auth, meta = get_session_with_meta(session_id)
     if auth is None:
         raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
@@ -22,6 +24,7 @@ def _require_live_session(session_id: str | None) -> dict:
         raise HTTPException(status_code=403, detail="Доступен только раздел Voice.")
     if is_roadmap_role(meta.get("app_role")):
         raise HTTPException(status_code=403, detail="Недостаточно прав.")
+    ensure_page_access(db, meta, "product-status-b2b")
     return meta
 
 
@@ -35,7 +38,11 @@ async def product_status_live_ws(
         await websocket.close(code=4400)
         return
     try:
-        _require_live_session(x_session_id)
+        db = next(get_db())
+        try:
+            _require_live_session(x_session_id, db)
+        finally:
+            db.close()
     except HTTPException:
         await websocket.close(code=4401)
         return
