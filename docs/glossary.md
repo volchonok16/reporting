@@ -147,7 +147,7 @@
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `code` | varchar(64) PK | Стабильный ключ (`digital_streams_b2b`, `b2b_product_core`, …) |
-| `alias` | varchar(255) | Короткое имя в UI: Digital, CORE, Bercut, ESB… (`BoardOut.displayName`) |
+| `alias` | varchar(255) | Короткое имя в UI: Digital, CORE, Bercut, ESB, CRM… (`BoardOut.displayName`). Несколько строк с одним alias — одна вкладка; синк и дашборд объединяют все `area_path` |
 | `board_name` | varchar(255) | Имя доски / значение `task.source_team` |
 | `area_path` | varchar(500) | `System.AreaPath` для WIQL |
 | `sync_tags` | text | Теги синка ЗНИ через запятую |
@@ -507,6 +507,8 @@
 
 **Доски приложения** хранятся в таблице `zni_board` (не в коде): Digital (`Tele2\Digital\Streams\B2b`); Продукты (`Tele2\Продукты`, ЗНИ с `b2b_product`); Reports (`Tele2\Reports\Team A`, `b2b_product`); CORE / КАТС / Голосовые продукты / М2М / IoT / SMS / Solar / Umnico (area `Tele2\B2B Product…`, exclude `EFO`/`not_product`, метрики UAT/Pilot); Bercut (`BE-T2\BE Analytics`, `b2b_product`); ESB (`BE-T2\ESB\ESB Analytics`). Поля: `alias` (UI), `board_name`, `area_path`, `sync_tags`, `other_tags` («другие теги»), exclude/error-теги, GUID проекта/команды, статусы метрик. Seed — `db/migrations/043_zni_boards.sql`.
 
+**Одинаковый alias** (2, 3 и больше строк, например CRM: `Tele2\CRM\Prometheus` и `Tele2\CRM\CRM Team DoC`) — специально для склейки стримов: в селекте одна вкладка, синк идёт по каждому `area_path`, задачи сливаются. `prune_stale` чистит только свой `extra_json.board_code`, чтобы соседние area не затирали друг друга.
+
 **Фильтр области (дашборд):** доска **Digital** — `newlk`, `site`, `eshop_b2b`; **остальные доски** (кроме «Все доски») — `eshop`. В UI — «Область»; query-параметр `tag_group` (можно несколько). Группы в `backend/app/tag_filters.py`:
 
 | Ключ API | Подпись в UI | Корневой тег TFS | Доски | Подразделы (префикс) |
@@ -518,7 +520,7 @@
 
 При выборе нескольких областей ЗНИ попадает в выборку, если совпадает хотя бы одна (логика ИЛИ). Сопоставление по `extra_json.tags` (`System.Tags` при синке).
 
-После синхронизации доски записи `task` с тем же `board_code`, не попавшие в выгрузку, удаляются (очистка устаревших ЗНИ/ошибок).
+После синхронизации доски записи `task` с тем же `board_code`, не попавшие в выгрузку, удаляются (очистка устаревших ЗНИ/ошибок). Строки с другим `board_code` не трогаются — даже если `source_team` / alias совпадают.
 
 **Фильтр синхронизации:** ЗНИ в статусе `Closed` с `ChangedDate` / `ClosedDate` старше 365 дней не загружаются (`TFS_EXCLUDE_CLOSED_OLDER_THAN_DAYS`).
 

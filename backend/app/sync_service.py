@@ -3,11 +3,17 @@ import logging
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.boards import BoardConfig, boards_for_sync, ensure_boards_loaded, is_all_boards
+from app.boards import (
+    BoardConfig,
+    boards_for_sync,
+    ensure_boards_loaded,
+    is_all_boards,
+    normalize_board_code,
+)
 from app.config import settings
 from app.db import SessionLocal, close_db_session
 from app.json_utils import as_work_item_list
@@ -106,16 +112,40 @@ def _board_scope_source_teams(board: BoardConfig) -> set[str]:
     names = {board.name, board.display_name}
     if board.code == "be_t2_team":
         names.add("BE-T2 Team")
-    return names
+    return {name for name in names if name}
+
+
+def _task_board_code(task: Task) -> str:
+    extra = task.extra_json if isinstance(task.extra_json, dict) else {}
+    code = extra.get("board_code")
+    if not isinstance(code, str):
+        return ""
+    return normalize_board_code(code)
+
+
+def task_in_board_sync_scope(task: Task, board: BoardConfig) -> bool:
+    """Prune/scope: по extra_json.board_code; source_team — только у legacy-строк без кода.
+
+    Несколько zni_board с одним alias (и даже одним board_name) — разные area_path
+    одного стрима. Их нельзя чистить по общему source_team: вторая area затрёт первую.
+    """
+    code = _task_board_code(task)
+    if code:
+        return code == normalize_board_code(board.code)
+    team = (task.source_team or "").strip()
+    return bool(team) and team in _board_scope_source_teams(board)
 
 
 def _board_task_scope_filter(source_system_id: int, board: BoardConfig):
+    board_code_col = Task.extra_json["board_code"].as_string()
     scope_teams = _board_scope_source_teams(board)
+    legacy_without_code = or_(board_code_col.is_(None), board_code_col == "")
+    team_clause = Task.source_team.in_(sorted(scope_teams)) if scope_teams else False
     return select(Task).where(
         Task.source_system_id == source_system_id,
         or_(
-            Task.extra_json["board_code"].as_string() == board.code,
-            Task.source_team.in_(scope_teams),
+            board_code_col == board.code,
+            and_(legacy_without_code, team_clause),
         ),
     )
 
@@ -128,7 +158,11 @@ def prune_stale_board_tasks(
     synced_external_ids: set[str],
 ) -> int:
     """Удаляет из БД ЗНИ/ошибки доски, не попавшие в текущую выгрузку."""
-    stale_rows = list(db.scalars(_board_task_scope_filter(source_system_id, board)))
+    stale_rows = [
+        row
+        for row in db.scalars(_board_task_scope_filter(source_system_id, board))
+        if task_in_board_sync_scope(row, board)
+    ]
     stale_ids = [row.id for row in stale_rows if row.external_id not in synced_external_ids]
     if not stale_ids:
         return 0
@@ -165,13 +199,15 @@ def prune_closed_before_current_year(
     if not settings.closed_state_list:
         return 0
 
-    rows = list(
-        db.scalars(
+    rows = [
+        row
+        for row in db.scalars(
             _board_task_scope_filter(source_system_id, board).where(
                 Task.task_type == TASK_TYPE_CHANGE,
             )
         )
-    )
+        if task_in_board_sync_scope(row, board)
+    ]
 
     stale_ids = [row.id for row in rows if is_closed_before_current_year(row)]
 
@@ -694,7 +730,12 @@ async def run_sync(
                 f"Доска «{board_code}» не найдена среди активных записей zni_board. "
                 "Проверьте code и is_active."
             )
-        logger.info("sync_boards count=%s codes=%s", len(boards), [board.code for board in boards])
+        logger.info(
+            "sync_boards count=%s codes=%s area_paths=%s",
+            len(boards),
+            [board.code for board in boards],
+            [board.area_path for board in boards],
+        )
 
         sync_run: SyncRun
         if sync_run_id:

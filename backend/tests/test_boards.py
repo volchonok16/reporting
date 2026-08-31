@@ -152,6 +152,46 @@ def test_same_alias_boards_collapse_in_ui_and_expand_for_sync() -> None:
     ]
 
 
+def test_same_alias_and_board_name_still_expands_all_area_paths() -> None:
+    crm = BoardConfig(
+        code="crm",
+        name="CRM&DocOut",
+        display_name="CRM",
+        project="Tele2",
+        project_id="pid",
+        team_id="tid",
+        area_path=r"Tele2\CRM\Prometheus",
+    )
+    docout = BoardConfig(
+        code="docout",
+        name="CRM&DocOut",
+        display_name="CRM",
+        project="Tele2",
+        project_id="pid",
+        team_id="tid",
+        area_path=r"Tele2\CRM\CRM Team DoC",
+    )
+    extra = BoardConfig(
+        code="crm_more",
+        name="CRM Extra",
+        display_name="CRM",
+        project="Tele2",
+        project_id="pid",
+        team_id="tid",
+        area_path=r"Tele2\CRM\Other",
+    )
+    boards = [*get_boards(), crm, docout, extra]
+    ui = grouped_boards_for_ui(boards)
+    assert sum(1 for board in ui if board.display_name == "CRM") == 1
+    synced = boards_for_sync("crm", boards)
+    assert {board.code for board in synced} == {"crm", "docout", "crm_more"}
+    assert {board.area_path for board in synced} == {
+        r"Tele2\CRM\Prometheus",
+        r"Tele2\CRM\CRM Team DoC",
+        r"Tele2\CRM\Other",
+    }
+
+
 def test_same_alias_is_case_and_space_insensitive() -> None:
     extra = BoardConfig(
         code="products_spaced",

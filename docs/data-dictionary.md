@@ -30,7 +30,7 @@
 | Колонка | Тип | Описание |
 |---------|-----|----------|
 | code | varchar PK | Стабильный ключ (`digital_streams_b2b`, …) |
-| alias | varchar | Короткое имя в UI (Digital, CORE, Bercut…) |
+| alias | varchar | Короткое имя в UI (Digital, CORE, Bercut…). Одинаковый alias у нескольких строк — одна вкладка, синк со всех `area_path` |
 | board_name | varchar | Имя доски / `task.source_team` |
 | area_path | varchar | AreaPath TFS для WIQL |
 | sync_tags | text | Теги синка через запятую |
