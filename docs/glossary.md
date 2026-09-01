@@ -252,7 +252,7 @@
 
 | Поле | Тип | Описание |
 |------|-----|----------|
-| `title` | varchar(1000) | Заголовок задачи |
+| `title` | varchar(1000) | Заголовок задачи (`System.Title`). ЗНИ с маркером `[EFO]` не синкаются и не попадают в Excel |
 | `description` | text | Полное описание |
 | `task_type` | varchar(64) | Тип: `change_request` (ЗНИ), `error` (Ошибка), `story`, `bug`, `epic`, `task`, `feature` |
 | `priority` | varchar(32) | Приоритет: `critical`, `high`, `medium`, `low` (единая шкала) |
@@ -522,7 +522,7 @@
 
 После синхронизации доски записи `task` с тем же `board_code`, не попавшие в выгрузку, удаляются (очистка устаревших ЗНИ/ошибок). Строки с другим `board_code` не трогаются — даже если `source_team` / alias совпадают.
 
-**Фильтр синхронизации:** ЗНИ в статусе `Closed` с `ChangedDate` / `ClosedDate` старше 365 дней не загружаются (`TFS_EXCLUDE_CLOSED_OLDER_THAN_DAYS`).
+**Фильтр синхронизации:** ЗНИ в статусе `Closed` с `ChangedDate` / `ClosedDate` старше 365 дней не загружаются (`TFS_EXCLUDE_CLOSED_OLDER_THAN_DAYS`). Тег `EFO` (и `not_product` на части досок) отсекается через `zni_board.exclude_sync_tags`. По **названию** из синка и Excel-выгрузки исключаются только ЗНИ с маркером `[EFO]` в `System.Title` (без учёта регистра). Другие префиксы в квадратных скобках (`[voice]`, `[sms]`, `[qqq]`, `[VOICE TARGET]`, …) загружаются. Фильтр по `[EFO]` применяется в Python после выборки: в WIQL `CONTAINS` нельзя передавать `[...]` — TFS воспринимает скобки как имя поля и отсекает все названия со скобками.
 
 ---
 

@@ -48,7 +48,7 @@
 | external_id | varchar | Ключ/ID в источнике |
 | team_id | bigint | **Каноническая команда** — фильтр в FineBI |
 | source_team | varchar | Команда из источника до маппинга |
-| title | varchar | Заголовок |
+| title | varchar | Заголовок (`System.Title`; синк и Excel не берут ЗНИ с маркером `[EFO]`) |
 | description | text | Описание |
 | task_type | varchar | `change_request` (ЗНИ), `error` (Ошибка) |
 | parent_task_id | bigint | ЗНИ → Ошибка |

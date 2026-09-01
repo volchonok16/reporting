@@ -40,7 +40,7 @@ def test_export_xlsx_is_real_excel_file(monkeypatch) -> None:
                 ChangeRequestOut(
                     id="2",
                     number="222",
-                    title="[Мобильная карусель] скрыть",
+                    title="[EFO] скрыть",
                     boardName="CORE",
                 ),
             ]

@@ -14,7 +14,7 @@ from app.config import settings
 from app.http_auth import build_http_auth
 from app.json_utils import as_list, as_work_item_list
 from app.tfs_auth import TfsAuth
-from app.zni_title_filters import ZNI_TITLE_EXCLUDE_PATTERNS
+from app.zni_title_filters import ZNI_TITLE_EXCLUDE_PATTERNS, title_pattern_is_wiql_safe
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +145,13 @@ def wiql_exclude_title_patterns_clause(
     *,
     field: str = "[System.Title]",
 ) -> str:
-    values = [pattern.strip() for pattern in (patterns or []) if pattern and pattern.strip()]
+    values = [
+        pattern.strip()
+        for pattern in (patterns or [])
+        if pattern
+        and pattern.strip()
+        and title_pattern_is_wiql_safe(pattern.strip())
+    ]
     if not values:
         return ""
     parts = [f"{field} NOT CONTAINS {wiql_quote(pattern)}" for pattern in values]
