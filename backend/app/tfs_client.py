@@ -448,6 +448,48 @@ class TfsClient:
                 continue
         return result
 
+    async def get_product_zni_links_for_area(self, area_path: str) -> dict[int, int]:
+        """zni_id -> product_id (Source=Продукт, Target=ЗНИ) — WIQL из TFS HAR."""
+        product_types = settings.product_type_list
+        if not product_types:
+            return {}
+
+        change_types = ", ".join(wiql_quote(item) for item in settings.change_type_list)
+        project = wiql_quote(self.project)
+        area = wiql_quote(area_path)
+        if len(product_types) == 1:
+            product_type_clause = f"[Source].[System.WorkItemType] = {wiql_quote(product_types[0])}"
+        else:
+            product_types_wiql = ", ".join(wiql_quote(item) for item in product_types)
+            product_type_clause = f"[Source].[System.WorkItemType] IN ({product_types_wiql})"
+
+        query = (
+            "SELECT [System.Id],[System.WorkItemType],[System.Title],"
+            "[System.AssignedTo],[System.State],[System.Tags] "
+            "FROM WorkItemLinks "
+            f"WHERE ([Source].[System.TeamProject] = {project} AND {product_type_clause} "
+            f"AND [Source].[System.AreaPath] UNDER {area}) "
+            f"AND ([Target].[System.TeamProject] = {project} "
+            f"AND [Target].[System.WorkItemType] IN ({change_types})) "
+            "ORDER BY [System.Id] MODE (MustContain)"
+        )
+        payload = await self.run_wiql(query)
+        result: dict[int, int] = {}
+        for rel in as_list(payload.get("workItemRelations")):
+            if not isinstance(rel, dict):
+                continue
+            source = rel.get("source")
+            target = rel.get("target")
+            if not isinstance(source, dict) or not isinstance(target, dict):
+                continue
+            try:
+                product_id = int(source["id"])
+                zni_id = int(target["id"])
+                result[zni_id] = product_id
+            except (KeyError, TypeError, ValueError):
+                continue
+        return result
+
     async def get_error_links_for_zni_ids(
         self,
         zni_ids: Iterable[int],

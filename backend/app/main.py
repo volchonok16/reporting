@@ -63,6 +63,7 @@ from app.product_status_live import (
 )
 from app.product_status_live_routes import router as product_status_live_router
 from app.report_service import XLSX_MEDIA_TYPE, export_xlsx, load_change_requests, load_change_requests_by_numbers
+from app.product_service import load_products
 from app.business_value_service import update_business_value
 from app.roadmap_priority_service import update_roadmap_comment, update_roadmap_priority
 from app.digital_plan_service import load_digital_plan, update_digital_plan_has_uc
@@ -79,6 +80,7 @@ from app.schemas import (
     ZniExternalDataUpdateIn,
     ChangeRequestOut,
     DashboardOut,
+    ProductsOut,
     ProductStatusB2BOut,
     ProductStatusHistoryOut,
     ProductStatusSaveIn,
@@ -403,6 +405,14 @@ def dashboard(
         metric=metric,
         tag_groups=tag_group,
     )
+
+
+@app.get("/api/products", response_model=ProductsOut)
+def products(
+    db: Session = Depends(get_db),
+    hide_closed: bool = Query(default=True, alias="hideClosed"),
+) -> ProductsOut:
+    return load_products(db, hide_closed=hide_closed)
 
 
 @app.post("/api/tasks/lookup", response_model=TaskLookupOut)

@@ -50,7 +50,7 @@
 | source_team | varchar | Команда из источника до маппинга |
 | title | varchar | Заголовок (`System.Title`; синк и Excel не берут ЗНИ с маркером `[EFO]`) |
 | description | text | Описание |
-| task_type | varchar | `change_request` (ЗНИ), `error` (Ошибка) |
+| task_type | varchar | `change_request` (ЗНИ), `product` (Продукт), `error` (Ошибка) |
 | parent_task_id | bigint | ЗНИ → Ошибка |
 | priority | varchar | Приоритет |
 | source_status | varchar | Статус как в источнике |

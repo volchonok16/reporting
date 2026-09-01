@@ -48,6 +48,12 @@ class Settings(BaseSettings):
         alias="TFS_TARGET_DATE_FIELDS",
     )
     tfs_change_type_values: str = Field(default="Запрос на изменение", alias="TFS_CHANGE_TYPE_VALUES")
+    tfs_product_type_values: str = Field(default="Продукт", alias="TFS_PRODUCT_TYPE_VALUES")
+    tfs_product_area_path: str = Field(
+        default="Tele2\\B2B Product",
+        alias="TFS_PRODUCT_AREA_PATH",
+        description="AreaPath для WIQL связей Продукт → ЗНИ.",
+    )
     tfs_error_type_values: str = Field(default="Ошибка", alias="TFS_ERROR_TYPE_VALUES")
     tfs_resource_reservation_type_values: str = Field(
         default="Бронь ресурсов",
@@ -315,6 +321,16 @@ class Settings(BaseSettings):
     @property
     def change_type_list(self) -> list[str]:
         return [item.strip() for item in self.tfs_change_type_values.split(",") if item.strip()]
+
+    @computed_field
+    @property
+    def product_type_list(self) -> list[str]:
+        return [item.strip() for item in self.tfs_product_type_values.split(",") if item.strip()]
+
+    @computed_field
+    @property
+    def product_area_path(self) -> str:
+        return (self.tfs_product_area_path or "").strip().replace("/", "\\")
 
     @computed_field
     @property

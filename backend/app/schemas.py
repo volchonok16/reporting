@@ -144,6 +144,33 @@ class DashboardOut(BaseModel):
     )
 
 
+class ProductZniOut(BaseModel):
+    id: str
+    number: str
+    title: str
+    url: str | None = None
+    status: str | None = None
+    boardCode: str | None = None
+    boardName: str | None = None
+
+
+class ProductOut(BaseModel):
+    id: str
+    number: str
+    title: str
+    url: str | None = None
+    status: str | None = None
+    assignedTo: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    zniCount: int = 0
+    zniItems: list[ProductZniOut] = Field(default_factory=list)
+
+
+class ProductsOut(BaseModel):
+    items: list[ProductOut]
+    totalShown: int
+
+
 class ProductStatusSheetOut(BaseModel):
     gid: str
     name: str

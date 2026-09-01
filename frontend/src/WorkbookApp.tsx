@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { apiFetch, clearSessionId, getJson } from './api'
 import Dashboard from './Dashboard'
+import Products from './Products'
 import DiagramBuilder from './DiagramBuilder'
 import ProductStatusB2B from './ProductStatusB2B'
 import RevenueActivities from './RevenueActivities'
@@ -24,6 +25,7 @@ type SheetTab = {
 
 const SHEETS: SheetTab[] = [
   { id: 'zni', label: 'ЗНИ' },
+  { id: 'products', label: 'Продукты' },
   { id: 'product-status-b2b', label: 'Статус продукта B2B' },
   { id: 'revenue-activities', label: 'Активности по выручкам' },
   { id: 'roadmap', label: 'Планы Digital' },
@@ -185,6 +187,8 @@ export default function WorkbookApp({
       <div className="workbook-content">
         {activeSheet === 'zni' ? (
           <Dashboard canSyncTfs={canSyncTfs} canManageOrg={canManageOrg} />
+        ) : activeSheet === 'products' ? (
+          <Products canSyncTfs={canSyncTfs} />
         ) : activeSheet === 'roadmap' ? (
           <div className="app app-roadmap">
             <Roadmap

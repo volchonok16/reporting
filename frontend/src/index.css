@@ -3354,3 +3354,26 @@ body.product-status-row-drag-active {
   color: var(--text);
 }
 
+.board-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dashboard-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.products-zni-row td {
+  background: var(--surface-1);
+}
+
+.products-zni-row .cell-title {
+  padding-left: 24px;
+}
+

@@ -19,6 +19,7 @@
 | **Категория статуса** | Группа для отчётов: `backlog`, `active`, `waiting`, `done`, `cancelled` |
 | **Внешний ID** | Идентификатор задачи/комментария в исходной системе |
 | **ЗНИ** | Запрос на изменение (TFS: `Запрос на изменение`); в БД `task_type = change_request` |
+| **Продукт** | Карточка TFS типа `Продукт` в области `Tele2\B2B Product`; в БД `task_type = product`, дочерние ЗНИ через `parent_task_id` |
 | **Ошибка** | Дефект TFS (`Ошибка`); в БД `task_type = error`, связь с ЗНИ через `parent_task_id` |
 | **ETL / синхронизация** | Выгрузка из TFS в `task`; аудит в `sync_run` |
 
@@ -246,7 +247,7 @@
 | `external_url` | text | Прямая ссылка на задачу в веб-интерфейсе источника |
 | `project_id` | bigint | Проект / доска |
 | `team_id` | bigint | Каноническая команда (FK → `team`) — основное поле для фильтрации |
-| `parent_task_id` | bigint | Родительская задача (ЗНИ → Ошибка, epic → story) |
+| `parent_task_id` | bigint | Родительская задача (Продукт → ЗНИ, ЗНИ → Ошибка, epic → story) |
 
 ### Содержание
 
@@ -254,7 +255,7 @@
 |------|-----|----------|
 | `title` | varchar(1000) | Заголовок задачи (`System.Title`). ЗНИ с маркером `[EFO]` не синкаются и не попадают в Excel |
 | `description` | text | Полное описание |
-| `task_type` | varchar(64) | Тип: `change_request` (ЗНИ), `error` (Ошибка), `story`, `bug`, `epic`, `task`, `feature` |
+| `task_type` | varchar(64) | Тип: `change_request` (ЗНИ), `product` (Продукт), `error` (Ошибка), `story`, `bug`, `epic`, `task`, `feature` |
 | `priority` | varchar(32) | Приоритет: `critical`, `high`, `medium`, `low` (единая шкала) |
 
 ### Статус
@@ -723,6 +724,7 @@
 |----------|----------|
 | `POST /api/auth/login` | `{ pat, base_url?, project? }` → `{ sessionId }` |
 | `GET /api/dashboard?board=` | Метрики + список ЗНИ |
+| `GET /api/products?hideClosed=` | Список продуктов TFS с дочерними ЗНИ (`parent_task_id`) |
 | `POST /api/sync` | Синхронизация; body `{ board }` |
 | `GET /api/sync/status` | Статус и прогресс |
 | `GET /api/export/csv?board=` | CSV: ЗНИ + ошибки |

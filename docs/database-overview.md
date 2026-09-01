@@ -220,7 +220,7 @@
 | Поле | Смысл |
 |------|--------|
 | `source_system_id` + `external_id` | Уникальность в источниках |
-| `task_type` | `change_request` (ЗНИ), `error` (Ошибка) |
+| `task_type` | `change_request` (ЗНИ), `product` (Продукт), `error` (Ошибка) |
 | `parent_task_id` | Ошибка → родительская ЗНИ |
 | `team_id` | Каноническая команда (фильтр отчётов) |
 | `source_team` | Команда из API до маппинга |

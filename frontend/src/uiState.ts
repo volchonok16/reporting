@@ -2,6 +2,7 @@ const STORAGE_KEY = 'reporting.uiState'
 
 export type SheetId =
   | 'zni'
+  | 'products'
   | 'product-status-b2b'
   | 'revenue-activities'
   | 'roadmap'
@@ -88,6 +89,7 @@ function writeUiState(patch: UiState): void {
 
 const WORKBOOK_SHEETS: SheetId[] = [
   'zni',
+  'products',
   'product-status-b2b',
   'revenue-activities',
   'roadmap',

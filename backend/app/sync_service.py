@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 TASK_TYPE_CHANGE = "change_request"
 TASK_TYPE_ERROR = "error"
+TASK_TYPE_PRODUCT = "product"
 
 
 def effective_start_date(fields: dict[str, Any]) -> date | None:
@@ -714,6 +715,182 @@ async def sync_board(
         await client.close()
 
 
+async def sync_products(
+    db: Session,
+    *,
+    board: BoardConfig,
+    pat: str,
+    source_system_id: int,
+    project_ids: dict[str, int],
+    team_ids: dict[str, int],
+    sync_run: SyncRun | None = None,
+) -> tuple[int, int]:
+    """Синхронизация Продуктов TFS и parent_task_id на дочерних ЗНИ."""
+    area_path = settings.product_area_path
+    if not area_path or not settings.product_type_list:
+        return 0, 0
+
+    client = TfsClient(board.to_tfs_auth(pat))
+    fetched = 0
+    upserted = 0
+    try:
+        if sync_run:
+            touch_sync_progress(db, sync_run, "Продукты: поиск связей с ЗНИ (WIQL)…")
+
+        zni_to_product = await client.get_product_zni_links_for_area(area_path)
+        product_external_ids = sorted(set(zni_to_product.values()))
+        if not product_external_ids:
+            prune_stale_products(db, source_system_id=source_system_id, synced_external_ids=set())
+            return 0, 0
+
+        if sync_run:
+            touch_sync_progress(
+                db,
+                sync_run,
+                f"Продукты: загрузка {len(product_external_ids)} карточек…",
+            )
+
+        product_payloads = await client.get_work_items_batch(
+            product_external_ids,
+            expand_relations=False,
+            fields=client._error_batch_field_list(),
+        )
+        fetched += len(product_payloads)
+
+        project_id = project_ids[board.project]
+        team_id = team_ids[board.code]
+        product_db_ids: dict[int, int] = {}
+        synced_product_external_ids: set[str] = set()
+
+        for item in as_work_item_list(product_payloads):
+            fields = item.get("fields") or {}
+            work_item_type = str(fields.get("System.WorkItemType") or "")
+            if work_item_type not in settings.product_type_list:
+                continue
+            created = parse_tfs_datetime(fields.get("System.CreatedDate"))
+            updated = parse_tfs_datetime(fields.get("System.ChangedDate"))
+            closed = parse_tfs_datetime(fields.get("Microsoft.VSTS.Common.ClosedDate"))
+            assigned_to = tfs_identity_display_name(fields.get("System.AssignedTo"))
+            extra_json: dict[str, Any] = {
+                "area_path": fields.get("System.AreaPath"),
+                "tags": work_item_tags(fields),
+            }
+            if assigned_to:
+                extra_json["assigned_to"] = assigned_to
+
+            task_id = upsert_task(
+                db,
+                source_system_id=source_system_id,
+                project_id=project_id,
+                team_id=team_id,
+                external_id=str(item["id"]),
+                title=str(fields.get("System.Title") or f"Продукт {item['id']}"),
+                task_type=TASK_TYPE_PRODUCT,
+                source_status=fields.get("System.State"),
+                source_team="Продукты",
+                created_at=created,
+                updated_at=updated,
+                start_date=effective_start_date(fields),
+                release_date=effective_release_date(fields),
+                closed_at=closed,
+                parent_task_id=None,
+                external_url=tfs_item_url(item["id"], board),
+                extra_json=extra_json,
+            )
+            product_db_ids[item["id"]] = task_id
+            synced_product_external_ids.add(str(item["id"]))
+            upserted += 1
+
+        db.commit()
+
+        if sync_run:
+            touch_sync_progress(db, sync_run, "Продукты: связи с ЗНИ…")
+
+        product_task_ids = set(product_db_ids.values())
+        linked_zni_external_ids = set(zni_to_product.keys())
+
+        for zni_external_id, product_external_id in zni_to_product.items():
+            product_db_id = product_db_ids.get(product_external_id)
+            if product_db_id is None:
+                continue
+            zni_row = db.scalar(
+                select(Task).where(
+                    Task.source_system_id == source_system_id,
+                    Task.task_type == TASK_TYPE_CHANGE,
+                    Task.external_id == str(zni_external_id),
+                )
+            )
+            if zni_row is None:
+                continue
+            if zni_row.parent_task_id != product_db_id:
+                zni_row.parent_task_id = product_db_id
+                db.add(zni_row)
+
+        if product_task_ids:
+            orphan_znis = db.scalars(
+                select(Task).where(
+                    Task.source_system_id == source_system_id,
+                    Task.task_type == TASK_TYPE_CHANGE,
+                    Task.parent_task_id.in_(product_task_ids),
+                )
+            ).all()
+            for zni_row in orphan_znis:
+                try:
+                    zni_ext = int(zni_row.external_id)
+                except (TypeError, ValueError):
+                    continue
+                if zni_ext not in linked_zni_external_ids:
+                    zni_row.parent_task_id = None
+                    db.add(zni_row)
+
+        db.commit()
+        prune_stale_products(
+            db,
+            source_system_id=source_system_id,
+            synced_external_ids=synced_product_external_ids,
+        )
+        return fetched, upserted
+    finally:
+        await client.close()
+
+
+def prune_stale_products(
+    db: Session,
+    *,
+    source_system_id: int,
+    synced_external_ids: set[str],
+) -> int:
+    """Удаляет продукты, не попавшие в текущую выгрузку."""
+    stale_rows = list(
+        db.scalars(
+            select(Task).where(
+                Task.source_system_id == source_system_id,
+                Task.task_type == TASK_TYPE_PRODUCT,
+            )
+        )
+    )
+    stale_ids = [row.id for row in stale_rows if row.external_id not in synced_external_ids]
+    if not stale_ids:
+        return 0
+
+    linked_znis = db.scalars(
+        select(Task).where(
+            Task.parent_task_id.in_(stale_ids),
+            Task.task_type == TASK_TYPE_CHANGE,
+        )
+    ).all()
+    for zni_row in linked_znis:
+        zni_row.parent_task_id = None
+        db.add(zni_row)
+
+    result = db.execute(delete(Task).where(Task.id.in_(stale_ids)))
+    db.commit()
+    removed = result.rowcount or 0
+    if removed:
+        logger.info("sync_prune_stale_products removed=%s", removed)
+    return removed
+
+
 async def run_sync(
     pat: str,
     *,
@@ -781,6 +958,28 @@ async def run_sync(
             except Exception as exc:
                 logger.exception("sync_board_failed board=%s", board.code)
                 board_errors.append(f"{board.display_name}: {exc}")
+            finally:
+                close_db_session(db)
+
+        if boards:
+            db = SessionLocal()
+            try:
+                sync_row = db.get(SyncRun, sync_run.id)
+                product_board = boards[0]
+                fetched, upserted = await sync_products(
+                    db,
+                    board=product_board,
+                    pat=pat,
+                    source_system_id=source_system_id,
+                    project_ids=project_ids,
+                    team_ids=team_ids,
+                    sync_run=sync_row,
+                )
+                total_fetched += fetched
+                total_upserted += upserted
+            except Exception as exc:
+                logger.exception("sync_products_failed")
+                board_errors.append(f"Продукты: {exc}")
             finally:
                 close_db_session(db)
 
