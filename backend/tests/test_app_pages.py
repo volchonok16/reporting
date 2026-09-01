@@ -13,6 +13,7 @@ def test_app_pages_registry_matches_workbook() -> None:
     keys = {page["page_key"] for page in APP_PAGES}
     assert keys == {
         "zni",
+        "products",
         "product-status-b2b",
         "revenue-activities",
         "roadmap",
