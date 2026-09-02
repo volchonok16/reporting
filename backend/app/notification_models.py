@@ -13,6 +13,7 @@ class AppNotification(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     audience: Mapped[str] = mapped_column(String(32), nullable=False)
+    delivery: Mapped[str] = mapped_column(String(16), nullable=False, server_default="inbox")
     created_by_org_user_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("org_user.id", ondelete="SET NULL"),

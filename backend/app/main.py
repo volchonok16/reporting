@@ -490,8 +490,15 @@ def patch_zni_external_data(
     external_id: str,
     payload: ZniExternalDataUpdateIn,
     db: Session = Depends(get_db),
-    _: None = Depends(require_org_manage_access),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
 ) -> ChangeRequestOut:
+    _, meta = get_session_with_meta(x_session_id)
+    if get_session(x_session_id) is None:
+        raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
+    if is_voice_only(meta):
+        raise HTTPException(status_code=403, detail="Доступен только раздел Voice.")
+    if is_roadmap_role(meta.get("app_role")):
+        raise HTTPException(status_code=403, detail="Недостаточно прав.")
     fields = payload.model_fields_set
     try:
         update_zni_external_data(
@@ -509,6 +516,7 @@ def patch_zni_external_data(
             set_desired_quarter="desiredQuarter" in fields,
             comment=payload.comment,
             set_comment="comment" in fields,
+            can_manage_org=can_manage_org(meta),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

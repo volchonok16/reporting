@@ -77,7 +77,13 @@ def test_actual_period_allowed_in_uat() -> None:
     db.scalar.return_value = task
     db.get.return_value = existing
 
-    update_zni_external_data(db, external_id="1115252", actual_period=" 2026 Q3 ", set_actual_period=True)
+    update_zni_external_data(
+        db,
+        external_id="1115252",
+        actual_period=" 2026 Q3 ",
+        set_actual_period=True,
+        can_manage_org=True,
+    )
 
     assert existing.actual_period == "2026 Q3"
 
@@ -91,7 +97,13 @@ def test_actual_period_allowed_by_board_column() -> None:
     db.scalar.return_value = task
     db.get.return_value = existing
 
-    update_zni_external_data(db, external_id="1115252", actual_period="август", set_actual_period=True)
+    update_zni_external_data(
+        db,
+        external_id="1115252",
+        actual_period="август",
+        set_actual_period=True,
+        can_manage_org=True,
+    )
 
     assert existing.actual_period == "август"
 
@@ -105,26 +117,36 @@ def test_actual_period_blocked_outside_allowed_status() -> None:
     db.get.return_value = existing
 
     try:
-        update_zni_external_data(db, external_id="1115252", actual_period="Q4", set_actual_period=True)
+        update_zni_external_data(
+            db,
+            external_id="1115252",
+            actual_period="Q4",
+            set_actual_period=True,
+            can_manage_org=True,
+        )
         raise AssertionError("expected ValueError")
     except ValueError as exc:
         assert "Фактическая дата" in str(exc)
     assert existing.actual_period == "старое"
 
 
-def test_actual_period_status_list_is_configurable(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "app.zni_external_data_service.settings",
-        type("S", (), {"actual_period_editable_state_list": ["Custom"]})(),
-    )
+def test_actual_period_requires_admin() -> None:
     task = _task()
     task.source_status = "UAT"
+    existing = ZniExternalData(task_id=1, actual_period="старое")
     db = MagicMock()
     db.scalar.return_value = task
-    db.get.return_value = ZniExternalData(task_id=1)
+    db.get.return_value = existing
 
     try:
-        update_zni_external_data(db, external_id="1115252", actual_period="Q1", set_actual_period=True)
+        update_zni_external_data(
+            db,
+            external_id="1115252",
+            actual_period="Q4",
+            set_actual_period=True,
+            can_manage_org=False,
+        )
         raise AssertionError("expected ValueError")
     except ValueError as exc:
-        assert "Custom" in str(exc)
+        assert "администратор" in str(exc)
+    assert existing.actual_period == "старое"

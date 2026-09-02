@@ -54,6 +54,7 @@ def update_zni_external_data(
     set_desired_quarter: bool = False,
     comment: str | None = None,
     set_comment: bool = False,
+    can_manage_org: bool = False,
 ) -> Task:
     task = db.scalar(
         select(Task).where(
@@ -74,6 +75,8 @@ def update_zni_external_data(
     if set_commercial_effect:
         row.commercial_effect = _clean_text(commercial_effect, max_length=COMMERCIAL_EFFECT_MAX_LENGTH)
     if set_actual_period:
+        if not can_manage_org:
+            raise ValueError("Поле «Фактическая дата месяц/квартал» может редактировать только администратор.")
         if not can_edit_actual_period(task):
             allowed = ", ".join(actual_period_editable_statuses()) or "—"
             raise ValueError(

@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getJson, postJson } from './api'
-import { notifyInfo, notifyProblem, notifySuccess, notifyWarning } from './toast'
+import { playNotificationSound } from './notificationSound'
+import { notifyProblem, notifySuccess, notifyWarning } from './toast'
 import type { Department } from './org/types'
+
+type NotificationDelivery = 'inbox' | 'popup'
 
 type AppNotification = {
   id: number
   title: string
   body: string
   audience: 'all' | 'users' | 'departments'
+  delivery: NotificationDelivery
   createdAt: string
   readAt?: string | null
   isRead: boolean
@@ -46,11 +50,17 @@ export default function NotificationBell({ canManageOrg, enabled }: Notification
   const [items, setItems] = useState<AppNotification[]>([])
   const [unread, setUnread] = useState(0)
   const [loading, setLoading] = useState(false)
+  const [centerPopup, setCenterPopup] = useState<AppNotification | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
+  const lastUnreadRef = useRef(0)
+  const unreadInitializedRef = useRef(false)
+  const knownUnreadIdsRef = useRef<Set<number>>(new Set())
+  const popupQueueRef = useRef<AppNotification[]>([])
 
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [audience, setAudience] = useState<Audience>('all')
+  const [delivery, setDelivery] = useState<NotificationDelivery>('inbox')
   const [users, setUsers] = useState<OrgUserOption[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([])
@@ -58,26 +68,39 @@ export default function NotificationBell({ canManageOrg, enabled }: Notification
   const [sending, setSending] = useState(false)
   const [pickerLoading, setPickerLoading] = useState(false)
 
+  const registerUnreadIncrease = useCallback((count: number, playSound = true) => {
+    if (unreadInitializedRef.current && playSound && count > lastUnreadRef.current) {
+      playNotificationSound('inbox')
+    }
+    unreadInitializedRef.current = true
+    lastUnreadRef.current = count
+  }, [])
+
   const refreshUnread = useCallback(async () => {
     if (!enabled) return
     try {
       const data = await getJson<{ count: number }>('/api/notifications/unread-count')
+      registerUnreadIncrease(data.count)
       setUnread(data.count)
     } catch {
       /* тихий poll */
     }
-  }, [enabled])
+  }, [enabled, registerUnreadIncrease])
 
   const claimPopups = useCallback(async () => {
     if (!enabled) return
     try {
       const popups = await getJson<AppNotification[]>('/api/notifications/popup')
-      for (const item of popups) {
-        notifyInfo(`${item.title}: ${item.body}`)
-      }
-      if (popups.length > 0) {
-        await refreshUnread()
-      }
+      if (popups.length === 0) return
+      popupQueueRef.current.push(...popups)
+      setCenterPopup((current) => {
+        if (current) return current
+        const next = popupQueueRef.current.shift()
+        if (!next) return null
+        playNotificationSound('popup')
+        return next
+      })
+      await refreshUnread()
     } catch {
       /* тихий poll */
     }
@@ -87,9 +110,16 @@ export default function NotificationBell({ canManageOrg, enabled }: Notification
     if (!enabled) return
     setLoading(true)
     try {
-      const data = await getJson<AppNotification[]>('/api/notifications?limit=40')
+      const data = await getJson<AppNotification[]>('/api/notifications?limit=40&unreadOnly=true')
       setItems(data)
-      setUnread(data.filter((item) => !item.isRead).length)
+      const unreadIds = new Set(data.filter((item) => !item.isRead).map((item) => item.id))
+      for (const id of unreadIds) {
+        if (!knownUnreadIdsRef.current.has(id)) {
+          knownUnreadIdsRef.current.add(id)
+        }
+      }
+      setUnread(data.length)
+      lastUnreadRef.current = data.length
     } catch (err) {
       notifyProblem(err, 'Не удалось загрузить уведомления')
     } finally {
@@ -101,6 +131,8 @@ export default function NotificationBell({ canManageOrg, enabled }: Notification
     if (!enabled) {
       setUnread(0)
       setItems([])
+      lastUnreadRef.current = 0
+      knownUnreadIdsRef.current = new Set()
       return
     }
     void refreshUnread()
@@ -147,8 +179,29 @@ export default function NotificationBell({ canManageOrg, enabled }: Notification
     if (item.isRead) return
     try {
       const updated = await postJson<AppNotification>(`/api/notifications/${item.id}/read`, {})
-      setItems((current) => current.map((row) => (row.id === updated.id ? updated : row)))
+      setItems((current) => current.filter((row) => row.id !== updated.id))
       setUnread((count) => Math.max(0, count - 1))
+      lastUnreadRef.current = Math.max(0, lastUnreadRef.current - 1)
+      knownUnreadIdsRef.current.delete(updated.id)
+    } catch (err) {
+      notifyProblem(err, 'Не удалось отметить прочитанным')
+    }
+  }
+
+  const dismissCenterPopup = async () => {
+    if (!centerPopup) return
+    const current = centerPopup
+    const next = popupQueueRef.current.shift() ?? null
+    setCenterPopup(next)
+    if (next) {
+      playNotificationSound('popup')
+    }
+    try {
+      await postJson<AppNotification>(`/api/notifications/${current.id}/read`, {})
+      setItems((rows) => rows.filter((row) => row.id !== current.id))
+      setUnread((count) => Math.max(0, count - 1))
+      lastUnreadRef.current = Math.max(0, lastUnreadRef.current - 1)
+      knownUnreadIdsRef.current.delete(current.id)
     } catch (err) {
       notifyProblem(err, 'Не удалось отметить прочитанным')
     }
@@ -157,10 +210,10 @@ export default function NotificationBell({ canManageOrg, enabled }: Notification
   const markAll = async () => {
     try {
       await postJson<{ updated: number }>('/api/notifications/read-all', {})
-      setItems((current) =>
-        current.map((row) => ({ ...row, isRead: true, readAt: row.readAt ?? new Date().toISOString() })),
-      )
+      setItems([])
       setUnread(0)
+      lastUnreadRef.current = 0
+      knownUnreadIdsRef.current = new Set()
     } catch (err) {
       notifyProblem(err, 'Не удалось отметить все прочитанными')
     }
@@ -194,6 +247,7 @@ export default function NotificationBell({ canManageOrg, enabled }: Notification
         title: trimmedTitle,
         body: trimmedBody,
         audience,
+        delivery,
         orgUserIds: audience === 'users' ? selectedUserIds : [],
         departmentIds: audience === 'departments' ? selectedDepartmentIds : [],
       })
@@ -202,6 +256,7 @@ export default function NotificationBell({ canManageOrg, enabled }: Notification
       setTitle('')
       setBody('')
       setAudience('all')
+      setDelivery('inbox')
       setSelectedUserIds([])
       setSelectedDepartmentIds([])
       void claimPopups()
@@ -264,7 +319,7 @@ export default function NotificationBell({ canManageOrg, enabled }: Notification
             <div className="notification-bell-list">
               {loading && items.length === 0 ? <p className="notification-bell-empty">Загрузка…</p> : null}
               {!loading && items.length === 0 ? (
-                <p className="notification-bell-empty">Пока нет сообщений</p>
+                <p className="notification-bell-empty">Нет непрочитанных</p>
               ) : null}
               {items.map((item) => (
                 <button
@@ -275,13 +330,40 @@ export default function NotificationBell({ canManageOrg, enabled }: Notification
                 >
                   <span className="notification-bell-item-title">{item.title}</span>
                   <span className="notification-bell-item-body">{item.body}</span>
-                  <span className="notification-bell-item-meta">{formatWhen(item.createdAt)}</span>
+                  <span className="notification-bell-item-meta">
+                    {item.delivery === 'popup' ? 'Окно · ' : ''}
+                    {formatWhen(item.createdAt)}
+                  </span>
                 </button>
               ))}
             </div>
           </div>
         ) : null}
       </div>
+
+      {centerPopup ? (
+        <div className="notification-center-backdrop" role="presentation">
+          <div
+            className="notification-center-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="notification-center-title"
+            aria-describedby="notification-center-body"
+          >
+            <h2 id="notification-center-title" className="notification-center-title">
+              {centerPopup.title}
+            </h2>
+            <p id="notification-center-body" className="notification-center-body">
+              {centerPopup.body}
+            </p>
+            <div className="notification-center-footer">
+              <button type="button" className="btn-primary" onClick={() => void dismissCenterPopup()}>
+                Понятно
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {composeOpen ? (
         <div className="notification-compose-backdrop" role="presentation" onClick={() => setComposeOpen(false)}>
@@ -308,6 +390,28 @@ export default function NotificationBell({ canManageOrg, enabled }: Notification
               <span>Текст</span>
               <textarea value={body} onChange={(event) => setBody(event.target.value)} rows={4} maxLength={4000} />
             </label>
+
+            <fieldset className="notification-compose-audience">
+              <legend>Тип</legend>
+              <label>
+                <input
+                  type="radio"
+                  name="notification-delivery"
+                  checked={delivery === 'inbox'}
+                  onChange={() => setDelivery('inbox')}
+                />
+                В колокольчик
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="notification-delivery"
+                  checked={delivery === 'popup'}
+                  onChange={() => setDelivery('popup')}
+                />
+                Колокольчик + окно по центру
+              </label>
+            </fieldset>
 
             <fieldset className="notification-compose-audience">
               <legend>Кому</legend>

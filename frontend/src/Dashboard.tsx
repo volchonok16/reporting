@@ -414,6 +414,7 @@ function externalFieldValue(item: ChangeRequest, field: ExternalFieldKey): strin
   }
 }
 
+
 const DEFAULT_ACTUAL_PERIOD_EDITABLE_STATUSES = ['UAT', 'Pilot', 'Closed']
 
 function actualPeriodEditableStatuses(data: DashboardData | null): string[] {
@@ -856,8 +857,8 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
   }
 
   const saveExternalField = async (item: ChangeRequest, field: ExternalFieldKey, rawValue: string) => {
-    if (!canManageOrg) {
-      notifyWarning('Редактировать дополнительные поля может только администратор')
+    if (field === 'actualPeriod' && !canManageOrg) {
+      notifyWarning('Поле «Фактическая дата месяц/квартал» может редактировать только администратор')
       return
     }
     const trimmed = rawValue.trim()
@@ -910,10 +911,10 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
   const boardLabel = selectedBoard?.displayName || boardNameLabel(null, boardCode) || boardCode
   const periodEditableStatuses = actualPeriodEditableStatuses(data)
   const periodEditableHint = periodEditableStatuses.length
-    ? `Редактирование доступно в статусах: ${periodEditableStatuses.join(', ')}`
+    ? `Редактирование доступно администратору в статусах: ${periodEditableStatuses.join(', ')}`
     : 'Редактирование фактической даты недоступно'
-  const externalFieldsAdminHint = 'Редактировать дополнительные поля может только администратор'
-  const externalFieldsReadOnly = !canManageOrg || syncing || exporting
+  const actualPeriodAdminHint = 'Поле «Фактическая дата месяц/квартал» может редактировать только администратор'
+  const externalFieldsReadOnly = syncing || exporting
   const activeFilterCount = [
     search.trim(),
     dateFrom !== defaultQuarter.from ? dateFrom : '',
@@ -1295,7 +1296,6 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                                 item={item}
                                 field="priority"
                                 disabled={externalFieldsReadOnly}
-                                title={canManageOrg ? undefined : externalFieldsAdminHint}
                                 saving={savingExternalKey === `${item.number}:priority`}
                                 onSave={saveExternalField}
                               />
@@ -1309,7 +1309,6 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                                 item={item}
                                 field="commercialEffect"
                                 disabled={externalFieldsReadOnly}
-                                title={canManageOrg ? undefined : externalFieldsAdminHint}
                                 saving={savingExternalKey === `${item.number}:commercialEffect`}
                                 onSave={saveExternalField}
                               />
@@ -1324,11 +1323,12 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                                 field="actualPeriod"
                                 disabled={
                                   externalFieldsReadOnly ||
+                                  !canManageOrg ||
                                   !isActualPeriodEditable(item, periodEditableStatuses)
                                 }
                                 title={
                                   !canManageOrg
-                                    ? externalFieldsAdminHint
+                                    ? actualPeriodAdminHint
                                     : isActualPeriodEditable(item, periodEditableStatuses)
                                       ? undefined
                                       : periodEditableHint
@@ -1347,7 +1347,6 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                                 field="desiredDate"
                                 inputType="date"
                                 disabled={externalFieldsReadOnly}
-                                title={canManageOrg ? undefined : externalFieldsAdminHint}
                                 saving={savingExternalKey === `${item.number}:desiredDate`}
                                 onSave={saveExternalField}
                               />
@@ -1361,7 +1360,6 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                                 item={item}
                                 field="desiredQuarter"
                                 disabled={externalFieldsReadOnly}
-                                title={canManageOrg ? undefined : externalFieldsAdminHint}
                                 saving={savingExternalKey === `${item.number}:desiredQuarter`}
                                 onSave={saveExternalField}
                               />
@@ -1375,7 +1373,6 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                                 item={item}
                                 field="comment"
                                 disabled={externalFieldsReadOnly}
-                                title={canManageOrg ? undefined : externalFieldsAdminHint}
                                 saving={savingExternalKey === `${item.number}:comment`}
                                 onSave={saveExternalField}
                               />

@@ -215,6 +215,7 @@ def ensure_startup_schema() -> None:
         "058_voice_master_prefix_index.sql",
         "059_zni_external_data_comment.sql",
         "060_app_pages.sql",
+        "061_app_notification_delivery.sql",
     )
 
     auth_session_sql = """

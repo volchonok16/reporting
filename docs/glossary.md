@@ -321,7 +321,7 @@
 
 ## zni_external_data — внешние поля ЗНИ
 
-Локальные данные карточки ЗНИ, **не приходят из TFS** и не затираются синхронизацией. Заполняются в дашборде ЗНИ (`PATCH /api/tasks/{id}/external-data`, только администратор: PAT, legacy `app_user` без org или `org_user.role=admin`). Одна строка на `task.id`.
+Локальные данные карточки ЗНИ, **не приходят из TFS** и не затираются синхронизацией. Заполняются в дашборде ЗНИ (`PATCH /api/tasks/{id}/external-data`). Остальные поля — любой авторизованный пользователь; **`actual_period`** («Фактическая дата месяц/квартал») — только администратор и только в статусах из `ZNI_ACTUAL_PERIOD_EDITABLE_STATES`. Одна строка на `task.id`.
 
 | Поле | Тип | Описание |
 |------|-----|----------|
@@ -338,7 +338,7 @@
 
 ## app_notification — уведомление приложения
 
-Сообщения пользователям (всем, выбранным `org_user` или по отделам). Создаёт **только администратор** (`org_user.role=admin` или PAT). В UI — колокольчик рядом с именем и всплывающий toast.
+Сообщения пользователям (всем, выбранным `org_user` или по отделам). Создаёт **только администратор** (`org_user.role=admin` или PAT). В UI — колокольчик; тип `popup` дополнительно показывает модальное окно по центру экрана и звук.
 
 | Поле | Тип | Описание |
 |------|-----|----------|
@@ -346,6 +346,7 @@
 | `title` | varchar(255) | Заголовок |
 | `body` | text | Текст |
 | `audience` | varchar(32) | `all` / `users` / `departments` |
+| `delivery` | varchar(16) | `inbox` — только колокольчик; `popup` — колокольчик + модальное окно по центру |
 | `created_by_org_user_id` | bigint | Автор (`org_user`); NULL для PAT |
 | `created_at` | timestamptz | Когда создано |
 
@@ -729,8 +730,8 @@
 | `POST /api/sync` | Синхронизация; body `{ board }` |
 | `GET /api/sync/status` | Статус и прогресс |
 | `GET /api/export?board=` | Excel: ЗНИ + ошибки, колонки «Заказчик» и «Продукт» (`parent_task_id`) |
-| `PATCH /api/tasks/{id}/external-data` | Внешние поля ЗНИ (приоритет, коммерческий эффект, даты); не в TFS. Только администратор (`canManageOrg`). `actualPeriod` — только в статусах `ZNI_ACTUAL_PERIOD_EDITABLE_STATES` |
-| `GET/POST /api/notifications` | Inbox и отправка уведомлений; колокольчик в шапке. **Отправка только для администратора** (`org_user.role=admin` или PAT); получатели — `org_user` |
+| `PATCH /api/tasks/{id}/external-data` | Внешние поля ЗНИ (приоритет, коммерческий эффект, даты); не в TFS. Любой авторизованный пользователь; **`actualPeriod`** — только администратор и только в статусах `ZNI_ACTUAL_PERIOD_EDITABLE_STATES` (по умолчанию `UAT,Pilot,Closed`) |
+| `GET/POST /api/notifications` | Inbox (по умолчанию только непрочитанные) и отправка уведомлений; звук при новых; тип `delivery=popup` — модальное окно по центру. **Отправка только для администратора** |
 
 Диаграммы: [diagrams.md](diagrams.md) · Production: [deploy/DEPLOY.md](../deploy/DEPLOY.md).
 

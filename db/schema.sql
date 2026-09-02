@@ -1314,10 +1314,13 @@ CREATE TABLE app_notification (
     title                   VARCHAR(255) NOT NULL,
     body                    TEXT         NOT NULL,
     audience                VARCHAR(32)  NOT NULL,
+    delivery                VARCHAR(16)  NOT NULL DEFAULT 'inbox',
     created_by_org_user_id  BIGINT       REFERENCES org_user(id) ON DELETE SET NULL,
     created_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     CONSTRAINT app_notification_audience_chk
-        CHECK (audience IN ('all', 'users', 'departments'))
+        CHECK (audience IN ('all', 'users', 'departments')),
+    CONSTRAINT app_notification_delivery_chk
+        CHECK (delivery IN ('inbox', 'popup'))
 );
 
 CREATE TABLE app_notification_recipient (
