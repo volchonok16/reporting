@@ -1978,6 +1978,26 @@ body {
   box-shadow: var(--shadow-sm), inset 0 -2px 0 var(--brand-accent);
 }
 
+.product-status-sheet-tab-locked::after {
+  content: ' · заблок.';
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.product-status-editing-locked-banner {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border));
+  background: color-mix(in srgb, var(--warning) 12%, var(--surface-1));
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
 .product-status-title {
   margin: 0;
   font-size: 24px;

@@ -152,6 +152,7 @@ def _sheet_from_rows(
     name: str,
     rows: list[dict[str, Any]],
     projects: list[str] | None = None,
+    editing_locked: bool = False,
 ) -> ProductStatusSheetOut:
     sheet_rows: list[dict[str, str]] = []
     for row in rows:
@@ -166,6 +167,7 @@ def _sheet_from_rows(
         rows=sheet_rows,
         totalShown=len(sheet_rows),
         projects=list(projects or []),
+        editingLocked=bool(editing_locked),
     )
 
 
@@ -173,7 +175,7 @@ def _load_offices(db: Session) -> list[dict[str, Any]]:
     result = db.execute(
         text(
             """
-            SELECT id, gid, name
+            SELECT id, gid, name, editing_locked
             FROM b2b_product_status_office
             WHERE is_active = TRUE
             ORDER BY sort_order, id
@@ -209,7 +211,7 @@ def _load_office(db: Session, *, gid: str) -> dict[str, Any] | None:
     result = db.execute(
         text(
             """
-            SELECT id, gid, name
+            SELECT id, gid, name, editing_locked
             FROM b2b_product_status_office
             WHERE gid = :gid AND is_active = TRUE
             """
@@ -275,6 +277,7 @@ def load_b2b_product_status_from_db(
                     rows=[],
                     totalShown=0,
                     projects=office_projects,
+                    editingLocked=bool(office.get("editing_locked")),
                 )
             )
             continue
@@ -285,6 +288,7 @@ def load_b2b_product_status_from_db(
                 name=office["name"],
                 rows=rows,
                 projects=office_projects,
+                editing_locked=bool(office.get("editing_locked")),
             )
         )
 
@@ -346,6 +350,49 @@ def _resolve_changed_by(meta: dict[str, Any]) -> str | None:
     return None
 
 
+def _assert_office_editable(office: dict[str, Any]) -> None:
+    if bool(office.get("editing_locked")):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Редактирование офиса «{office['name']}» заблокировано администратором."
+            ),
+        )
+
+
+def set_b2b_product_status_office_editing_locked(
+    db: Session,
+    *,
+    gid: str,
+    locked: bool,
+) -> ProductStatusSheetOut:
+    office = _load_office(db, gid=gid)
+    if office is None:
+        raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
+
+    db.execute(
+        text(
+            """
+            UPDATE b2b_product_status_office
+            SET editing_locked = :locked
+            WHERE id = :office_id
+            """
+        ),
+        {"locked": locked, "office_id": int(office["id"])},
+    )
+    db.commit()
+    office["editing_locked"] = locked
+    projects = _load_office_projects(db, office_ids=[int(office["id"])])
+    rows = _load_office_rows(db, office_id=int(office["id"]))
+    return _sheet_from_rows(
+        gid=office["gid"],
+        name=office["name"],
+        rows=rows,
+        projects=projects.get(int(office["id"]), []),
+        editing_locked=locked,
+    )
+
+
 def save_b2b_product_status_to_db(
     db: Session,
     payload: ProductStatusSaveIn,
@@ -371,6 +418,7 @@ def save_b2b_product_status_to_db(
         office = _load_office(db, gid=gid)
         if office is None:
             raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
+        _assert_office_editable(office)
 
         updates = updates_by_gid.get(gid, [])
         for update in updates:
@@ -601,6 +649,7 @@ def delete_b2b_product_status_row(
     office = _load_office(db, gid=gid)
     if office is None:
         raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
+    _assert_office_editable(office)
 
     office_id = int(office["id"])
     rows = _load_office_rows(db, office_id=office_id)
@@ -715,6 +764,7 @@ def restore_b2b_product_status_snapshot(
     office = _load_office(db, gid=gid)
     if office is None:
         raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
+    _assert_office_editable(office)
 
     office_id = int(office["id"])
     office_name = str(office["name"])

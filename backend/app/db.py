@@ -216,6 +216,7 @@ def ensure_startup_schema() -> None:
         "059_zni_external_data_comment.sql",
         "060_app_pages.sql",
         "061_app_notification_delivery.sql",
+        "062_b2b_product_status_office_editing_lock.sql",
     )
 
     auth_session_sql = """

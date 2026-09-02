@@ -36,6 +36,7 @@ type ProductStatusSheet = {
   rows: Record<string, string>[]
   totalShown: number
   projects?: string[]
+  editingLocked?: boolean
 }
 
 type ProductStatusData = {
@@ -108,6 +109,8 @@ export type ProductStatusWorkbookConfig = {
   enableRowReorder?: boolean
   enableHistory?: boolean
   canEditAdminColumns?: boolean
+  /** Блокировка редактирования по офисам (только B2B, для администратора) */
+  enableOfficeEditLock?: boolean
   /** Правки в БД только по «Обновить»; до этого можно откатить */
   commitOnRefresh?: boolean
   /** Числовые колонки (простой ввод, без rich-text) */
@@ -533,6 +536,7 @@ export default function ProductStatusWorkbook({
   enableRowReorder = false,
   enableHistory = false,
   canEditAdminColumns = false,
+  enableOfficeEditLock = false,
   commitOnRefresh = false,
   numericColumns,
   sumColumn,
@@ -570,6 +574,7 @@ export default function ProductStatusWorkbook({
   const [snapshotItems, setSnapshotItems] = useState<ProductStatusSnapshot[]>([])
   const [snapshotLoading, setSnapshotLoading] = useState(false)
   const [restoringSnapshotId, setRestoringSnapshotId] = useState<number | null>(null)
+  const [togglingOfficeLock, setTogglingOfficeLock] = useState(false)
   const [loadedGids, setLoadedGids] = useState<Set<string>>(() => new Set())
   const [sheetLoadingGid, setSheetLoadingGid] = useState<string | null>(null)
   const [columnFilters, setColumnFilters] = useState<Record<string, Set<string> | null>>({})
@@ -852,6 +857,21 @@ export default function ProductStatusWorkbook({
       setDirty(false)
       return true
     }
+    const lockedSheetNames = [
+      ...new Set(
+        sheetsRef.current
+          .filter((sheet) => sheet.editingLocked)
+          .map((sheet) => sheet.name),
+      ),
+    ]
+    if (lockedSheetNames.length > 0) {
+      notifyWarning(
+        lockedSheetNames.length === 1
+          ? `Редактирование офиса «${lockedSheetNames[0]}» заблокировано администратором`
+          : 'Редактирование одного или нескольких офисов заблокировано администратором',
+      )
+      return false
+    }
     const gidsToReload = [
       ...new Set([
         ...payload.updates.map((update) => update.gid),
@@ -938,9 +958,81 @@ export default function ProductStatusWorkbook({
     notifySuccess('Изменения отменены')
   }, [dirty, loadedGids])
 
+  const activeSheetEditingLocked = useMemo(
+    () => Boolean(sheets.find((sheet) => sheet.gid === activeGid)?.editingLocked),
+    [activeGid, sheets],
+  )
+
+  const isSheetReadOnly = activeSheetEditingLocked
+
+  const toggleOfficeEditingLock = useCallback(async () => {
+    if (!enableOfficeEditLock || !canEditAdminColumns || !activeGid) return
+    const sheet = sheets.find((item) => item.gid === activeGid)
+    if (!sheet) return
+    const nextLocked = !sheet.editingLocked
+    const message = nextLocked
+      ? `Заблокировать редактирование офиса «${sheet.name}» для всех пользователей?`
+      : `Разблокировать редактирование офиса «${sheet.name}»?`
+    if (!window.confirm(message)) return
+
+    setTogglingOfficeLock(true)
+    const toastId = notifyLoading(
+      nextLocked ? 'Блокировка редактирования…' : 'Снятие блокировки…',
+      'product-status-office-lock',
+    )
+    try {
+      const updated = await apiFetch(`${apiBase}/offices/${encodeURIComponent(activeGid)}/editing-lock`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...productStatusLiveHeaders(apiBase),
+        },
+        body: JSON.stringify({ locked: nextLocked }),
+      })
+      if (!updated.ok) {
+        throw new Error(await readApiError(updated))
+      }
+      const payload = (await updated.json()) as ProductStatusSheet
+      setSheets((current) =>
+        current.map((item) =>
+          item.gid === activeGid
+            ? {
+                ...item,
+                editingLocked: Boolean(payload.editingLocked),
+              }
+            : item,
+        ),
+      )
+      if (payload.editingLocked && dirty) {
+        setDirty(false)
+        setActiveCell(null)
+        if (loadedGids.has(activeGid)) {
+          await loadSheetData(activeGid, { refresh: true })
+        }
+      }
+      notifySuccess(
+        payload.editingLocked ? 'Редактирование заблокировано' : 'Редактирование разблокировано',
+        toastId,
+      )
+    } catch (err) {
+      notifyProblem(err, 'Не удалось изменить блокировку', toastId)
+    } finally {
+      setTogglingOfficeLock(false)
+    }
+  }, [
+    activeGid,
+    apiBase,
+    canEditAdminColumns,
+    dirty,
+    enableOfficeEditLock,
+    loadSheetData,
+    loadedGids,
+    sheets,
+  ])
+
   const handleRestoreSnapshot = useCallback(
     async (snapshotId: number) => {
-      if (!activeGid) return
+      if (!activeGid || isSheetReadOnly) return
       if (commitOnRefresh && dirty) {
         if (
           !window.confirm(
@@ -992,12 +1084,13 @@ export default function ProductStatusWorkbook({
       loadSheetData,
       loadSnapshots,
       loadedGids,
+      isSheetReadOnly,
     ],
   )
 
   const deleteRow = useCallback(
     (rowIndex: number) => {
-      if (!activeGid) return
+      if (!activeGid || isSheetReadOnly) return
       if (!window.confirm('Удалить строку? Изменение применится после «Сохранить».')) {
         return
       }
@@ -1021,12 +1114,12 @@ export default function ProductStatusWorkbook({
         return current
       })
     },
-    [activeGid],
+    [activeGid, isSheetReadOnly],
   )
 
   const moveRow = useCallback(
     (fromIndex: number, toIndex: number) => {
-      if (!activeGid || fromIndex === toIndex) return
+      if (!activeGid || fromIndex === toIndex || isSheetReadOnly) return
       setDirty(true)
       setSheets((current) =>
         current.map((sheet) => {
@@ -1057,11 +1150,11 @@ export default function ProductStatusWorkbook({
         return current
       })
     },
-    [activeGid],
+    [activeGid, isSheetReadOnly],
   )
 
   const { draggingRowIndex, dragOverRowIndex, handleRowPointerDragStart } = useProductStatusRowReorder({
-    enabled: enableRowReorder,
+    enabled: enableRowReorder && !isSheetReadOnly,
     onMoveRow: moveRow,
   })
 
@@ -1077,14 +1170,17 @@ export default function ProductStatusWorkbook({
 
   const isReadOnlyColumn = useCallback(
     (column: string) =>
+      isSheetReadOnly ||
       (isAdminOnlyColumn(column) && !canEditAdminColumns) ||
       Boolean(sumColumn && column === sumColumn),
-    [canEditAdminColumns, sumColumn],
+    [canEditAdminColumns, isSheetReadOnly, sumColumn],
   )
 
   const updateCell = useCallback(
     (gid: string, rowIndex: number, column: string, value: string) => {
       if (sumColumn && column === sumColumn) return
+      const sheet = sheetsRef.current.find((item) => item.gid === gid)
+      if (sheet?.editingLocked) return
       setDirty(true)
       let nextActiveRowIndex: number | null = null
       setSheets((current) =>
@@ -1223,7 +1319,7 @@ export default function ProductStatusWorkbook({
   ])
 
   const addRow = useCallback(() => {
-    if (!activeGid) return
+    if (!activeGid || isSheetReadOnly) return
     setDirty(true)
     const prepend = rowNumberDirection !== 'bottom'
     setSheets((current) =>
@@ -1234,7 +1330,7 @@ export default function ProductStatusWorkbook({
         return { ...sheet, rows, totalShown: sheet.rows.length + 1 }
       }),
     )
-  }, [activeGid, rowNumberDirection])
+  }, [activeGid, isSheetReadOnly, rowNumberDirection])
 
   const addColumn = useCallback(() => {
     if (!activeGid) return
@@ -1496,7 +1592,7 @@ export default function ProductStatusWorkbook({
 
   const exporting = exportingPresentation || exportingExcel
   const sheetLoading = sheetLoadingGid !== null
-  const toolbarBusy = loading || sheetLoading || saving || exporting
+  const toolbarBusy = loading || sheetLoading || saving || exporting || togglingOfficeLock
   const cellBusy = saving || exporting
   useEffect(() => {
     setColumnFilters({})
@@ -1765,13 +1861,33 @@ export default function ProductStatusWorkbook({
               ) : null}
             </div>
           ) : null}
+          {enableOfficeEditLock && canEditAdminColumns && activeGid && viewMode === 'table' ? (
+            <div className="product-status-toolbar-actions-group">
+              <button
+                type="button"
+                className={[
+                  'product-status-toolbar-btn',
+                  activeSheetEditingLocked ? 'btn-primary' : 'btn-secondary',
+                ].join(' ')}
+                onClick={() => void toggleOfficeEditingLock()}
+                disabled={toolbarBusy || !activeSheetReady}
+                title={
+                  activeSheetEditingLocked
+                    ? 'Разблокировать редактирование текущего офиса'
+                    : 'Заблокировать редактирование текущего офиса для всех пользователей'
+                }
+              >
+                {activeSheetEditingLocked ? 'Разблокировать офис' : 'Заблокировать офис'}
+              </button>
+            </div>
+          ) : null}
           <div className="product-status-toolbar-actions-group product-status-toolbar-actions-group--main">
             {!commitOnRefresh ? (
               <button
                 type="button"
                 className="btn-primary product-status-toolbar-btn"
                 onClick={() => void handleSave()}
-                disabled={toolbarBusy || sheets.length === 0 || !dirty}
+                disabled={toolbarBusy || sheets.length === 0 || !dirty || isSheetReadOnly}
               >
                 Сохранить
               </button>
@@ -1781,7 +1897,7 @@ export default function ProductStatusWorkbook({
                 type="button"
                 className="btn-secondary product-status-toolbar-btn"
                 onClick={handleRevert}
-                disabled={toolbarBusy}
+                disabled={toolbarBusy || isSheetReadOnly}
               >
                 Отменить
               </button>
@@ -1790,20 +1906,26 @@ export default function ProductStatusWorkbook({
               type="button"
               className={[
                 'product-status-toolbar-btn',
-                commitOnRefresh && dirty ? 'btn-primary' : 'btn-secondary',
+                commitOnRefresh && dirty && !isSheetReadOnly ? 'btn-primary' : 'btn-secondary',
               ]
                 .filter(Boolean)
                 .join(' ')}
               onClick={() => void handleRefresh()}
-              disabled={toolbarBusy || sheets.length === 0}
+              disabled={toolbarBusy || sheets.length === 0 || (commitOnRefresh && dirty && isSheetReadOnly)}
             >
-              {commitOnRefresh ? (dirty ? 'Сохранить' : 'Обновить') : 'Обновить'}
+              {commitOnRefresh ? (dirty && !isSheetReadOnly ? 'Сохранить' : 'Обновить') : 'Обновить'}
             </button>
           </div>
         </div>
       </header>
 
       {afterHeader}
+
+      {isSheetReadOnly && viewMode === 'table' && activeSheet ? (
+        <p className="product-status-editing-locked-banner" role="status">
+          Редактирование офиса «{activeSheet.name}» заблокировано администратором — доступен только просмотр.
+        </p>
+      ) : null}
 
       {!useTitleSheetNav && sheets.length > 1 && viewMode === 'table' ? (
         <nav className="product-status-sheet-tabs" aria-label="Таблицы">
@@ -1814,9 +1936,10 @@ export default function ProductStatusWorkbook({
                 type="button"
                 className={`product-status-sheet-tab${
                   activeSheet?.gid === sheet.gid ? ' product-status-sheet-tab-active' : ''
-                }`}
+                }${sheet.editingLocked ? ' product-status-sheet-tab-locked' : ''}`}
                 onClick={() => selectSheet(sheet.gid)}
                 aria-selected={activeSheet?.gid === sheet.gid}
+                title={sheet.editingLocked ? 'Редактирование заблокировано' : undefined}
               >
                 {sheet.name}
               </button>
@@ -1903,7 +2026,8 @@ export default function ProductStatusWorkbook({
                               disabled={
                                 toolbarBusy ||
                                 restoringSnapshotId !== null ||
-                                snapshotLoading
+                                snapshotLoading ||
+                                isSheetReadOnly
                               }
                               onClick={() => void handleRestoreSnapshot(entry.id)}
                             >
@@ -2022,7 +2146,7 @@ export default function ProductStatusWorkbook({
               type="button"
               className="btn-secondary"
               onClick={addRow}
-              disabled={toolbarBusy || !activeSheetReady}
+              disabled={toolbarBusy || !activeSheetReady || isSheetReadOnly}
             >
               + Строка
             </button>
@@ -2145,7 +2269,7 @@ export default function ProductStatusWorkbook({
                         isNumericColumn={isNumericColumn}
                         isReadOnlyColumn={isReadOnlyColumn}
                         projectOptions={activeSheet!.projects ?? []}
-                        enableRowDelete={enableRowDelete}
+                        enableRowDelete={enableRowDelete && !isSheetReadOnly}
                         onDeleteRow={deleteRow}
                         enableRowReorder={enableRowReorder}
                         rowCount={activeSheet!.rows.length}

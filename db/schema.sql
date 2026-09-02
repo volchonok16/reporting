@@ -1030,11 +1030,13 @@ CREATE TABLE b2b_product_status_office (
     name            VARCHAR(255) NOT NULL,
     sort_order      INT          NOT NULL DEFAULT 0,
     is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    editing_locked  BOOLEAN      NOT NULL DEFAULT FALSE,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE b2b_product_status_office IS 'Продуктовые офисы B2B (вкладки «Офис: SMS», «Офис: CORE» и т.д.)';
 COMMENT ON COLUMN b2b_product_status_office.gid IS 'Идентификатор вкладки (стабильный ключ для API и UI)';
+COMMENT ON COLUMN b2b_product_status_office.editing_locked IS 'Блокировка редактирования таблицы офиса для всех пользователей';
 
 CREATE TABLE b2b_product_status_row (
     id              BIGSERIAL PRIMARY KEY,

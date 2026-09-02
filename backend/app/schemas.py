@@ -187,6 +187,11 @@ class ProductStatusSheetOut(BaseModel):
     rows: list[dict[str, str]]
     totalShown: int
     projects: list[str] = Field(default_factory=list)
+    editingLocked: bool = False
+
+
+class ProductStatusOfficeEditingLockIn(BaseModel):
+    locked: bool
 
 
 class ProductStatusB2BOut(BaseModel):

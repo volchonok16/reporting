@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock
 
+import pytest
+from fastapi import HTTPException
+
 from app.b2b_product_status_db import (
     ADMIN_ONLY_COLUMNS,
     B2B_PRODUCT_STATUS_COLUMNS,
@@ -12,6 +15,7 @@ from app.b2b_product_status_db import (
     _cells_json,
     _row_has_content,
     save_b2b_product_status_to_db,
+    set_b2b_product_status_office_editing_locked,
 )
 from app.schemas import (
     ProductStatusCellUpdate,
@@ -271,3 +275,80 @@ def test_office_snapshot_json_roundtrip() -> None:
     assert len(payload["rows"]) == 2
     assert payload["rows"][0]["cells"]["Дата запуска"] == "01.07"
     assert payload["rows"][1]["cells"]["Проект координация"] == ""
+
+
+def test_save_rejects_when_office_editing_locked() -> None:
+    office_result = MagicMock()
+    office_result.first.return_value = MagicMock(
+        _mapping={
+            "id": 1,
+            "gid": "0",
+            "name": "Офис: CORE",
+            "editing_locked": True,
+        }
+    )
+    db = MagicMock()
+    db.execute.side_effect = [office_result]
+
+    with pytest.raises(HTTPException) as exc_info:
+        save_b2b_product_status_to_db(
+            db,
+            ProductStatusSaveIn(
+                updates=[
+                    ProductStatusCellUpdate(
+                        gid="0",
+                        rowIndex=1,
+                        columnIndex=0,
+                        column="Дата запуска",
+                        value="new",
+                        expectedValue="",
+                        rowId=10,
+                    ),
+                ]
+            ),
+            meta={
+                "auth_mode": "app_user",
+                "app_role": "full",
+                "org_user_role": "admin",
+            },
+        )
+
+    assert exc_info.value.status_code == 403
+    assert "заблокировано" in exc_info.value.detail.lower()
+    db.commit.assert_not_called()
+
+
+def test_set_office_editing_locked_updates_flag() -> None:
+    office_result = MagicMock()
+    office_result.first.return_value = MagicMock(
+        _mapping={
+            "id": 7,
+            "gid": "1512199647",
+            "name": "Офис: SMS",
+            "editing_locked": False,
+        }
+    )
+    projects_result = MagicMock()
+    projects_result.__iter__.return_value = iter([])
+    rows_result = MagicMock()
+    rows_result.__iter__.return_value = iter([])
+
+    db = MagicMock()
+    db.execute.side_effect = [
+        office_result,
+        MagicMock(),
+        projects_result,
+        rows_result,
+    ]
+
+    sheet = set_b2b_product_status_office_editing_locked(
+        db,
+        gid="1512199647",
+        locked=True,
+    )
+
+    assert sheet.editingLocked is True
+    assert sheet.gid == "1512199647"
+    update_sql = str(db.execute.call_args_list[1].args[0])
+    assert "UPDATE b2b_product_status_office" in update_sql
+    db.commit.assert_called_once()

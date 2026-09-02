@@ -48,6 +48,7 @@ from app.b2b_product_status_db import (
     load_b2b_product_status_snapshots,
     restore_b2b_product_status_snapshot,
     save_b2b_product_status_to_db,
+    set_b2b_product_status_office_editing_locked,
 )
 from app.product_status_service import load_b2b_product_status
 from app.product_status_excel import generate_b2b_product_status_excel
@@ -83,7 +84,9 @@ from app.schemas import (
     ProductsOut,
     ProductStatusB2BOut,
     ProductStatusHistoryOut,
+    ProductStatusOfficeEditingLockIn,
     ProductStatusSaveIn,
+    ProductStatusSheetOut,
     ProductStatusSnapshotsOut,
     SyncRunOut,
     TaskLookupIn,
@@ -662,6 +665,33 @@ def product_status_b2b_save(
         origin_connection_id=x_live_connection_id,
     )
     return {"status": "ok"}
+
+
+@app.patch(
+    "/api/product-status/b2b/offices/{gid}/editing-lock",
+    response_model=ProductStatusSheetOut,
+)
+def product_status_b2b_office_editing_lock(
+    gid: str,
+    payload: ProductStatusOfficeEditingLockIn,
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
+    _: None = Depends(require_org_manage_access),
+) -> ProductStatusSheetOut:
+    _, meta = get_session_with_meta(x_session_id)
+    sheet = set_b2b_product_status_office_editing_locked(
+        db,
+        gid=gid,
+        locked=payload.locked,
+    )
+    notify_product_status_saved(
+        workbook=WORKBOOK_B2B,
+        gids=[gid],
+        changed_by=_live_changed_by(meta),
+        origin_connection_id=x_live_connection_id,
+    )
+    return sheet
 
 
 @app.delete("/api/product-status/b2b/rows/{row_id}")

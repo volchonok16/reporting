@@ -1179,6 +1179,7 @@ Seed: миграция `013_b2b_product_status.sql` — SMS, VOICE, Перспе
 | `name` | varchar(255) | Подпись вкладки, напр. «Офис: SMS» |
 | `sort_order` | int | Порядок вкладок |
 | `is_active` | boolean | Скрыть офис без удаления |
+| `editing_locked` | boolean | Блокировка редактирования таблицы офиса для всех пользователей; управляет администратор (`PATCH /api/product-status/b2b/offices/{gid}/editing-lock`) |
 
 ---
 
