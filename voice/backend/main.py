@@ -576,6 +576,23 @@ def export_master(session_id: MasterActionSessionId) -> FileResponse:
     )
 
 
+@app.get("/api/master/export/msisdn")
+def export_master_msisdn(
+    _user: VoiceAdmin,
+    session_id: MasterSessionId,
+) -> FileResponse:
+    del session_id
+    export_dir = settings.data_dir / "exports"
+    export_path = export_dir / f"master-msisdn-{opaque_id()}.csv"
+    master_service.export_msisdn_csv(export_path)
+    return FileResponse(
+        export_path,
+        media_type="text/csv; charset=utf-8",
+        filename="master-msisdn.csv",
+        background=BackgroundTask(export_path.unlink, missing_ok=True),
+    )
+
+
 @app.post("/api/uploads", status_code=201)
 async def create_upload(
     session_id: SessionId,

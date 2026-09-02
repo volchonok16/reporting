@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.app_access import is_admin_user, is_roadmap_role, is_voice_only
+from app.app_access import is_admin_user, is_roadmap_role
 from app.auth_sessions import get_session_with_meta
 from app.db import get_db
 from app.notification_schemas import (
@@ -16,6 +16,7 @@ from app.notification_service import (
     list_inbox,
     mark_all_read,
     mark_read,
+    resolve_org_user_id,
     unread_count,
 )
 
@@ -26,19 +27,14 @@ def _load_session_meta(x_session_id: str | None = Header(default=None, alias="X-
     auth, meta = get_session_with_meta(x_session_id)
     if auth is None:
         raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
-    if is_voice_only(meta):
-        raise HTTPException(status_code=403, detail="Доступен только раздел Voice.")
     return meta
 
 
-def _require_org_user(meta: dict = Depends(_load_session_meta)) -> tuple[dict, int]:
-    org_user_id = meta.get("org_user_id")
-    if not org_user_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Уведомления доступны только пользователям с учётной записью.",
-        )
-    return meta, int(org_user_id)
+def _require_org_user(
+    db: Session = Depends(get_db),
+    meta: dict = Depends(_load_session_meta),
+) -> tuple[dict, int]:
+    return meta, resolve_org_user_id(db, meta)
 
 
 def _require_sender(meta: dict = Depends(_load_session_meta)) -> dict:

@@ -567,6 +567,89 @@ def test_master_merge_ids_history_crud_and_export(tmp_path) -> None:
     assert len(exported) == 2
     assert "79000000002" in exported[1][0]
 
+    msisdn_path = tmp_path / "master-msisdn.csv"
+    service.export_msisdn_csv(msisdn_path)
+    msisdn_exported = list(csv.reader(io.StringIO(msisdn_path.read_text())))
+    assert msisdn_exported[0] == ["MSISDN"]
+    assert msisdn_exported[1:] == [["79000000002"], ["79200000001"]]
+
+
+def test_master_export_msisdn_skips_numbers_shorter_than_ten_chars(
+    tmp_path,
+) -> None:
+    config = replace(settings, data_dir=tmp_path / "data")
+    registry = Registry(config)
+    service = MasterService(
+        config,
+        registry,
+        ValidationService(config.preview_limit),
+    )
+    session_id = "master-msisdn-length-session"
+    service.create_record(
+        MasterRecordRequest(
+            aNumber="79000000011",
+            bNumbers=["891", "79100000011"],
+        ),
+        session_id,
+        actor="tester@t2.local",
+    )
+
+    msisdn_path = tmp_path / "master-msisdn.csv"
+    service.export_msisdn_csv(msisdn_path)
+    exported = list(csv.reader(io.StringIO(msisdn_path.read_text())))
+
+    assert exported == [
+        ["MSISDN"],
+        ["79000000011"],
+        ["79100000011"],
+    ]
+
+
+def test_master_export_msisdn_includes_pani_numbers(tmp_path) -> None:
+    config = replace(settings, data_dir=tmp_path / "data")
+    registry = Registry(config)
+    service = MasterService(
+        config,
+        registry,
+        ValidationService(config.preview_limit),
+    )
+    session_id = "master-msisdn-pani-session"
+    service.create_record(
+        MasterRecordRequest(
+            aNumber="79000000021",
+            bNumbers=["79100000021"],
+            sourcePrefix="79991234567& null/$ & null/$ &",
+        ),
+        session_id,
+        actor="tester@t2.local",
+    )
+    service.create_record(
+        MasterRecordRequest(
+            aNumber="79000000022",
+            bNumbers=["79100000022"],
+            sourcePrefix="79997654321& D29$&null&",
+        ),
+        session_id,
+        actor="tester@t2.local",
+    )
+
+    msisdn_path = tmp_path / "master-msisdn.csv"
+    service.export_msisdn_csv(msisdn_path)
+    exported = {
+        row[0]
+        for row in csv.reader(io.StringIO(msisdn_path.read_text()))
+        if row and row[0] != "MSISDN"
+    }
+
+    assert exported == {
+        "79000000021",
+        "79000000022",
+        "79100000021",
+        "79100000022",
+        "79991234567",
+        "79997654321",
+    }
+
 
 def test_master_can_review_an_a_number_rename_by_stable_id(tmp_path) -> None:
     config = replace(settings, data_dir=tmp_path / "data")

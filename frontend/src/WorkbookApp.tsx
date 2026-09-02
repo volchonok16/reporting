@@ -156,7 +156,7 @@ export default function WorkbookApp({
           )}
           <div className="workbook-header-tools">
             <ThemeToggle compact />
-            <NotificationBell canManageOrg={canManageOrg} enabled={orgUserId != null && !voiceOnly} />
+            <NotificationBell canManageOrg={canManageOrg} enabled={orgUserId != null} />
             <div className="workbook-header-account">
               {!voiceOnly ? (
                 <button

@@ -26,6 +26,8 @@ from .models import (
     MasterRecordRequest,
     Mapping,
     PANI_REGION_PREFIX_PATTERN,
+    PANI_PREFIX_PATTERN,
+    LEGACY_PANI_REGION_PREFIX_PATTERN,
     TemplateSettings,
     canonicalize_pani_region_prefix,
     is_single_short_aon,
@@ -362,6 +364,30 @@ def _pani_region_parts(value: str) -> tuple[str, int] | None:
     if not 1 <= region_number <= 84:
         return None
     return pani, region_number
+
+
+def _pani_number_from_prefix(value: str) -> str | None:
+    if not value or value == NO_REGION_PREFIX:
+        return None
+    for pattern in (
+        PANI_REGION_PREFIX_PATTERN,
+        LEGACY_PANI_REGION_PREFIX_PATTERN,
+        PANI_PREFIX_PATTERN,
+    ):
+        match = pattern.fullmatch(value)
+        if match is not None:
+            digits = str(match.group(2))
+            return digits if len(digits) >= 10 else None
+    parts = _pani_region_parts(value)
+    if parts is not None:
+        pani, _region = parts
+        return pani if len(pani) >= 10 else None
+    return None
+
+
+def _msisdn_export_number(value: str) -> str | None:
+    number = str(value)
+    return number if len(number) >= 10 else None
 
 
 def _number_starts_with_seven(value: str) -> bool:
@@ -4712,3 +4738,32 @@ class MasterService:
                         )
                     ]
                 )
+
+    def export_msisdn_csv(self, destination: Path) -> None:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        numbers: set[str] = set()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT a_number, b_numbers_json, source_prefix
+                FROM master_records
+                WHERE deleted_at IS NULL
+                ORDER BY sort_order, id
+                """
+            )
+            for row in rows:
+                a_number = _msisdn_export_number(str(row["a_number"]))
+                if a_number is not None:
+                    numbers.add(a_number)
+                for b_number in json.loads(str(row["b_numbers_json"])):
+                    value = _msisdn_export_number(str(b_number))
+                    if value is not None:
+                        numbers.add(value)
+                pani_number = _pani_number_from_prefix(str(row["source_prefix"]))
+                if pani_number is not None:
+                    numbers.add(pani_number)
+        with destination.open("w", encoding="utf-8", newline="") as target:
+            writer = csv.writer(target, lineterminator="\r\n")
+            writer.writerow(["MSISDN"])
+            for number in sorted(numbers):
+                writer.writerow([number])

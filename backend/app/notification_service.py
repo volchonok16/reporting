@@ -18,6 +18,7 @@ from app.org_models import (
     Employee,
     OrgUser,
 )
+from app.org_service import find_org_user_by_email
 
 
 def _now() -> datetime:
@@ -83,6 +84,25 @@ def _recipient_org_user_ids(
         return resolved
 
     raise HTTPException(status_code=400, detail="Неизвестный тип аудитории.")
+
+
+def resolve_org_user_id(db: Session, meta: dict) -> int:
+    raw_id = meta.get("org_user_id")
+    if raw_id:
+        org_user = db.get(OrgUser, int(raw_id))
+        if org_user is not None and org_user.status == ORG_USER_STATUS_ACTIVE:
+            return int(org_user.id)
+
+    app_login = str(meta.get("app_login") or "").strip().lower()
+    if app_login:
+        org_user = find_org_user_by_email(db, app_login)
+        if org_user is not None and org_user.status == ORG_USER_STATUS_ACTIVE:
+            return int(org_user.id)
+
+    raise HTTPException(
+        status_code=400,
+        detail="Уведомления доступны только пользователям с учётной записью.",
+    )
 
 
 def create_notification(

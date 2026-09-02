@@ -2070,6 +2070,11 @@ export default function MasterPage() {
     ((analysis?.stats.uniqueA ?? 0) + (analysis?.stats.duplicateA ?? 0));
   const masterEditable =
     masterLock.ownedByCurrentUser && masterLock.ownedByCurrentSession;
+  const masterHeroButtonCount = 2 + (user?.voiceAdmin ? 3 : 0);
+  const masterHeroActionsLayoutClass =
+    masterHeroButtonCount % 2 === 0
+      ? "master-hero-actions-even"
+      : "master-hero-actions-odd";
   const needsReclaim =
     masterLock.locked &&
     masterLock.ownedByCurrentUser &&
@@ -3504,6 +3509,28 @@ export default function MasterPage() {
     }
   };
 
+  const downloadMasterMsisdn = async () => {
+    if (!user?.voiceAdmin) return;
+    try {
+      const response = await apiFetch("/api/master/export/msisdn");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "master-msisdn.csv";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Не удалось выгрузить список MSISDN.",
+      );
+    }
+  };
+
   useEffect(() => {
     if (!lockDialogOpen && !ownerNotificationOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -4197,7 +4224,10 @@ export default function MasterPage() {
               только после согласования конфликтов.
             </p>
           </div>
-          <div className="master-hero-actions" data-tour="master-file-actions">
+          <div
+            className={`master-hero-actions ${masterHeroActionsLayoutClass}`}
+            data-tour="master-file-actions"
+          >
             <input
               ref={fileInputRef}
               type="file"
@@ -4267,8 +4297,23 @@ export default function MasterPage() {
             >
               Скачать master.csv
             </button>
+            {user?.voiceAdmin && (
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => void downloadMasterMsisdn()}
+                disabled={!recordStats.activeCount}
+                title={
+                  recordStats.activeCount
+                    ? "CSV с одним столбцом MSISDN: опорные, подменные и PANI от 10 символов"
+                    : "Мастер-файл пуст"
+                }
+              >
+                Скачать MSISDN.csv
+              </button>
+            )}
             <button
-              className="primary-button"
+              className="primary-button master-hero-upload"
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading || merging || !masterEditable}

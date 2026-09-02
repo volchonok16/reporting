@@ -1794,7 +1794,6 @@ footer span:first-child { color: var(--ink); font-weight: 800; }
   margin-bottom: 22px;
   padding: 28px 30px;
   border-radius: 22px;
-  overflow: hidden;
   background:
     radial-gradient(circle at 82% 0%, rgba(255, 52, 149, .12), transparent 32%),
     #0b0b0b;
@@ -1828,6 +1827,9 @@ footer span:first-child { color: var(--ink); font-weight: 800; }
   padding-inline: 13px;
   line-height: 1.25;
   white-space: normal;
+}
+.master-hero-actions-odd .master-hero-upload {
+  grid-column: 1 / -1;
 }
 .master-hero .primary-button {
   border-color: #ff3495;

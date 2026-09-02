@@ -31,7 +31,8 @@ type NotificationBellProps = {
 
 type Audience = 'all' | 'users' | 'departments'
 
-const POLL_MS = 30000
+const UNREAD_POLL_MS = 30000
+const POPUP_POLL_MS = 3000
 
 function formatWhen(value: string): string {
   const date = new Date(value)
@@ -76,17 +77,6 @@ export default function NotificationBell({ canManageOrg, enabled }: Notification
     lastUnreadRef.current = count
   }, [])
 
-  const refreshUnread = useCallback(async () => {
-    if (!enabled) return
-    try {
-      const data = await getJson<{ count: number }>('/api/notifications/unread-count')
-      registerUnreadIncrease(data.count)
-      setUnread(data.count)
-    } catch {
-      /* тихий poll */
-    }
-  }, [enabled, registerUnreadIncrease])
-
   const claimPopups = useCallback(async () => {
     if (!enabled) return
     try {
@@ -100,11 +90,25 @@ export default function NotificationBell({ canManageOrg, enabled }: Notification
         playNotificationSound('popup')
         return next
       })
-      await refreshUnread()
     } catch {
       /* тихий poll */
     }
-  }, [enabled, refreshUnread])
+  }, [enabled])
+
+  const refreshUnread = useCallback(async () => {
+    if (!enabled) return
+    try {
+      const data = await getJson<{ count: number }>('/api/notifications/unread-count')
+      const previous = lastUnreadRef.current
+      registerUnreadIncrease(data.count)
+      setUnread(data.count)
+      if (data.count > previous) {
+        void claimPopups()
+      }
+    } catch {
+      /* тихий poll */
+    }
+  }, [enabled, registerUnreadIncrease, claimPopups])
 
   const loadInbox = useCallback(async () => {
     if (!enabled) return
@@ -137,11 +141,27 @@ export default function NotificationBell({ canManageOrg, enabled }: Notification
     }
     void refreshUnread()
     void claimPopups()
-    const timer = window.setInterval(() => {
+    const unreadTimer = window.setInterval(() => {
+      void refreshUnread()
+    }, UNREAD_POLL_MS)
+    const popupTimer = window.setInterval(() => {
+      void claimPopups()
+    }, POPUP_POLL_MS)
+    return () => {
+      window.clearInterval(unreadTimer)
+      window.clearInterval(popupTimer)
+    }
+  }, [enabled, refreshUnread, claimPopups])
+
+  useEffect(() => {
+    if (!enabled) return
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return
       void refreshUnread()
       void claimPopups()
-    }, POLL_MS)
-    return () => window.clearInterval(timer)
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
   }, [enabled, refreshUnread, claimPopups])
 
   useEffect(() => {
