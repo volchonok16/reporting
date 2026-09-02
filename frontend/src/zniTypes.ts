@@ -5,6 +5,12 @@ export type LinkedError = {
   status?: string | null
 }
 
+export type LinkedProduct = {
+  id: string
+  title: string
+  url?: string | null
+}
+
 export type LinkedEnvironment = {
   key: string
   label: string
@@ -32,6 +38,7 @@ export type ChangeRequest = {
   boardName?: string | null
   boardCode?: string | null
   customerName?: string | null
+  product?: LinkedProduct | null
   businessGoal?: string | null
   businessValue?: number | null
   roadmapPriority?: RoadmapPriority | null

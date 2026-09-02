@@ -48,6 +48,7 @@ from app.schemas import (
     DashboardOut,
     LinkedEnvironmentOut,
     LinkedErrorOut,
+    LinkedProductOut,
     QuarterOptionOut,
     TagFilterGroupOut,
 )
@@ -337,10 +338,36 @@ def _matches_incident_error_row(
     return True
 
 
+def _product_out(product: Task | None) -> LinkedProductOut | None:
+    if product is None:
+        return None
+    return LinkedProductOut(
+        id=product.external_id,
+        title=product.title,
+        url=product.external_url,
+    )
+
+
+def _load_products_by_id(db: Session, rows: list[Task]) -> dict[int, Task]:
+    product_ids = {row.parent_task_id for row in rows if row.parent_task_id is not None}
+    if not product_ids:
+        return {}
+    products = list(
+        db.scalars(
+            select(Task).where(
+                Task.id.in_(product_ids),
+                Task.task_type == "product",
+            )
+        )
+    )
+    return {product.id: product for product in products}
+
+
 def _change_request_to_out(
     row: Task,
     linked_errors: list[Task],
     external: ZniExternalData | None = None,
+    product: Task | None = None,
 ) -> ChangeRequestOut:
     board_code_value = _extra(row).get("board_code")
     planned_date, _, quarter_label, planned_label = _task_plan_meta(row)
@@ -362,6 +389,7 @@ def _change_request_to_out(
         boardCode=str(board_code_value) if board_code_value else None,
         boardName=row.source_team or _board_name_by_code(str(board_code_value) if board_code_value else None),
         customerName=_customer_name(row),
+        product=_product_out(product),
         businessGoal=_business_goal(row),
         businessValue=_business_value(row),
         roadmapPriority=roadmap_priority_from_task(row),
@@ -426,11 +454,13 @@ def load_change_requests_by_numbers(db: Session, numbers: list[str]) -> list[Cha
     )
     errors_by_parent = _build_errors_by_parent(rows, error_rows)
     external_by_id = load_external_data_by_task_ids(db, [row.id for row in rows])
+    products_by_id = _load_products_by_id(db, rows)
     by_number = {
         row.external_id: _change_request_to_out(
             row,
             errors_by_parent.get(row.id, []),
             external_by_id.get(row.id),
+            products_by_id.get(row.parent_task_id) if row.parent_task_id else None,
         )
         for row in rows
     }
@@ -804,16 +834,23 @@ def load_change_requests(
         combined_rows.sort(key=lambda pair: _sort_key(pair[1], sort_field), reverse=reverse)
 
     items: list[ChangeRequestOut] = []
+    change_request_rows = [row for row_type, row in combined_rows if row_type == "change_request"]
     external_by_id = load_external_data_by_task_ids(
         db,
-        [row.id for row_type, row in combined_rows if row_type == "change_request"],
+        [row.id for row in change_request_rows],
     )
+    products_by_id = _load_products_by_id(db, change_request_rows)
     for row_type, row in combined_rows:
         if row_type == "error":
             items.append(_incident_error_to_item(row))
             continue
         items.append(
-            _change_request_to_out(row, errors_by_parent.get(row.id, []), external_by_id.get(row.id))
+            _change_request_to_out(
+                row,
+                errors_by_parent.get(row.id, []),
+                external_by_id.get(row.id),
+                products_by_id.get(row.parent_task_id) if row.parent_task_id else None,
+            )
         )
 
     return DashboardOut(
@@ -863,6 +900,7 @@ _EXPORT_HEADERS = [
     "Номер ЗНИ",
     "ЗНИ",
     "Заказчик",
+    "Продукт",
     "Статус workflow",
     "Статус доски",
     "Дата начала",
@@ -882,8 +920,20 @@ _EXPORT_HEADERS = [
 ]
 _EXPORT_HEADER_FILL = PatternFill(fill_type="solid", fgColor="CCCCCC")
 _EXPORT_HEADER_FONT = Font(bold=True)
+_EXPORT_LINK_FONT = Font(color="0563C1", underline="single")
 _EXPORT_TEXT_ALIGNMENT = Alignment(wrap_text=True, vertical="top")
+_EXPORT_PRODUCT_COLUMN = _EXPORT_HEADERS.index("Продукт") + 1
 _MOSCOW_TZ = ZoneInfo("Europe/Moscow")
+
+
+def _product_export_label(item: ChangeRequestOut) -> str:
+    product = item.product
+    if product is None:
+        return ""
+    title = (product.title or "").strip()
+    if title:
+        return f"{product.id}: {title}"
+    return product.id
 
 
 def _export_row_values(item: ChangeRequestOut) -> list[object]:
@@ -892,6 +942,7 @@ def _export_row_values(item: ChangeRequestOut) -> list[object]:
         item.number,
         item.title,
         item.customerName or "",
+        _product_export_label(item),
         item.status or "",
         item.boardColumn or "",
         item.startDate.isoformat() if item.startDate else "",
@@ -943,6 +994,10 @@ def export_xlsx(db: Session, *, board_code: str | None = None) -> tuple[bytes, s
         for col_index, value in enumerate(_export_row_values(item), start=1):
             cell = sheet.cell(row=row_index, column=col_index, value=value)
             cell.alignment = _EXPORT_TEXT_ALIGNMENT
+        if item.product and item.product.url:
+            product_cell = sheet.cell(row=row_index, column=_EXPORT_PRODUCT_COLUMN)
+            product_cell.hyperlink = item.product.url
+            product_cell.font = _EXPORT_LINK_FONT
 
     last_row = max(1, len(items) + 1)
     for col_index in range(1, len(_EXPORT_HEADERS) + 1):

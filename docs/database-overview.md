@@ -84,7 +84,7 @@
 | POST | `/api/auth/login` | Вход PAT или email/пароль → `sessionId` |
 | GET | `/api/dashboard` | Метрики и список ЗНИ |
 | POST | `/api/sync` | Запуск синхронизации доски |
-| GET | `/api/export` | Экспорт ЗНИ + ошибки (CSV) |
+| GET | `/api/export` | Excel: ЗНИ + ошибки, колонки «Заказчик», «Продукт» |
 | GET/POST | `/api/product-status/b2b/presentation` | Генерация PPTX |
 | GET/POST | `/api/revenue-activities` | Активности по выручкам (вкладки «Влияние по базе» / «Влияние по выручке») |
 | GET/POST | `/api/revenue-activities/excel` | Экспорт в Excel (числа как number) |
@@ -221,7 +221,7 @@
 |------|--------|
 | `source_system_id` + `external_id` | Уникальность в источниках |
 | `task_type` | `change_request` (ЗНИ), `product` (Продукт), `error` (Ошибка) |
-| `parent_task_id` | Ошибка → родительская ЗНИ |
+| `parent_task_id` | Продукт → ЗНИ, Ошибка → родительская ЗНИ |
 | `team_id` | Каноническая команда (фильтр отчётов) |
 | `source_team` | Команда из API до маппинга |
 | `title`, `description` | Текст |

@@ -4,7 +4,7 @@ from openpyxl import load_workbook
 
 from app.boards import get_boards
 from app.report_service import export_xlsx
-from app.schemas import ChangeRequestOut, DashboardMetricsOut, DashboardOut, LinkedErrorOut
+from app.schemas import ChangeRequestOut, DashboardMetricsOut, DashboardOut, LinkedErrorOut, LinkedProductOut
 
 
 def _empty_metrics() -> DashboardMetricsOut:
@@ -33,6 +33,11 @@ def test_export_xlsx_is_real_excel_file(monkeypatch) -> None:
                     number="123456",
                     title="Тест ЗНИ",
                     customerName="Иванов Иван",
+                    product=LinkedProductOut(
+                        id="100",
+                        title="Продукт A",
+                        url="https://tfs.example/100",
+                    ),
                     status="Active",
                     boardColumn="Development",
                     boardName="CORE",
@@ -58,10 +63,13 @@ def test_export_xlsx_is_real_excel_file(monkeypatch) -> None:
     rows = list(workbook.active.iter_rows(values_only=True))
     assert rows[0][0] == "Номер ЗНИ"
     assert rows[0][2] == "Заказчик"
+    assert rows[0][3] == "Продукт"
     assert rows[1][0] == "123456"
     assert rows[1][1] == "Тест ЗНИ"
     assert rows[1][2] == "Иванов Иван"
-    assert rows[1][12] == "9: ошибка"
+    assert rows[1][3] == "100: Продукт A"
+    assert rows[1][13] == "9: ошибка"
+    assert workbook.active.cell(row=2, column=4).hyperlink.target == "https://tfs.example/100"
     assert all(row[0] != "222" for row in rows[1:])
 
 

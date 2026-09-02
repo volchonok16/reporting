@@ -64,6 +64,12 @@ class LinkedErrorOut(BaseModel):
     url: str | None = None
 
 
+class LinkedProductOut(BaseModel):
+    id: str
+    title: str
+    url: str | None = None
+
+
 class LinkedEnvironmentOut(BaseModel):
     key: str
     label: str
@@ -103,6 +109,7 @@ class ChangeRequestOut(BaseModel):
     boardCode: str | None = None
     boardName: str | None = None
     customerName: str | None = None
+    product: LinkedProductOut | None = None
     businessGoal: str | None = None
     businessValue: int | None = None
     roadmapPriority: Literal["red", "yellow", "green"] | None = None

@@ -19,7 +19,7 @@
 | **Категория статуса** | Группа для отчётов: `backlog`, `active`, `waiting`, `done`, `cancelled` |
 | **Внешний ID** | Идентификатор задачи/комментария в исходной системе |
 | **ЗНИ** | Запрос на изменение (TFS: `Запрос на изменение`); в БД `task_type = change_request` |
-| **Продукт** | Карточка TFS типа `Продукт` в области `Tele2\B2B Product`; в БД `task_type = product`, дочерние ЗНИ через `parent_task_id`; **Владелец проекта** = **Заказчик ЗНИ** (`Logrocon.PO` → `extra_json.customer_name` / `project_owner`); `board_code` / `board_name` — доска по `System.AreaPath` |
+| **Продукт** | Карточка TFS типа `Продукт` в области `Tele2\B2B Product`; в БД `task_type = product`, дочерние ЗНИ через `parent_task_id`; **Владелец проекта** = **Заказчик ЗНИ** (`Logrocon.PO` → `extra_json.customer_name` / `project_owner`); `board_code` / `board_name` — доска по `System.AreaPath`; в Excel-выгрузке ЗНИ — колонка **«Продукт»** (`номер: название`, ссылка на TFS) |
 | **Ошибка** | Дефект TFS (`Ошибка`); в БД `task_type = error`, связь с ЗНИ через `parent_task_id` |
 | **ETL / синхронизация** | Выгрузка из TFS в `task`; аудит в `sync_run` |
 
@@ -501,6 +501,7 @@
 | Планы приоритет | `extra_json.roadmap_priority` | Локальное поле (не в TFS): цвет колбаски на вкладке **Планы** — `red` / `yellow` / `green`; `PATCH /api/tasks/{id}/roadmap-priority` (только `app_role` = `full`); при синхронизации TFS сохраняется в БД |
 | Планы комментарий | `extra_json.roadmap_comment` | Локальное поле (не в TFS): текст внизу колбаски на вкладке **Планы**; `PATCH /api/tasks/{id}/roadmap-comment` (любой авторизованный пользователь); при синхронизации TFS сохраняется в БД |
 | Use Case | `extra_json.has_uc` | Локальное поле (не в TFS): на колбаске **Планы** — `false` по умолчанию («Нет»), `true` — «Да»; `PATCH /api/tasks/{id}/digital-plan-uc` (любой авторизованный пользователь); при синхронизации TFS сохраняется в БД |
+| Hierarchy-Forward → «Продукт» | `task.parent_task_id` | Родительский продукт TFS; в API дашборда — `product` (`id`, `title`, `url`); в Excel-выгрузке ЗНИ — колонка **«Продукт»** (`номер: название`, гиперссылка на TFS) |
 | Related → «Бронь ресурсов» | `extra_json.ect_resource_reservation` | `true` / `false`: у ЗНИ есть Related на элемент типа «Бронь ресурсов» (колонка «Бронь ресурса ЕЦТ») |
 | Related → CRM / Bercut / ESB | `extra_json.linked_environments` | Массив связанных ЗНИ в окружениях **CRM** (`Tele2\Продукты`), **Bercut** (`BE-T2\BE Analytics`) и **ESB** (`BE-T2\ESB\ESB Analytics`): `key`, `label`, `zni_id`, `status`, `board_column`, `url`. Заполняется при синхронизации доски **Digital** (WIQL Related между областями). В дашборде ЗНИ — в раскрывающейся панели строки; фильтр **«Требует доп. доработок»** (`linked_environment=yes`, только доска Digital) оставляет ЗНИ с хотя бы одной такой связью |
 
@@ -727,7 +728,7 @@
 | `GET /api/products?hideClosed=` | Список продуктов TFS с дочерними ЗНИ (`parent_task_id`) |
 | `POST /api/sync` | Синхронизация; body `{ board }` |
 | `GET /api/sync/status` | Статус и прогресс |
-| `GET /api/export/csv?board=` | CSV: ЗНИ + ошибки |
+| `GET /api/export?board=` | Excel: ЗНИ + ошибки, колонки «Заказчик» и «Продукт» (`parent_task_id`) |
 | `PATCH /api/tasks/{id}/external-data` | Внешние поля ЗНИ (приоритет, коммерческий эффект, даты); не в TFS. Только администратор (`canManageOrg`). `actualPeriod` — только в статусах `ZNI_ACTUAL_PERIOD_EDITABLE_STATES` |
 | `GET/POST /api/notifications` | Inbox и отправка уведомлений; колокольчик в шапке. **Отправка только для администратора** (`org_user.role=admin` или PAT); получатели — `org_user` |
 
