@@ -20,7 +20,9 @@ type Product = {
   title: string
   url?: string | null
   status?: string | null
-  assignedTo?: string | null
+  projectOwner?: string | null
+  boardCode?: string | null
+  boardName?: string | null
   tags: string[]
   zniCount: number
   zniItems: ProductZni[]
@@ -168,6 +170,7 @@ export default function Products({ canSyncTfs = false }: ProductsProps) {
                 <col className="col-status" />
                 <col className="col-board" />
                 <col className="col-board" />
+                <col className="col-id" />
               </colgroup>
               <thead>
                 <tr>
@@ -175,14 +178,15 @@ export default function Products({ canSyncTfs = false }: ProductsProps) {
                   <th>Номер</th>
                   <th>Продукт</th>
                   <th>Статус</th>
-                  <th>Ответственный</th>
+                  <th>Владелец проекта</th>
+                  <th>Доска</th>
                   <th>ЗНИ</th>
                 </tr>
               </thead>
               <tbody>
                 {!loading && data?.items.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="table-empty">Нет продуктов</td>
+                    <td colSpan={7} className="table-empty">Нет продуктов</td>
                   </tr>
                 ) : null}
                 {data?.items.map((product) => {
@@ -220,7 +224,8 @@ export default function Products({ canSyncTfs = false }: ProductsProps) {
                             ? product.status
                             : product.status ?? '—'}
                         </td>
-                        <td>{product.assignedTo ?? '—'}</td>
+                        <td>{product.projectOwner ?? '—'}</td>
+                        <td>{product.boardName ?? product.boardCode ?? '—'}</td>
                         <td>{product.zniCount}</td>
                       </tr>
                       {expanded && hasChildren
@@ -238,6 +243,7 @@ export default function Products({ canSyncTfs = false }: ProductsProps) {
                               </td>
                               <td className="cell-title">{zni.title}</td>
                               <td className="cell-status">{zni.status ?? '—'}</td>
+                              <td />
                               <td>{zni.boardName ?? zni.boardCode ?? '—'}</td>
                               <td />
                             </tr>

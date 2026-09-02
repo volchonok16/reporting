@@ -19,7 +19,7 @@
 | **Категория статуса** | Группа для отчётов: `backlog`, `active`, `waiting`, `done`, `cancelled` |
 | **Внешний ID** | Идентификатор задачи/комментария в исходной системе |
 | **ЗНИ** | Запрос на изменение (TFS: `Запрос на изменение`); в БД `task_type = change_request` |
-| **Продукт** | Карточка TFS типа `Продукт` в области `Tele2\B2B Product`; в БД `task_type = product`, дочерние ЗНИ через `parent_task_id` |
+| **Продукт** | Карточка TFS типа `Продукт` в области `Tele2\B2B Product`; в БД `task_type = product`, дочерние ЗНИ через `parent_task_id`; **Владелец проекта** = **Заказчик ЗНИ** (`Logrocon.PO` → `extra_json.customer_name` / `project_owner`); `board_code` / `board_name` — доска по `System.AreaPath` |
 | **Ошибка** | Дефект TFS (`Ошибка`); в БД `task_type = error`, связь с ЗНИ через `parent_task_id` |
 | **ETL / синхронизация** | Выгрузка из TFS в `task`; аудит в `sync_run` |
 

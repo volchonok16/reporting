@@ -54,6 +54,11 @@ class Settings(BaseSettings):
         alias="TFS_PRODUCT_AREA_PATH",
         description="AreaPath для WIQL связей Продукт → ЗНИ.",
     )
+    tfs_product_owner_fields: str = Field(
+        default="Logrocon.PO",
+        alias="TFS_PRODUCT_OWNER_FIELDS",
+        description="Поля TFS «Владелец проекта» (= Заказчик ЗНИ, Logrocon.PO); через запятую по приоритету.",
+    )
     tfs_error_type_values: str = Field(default="Ошибка", alias="TFS_ERROR_TYPE_VALUES")
     tfs_resource_reservation_type_values: str = Field(
         default="Бронь ресурсов",
@@ -331,6 +336,11 @@ class Settings(BaseSettings):
     @property
     def product_area_path(self) -> str:
         return (self.tfs_product_area_path or "").strip().replace("/", "\\")
+
+    @computed_field
+    @property
+    def product_owner_field_list(self) -> list[str]:
+        return [item.strip() for item in self.tfs_product_owner_fields.split(",") if item.strip()]
 
     @computed_field
     @property

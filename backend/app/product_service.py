@@ -2,8 +2,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.board_metrics import task_status_tokens
+from app.boards import board_by_code, get_boards
 from app.config import settings
 from app.models import Task
+from app.product_fields import board_for_area_path
 from app.schemas import ProductOut, ProductZniOut, ProductsOut
 
 
@@ -17,6 +19,33 @@ def _closed_states_lower() -> set[str]:
 
 def _is_closed_task(task: Task) -> bool:
     return bool(task_status_tokens(task) & _closed_states_lower())
+
+
+def _product_owner(extra: dict) -> str | None:
+    owner = extra.get("project_owner") or extra.get("customer_name") or extra.get("assigned_to")
+    if owner is None:
+        return None
+    text = str(owner).strip()
+    return text or None
+
+
+def _product_board(extra: dict, *, source_team: str | None) -> tuple[str | None, str | None]:
+    board_code = extra.get("board_code")
+    board_name = extra.get("board_name")
+    if board_code or board_name:
+        code = str(board_code) if board_code else None
+        name = str(board_name) if board_name else None
+        if code and not name:
+            matched = board_by_code(code, get_boards())
+            name = matched.display_name if matched else source_team
+        return code, name or source_team
+
+    area_path = extra.get("area_path")
+    matched = board_for_area_path(str(area_path) if area_path else None)
+    if matched is not None:
+        return matched.code, matched.display_name
+    team = (source_team or "").strip()
+    return None, team or None
 
 
 def _product_zni_to_out(row: Task) -> ProductZniOut:
@@ -37,14 +66,16 @@ def _product_to_out(row: Task, zni_rows: list[Task]) -> ProductOut:
     extra = _extra(row)
     tags = extra.get("tags")
     tag_list = [str(tag) for tag in tags] if isinstance(tags, list) else []
-    assigned = extra.get("assigned_to")
+    board_code, board_name = _product_board(extra, source_team=row.source_team)
     return ProductOut(
         id=str(row.id),
         number=row.external_id,
         title=row.title,
         url=row.external_url,
         status=row.source_status,
-        assignedTo=str(assigned) if assigned else None,
+        projectOwner=_product_owner(extra),
+        boardCode=board_code,
+        boardName=board_name,
         tags=tag_list,
         zniCount=len(zni_rows),
         zniItems=[_product_zni_to_out(zni) for zni in zni_rows],

@@ -12,7 +12,7 @@ def _product(**kwargs) -> Task:
         "title": "Продукт A",
         "task_type": "product",
         "source_status": "Active",
-        "extra_json": {"assigned_to": "Иванов"},
+        "extra_json": {"project_owner": "Иванов", "board_code": "b2b_product_core", "board_name": "CORE"},
     }
     defaults.update(kwargs)
     return Task(**defaults)
@@ -51,6 +51,8 @@ def test_load_products_hides_closed_zni_when_requested() -> None:
     assert hidden.totalShown == 1
     assert hidden.items[0].zniCount == 1
     assert hidden.items[0].zniItems[0].number == "441181"
+    assert hidden.items[0].projectOwner == "Иванов"
+    assert hidden.items[0].boardName == "CORE"
 
     db.scalars.side_effect = [
         [product],

@@ -862,6 +862,7 @@ XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.s
 _EXPORT_HEADERS = [
     "Номер ЗНИ",
     "ЗНИ",
+    "Заказчик",
     "Статус workflow",
     "Статус доски",
     "Дата начала",
@@ -890,6 +891,7 @@ def _export_row_values(item: ChangeRequestOut) -> list[object]:
     return [
         item.number,
         item.title,
+        item.customerName or "",
         item.status or "",
         item.boardColumn or "",
         item.startDate.isoformat() if item.startDate else "",

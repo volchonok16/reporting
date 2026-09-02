@@ -160,7 +160,9 @@ class ProductOut(BaseModel):
     title: str
     url: str | None = None
     status: str | None = None
-    assignedTo: str | None = None
+    projectOwner: str | None = None
+    boardCode: str | None = None
+    boardName: str | None = None
     tags: list[str] = Field(default_factory=list)
     zniCount: int = 0
     zniItems: list[ProductZniOut] = Field(default_factory=list)

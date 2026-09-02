@@ -23,6 +23,13 @@ def test_error_batch_field_list_excludes_zni_only_fields() -> None:
     assert "System.WorkItemType" in fields
 
 
+def test_product_batch_field_list_includes_owner_and_area() -> None:
+    client = _client()
+    fields = set(client._product_batch_field_list())
+    assert "Logrocon.PO" in fields
+    assert "System.AreaPath" in fields
+
+
 def test_fetch_work_items_chunk_retries_without_fields_on_400() -> None:
     client = _client()
     bad = MagicMock(status_code=400, text="Unknown field")

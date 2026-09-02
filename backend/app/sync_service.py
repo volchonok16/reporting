@@ -11,8 +11,10 @@ from app.boards import (
     BoardConfig,
     boards_for_sync,
     ensure_boards_loaded,
+    get_boards,
     is_all_boards,
     normalize_board_code,
+    normalize_tfs_path,
 )
 from app.config import settings
 from app.db import SessionLocal, close_db_session
@@ -20,6 +22,7 @@ from app.json_utils import as_work_item_list
 from app.iteration_plan import parse_iteration_plan, quarter_key_from_date
 from app.release_fields import work_item_planned_release
 from app.linked_errors import is_error_work_item_type, parent_zni_id_from_error_payload
+from app.product_fields import board_for_area_path, product_owner_from_fields
 from app.resource_reservation import compute_ect_resource_reservation
 from app.ect_acceptance import compute_ect_acceptance
 from app.completed_metrics import effective_closed_date, effective_closed_date_from_fields
@@ -753,7 +756,7 @@ async def sync_products(
         product_payloads = await client.get_work_items_batch(
             product_external_ids,
             expand_relations=False,
-            fields=client._error_batch_field_list(),
+            fields=client._product_batch_field_list(),
         )
         fetched += len(product_payloads)
 
@@ -761,6 +764,7 @@ async def sync_products(
         team_id = team_ids[board.code]
         product_db_ids: dict[int, int] = {}
         synced_product_external_ids: set[str] = set()
+        boards = get_boards()
 
         for item in as_work_item_list(product_payloads):
             fields = item.get("fields") or {}
@@ -770,13 +774,19 @@ async def sync_products(
             created = parse_tfs_datetime(fields.get("System.CreatedDate"))
             updated = parse_tfs_datetime(fields.get("System.ChangedDate"))
             closed = parse_tfs_datetime(fields.get("Microsoft.VSTS.Common.ClosedDate"))
-            assigned_to = tfs_identity_display_name(fields.get("System.AssignedTo"))
+            area_path = normalize_tfs_path(fields.get("System.AreaPath"))
+            project_owner = product_owner_from_fields(fields)
+            matched_board = board_for_area_path(area_path, boards)
             extra_json: dict[str, Any] = {
-                "area_path": fields.get("System.AreaPath"),
+                "area_path": area_path or fields.get("System.AreaPath"),
                 "tags": work_item_tags(fields),
             }
-            if assigned_to:
-                extra_json["assigned_to"] = assigned_to
+            if project_owner:
+                extra_json["project_owner"] = project_owner
+                extra_json["customer_name"] = project_owner
+            if matched_board is not None:
+                extra_json["board_code"] = matched_board.code
+                extra_json["board_name"] = matched_board.display_name
 
             task_id = upsert_task(
                 db,
@@ -787,7 +797,7 @@ async def sync_products(
                 title=str(fields.get("System.Title") or f"Продукт {item['id']}"),
                 task_type=TASK_TYPE_PRODUCT,
                 source_status=fields.get("System.State"),
-                source_team="Продукты",
+                source_team=matched_board.display_name if matched_board else "Продукты",
                 created_at=created,
                 updated_at=updated,
                 start_date=effective_start_date(fields),

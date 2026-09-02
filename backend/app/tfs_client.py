@@ -368,6 +368,23 @@ class TfsClient:
             ]
         )
 
+    def _product_batch_field_list(self) -> list[str]:
+        """Поля для workItemsBatch по продуктам (владелец, area path, доска)."""
+        return wit_api_field_names(
+            [
+                "System.Id",
+                "System.Title",
+                "System.WorkItemType",
+                "System.State",
+                "System.AreaPath",
+                "System.CreatedDate",
+                "System.ChangedDate",
+                "System.Tags",
+                "Microsoft.VSTS.Common.ClosedDate",
+                *settings.product_owner_field_list,
+            ]
+        )
+
     async def get_error_ids_for_area(
         self,
         area_path: str,
