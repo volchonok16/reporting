@@ -194,7 +194,14 @@ export default function Products({ canSyncTfs = false }: ProductsProps) {
                   const hasChildren = product.zniItems.length > 0
                   return (
                     <Fragment key={product.id}>
-                      <tr className={expanded ? 'zni-table-row-expanded' : undefined}>
+                      <tr
+                        className={[
+                          'products-product-row',
+                          expanded ? 'zni-table-row-expanded' : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                      >
                         <td className="cell-expand">
                           {hasChildren ? (
                             <button
@@ -218,7 +225,10 @@ export default function Products({ canSyncTfs = false }: ProductsProps) {
                             product.number
                           )}
                         </td>
-                        <td className="cell-title">{product.title}</td>
+                        <td className="cell-title products-product-title">
+                          <span className="products-row-badge products-row-badge-product">Продукт</span>
+                          {product.title}
+                        </td>
                         <td className="cell-status">
                           {product.status && !isClosedStatus(product.status)
                             ? product.status
@@ -241,7 +251,10 @@ export default function Products({ canSyncTfs = false }: ProductsProps) {
                                   zni.number
                                 )}
                               </td>
-                              <td className="cell-title">{zni.title}</td>
+                              <td className="cell-title products-zni-title">
+                                <span className="products-row-badge products-row-badge-zni">ЗНИ</span>
+                                {zni.title}
+                              </td>
                               <td className="cell-status">{zni.status ?? '—'}</td>
                               <td />
                               <td>{zni.boardName ?? zni.boardCode ?? '—'}</td>
