@@ -447,9 +447,14 @@ PUT /api/master/imports/{importId}/items/{itemId}
 POST /api/master/imports/{importId}/merge
 {
   "conflictStrategy": "selected",
-  "replaceConflictItemIds": ["opaque-item-id"]
+  "replaceConflictItemIds": ["opaque-item-id"],
+  "mergeDuplicateANumbers": false
 }
 ```
+
+`mergeDuplicateANumbers`: если `true`, повторяющиеся опорные номера с разными
+АОН в одном импорте объединяются в одну master-строку; если `false` (по
+умолчанию), каждая исходная строка сохраняется отдельно.
 
 `conflictStrategy`: `keep_all`, `replace_all` или `selected`. Новые строки
 всегда добавляются, совпадающие пропускаются, отсутствующие во входящем CSV

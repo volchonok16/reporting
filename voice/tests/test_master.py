@@ -890,6 +890,10 @@ def test_master_persists_formatted_duplicate_findings_for_navigation(
         {
             "aNumber": "79000000031",
             "sourceRows": [2, 3],
+            "entries": [
+                {"sourceRow": 2, "bNumbers": ["79100000031"]},
+                {"sourceRow": 3, "bNumbers": ["79100000032"]},
+            ],
         }
     ]
     duplicate_page = service.list_import_duplicates(
@@ -917,6 +921,83 @@ def test_master_persists_formatted_duplicate_findings_for_navigation(
     assert duplicates["items"][0]["isDuplicate"] is True
     assert duplicates["items"][0]["duplicateSourceRows"] == [2, 3]
     assert duplicates["items"][0]["duplicateSourceFile"] == "duplicates.csv"
+
+
+def test_master_merge_duplicate_a_numbers_can_merge_or_keep_separate(
+    tmp_path,
+) -> None:
+    config = replace(settings, data_dir=tmp_path / "data")
+    registry = Registry(config)
+    service = MasterService(
+        config,
+        registry,
+        ValidationService(config.preview_limit),
+    )
+    parameter = "null/$ & null&D77$&"
+    duplicate_rows = [
+        f"{parameter}79000000041=4:4,1,79100000041",
+        f"{parameter}79000000041=4:4,1,79100000042",
+    ]
+
+    separate_session = "master-duplicate-separate-session"
+    separate_upload = add_csv_upload(
+        registry,
+        session_id=separate_session,
+        name="duplicates-separate.csv",
+        content=formatted_csv(duplicate_rows),
+    )
+    separate_analysis = service.analyze_import(
+        MasterImportAnalyzeRequest(uploadId=separate_upload),
+        separate_session,
+    )
+    separate_result = service.merge_import(
+        separate_analysis["importId"],
+        MasterMergeRequest(mergeDuplicateANumbers=False),
+        separate_session,
+        actor="tester@t2.local",
+    )
+    assert separate_result["separateDuplicateRows"] == 1
+    assert separate_result["mergedDuplicates"] == 0
+    separate_records = service.list_records(
+        query="79000000041",
+        offset=0,
+        limit=20,
+    )
+    assert separate_records["total"] == 2
+    separate_b = {
+        tuple(record["bNumbers"]) for record in separate_records["items"]
+    }
+    assert separate_b == {("79100000041",), ("79100000042",)}
+
+    merge_session = "master-duplicate-merge-session"
+    merge_upload = add_csv_upload(
+        registry,
+        session_id=merge_session,
+        name="duplicates-merge.csv",
+        content=formatted_csv(duplicate_rows),
+    )
+    merge_analysis = service.analyze_import(
+        MasterImportAnalyzeRequest(uploadId=merge_upload),
+        merge_session,
+    )
+    merge_result = service.merge_import(
+        merge_analysis["importId"],
+        MasterMergeRequest(mergeDuplicateANumbers=True),
+        merge_session,
+        actor="tester@t2.local",
+    )
+    assert merge_result["mergedDuplicates"] == 1
+    assert merge_result["separateDuplicateRows"] == 0
+    merged_records = service.list_records(
+        query="79000000041",
+        offset=0,
+        limit=20,
+    )
+    assert merged_records["total"] == 1
+    assert merged_records["items"][0]["bNumbers"] == [
+        "79100000041",
+        "79100000042",
+    ]
 
 
 def test_master_reports_every_source_row_when_duplicates_are_grouped(

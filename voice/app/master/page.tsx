@@ -121,6 +121,10 @@ type ImportAnalysis = {
   duplicates: Array<{
     aNumber: string;
     sourceRows: number[];
+    entries?: Array<{
+      sourceRow: number;
+      bNumbers: string[];
+    }>;
   }>;
   numberStartErrors: Array<{
     itemId: string;
@@ -245,7 +249,7 @@ const MASTER_TUTORIAL_STEPS: MasterTutorialStepDefinition[] = [
     description:
       "Предложение разделяет новые строки, совпадения и конфликты. Новые строки можно просматривать и редактировать, а для конфликтов — выбрать master или применить изменение из CSV.",
     action:
-      "Проверьте полные строки, дубликаты и ошибки. «Применить все конфликты» дополняет АОН у совпадающих опорных номеров и применяет остальные изменения CSV, а «Подтвердить слияние» создаёт одну новую версию.",
+      "Проверьте полные строки, дубликаты и ошибки. Если опорный номер повторяется с разными АОН, выберите сохранение отдельными строками или объединение. «Применить все конфликты» дополняет АОН у совпадающих опорных номеров, а «Подтвердить слияние» создаёт одну новую версию.",
     target: '[data-tour="master-merge-review"]',
   },
   {
@@ -279,7 +283,7 @@ const MASTER_TUTORIAL_STEPS: MasterTutorialStepDefinition[] = [
     id: "quality",
     title: "Проверяйте дубликаты и ошибки",
     description:
-      "Повторы опорных номеров и полностью одинаковые строки проверяются отдельно. Навигация последовательно переносит к нужным строкам, а ошибки длины, первой цифры и пробелов остаются только подсветкой.",
+      "Повторы опорных номеров с разными АОН и полностью одинаковые строки проверяются отдельно. Перед слиянием можно выбрать сохранение отдельными строками или объединение АОН.",
     action:
       "Приложение показывает расположение проблемы и не исправляет данные автоматически.",
     target: '[data-tour="master-quality-tools"]',
@@ -1188,6 +1192,8 @@ export default function MasterPage() {
   const [selectedConflicts, setSelectedConflicts] = useState<string[]>([]);
   const [replaceAll, setReplaceAll] = useState(false);
   const [mergeDuplicateANumbers, setMergeDuplicateANumbers] = useState(false);
+  const [duplicateDecisionConfirmed, setDuplicateDecisionConfirmed] =
+    useState(false);
   const [showEditor, setShowEditor] = useState(false);
   const [editing, setEditing] = useState<MasterRecord | null>(null);
   const [logicalRowPreview, setLogicalRowPreview] =
@@ -1238,6 +1244,7 @@ export default function MasterPage() {
       if (analysisImportIdRef.current !== nextImportId) {
         analysisImportIdRef.current = nextImportId;
         setMergeDuplicateANumbers(false);
+        setDuplicateDecisionConfirmed(false);
       }
       if (!next || !next.stats) {
         setNewPreviewItems([]);
@@ -3331,6 +3338,24 @@ export default function MasterPage() {
 
   const mergeImport = async () => {
     if (!analysis || !masterEditable) return;
+    if (duplicatePreviewItems.length && !duplicateDecisionConfirmed) {
+      setError(
+        "Выберите, как сохранить повторяющиеся опорные номера: отдельными строками или объединить АОН.",
+      );
+      return;
+    }
+    if (duplicatePreviewItems.length) {
+      const decisionText = mergeDuplicateANumbers
+        ? "объединить повторяющиеся опорные номера в одну строку с общим списком АОН"
+        : "сохранить каждую строку с повторяющимся опорным номером отдельно";
+      if (
+        !window.confirm(
+          `В файле найдено ${analysis.stats.duplicateGroups} групп повторяющихся опорных номеров с разными АОН.\n\nПодтвердите слияние: ${decisionText}.`,
+        )
+      ) {
+        return;
+      }
+    }
     setMerging(true);
     setError("");
     const importId = analysis.importId;
@@ -3346,7 +3371,7 @@ export default function MasterPage() {
         body: JSON.stringify({
           conflictStrategy,
           replaceConflictItemIds: selectedConflicts,
-          mergeDuplicateANumbers: false,
+          mergeDuplicateANumbers,
         }),
       });
       let result: {
@@ -4600,25 +4625,53 @@ export default function MasterPage() {
                 <div className="duplicate-review-heading">
                   <div>
                     <strong>
-                      Найдены дубликаты опорных номеров
+                      Найдены повторяющиеся опорные номера с разными АОН
                     </strong>
                     <span>
                       Групп: {analysis.stats.duplicateGroups}; повторных строк:{" "}
-                      {analysis.stats.duplicateA}. Каждая строка будет загружена
-                      в master отдельно.
+                      {analysis.stats.duplicateA}. Выберите, как сохранить такие
+                      строки в master перед слиянием.
                     </span>
                   </div>
                   <div className="duplicate-review-actions">
                     <button
-                      className="primary-button compact"
+                      className={`primary-button compact duplicate-decision-button ${
+                        duplicateDecisionConfirmed && !mergeDuplicateANumbers
+                          ? "is-selected"
+                          : ""
+                      }`}
                       type="button"
-                      aria-pressed
-                      disabled
+                      aria-pressed={
+                        duplicateDecisionConfirmed && !mergeDuplicateANumbers
+                      }
+                      onClick={() => {
+                        setMergeDuplicateANumbers(false);
+                        setDuplicateDecisionConfirmed(true);
+                        setError("");
+                      }}
                     >
-                      Добавить отдельными строками
+                      Отдельными строками
                     </button>
                     <button
-                      className="secondary-button compact"
+                      className={`secondary-button compact duplicate-decision-button ${
+                        duplicateDecisionConfirmed && mergeDuplicateANumbers
+                          ? "is-selected"
+                          : ""
+                      }`}
+                      type="button"
+                      aria-pressed={
+                        duplicateDecisionConfirmed && mergeDuplicateANumbers
+                      }
+                      onClick={() => {
+                        setMergeDuplicateANumbers(true);
+                        setDuplicateDecisionConfirmed(true);
+                        setError("");
+                      }}
+                    >
+                      Объединить АОН
+                    </button>
+                    <button
+                      className="text-button compact"
                       type="button"
                       onClick={() => void showNextAnalysisDuplicate()}
                     >
@@ -4631,9 +4684,11 @@ export default function MasterPage() {
                   </div>
                 </div>
                 <p className="duplicate-merge-decision" role="status">
-                  При подтверждении будут загружены все{" "}
-                  {preservedImportRows.toLocaleString("ru-RU")} корректных
-                  строк без автоматического объединения.
+                  {!duplicateDecisionConfirmed
+                    ? "Выберите вариант сохранения повторяющихся опорных номеров, затем подтвердите слияние."
+                    : mergeDuplicateANumbers
+                      ? "Выбрано объединение: для каждого опорного номера АОН из повторных строк будут собраны в одну master-строку."
+                      : `Выбрано сохранение отдельными строками: в master будет загружено ${preservedImportRows.toLocaleString("ru-RU")} корректных строк без автоматического объединения.`}
                 </p>
                 <div
                   className="duplicate-review-list"
@@ -4677,6 +4732,18 @@ export default function MasterPage() {
                         Строки исходного файла:{" "}
                         {duplicate.sourceRows.join(", ")}
                       </small>
+                      {!!duplicate.entries?.length && (
+                        <div className="duplicate-entry-list">
+                          {duplicate.entries.map((entry) => (
+                            <code key={`${duplicate.aNumber}-${entry.sourceRow}`}>
+                              Строка {entry.sourceRow}: АОН{" "}
+                              {entry.bNumbers.length
+                                ? entry.bNumbers.join(", ")
+                                : "—"}
+                            </code>
+                          ))}
+                        </div>
+                      )}
                     </article>
                   ))}
                   {(duplicatePreviewLoading || duplicatePreviewHasMore) && (
@@ -5168,7 +5235,9 @@ export default function MasterPage() {
                 onClick={() => void mergeImport()}
                 disabled={
                   merging ||
-                  !masterEditable
+                  !masterEditable ||
+                  (duplicatePreviewItems.length > 0 &&
+                    !duplicateDecisionConfirmed)
                 }
               >
                 {merging ? "Выполняем слияние…" : "Подтвердить слияние"}

@@ -2125,6 +2125,11 @@ class MasterService:
             {
                 "aNumber": str(duplicate["a_number"]),
                 "sourceRows": json.loads(str(duplicate["source_rows_json"])),
+                "entries": self._duplicate_entry_payloads(
+                    connection,
+                    str(row["id"]),
+                    str(duplicate["a_number"]),
+                ),
             }
             for duplicate in connection.execute(
                 """
@@ -2829,6 +2834,32 @@ class MasterService:
             "items": [self._import_item_payload(row) for row in rows],
         }
 
+    def _duplicate_entry_payloads(
+        self,
+        connection: sqlite3.Connection,
+        import_id: str,
+        a_number: str,
+    ) -> list[dict[str, Any]]:
+        rows = connection.execute(
+            """
+            SELECT source_row, incoming_json
+            FROM master_import_items
+            WHERE import_id = ? AND a_number = ?
+            ORDER BY source_row, id
+            """,
+            (import_id, a_number),
+        ).fetchall()
+        entries: list[dict[str, Any]] = []
+        for row in rows:
+            incoming = json.loads(str(row["incoming_json"]))
+            entries.append(
+                {
+                    "sourceRow": int(row["source_row"]),
+                    "bNumbers": list(incoming.get("bNumbers") or []),
+                }
+            )
+        return entries
+
     def list_import_duplicates(
         self,
         import_id: str,
@@ -2885,6 +2916,11 @@ class MasterService:
                 {
                     "aNumber": str(row["a_number"]),
                     "sourceRows": json.loads(str(row["source_rows_json"])),
+                    "entries": self._duplicate_entry_payloads(
+                        connection,
+                        import_id,
+                        str(row["a_number"]),
+                    ),
                 }
                 for row in rows
             ],
@@ -3080,8 +3116,6 @@ class MasterService:
         actor: str,
     ) -> dict[str, Any]:
         """Start merge in background; client polls GET /imports/{id} until merged."""
-        # Duplicate A-number merge UI is disabled; always keep separate rows.
-        body = body.model_copy(update={"mergeDuplicateANumbers": False})
         now = time.time()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -3241,8 +3275,6 @@ class MasterService:
         *,
         actor: str,
     ) -> dict[str, Any]:
-        # Duplicate merge is disabled in UI; keep rows separate.
-        body = body.model_copy(update={"mergeDuplicateANumbers": False})
         selected = set(body.replaceConflictItemIds)
         now = time.time()
         with self._lock, self._connect() as connection:
