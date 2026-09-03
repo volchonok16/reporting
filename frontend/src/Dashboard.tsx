@@ -795,15 +795,10 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
     setExporting(true)
     const toastId = notifyLoading('Подготовка выгрузки…', 'dashboard-export')
     try {
-      if (boardCode === ALL_BOARDS) {
-        await waitForSync(ALL_BOARDS, (message) => updateLoading(message, toastId))
-        updateLoading('Формирование Excel…', toastId)
-        await downloadExport(ALL_BOARDS, 'zni-report-all.xlsx')
-        notifySuccess('Отчёт выгружен', toastId)
-        await Promise.all([loadBoards(), loadDashboard()])
-        return
-      }
-      await downloadExport(boardCode, 'zni-report.xlsx')
+      const fallbackName =
+        boardCode === ALL_BOARDS ? 'zni-report-all.xlsx' : 'zni-report.xlsx'
+      updateLoading('Формирование Excel…', toastId)
+      await downloadExport(boardCode, fallbackName)
       notifySuccess('Отчёт выгружен', toastId)
     } catch (err) {
       notifyError(err, 'Ошибка выгрузки', toastId)

@@ -857,11 +857,23 @@ export default function ProductStatusWorkbook({
       setDirty(false)
       return true
     }
+    const gidsToReload = [
+      ...new Set([
+        ...payload.updates.map((update) => update.gid),
+        ...payload.deletedRows.map((row) => row.gid),
+        ...payload.rowOrder.map((item) => item.gid),
+      ]),
+    ]
+    const lockedByGid = new Map(
+      sheetsRef.current
+        .filter((sheet) => sheet.editingLocked)
+        .map((sheet) => [sheet.gid, sheet.name] as const),
+    )
     const lockedSheetNames = [
       ...new Set(
-        sheetsRef.current
-          .filter((sheet) => sheet.editingLocked)
-          .map((sheet) => sheet.name),
+        gidsToReload
+          .map((gid) => lockedByGid.get(gid))
+          .filter((name): name is string => Boolean(name)),
       ),
     ]
     if (lockedSheetNames.length > 0) {
@@ -872,13 +884,6 @@ export default function ProductStatusWorkbook({
       )
       return false
     }
-    const gidsToReload = [
-      ...new Set([
-        ...payload.updates.map((update) => update.gid),
-        ...payload.deletedRows.map((row) => row.gid),
-        ...payload.rowOrder.map((item) => item.gid),
-      ]),
-    ]
     setSaving(true)
     const toastId = notifyLoading('Сохранение…', 'product-status-save')
     try {
