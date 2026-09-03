@@ -4313,7 +4313,7 @@ export default function MasterPage() {
                 disabled={!recordStats.activeCount}
                 title={
                   recordStats.activeCount
-                    ? "CSV с одним столбцом MSISDN: опорные, подменные и PANI от 10 символов"
+                    ? "CSV с одним столбцом MSISDN: для каждой строки master — опорный, все АОН (в т.ч. короткие) и PANI; дубликаты сохраняются"
                     : "Мастер-файл пуст"
                 }
               >

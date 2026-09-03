@@ -399,11 +399,6 @@ def _pani_number_from_prefix(value: str) -> str | None:
     return None
 
 
-def _msisdn_export_number(value: str) -> str | None:
-    number = str(value)
-    return number if len(number) >= 10 else None
-
-
 def _number_starts_with_seven(value: str) -> bool:
     return value.removeprefix("+").startswith("7")
 
@@ -4765,8 +4760,11 @@ class MasterService:
 
     def export_msisdn_csv(self, destination: Path) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
-        numbers: set[str] = set()
-        with self._connect() as connection:
+        with self._connect() as connection, destination.open(
+            "w", encoding="utf-8", newline=""
+        ) as target:
+            writer = csv.writer(target, lineterminator="\r\n")
+            writer.writerow(["MSISDN"])
             rows = connection.execute(
                 """
                 SELECT a_number, b_numbers_json, source_prefix
@@ -4776,18 +4774,9 @@ class MasterService:
                 """
             )
             for row in rows:
-                a_number = _msisdn_export_number(str(row["a_number"]))
-                if a_number is not None:
-                    numbers.add(a_number)
+                writer.writerow([str(row["a_number"])])
                 for b_number in json.loads(str(row["b_numbers_json"])):
-                    value = _msisdn_export_number(str(b_number))
-                    if value is not None:
-                        numbers.add(value)
+                    writer.writerow([str(b_number)])
                 pani_number = _pani_number_from_prefix(str(row["source_prefix"]))
                 if pani_number is not None:
-                    numbers.add(pani_number)
-        with destination.open("w", encoding="utf-8", newline="") as target:
-            writer = csv.writer(target, lineterminator="\r\n")
-            writer.writerow(["MSISDN"])
-            for number in sorted(numbers):
-                writer.writerow([number])
+                    writer.writerow([pani_number])
