@@ -547,6 +547,14 @@ function conflictAddsAons(item: ImportItem) {
   );
 }
 
+function conflictInsertsParallelRow(item: ImportItem) {
+  return (
+    item.current !== null &&
+    item.current.aNumber === item.incoming.aNumber &&
+    item.current.sourcePrefix !== item.incoming.sourcePrefix
+  );
+}
+
 function conflictAdditionalAonCount(item: ImportItem) {
   if (!item.current || !conflictAddsAons(item)) return 0;
   const current = new Set(item.current.bNumbers);
@@ -614,9 +622,9 @@ function masterParameterError(value: string) {
         Number(parts.region) > 84))
     return "Код региона должен быть числом от 1 до 84.";
   if (parts.kind === "custom") {
-    const ampersands = value.match(/&/g)?.length ?? 0;
-    if (!value || /[\r\n\u0000=;]/.test(value) || !value.endsWith("&") || ampersands !== 3)
-      return "Свой параметр должен содержать три символа «&» и оканчиваться на «&».";
+    if (!value || /[\r\n\u0000]/.test(value))
+      return "Параметр не должен быть пустым и не должен содержать переводы строк.";
+    return "";
   }
   return "";
 }
@@ -4820,7 +4828,8 @@ export default function MasterPage() {
                       По умолчанию сохраняется версия из master. Отметьте
                       изменения, которые нужно применить из CSV. Если опорный
                       номер и параметр совпадают, новые АОН добавятся к уже
-                      существующим без удаления.
+                      существующим. Если параметр отличается, CSV будет добавлен
+                      отдельной строкой без замены текущей записи.
                     </span>
                   </div>
                   <label
@@ -4839,7 +4848,7 @@ export default function MasterPage() {
                     />
                     <span>
                       <strong>Применить все конфликты</strong>
-                      <small>Дополнить АОН и применить остальные изменения CSV</small>
+                      <small>Дополнить АОН, добавить строки с другим параметром и применить переименования</small>
                     </span>
                   </label>
                 </div>
@@ -4860,6 +4869,7 @@ export default function MasterPage() {
                   const selected =
                     replaceAll || selectedConflicts.includes(item.id);
                   const addsAons = conflictAddsAons(item);
+                  const insertsParallel = conflictInsertsParallelRow(item);
                   const additionalAonCount = conflictAdditionalAonCount(item);
                   return (
                     <article
@@ -4966,7 +4976,9 @@ export default function MasterPage() {
                         {selected
                           ? addsAons
                             ? "Дополнить master"
-                            : "Применить CSV"
+                            : insertsParallel
+                              ? "Добавить отдельной строкой"
+                              : "Применить CSV"
                           : "Оставить master"}
                       </label>
                     </article>

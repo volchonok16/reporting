@@ -28,9 +28,9 @@ from .models import (
     PANI_REGION_PREFIX_PATTERN,
     PANI_PREFIX_PATTERN,
     LEGACY_PANI_REGION_PREFIX_PATTERN,
-    TemplateSettings,
     canonicalize_pani_region_prefix,
     is_single_short_aon,
+    normalize_master_source_prefix,
     resolved_first_b_marker,
 )
 from .pg_db import PgConnection, configure as configure_master_db, connect as pg_connect
@@ -58,35 +58,49 @@ def _pick_compare_master_row(
     b_json: str,
     prefix: str,
 ) -> Any | None:
-    """Жадный 1:1 match: точная активная связка → любая активная → soft-deleted."""
+    """Match import row to master: exact B+prefix, then same prefix, then soft-deleted."""
     if not candidates:
         return None
     exact_active: list[Any] = []
-    active: list[Any] = []
-    soft: list[Any] = []
+    prefix_active: list[Any] = []
+    prefix_soft: list[Any] = []
     for row in candidates:
-        if row["deleted_at"] is not None:
-            soft.append(row)
+        row_prefix = str(row["source_prefix"])
+        if row_prefix != prefix:
             continue
-        if (
-            str(row["b_numbers_json"]) == b_json
-            and str(row["source_prefix"]) == prefix
-        ):
+        if row["deleted_at"] is not None:
+            prefix_soft.append(row)
+            continue
+        if str(row["b_numbers_json"]) == b_json:
             exact_active.append(row)
         else:
-            active.append(row)
+            prefix_active.append(row)
     chosen = (
         exact_active[0]
         if exact_active
-        else active[0]
-        if active
-        else soft[0]
-        if soft
+        else prefix_active[0]
+        if prefix_active
+        else prefix_soft[0]
+        if prefix_soft
         else None
     )
     if chosen is not None:
         candidates.remove(chosen)
     return chosen
+
+
+def _merge_b_numbers(
+    existing: list[str],
+    incoming: list[str],
+) -> list[str]:
+    combined = list(existing)
+    seen = set(combined)
+    for b_number in incoming:
+        if b_number in seen:
+            continue
+        seen.add(b_number)
+        combined.append(b_number)
+    return combined
 
 
 def _logical_master_row(
@@ -970,11 +984,8 @@ class MasterService:
             if number not in seen:
                 seen.add(number)
                 b_numbers.append(number)
-        prefix = canonicalize_pani_region_prefix(
-            body.sourcePrefix or NO_REGION_PREFIX
-        )
         try:
-            TemplateSettings(prefix=prefix)
+            prefix = normalize_master_source_prefix(body.sourcePrefix)
         except ValueError as exc:
             raise AppError(
                 "INVALID_PREFIX",
@@ -2449,9 +2460,13 @@ class MasterService:
                 warning_rows: list[tuple[Any, ...]] = []
                 matched_record_ids: list[tuple[int]] = []
                 for mapping, source_row in batch:
-                    prefix = canonicalize_pani_region_prefix(
-                        mapping.sourcePrefix or NO_REGION_PREFIX
-                    )
+                    try:
+                        prefix = normalize_master_source_prefix(mapping.sourcePrefix)
+                    except ValueError as exc:
+                        raise AppError(
+                            "INVALID_PREFIX",
+                            f"Строка CSV {source_row}: параметр строки имеет некорректный формат",
+                        ) from exc
                     incoming = {
                         "aNumber": mapping.aNumber,
                         "bNumbers": list(mapping.bNumbers),
@@ -3569,23 +3584,32 @@ class MasterService:
                             if record["deleted_at"] is None
                             else None
                         )
+                        if (
+                            before is not None
+                            and before["aNumber"] == incoming["aNumber"]
+                            and before["sourcePrefix"] != incoming["sourcePrefix"]
+                        ):
+                            insert_count += 1
+                            planned.append(
+                                {
+                                    "kind": "insert",
+                                    "item": item,
+                                    "incoming": incoming,
+                                }
+                            )
+                            continue
                         merged_incoming = incoming
                         if (
                             before is not None
                             and before["aNumber"] == incoming["aNumber"]
-                            and before["sourcePrefix"]
-                            == incoming["sourcePrefix"]
+                            and before["sourcePrefix"] == incoming["sourcePrefix"]
                         ):
-                            combined_b_numbers = list(before["bNumbers"])
-                            seen_b_numbers = set(combined_b_numbers)
-                            for b_number in incoming["bNumbers"]:
-                                if b_number in seen_b_numbers:
-                                    continue
-                                seen_b_numbers.add(b_number)
-                                combined_b_numbers.append(b_number)
                             merged_incoming = {
                                 **incoming,
-                                "bNumbers": combined_b_numbers,
+                                "bNumbers": _merge_b_numbers(
+                                    before["bNumbers"],
+                                    incoming["bNumbers"],
+                                ),
                             }
                         if (
                             before is not None

@@ -70,6 +70,20 @@ def validate_pani_prefix(value: str) -> None:
         raise ValueError("PANI must contain exactly 11 digits")
 
 
+def normalize_master_source_prefix(value: str | None) -> str:
+    """Validate and normalize master row prefix; custom values are allowed."""
+
+    prefix = canonicalize_pani_region_prefix(value or NO_REGION_PREFIX)
+    if not prefix:
+        prefix = NO_REGION_PREFIX
+    if any(char in prefix for char in "\r\n\x00"):
+        raise ValueError("prefix must not contain control characters")
+    if len(prefix) > 256:
+        raise ValueError("prefix is too long")
+    validate_pani_prefix(prefix)
+    return prefix
+
+
 class CsvSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 

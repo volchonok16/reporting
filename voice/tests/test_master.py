@@ -171,6 +171,132 @@ def test_master_requires_pani_to_contain_exactly_eleven_digits(
     assert too_long.value.code == "INVALID_PREFIX"
 
 
+def test_master_allows_custom_source_prefix_without_three_ampersands(
+    tmp_path,
+) -> None:
+    config = replace(settings, data_dir=tmp_path / "data")
+    registry = Registry(config)
+    service = MasterService(
+        config,
+        registry,
+        ValidationService(config.preview_limit),
+    )
+    custom_prefix = "79999009621& null/$ & null/$ &extra&"
+
+    created = service.create_record(
+        MasterRecordRequest(
+            aNumber="79000000081",
+            bNumbers=["79100000081"],
+            sourcePrefix=custom_prefix,
+        ),
+        "master-custom-prefix-session",
+        actor="tester@t2.local",
+    )
+    assert created["record"]["sourcePrefix"] == custom_prefix
+
+
+def test_master_import_appends_aons_for_same_prefix_conflict(tmp_path) -> None:
+    config = replace(settings, data_dir=tmp_path / "data")
+    registry = Registry(config)
+    service = MasterService(
+        config,
+        registry,
+        ValidationService(config.preview_limit),
+    )
+    session_id = "master-append-aon-session"
+    prefix = "null/$ & null/$ & null/$ &"
+    service.create_record(
+        MasterRecordRequest(
+            aNumber="79000000091",
+            bNumbers=["79100000091", "79100000092"],
+            sourcePrefix=prefix,
+        ),
+        session_id,
+        actor="tester@t2.local",
+    )
+    upload_id = add_csv_upload(
+        registry,
+        session_id=session_id,
+        name="append-aons.csv",
+        content=formatted_csv(
+            [f"{prefix}79000000091=4:4,1,79100000093;4,1,79100000094"]
+        ),
+    )
+    analysis = service.analyze_import(
+        MasterImportAnalyzeRequest(uploadId=upload_id),
+        session_id,
+    )
+    assert analysis["stats"]["conflict"] == 1
+    conflict_id = analysis["items"][0]["id"]
+    service.merge_import(
+        analysis["importId"],
+        MasterMergeRequest(
+            conflictStrategy="selected",
+            replaceConflictItemIds=[conflict_id],
+        ),
+        session_id,
+        actor="tester@t2.local",
+    )
+    record = service.list_records(query="79000000091", offset=0, limit=10)["items"][0]
+    assert record["bNumbers"] == [
+        "79100000091",
+        "79100000092",
+        "79100000093",
+        "79100000094",
+    ]
+
+
+def test_master_import_keeps_parallel_rows_for_different_prefix(tmp_path) -> None:
+    config = replace(settings, data_dir=tmp_path / "data")
+    registry = Registry(config)
+    service = MasterService(
+        config,
+        registry,
+        ValidationService(config.preview_limit),
+    )
+    session_id = "master-parallel-prefix-session"
+    default_prefix = "null/$ & null/$ & null/$ &"
+    pani_prefix = "79999009621& null/$ & null/$ &"
+    service.create_record(
+        MasterRecordRequest(
+            aNumber="79000000092",
+            bNumbers=["79100000092"],
+            sourcePrefix=default_prefix,
+        ),
+        session_id,
+        actor="tester@t2.local",
+    )
+    upload_id = add_csv_upload(
+        registry,
+        session_id=session_id,
+        name="parallel-prefix.csv",
+        content=formatted_csv(
+            [f"{pani_prefix}79000000092=4:4,1,79100000093"]
+        ),
+    )
+    analysis = service.analyze_import(
+        MasterImportAnalyzeRequest(uploadId=upload_id),
+        session_id,
+    )
+    assert analysis["stats"]["new"] == 1
+    assert analysis["stats"]["conflict"] == 0
+    service.merge_import(
+        analysis["importId"],
+        MasterMergeRequest(),
+        session_id,
+        actor="tester@t2.local",
+    )
+    records = service.list_records(query="79000000092", offset=0, limit=10)
+    assert records["total"] == 2
+    prefixes = {record["sourcePrefix"] for record in records["items"]}
+    assert prefixes == {default_prefix, pani_prefix}
+    b_by_prefix = {
+        record["sourcePrefix"]: record["bNumbers"] for record in records["items"]
+    }
+    assert b_by_prefix[default_prefix] == ["79100000092"]
+    assert b_by_prefix[pani_prefix] == ["79100000093"]
+
+
 def test_master_supports_pani_with_region_as_its_own_parameter(
     tmp_path,
 ) -> None:
@@ -530,13 +656,17 @@ def test_master_merge_ids_history_crud_and_export(tmp_path) -> None:
 
     after_merge = service.list_records(query="79000000001", offset=0, limit=10)
     assert after_merge["items"][0]["id"] == stable_id
-    assert after_merge["items"][0]["bNumbers"] == ["79100000099"]
+    assert after_merge["items"][0]["bNumbers"] == [
+        "79100000001",
+        "79100000002",
+        "79100000099",
+    ]
 
     updated = service.update_record(
         stable_id,
         MasterRecordRequest(
             aNumber="79000000001",
-            bNumbers=["79100000099", "79100000100"],
+            bNumbers=["79100000001", "79100000002", "79100000099", "79100000100"],
             expectedVersion=after_merge["items"][0]["version"],
         ),
         session_id,
@@ -557,6 +687,8 @@ def test_master_merge_ids_history_crud_and_export(tmp_path) -> None:
         "added",
     ]
     assert history["items"][0]["before"]["bNumbers"] == [
+        "79100000001",
+        "79100000002",
         "79100000099",
         "79100000100",
     ]
