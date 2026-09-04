@@ -300,7 +300,7 @@
 |------|-----|----------|
 | `release_id` | bigint | Основной релиз задачи |
 | `sprint_name` | varchar(255) | Имя спринта (Jira Sprint и аналоги) |
-| `iteration_path` | varchar(500) | Путь итерации в TFS (`Area\Iteration`) |
+| `iteration_path` | varchar(500) | Путь итерации в TFS (`System.IterationPath`); заполняется при sync, также дублируется в `extra_json.iteration_path` |
 
 ### Метки и сырьё
 
@@ -505,7 +505,7 @@
 | `Microsoft.VSTS.Scheduling.TargetDate` | `release_date` | Целевая дата релиза (колонка «Скоро запуск») |
 | `System.AreaPath` | `extra_json.area_path` | Область доски |
 | `System.BoardColumn` | `extra_json.board_column` | Колонка Kanban |
-| `System.IterationPath` | `extra_json.iteration_path` | Итерация (план релиза) |
+| `System.IterationPath` | `task.iteration_path` + `extra_json.iteration_path` | Итерация (план релиза) |
 | `System.Tags` | `extra_json.tags` | Теги TFS (разделитель `;`) |
 | `Logrocon.FoundinRelease` | `extra_json.planned_release` | Плановый релиз (дата `2026.06.02.0-R`) |
 | `Logrocon.Release` | `extra_json.planned_release` | Привязанный релиз (имя, напр. `Bercut InVoice 4.7.90.0 (1034184)`) |

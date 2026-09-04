@@ -63,7 +63,7 @@
 | closed_at | timestamptz | Закрыта |
 | story_points | numeric | Оценка |
 | sprint_name | varchar | Спринт / итерация |
-| iteration_path | varchar | Путь итерации (TFS) |
+| iteration_path | varchar | Путь итерации (TFS `System.IterationPath`, заполняется sync) |
 | labels | text[] | Метки |
 | extra_json | jsonb | `area_path`, `board_column` и др. |
 
@@ -139,7 +139,7 @@
 | area_path | System.AreaPath | Область доски |
 | board_column | System.BoardColumn | Колонка Kanban (статус на доске) |
 | tags | System.Tags | Теги TFS (массив строк; ЗНИ — `b2b_product`, ошибки — `FE B2B` / `microservice`) |
-| iteration_path | System.IterationPath | Итерация TFS |
+| iteration_path | System.IterationPath | Итерация TFS (также колонка `task.iteration_path`) |
 | planned_date | из листа итерации или `release_date` | Планируемая дата (`2026.08.11.0-R` → `2026-08-11`; иначе Целевая дата TFS) |
 | planned_status | `tbd` / `date` | `tbd` — дата в плане неизвестна |
 | plan_quarter | из planned_date или `TBD` | Ключ квартала (`2026-Q3` или `TBD`) |

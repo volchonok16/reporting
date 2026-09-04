@@ -281,6 +281,15 @@ def ensure_reference_data(
     return source_system_id, project_ids, team_ids
 
 
+def normalize_iteration_path(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text[:500]
+
+
 def upsert_task(
     db: Session,
     *,
@@ -300,8 +309,10 @@ def upsert_task(
     parent_task_id: int | None,
     external_url: str | None,
     extra_json: dict[str, Any] | None,
+    iteration_path: str | None = None,
 ) -> int:
     now = datetime.now(UTC)
+    normalized_iteration_path = normalize_iteration_path(iteration_path)
     stmt = (
         insert(Task)
         .values(
@@ -320,6 +331,7 @@ def upsert_task(
             release_date=release_date,
             closed_at=closed_at,
             external_url=external_url,
+            iteration_path=normalized_iteration_path,
             extra_json=extra_json,
             last_synced_at=now,
         )
@@ -339,6 +351,7 @@ def upsert_task(
                 "release_date": release_date,
                 "closed_at": closed_at,
                 "external_url": external_url,
+                "iteration_path": normalized_iteration_path,
                 "extra_json": extra_json,
                 "last_synced_at": now,
             },
@@ -416,10 +429,8 @@ async def sync_board(
             updated = parse_tfs_datetime(fields.get("System.ChangedDate"))
             closed = parse_tfs_datetime(fields.get("Microsoft.VSTS.Common.ClosedDate"))
 
-            iteration_path = fields.get("System.IterationPath")
-            iteration_plan = parse_iteration_plan(
-                str(iteration_path) if iteration_path not in (None, "") else None
-            )
+            iteration_path = normalize_iteration_path(fields.get("System.IterationPath"))
+            iteration_plan = parse_iteration_plan(iteration_path)
             triage = fields.get("Microsoft.VSTS.Common.Triage")
             existing = db.scalar(
                 select(Task).where(
@@ -507,6 +518,7 @@ async def sync_board(
                 closed_at=closed,
                 parent_task_id=None,
                 external_url=tfs_item_url(item["id"], board),
+                iteration_path=iteration_path,
                 extra_json=extra_json,
             )
             zni_db_ids[item["id"]] = task_id
