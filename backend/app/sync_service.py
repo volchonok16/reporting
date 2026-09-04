@@ -455,6 +455,8 @@ async def sync_board(
                 extra_json["planned_status"] = "date"
                 extra_json["planned_date"] = iteration_plan.planned_date.isoformat()
                 extra_json["plan_quarter"] = iteration_plan.quarter_key
+            elif iteration_plan.quarter_key:
+                extra_json["plan_quarter"] = iteration_plan.quarter_key
             else:
                 target_date = effective_release_date(fields)
                 if target_date:

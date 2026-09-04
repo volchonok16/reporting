@@ -40,3 +40,20 @@ def test_iteration_date_has_priority_over_target_date() -> None:
     planned, quarter_key, _, _ = _task_plan_meta(task)
     assert planned == date(2026, 8, 11)
     assert quarter_key == "2026-Q3"
+
+
+def test_quarter_from_q2_apostrophe_path() -> None:
+    task = _zni(
+        external_id="944286",
+        release_date=None,
+        iteration_path=r"Tele2\B2B Product\2026\Q2'26",
+        extra_json={
+            "board_code": "b2b_product",
+            "iteration_path": r"Tele2\B2B Product\2026\Q2'26",
+        },
+    )
+    planned, quarter_key, quarter_label, planned_label = _task_plan_meta(task)
+    assert planned is None
+    assert quarter_key == "2026-Q2"
+    assert quarter_label == "Q2 2026"
+    assert planned_label is None

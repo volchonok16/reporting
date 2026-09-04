@@ -36,3 +36,23 @@ def test_quarter_from_planned_date() -> None:
 def test_parse_empty_iteration() -> None:
     assert parse_planned_date_from_iteration(None) is None
     assert parse_planned_date_from_iteration("") is None
+
+
+def test_parse_quarter_apostrophe_leaf() -> None:
+    plan = parse_iteration_plan(r"Tele2\B2B Product\2026\Q2'26")
+    assert plan.planned_date is None
+    assert plan.is_tbd is False
+    assert plan.quarter_key == "2026-Q2"
+    assert plan.quarter_label == "Q2 2026"
+
+
+def test_parse_year_quarter_segment() -> None:
+    plan = parse_iteration_plan(r"Tele2\DocOut\2026_Q3_DoC")
+    assert plan.quarter_key == "2026-Q3"
+    assert plan.quarter_label == "Q3 2026"
+
+
+def test_parse_month_abbr_leaf() -> None:
+    plan = parse_iteration_plan(r"Tele2\Something\Dec.26")
+    assert plan.planned_date == date(2026, 12, 1)
+    assert plan.quarter_key == "2026-Q4"

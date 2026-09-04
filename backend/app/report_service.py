@@ -237,7 +237,7 @@ def _task_plan_meta(task: Task) -> tuple[date | None, str | None, str | None, st
 
     is_tbd = planned_status == "tbd" or quarter_key == PLAN_QUARTER_TBD
     if not is_tbd and planned is None:
-        iteration_path = extra.get("iteration_path")
+        iteration_path = extra.get("iteration_path") or task.iteration_path
         if isinstance(iteration_path, str):
             plan = parse_iteration_plan(iteration_path)
             is_tbd = plan.is_tbd
