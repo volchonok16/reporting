@@ -123,8 +123,9 @@ class ChangeRequestOut(BaseModel):
     externalCommercialEffect: str | None = None
     externalActualPeriod: str | None = None
     externalDesiredDate: date | None = None
-    externalDesiredQuarter: str | None = None
     externalComment: str | None = None
+    externalCategoryId: int | None = None
+    externalCategoryName: str | None = None
 
 
 class DashboardMetricsOut(BaseModel):
@@ -310,6 +311,13 @@ class DigitalPlanUcUpdateIn(BaseModel):
     )
 
 
+class ZniCategoryOut(BaseModel):
+    id: int
+    name: str
+    sortOrder: int
+    isActive: bool
+
+
 class ZniExternalDataUpdateIn(BaseModel):
     priority: str | None = Field(default=None, max_length=255, description="Приоритет (внешний)")
     commercialEffect: str | None = Field(default=None, max_length=4000, description="Коммерческий эффект")
@@ -319,8 +327,8 @@ class ZniExternalDataUpdateIn(BaseModel):
         description="Фактическая дата месяц/квартал",
     )
     desiredDate: date | None = Field(default=None, description="Желаемая дата")
-    desiredQuarter: str | None = Field(default=None, max_length=64, description="Желаемый квартал")
     comment: str | None = Field(default=None, max_length=4000, description="Комментарий")
+    categoryId: int | None = Field(default=None, description="Категория (zni_category.id)")
 
 
 class SyncRunOut(BaseModel):

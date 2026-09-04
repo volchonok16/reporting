@@ -247,16 +247,32 @@ COMMENT ON COLUMN task.source_team IS 'Команда как в источник
 COMMENT ON COLUMN task.extra_json IS 'Сырые поля до маппинга; для отладки ETL';
 
 -- Внешние поля ЗНИ (не из TFS) — заполняются в дашборде отдельно от синка
+CREATE TABLE zni_category (
+    id              BIGSERIAL PRIMARY KEY,
+    name            VARCHAR(255) NOT NULL,
+    sort_order      INT          NOT NULL DEFAULT 0,
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX uq_zni_category_name
+    ON zni_category (lower(name));
+
+COMMENT ON TABLE zni_category IS 'Справочник категорий ЗНИ для допполя «Категория»';
+
 CREATE TABLE zni_external_data (
     task_id              BIGINT PRIMARY KEY REFERENCES task(id) ON DELETE CASCADE,
     priority             VARCHAR(255),
     commercial_effect    TEXT,
     actual_period        VARCHAR(128),
     desired_date         DATE,
-    desired_quarter      VARCHAR(64),
     comment              TEXT,
+    category_id          BIGINT REFERENCES zni_category(id) ON DELETE SET NULL,
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX idx_zni_external_data_category ON zni_external_data (category_id);
 
 COMMENT ON TABLE zni_external_data IS 'Локальные поля ЗНИ, заполняются отдельно от синхронизации TFS';
 COMMENT ON COLUMN zni_external_data.task_id IS 'ЗНИ (task.id, task_type = change_request)';
@@ -264,8 +280,8 @@ COMMENT ON COLUMN zni_external_data.priority IS 'Приоритет (внешн�
 COMMENT ON COLUMN zni_external_data.commercial_effect IS 'Коммерческий эффект';
 COMMENT ON COLUMN zni_external_data.actual_period IS 'Фактическая дата: месяц/квартал';
 COMMENT ON COLUMN zni_external_data.desired_date IS 'Желаемая дата';
-COMMENT ON COLUMN zni_external_data.desired_quarter IS 'Желаемый квартал';
 COMMENT ON COLUMN zni_external_data.comment IS 'Комментарий (внешнее поле, не TFS)';
+COMMENT ON COLUMN zni_external_data.category_id IS 'Категория ЗНИ (справочник zni_category)';
 
 -- Связь задачи с несколькими релизами (если в источнике несколько fix versions)
 CREATE TABLE task_release (

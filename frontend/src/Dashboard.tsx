@@ -4,6 +4,13 @@ import { notifyError, notifyLoading, notifyProblem, notifySuccess, notifyWarning
 import { loadDashboardUiState, saveDashboardUiState } from './uiState'
 import { boardNameLabel, setBoardDisplayLabels } from './zniDisplay'
 
+type ZniCategory = {
+  id: number
+  name: string
+  sortOrder: number
+  isActive: boolean
+}
+
 const ALL_BOARDS = 'all'
 const DIGITAL_BOARD = 'digital_streams_b2b'
 
@@ -72,8 +79,9 @@ type ChangeRequest = {
   externalCommercialEffect?: string | null
   externalActualPeriod?: string | null
   externalDesiredDate?: string | null
-  externalDesiredQuarter?: string | null
   externalComment?: string | null
+  externalCategoryId?: number | null
+  externalCategoryName?: string | null
 }
 
 type DashboardData = {
@@ -384,8 +392,8 @@ type ExternalFieldKey =
   | 'commercialEffect'
   | 'actualPeriod'
   | 'desiredDate'
-  | 'desiredQuarter'
   | 'comment'
+  | 'categoryId'
 
 type ExternalFieldEditorProps = {
   item: ChangeRequest
@@ -394,6 +402,14 @@ type ExternalFieldEditorProps = {
   disabled: boolean
   saving: boolean
   title?: string
+  onSave: (item: ChangeRequest, field: ExternalFieldKey, value: string) => void
+}
+
+type CategorySelectProps = {
+  item: ChangeRequest
+  categories: ZniCategory[]
+  disabled: boolean
+  saving: boolean
   onSave: (item: ChangeRequest, field: ExternalFieldKey, value: string) => void
 }
 
@@ -407,11 +423,34 @@ function externalFieldValue(item: ChangeRequest, field: ExternalFieldKey): strin
       return item.externalActualPeriod ?? ''
     case 'desiredDate':
       return item.externalDesiredDate ?? ''
-    case 'desiredQuarter':
-      return item.externalDesiredQuarter ?? ''
     case 'comment':
       return item.externalComment ?? ''
+    case 'categoryId':
+      return item.externalCategoryId != null ? String(item.externalCategoryId) : ''
   }
+}
+
+function CategorySelect({ item, categories, disabled, saving, onSave }: CategorySelectProps) {
+  const currentId = item.externalCategoryId ?? null
+  const options = categories.filter((row) => row.isActive || row.id === currentId)
+  const value = currentId != null ? String(currentId) : ''
+
+  return (
+    <select
+      className="business-value-input"
+      value={value}
+      disabled={disabled || saving}
+      title={item.externalCategoryName ?? undefined}
+      onChange={(event) => onSave(item, 'categoryId', event.target.value)}
+    >
+      <option value="">—</option>
+      {options.map((row) => (
+        <option key={row.id} value={row.id}>
+          {row.name}
+        </option>
+      ))}
+    </select>
+  )
 }
 
 
@@ -445,7 +484,16 @@ function ExternalFieldEditor({
 
   useEffect(() => {
     setDraft(externalFieldValue(item, field))
-  }, [item.number, item.externalPriority, item.externalCommercialEffect, item.externalActualPeriod, item.externalDesiredDate, item.externalDesiredQuarter, item.externalComment, field])
+  }, [
+    item.number,
+    item.externalPriority,
+    item.externalCommercialEffect,
+    item.externalActualPeriod,
+    item.externalDesiredDate,
+    item.externalComment,
+    item.externalCategoryId,
+    field,
+  ])
 
   const commit = () => {
     if (draft === externalFieldValue(item, field)) return
@@ -585,6 +633,16 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
   const [externalFieldsVisible, setExternalFieldsVisible] = useState(
     savedUi.externalFieldsVisible === true,
   )
+  const [zniCategories, setZniCategories] = useState<ZniCategory[]>([])
+
+  const loadZniCategories = useCallback(async () => {
+    try {
+      const data = await getJson<ZniCategory[]>('/api/zni/categories')
+      setZniCategories(data)
+    } catch (error) {
+      notifyProblem('Не удалось загрузить категории ЗНИ', error)
+    }
+  }, [])
 
   const loadBoards = useCallback(async () => {
     const items = await getJson<Board[]>('/api/boards')
@@ -602,6 +660,10 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
   useEffect(() => {
     void loadBoards().catch((err) => notifyError(err, 'Ошибка загрузки досок'))
   }, [loadBoards])
+
+  useEffect(() => {
+    void loadZniCategories()
+  }, [loadZniCategories])
 
   useEffect(() => {
     if (prevBoardCodeRef.current !== null && prevBoardCodeRef.current !== boardCode) {
@@ -860,7 +922,10 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
     const current = externalFieldValue(item, field)
     if (trimmed === current) return
 
-    const body: Record<string, string | null> = { [field]: trimmed === '' ? null : trimmed }
+    const body: Record<string, string | number | null> =
+      field === 'categoryId'
+        ? { categoryId: trimmed === '' ? null : Number(trimmed) }
+        : { [field]: trimmed === '' ? null : trimmed }
     const saveKey = `${item.number}:${field}`
     setSavingExternalKey(saveKey)
     try {
@@ -886,8 +951,9 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                   externalCommercialEffect: updated.externalCommercialEffect,
                   externalActualPeriod: updated.externalActualPeriod,
                   externalDesiredDate: updated.externalDesiredDate,
-                  externalDesiredQuarter: updated.externalDesiredQuarter,
                   externalComment: updated.externalComment,
+                  externalCategoryId: updated.externalCategoryId,
+                  externalCategoryName: updated.externalCategoryName,
                 }
               : row,
           ),
@@ -1120,10 +1186,10 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                 {externalFieldsVisible ? (
                   <>
                     <col className="col-external-priority" />
+                    <col className="col-external-category" />
                     <col className="col-external-effect" />
                     <col className="col-external-actual" />
                     <col className="col-external-desired-date" />
-                    <col className="col-external-desired-quarter" />
                     <col className="col-external-comment" />
                   </>
                 ) : null}
@@ -1176,10 +1242,10 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                   {externalFieldsVisible ? (
                     <>
                       <th>Приоритет</th>
+                      <th>Категория</th>
                       <th>Коммерческий эффект</th>
                       <th title={periodEditableHint}>Фактическая дата месяц/квартал</th>
                       <th>Желаемая дата</th>
-                      <th>Желаемый квартал</th>
                       <th>Комментарий</th>
                     </>
                   ) : null}
@@ -1300,6 +1366,19 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                           </td>
                           <td className="cell-business-value">
                             {!isErrorRow(item) ? (
+                              <CategorySelect
+                                item={item}
+                                categories={zniCategories}
+                                disabled={externalFieldsReadOnly}
+                                saving={savingExternalKey === `${item.number}:categoryId`}
+                                onSave={saveExternalField}
+                              />
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td className="cell-business-value">
+                            {!isErrorRow(item) ? (
                               <ExternalFieldEditor
                                 item={item}
                                 field="commercialEffect"
@@ -1343,19 +1422,6 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                                 inputType="date"
                                 disabled={externalFieldsReadOnly}
                                 saving={savingExternalKey === `${item.number}:desiredDate`}
-                                onSave={saveExternalField}
-                              />
-                            ) : (
-                              '—'
-                            )}
-                          </td>
-                          <td className="cell-business-value">
-                            {!isErrorRow(item) ? (
-                              <ExternalFieldEditor
-                                item={item}
-                                field="desiredQuarter"
-                                disabled={externalFieldsReadOnly}
-                                saving={savingExternalKey === `${item.number}:desiredQuarter`}
                                 onSave={saveExternalField}
                               />
                             ) : (

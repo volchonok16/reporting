@@ -52,8 +52,9 @@ export type ChangeRequest = {
   externalCommercialEffect?: string | null
   externalActualPeriod?: string | null
   externalDesiredDate?: string | null
-  externalDesiredQuarter?: string | null
   externalComment?: string | null
+  externalCategoryId?: number | null
+  externalCategoryName?: string | null
 }
 
 export type TaskLookupResponse = {

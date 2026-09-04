@@ -1,17 +1,17 @@
 from datetime import date, datetime, timezone
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.board_metrics import matches_board_states
 from app.config import settings
 from app.models import Task, ZniExternalData
+from app.zni_category_service import ensure_zni_category
 
 PRIORITY_MAX_LENGTH = 255
 COMMERCIAL_EFFECT_MAX_LENGTH = 4000
 COMMENT_MAX_LENGTH = 4000
 ACTUAL_PERIOD_MAX_LENGTH = 128
-DESIRED_QUARTER_MAX_LENGTH = 64
 
 
 def _clean_text(value: str | None, *, max_length: int) -> str | None:
@@ -34,7 +34,11 @@ def can_edit_actual_period(task: Task) -> bool:
 def load_external_data_by_task_ids(db: Session, task_ids: list[int]) -> dict[int, ZniExternalData]:
     if not task_ids:
         return {}
-    rows = db.scalars(select(ZniExternalData).where(ZniExternalData.task_id.in_(task_ids)))
+    rows = db.scalars(
+        select(ZniExternalData)
+        .where(ZniExternalData.task_id.in_(task_ids))
+        .options(joinedload(ZniExternalData.category))
+    )
     return {row.task_id: row for row in rows}
 
 
@@ -50,10 +54,10 @@ def update_zni_external_data(
     set_actual_period: bool = False,
     desired_date: date | None = None,
     set_desired_date: bool = False,
-    desired_quarter: str | None = None,
-    set_desired_quarter: bool = False,
     comment: str | None = None,
     set_comment: bool = False,
+    category_id: int | None = None,
+    set_category_id: bool = False,
     can_manage_org: bool = False,
 ) -> Task:
     task = db.scalar(
@@ -86,10 +90,11 @@ def update_zni_external_data(
         row.actual_period = _clean_text(actual_period, max_length=ACTUAL_PERIOD_MAX_LENGTH)
     if set_desired_date:
         row.desired_date = desired_date
-    if set_desired_quarter:
-        row.desired_quarter = _clean_text(desired_quarter, max_length=DESIRED_QUARTER_MAX_LENGTH)
     if set_comment:
         row.comment = _clean_text(comment, max_length=COMMENT_MAX_LENGTH)
+    if set_category_id:
+        ensure_zni_category(db, category_id)
+        row.category_id = category_id
 
     row.updated_at = datetime.now(timezone.utc)
     db.commit()

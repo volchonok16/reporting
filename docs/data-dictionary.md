@@ -73,11 +73,20 @@
 |---------|-----|----------|
 | task_id | bigint PK | ЗНИ (`task.id`) |
 | priority | varchar | Приоритет (не TFS) |
+| category_id | bigint FK | Категория → `zni_category` |
 | commercial_effect | text | Коммерческий эффект |
 | actual_period | varchar | Фактическая дата месяц/квартал (правка при статусах `ZNI_ACTUAL_PERIOD_EDITABLE_STATES`) |
 | desired_date | date | Желаемая дата |
-| desired_quarter | varchar | Желаемый квартал |
 | comment | text | Комментарий |
+
+## zni_category — справочник категорий ЗНИ
+
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| id | bigserial | PK |
+| name | varchar | Название |
+| sort_order | int | Порядок |
+| is_active | boolean | Активна |
 
 ## app_notification — уведомления
 

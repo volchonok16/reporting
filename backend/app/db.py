@@ -217,6 +217,8 @@ def ensure_startup_schema() -> None:
         "060_app_pages.sql",
         "061_app_notification_delivery.sql",
         "062_b2b_product_status_office_editing_lock.sql",
+        "063_zni_category.sql",
+        "064_zni_drop_desired_quarter.sql",
     )
 
     auth_session_sql = """

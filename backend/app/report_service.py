@@ -411,8 +411,11 @@ def _change_request_to_out(
         externalCommercialEffect=external.commercial_effect if external else None,
         externalActualPeriod=external.actual_period if external else None,
         externalDesiredDate=external.desired_date if external else None,
-        externalDesiredQuarter=external.desired_quarter if external else None,
         externalComment=external.comment if external else None,
+        externalCategoryId=external.category_id if external else None,
+        externalCategoryName=(
+            external.category.name if external and external.category is not None else None
+        ),
     )
 
 
@@ -912,10 +915,10 @@ _EXPORT_HEADERS = [
     "Доска",
     "Ошибки",
     "Приоритет",
+    "Категория",
     "Коммерческий эффект",
     "Фактическая дата месяц/квартал",
     "Желаемая дата",
-    "Желаемый квартал",
     "Комментарий",
 ]
 _EXPORT_HEADER_FILL = PatternFill(fill_type="solid", fgColor="CCCCCC")
@@ -954,10 +957,10 @@ def _export_row_values(item: ChangeRequestOut) -> list[object]:
         item.boardName or "",
         errors_text,
         item.externalPriority or "",
+        item.externalCategoryName or "",
         item.externalCommercialEffect or "",
         item.externalActualPeriod or "",
         item.externalDesiredDate.isoformat() if item.externalDesiredDate else "",
-        item.externalDesiredQuarter or "",
         item.externalComment or "",
     ]
 

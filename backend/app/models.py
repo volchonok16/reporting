@@ -3,7 +3,7 @@ from typing import Any
 
 from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, SmallInteger, String, Text, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 
@@ -95,6 +95,17 @@ class Task(Base):
     last_synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class ZniCategory(Base):
+    __tablename__ = "zni_category"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class ZniExternalData(Base):
     __tablename__ = "zni_external_data"
 
@@ -103,9 +114,12 @@ class ZniExternalData(Base):
     commercial_effect: Mapped[str | None] = mapped_column(Text)
     actual_period: Mapped[str | None] = mapped_column(String(128))
     desired_date: Mapped[date | None] = mapped_column(Date)
-    desired_quarter: Mapped[str | None] = mapped_column(String(64))
     comment: Mapped[str | None] = mapped_column(Text)
+    category_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("zni_category.id", ondelete="SET NULL")
+    )
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    category: Mapped[ZniCategory | None] = relationship()
 
 
 class SyncRun(Base):

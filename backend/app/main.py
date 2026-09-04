@@ -102,6 +102,7 @@ from app.org_routes import profile_router, router as org_router, users_router
 from app.notification_routes import router as notification_router
 from app.youjail_routes import router as youjail_router
 from app.planning_routes import router as planning_router
+from app.zni_category_routes import router as zni_category_router
 from app.voice_integration import integrate_voice, start_voice_jobs, stop_voice_jobs
 
 logger = logging.getLogger(__name__)
@@ -148,6 +149,7 @@ app.include_router(notification_router)
 app.include_router(youjail_router)
 app.include_router(product_status_live_router)
 app.include_router(planning_router)
+app.include_router(zni_category_router)
 
 
 def _live_changed_by(meta: dict) -> str | None:
@@ -515,10 +517,10 @@ def patch_zni_external_data(
             set_actual_period="actualPeriod" in fields,
             desired_date=payload.desiredDate,
             set_desired_date="desiredDate" in fields,
-            desired_quarter=payload.desiredQuarter,
-            set_desired_quarter="desiredQuarter" in fields,
             comment=payload.comment,
             set_comment="comment" in fields,
+            category_id=payload.categoryId,
+            set_category_id="categoryId" in fields,
             can_manage_org=can_manage_org(meta),
         )
     except ValueError as exc:

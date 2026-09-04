@@ -150,3 +150,40 @@ def test_actual_period_requires_admin() -> None:
     except ValueError as exc:
         assert "администратор" in str(exc)
     assert existing.actual_period == "старое"
+
+
+def test_update_zni_external_data_sets_category() -> None:
+    from app.models import ZniCategory
+
+    task = _task()
+    existing = ZniExternalData(task_id=1)
+    category = ZniCategory(id=7, name="Флайты", is_active=True)
+    db = MagicMock()
+    db.scalar.return_value = task
+    db.get.side_effect = lambda model, key: existing if model is ZniExternalData else category
+
+    update_zni_external_data(
+        db,
+        external_id="1115252",
+        category_id=7,
+        set_category_id=True,
+    )
+
+    assert existing.category_id == 7
+
+
+def test_update_zni_external_data_clears_category() -> None:
+    task = _task()
+    existing = ZniExternalData(task_id=1, category_id=7)
+    db = MagicMock()
+    db.scalar.return_value = task
+    db.get.return_value = existing
+
+    update_zni_external_data(
+        db,
+        external_id="1115252",
+        category_id=None,
+        set_category_id=True,
+    )
+
+    assert existing.category_id is None

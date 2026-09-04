@@ -170,6 +170,7 @@ erDiagram
     task ||--o{ task_status_duration : time_in_status
     task ||--o{ youjail_card_zni : linked
     task ||--o| zni_external_data : external
+    zni_category ||--o{ zni_external_data : category
 
     org_user ||--o| employee : may_bind
     org_user ||--o{ app_notification_recipient : receives
@@ -207,7 +208,13 @@ erDiagram
     zni_external_data {
         bigint task_id PK
         varchar priority
+        bigint category_id FK
         text comment
+    }
+
+    zni_category {
+        bigint id PK
+        varchar name
     }
 
     workspace_booking {

@@ -109,14 +109,21 @@ package "Задачи" #FFF8E8 {
     extra_json : jsonb
   }
 
+  class zni_category <<table>> {
+    +id : bigserial PK
+    name : varchar
+    sort_order : int
+    is_active : boolean
+  }
+
   class zni_external_data <<table>> {
     +task_id : FK PK
     priority : varchar
     commercial_effect : text
     actual_period : varchar
     desired_date : date
-    desired_quarter : varchar
     comment : text
+    category_id : FK
   }
 
   class app_notification <<table>> {
@@ -393,6 +400,7 @@ task "1" -- "0..*" task_status_history
 task "1" -- "0..*" task_status_duration
 task "1" -- "0..*" task_assignee_history
 task "1" -- "0..1" zni_external_data
+zni_category "1" -- "0..*" zni_external_data
 org_user "1" -- "0..*" app_notification_recipient
 app_notification "1" -- "0..*" app_notification_recipient
 task "0..*" -- "0..*" release : task_release

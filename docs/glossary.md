@@ -327,12 +327,25 @@
 |------|-----|----------|
 | `task_id` | bigint PK | ЗНИ (`task.id`, `task_type = change_request`); ON DELETE CASCADE |
 | `priority` | varchar(255) | Приоритет |
+| `category_id` | bigint FK → `zni_category` | Категория (выбор из справочника); ON DELETE SET NULL |
 | `commercial_effect` | text | Коммерческий эффект |
 | `actual_period` | varchar(128) | Фактическая дата месяц/квартал. Редактирование только в статусах из `ZNI_ACTUAL_PERIOD_EDITABLE_STATES` (по умолчанию `UAT,Pilot,Closed`) — колонка доски или `System.State` |
 | `desired_date` | date | Желаемая дата |
-| `desired_quarter` | varchar(64) | Желаемый квартал |
 | `comment` | text | Комментарий |
 | `updated_at` | timestamptz | Последнее сохранение |
+
+## zni_category — справочник категорий ЗНИ
+
+Значения допполя «Категория» на дашборде ЗНИ. Список правится **непосредственно в БД** (`zni_category`); UI только читает активные значения (`GET /api/zni/categories`). Seed: Госинициативы, Флайты, Качественные (без эффекта), Операционка (без денег), Операционка (с деньгами), Решения руководства, Проект ком.эффектом.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial PK | Идентификатор |
+| `name` | varchar(255) | Название категории (уникально без учёта регистра) |
+| `sort_order` | int | Порядок в списке выбора |
+| `is_active` | boolean | Активна (показывается в селекте) |
+| `created_at` | timestamptz | Создание |
+| `updated_at` | timestamptz | Обновление |
 
 ---
 

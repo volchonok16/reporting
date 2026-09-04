@@ -1043,13 +1043,16 @@ body {
   width: 90px;
 }
 
+.zni-table col.col-external-category {
+  width: 160px;
+}
+
 .zni-table col.col-external-effect {
   width: 140px;
 }
 
 .zni-table col.col-external-actual,
 .zni-table col.col-external-desired-date,
-.zni-table col.col-external-desired-quarter,
 .zni-table col.col-external-comment {
   width: 120px;
 }
