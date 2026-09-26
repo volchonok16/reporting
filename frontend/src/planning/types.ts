@@ -18,7 +18,7 @@ export type PlanningExecutor = {
   fromAllocation?: boolean
 }
 
-export type PlanningProjectStatus = 'new' | 'in_progress' | 'completed'
+export type PlanningProjectStatus = 'new' | 'in_progress' | 'completed' | 'cancelled' | 'frozen'
 
 export type PlanningProject = {
   id: number
@@ -39,6 +39,8 @@ export type PlanningProject = {
   plannedEndDate?: string | null
   actualEndDate?: string | null
   status?: PlanningProjectStatus
+  cancelledAt?: string | null
+  freezeUntilDate?: string | null
   notes?: string | null
   createdByLabel?: string | null
   createdAt?: string | null
@@ -104,6 +106,6 @@ export type PlanningWorkload = {
   employees: PlanningWorkloadEmployee[]
 }
 
-export type PlanningPanelId = 'projects' | 'allocations' | 'workload' | 'directories'
+export type PlanningPanelId = 'projects' | 'allocations' | 'workload'
 
 export type WorkloadViewMode = 'summary' | 'byProject'

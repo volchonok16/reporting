@@ -1,6 +1,7 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.auth_sessions import get_session_with_meta
@@ -43,6 +44,12 @@ from app.planning_service import (
     update_customer_department,
     update_project,
     upsert_calendar_days,
+)
+from app.planning_workload_export import (
+    CSV_MEDIA_TYPE,
+    XLSX_MEDIA_TYPE,
+    export_workload_csv,
+    export_workload_xlsx,
 )
 
 router = APIRouter(prefix="/api/planning", tags=["planning"])
@@ -222,6 +229,48 @@ def api_workload(
     _: dict = Depends(_load_session_meta),
 ) -> PlanningWorkloadOut:
     return load_workload(db, date_from, date_to, employee_id)
+
+
+@router.get("/workload/export.csv")
+def api_workload_export_csv(
+    date_from: date = Query(alias="dateFrom"),
+    date_to: date = Query(alias="dateTo"),
+    view_mode: str = Query(default="byProject", alias="viewMode"),
+    employee_id: int | None = Query(default=None, alias="employeeId"),
+    db: Session = Depends(get_db),
+    _: dict = Depends(_load_session_meta),
+) -> Response:
+    mode = view_mode if view_mode in {"summary", "byProject"} else "byProject"
+    workload = load_workload(db, date_from, date_to, employee_id)
+    content, filename = export_workload_csv(
+        workload, view_mode=mode, date_from=date_from, date_to=date_to
+    )
+    return Response(
+        content=content,
+        media_type=CSV_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/workload/export.xlsx")
+def api_workload_export_xlsx(
+    date_from: date = Query(alias="dateFrom"),
+    date_to: date = Query(alias="dateTo"),
+    view_mode: str = Query(default="byProject", alias="viewMode"),
+    employee_id: int | None = Query(default=None, alias="employeeId"),
+    db: Session = Depends(get_db),
+    _: dict = Depends(_load_session_meta),
+) -> Response:
+    mode = view_mode if view_mode in {"summary", "byProject"} else "byProject"
+    workload = load_workload(db, date_from, date_to, employee_id)
+    content, filename = export_workload_xlsx(
+        workload, view_mode=mode, date_from=date_from, date_to=date_to
+    )
+    return Response(
+        content=content,
+        media_type=XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/calendar", response_model=list[ProductionCalendarDayOut])

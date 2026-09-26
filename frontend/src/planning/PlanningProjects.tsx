@@ -33,6 +33,8 @@ const EMPTY_FORM = {
   plannedEndDate: '',
   actualEndDate: '',
   status: 'new' as PlanningProjectStatus,
+  cancelledAt: '',
+  freezeUntilDate: '',
   notes: '',
 }
 
@@ -50,9 +52,19 @@ function formatDate(value?: string | null): string {
   return value.slice(0, 10)
 }
 
+function todayIso(): string {
+  const now = new Date()
+  const yyyy = now.getFullYear()
+  const mm = String(now.getMonth() + 1).padStart(2, '0')
+  const dd = String(now.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
 function statusClass(status?: PlanningProjectStatus | null): string {
   if (status === 'completed') return 'planning-status planning-status-completed'
   if (status === 'in_progress') return 'planning-status planning-status-in-progress'
+  if (status === 'cancelled') return 'planning-status planning-status-cancelled'
+  if (status === 'frozen') return 'planning-status planning-status-frozen'
   return 'planning-status planning-status-new'
 }
 
@@ -176,6 +188,8 @@ export default function PlanningProjects({
       plannedEndDate: project.plannedEndDate?.slice(0, 10) ?? '',
       actualEndDate: project.actualEndDate?.slice(0, 10) ?? '',
       status: project.status ?? 'new',
+      cancelledAt: project.cancelledAt?.slice(0, 10) ?? '',
+      freezeUntilDate: project.freezeUntilDate?.slice(0, 10) ?? '',
       notes: project.notes ?? '',
     })
     setZniAutofillHint(null)
@@ -191,25 +205,71 @@ export default function PlanningProjects({
     }))
   }
 
-  const payloadFromForm = () => ({
-    requestNumber: form.requestNumber.trim(),
-    requestName: form.requestName.trim(),
-    requestUrl: form.requestUrl.trim() || null,
-    complexityId: form.complexityId ? Number(form.complexityId) : null,
-    executorIds: form.executorIds,
-    customerName: form.customerName.trim() || null,
-    customerDepartmentId: form.customerDepartmentId ? Number(form.customerDepartmentId) : null,
-    plannedStartDate: form.plannedStartDate || null,
-    actualStartDate: form.actualStartDate || null,
-    plannedEndDate: form.plannedEndDate || null,
-    actualEndDate: form.actualEndDate || null,
-    status: resolvePlanningStatus(form.status, form.actualEndDate),
-    notes: form.notes.trim() || null,
-  })
+  const updateStatus = (status: PlanningProjectStatus) => {
+    setForm((prev) => {
+      const next = { ...prev, status }
+      if (status === 'cancelled') {
+        next.cancelledAt = prev.cancelledAt || todayIso()
+        next.freezeUntilDate = ''
+      } else if (status === 'frozen') {
+        next.freezeUntilDate = prev.freezeUntilDate || prev.plannedEndDate || todayIso()
+        next.cancelledAt = ''
+        if (next.freezeUntilDate && next.plannedEndDate && next.freezeUntilDate > next.plannedEndDate) {
+          next.plannedEndDate = next.freezeUntilDate
+        }
+      } else {
+        next.cancelledAt = ''
+        next.freezeUntilDate = ''
+        next.status = resolvePlanningStatus(status, prev.actualEndDate)
+      }
+      return next
+    })
+  }
+
+  const updateFreezeUntilDate = (freezeUntilDate: string) => {
+    setForm((prev) => {
+      const next = { ...prev, freezeUntilDate }
+      if (freezeUntilDate && prev.plannedEndDate && freezeUntilDate > prev.plannedEndDate) {
+        next.plannedEndDate = freezeUntilDate
+      } else if (freezeUntilDate && !prev.plannedEndDate) {
+        next.plannedEndDate = freezeUntilDate
+      }
+      return next
+    })
+  }
+
+  const payloadFromForm = () => {
+    const status = resolvePlanningStatus(form.status, form.actualEndDate)
+    return {
+      requestNumber: form.requestNumber.trim(),
+      requestName: form.requestName.trim(),
+      requestUrl: form.requestUrl.trim() || null,
+      complexityId: form.complexityId ? Number(form.complexityId) : null,
+      executorIds: form.executorIds,
+      customerName: form.customerName.trim() || null,
+      customerDepartmentId: form.customerDepartmentId ? Number(form.customerDepartmentId) : null,
+      plannedStartDate: form.plannedStartDate || null,
+      actualStartDate: form.actualStartDate || null,
+      plannedEndDate: form.plannedEndDate || null,
+      actualEndDate: form.actualEndDate || null,
+      status,
+      cancelledAt: status === 'cancelled' ? form.cancelledAt || null : null,
+      freezeUntilDate: status === 'frozen' ? form.freezeUntilDate || null : null,
+      notes: form.notes.trim() || null,
+    }
+  }
 
   const saveProject = async () => {
     if (!form.requestNumber.trim() || !form.requestName.trim()) {
       notifyProblem('Заполните номер и наименование запроса')
+      return
+    }
+    if (form.status === 'cancelled' && !form.cancelledAt) {
+      notifyProblem('Укажите дату отмены')
+      return
+    }
+    if (form.status === 'frozen' && !form.freezeUntilDate) {
+      notifyProblem('Укажите дату окончания заморозки')
       return
     }
     try {
@@ -279,7 +339,7 @@ export default function PlanningProjects({
     [projects],
   )
 
-  const statusLocked = Boolean(form.actualEndDate)
+  const statusLocked = Boolean(form.actualEndDate) && form.status !== 'cancelled' && form.status !== 'frozen'
 
   const departmentOptions = useMemo(() => {
     const selectedId = form.customerDepartmentId ? Number(form.customerDepartmentId) : null
@@ -400,12 +460,7 @@ export default function PlanningProjects({
                   <select
                     value={form.status}
                     disabled={statusLocked}
-                    onChange={(event) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        status: event.target.value as PlanningProjectStatus,
-                      }))
-                    }
+                    onChange={(event) => updateStatus(event.target.value as PlanningProjectStatus)}
                   >
                     {(Object.keys(PLANNING_STATUS_LABELS) as PlanningProjectStatus[]).map((status) => (
                       <option key={status} value={status}>
@@ -418,6 +473,35 @@ export default function PlanningProjects({
               {zniAutofillHint ? <p className="org-hint">{zniAutofillHint}</p> : null}
               {statusLocked ? (
                 <p className="org-hint">Статус «Завершен» проставляется автоматически при указании даты завершения (факт).</p>
+              ) : null}
+              {form.status === 'cancelled' ? (
+                <label>
+                  Дата отмены
+                  <input
+                    type="date"
+                    value={form.cancelledAt}
+                    onChange={(event) => setForm((prev) => ({ ...prev, cancelledAt: event.target.value }))}
+                  />
+                </label>
+              ) : null}
+              {form.status === 'frozen' ? (
+                <label>
+                  Заморозка до
+                  <input
+                    type="date"
+                    value={form.freezeUntilDate}
+                    onChange={(event) => updateFreezeUntilDate(event.target.value)}
+                  />
+                </label>
+              ) : null}
+              {form.status === 'cancelled' ? (
+                <p className="org-hint">С даты отмены выделенные ресурсы по проекту очищаются.</p>
+              ) : null}
+              {form.status === 'frozen' ? (
+                <p className="org-hint">
+                  До даты заморозки ресурсы очищаются. Если дата позже планового завершения — план завершения
+                  сдвигается на дату окончания заморозки.
+                </p>
               ) : null}
               <label>
                 Наименование запроса

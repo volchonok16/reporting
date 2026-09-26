@@ -6,6 +6,8 @@ export const PLANNING_STATUS_LABELS: Record<PlanningProjectStatus, string> = {
   new: 'Новый',
   in_progress: 'В работе',
   completed: 'Завершен',
+  cancelled: 'Отменен',
+  frozen: 'Заморожен',
 }
 
 export function formatPlanningStatus(status?: PlanningProjectStatus | null): string {
@@ -33,6 +35,7 @@ export function resolvePlanningStatus(
   status: PlanningProjectStatus,
   actualEndDate: string,
 ): PlanningProjectStatus {
+  if (status === 'cancelled' || status === 'frozen') return status
   if (actualEndDate) return 'completed'
   return status
 }

@@ -297,7 +297,7 @@
 |---------|---------------|------------|
 | `planning_project_complexity` | `name`, `sort_order` | Справочник сложности |
 | `production_calendar_day` | `day`, `is_working_day` | Переопределения производственного календаря |
-| `planning_project` | `request_number`, `request_name`, `status`, даты план/факт, заказчик | Проект/запрос; номер связан с `task.external_id` (ЗНИ) |
+| `planning_project` | `request_number`, `request_name`, `status` (`new`/`in_progress`/`completed`/`cancelled`/`frozen`), `cancelled_at`, `freeze_until_date`, даты план/факт, заказчик | Проект/запрос; номер связан с `task.external_id` (ЗНИ) |
 | `planning_customer_department` | `name`, `sort_order`, `is_active` | Справочник «Департамент заказчика» (не Staffing) |
 | `planning_allocation` | `project_id`, `employee_id`, `booking_mode`, период | Выделение сотрудника |
 | `planning_allocation_day` | `allocation_id`, `day`, `planned_hours`, `actual_hours` | Подневная занятость и факт |

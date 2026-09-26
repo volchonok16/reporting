@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from fastapi import HTTPException
@@ -14,7 +14,9 @@ from app.planning_calendar import default_is_working_day, is_ru_public_holiday, 
 from app.planning_models import (
     BOOKING_MODE_DAILY,
     BOOKING_MODE_PERIOD,
+    PROJECT_STATUS_CANCELLED,
     PROJECT_STATUS_COMPLETED,
+    PROJECT_STATUS_FROZEN,
     PROJECT_STATUSES,
     PlanningAllocation,
     PlanningAllocationDay,
@@ -280,7 +282,17 @@ def _project_executors_out(db: Session, project_id: int) -> tuple[list[int], lis
     return [item.id for item in ordered], ordered
 
 
-def _resolve_project_status(status: str | None, actual_end_date: date | None) -> str:
+def _resolve_project_status(
+    status: str | None,
+    actual_end_date: date | None,
+    *,
+    cancelled_at: date | None = None,
+    freeze_until_date: date | None = None,
+) -> str:
+    if status == PROJECT_STATUS_CANCELLED:
+        return PROJECT_STATUS_CANCELLED
+    if status == PROJECT_STATUS_FROZEN:
+        return PROJECT_STATUS_FROZEN
     if actual_end_date is not None:
         return PROJECT_STATUS_COMPLETED
     if status in PROJECT_STATUSES:
@@ -288,17 +300,37 @@ def _resolve_project_status(status: str | None, actual_end_date: date | None) ->
     return "new"
 
 
-def _clear_allocations_after_completion(db: Session, project: PlanningProject) -> None:
-    """После даты завершения (факт) обнуляет выделенное время по проекту."""
-    if project.status != PROJECT_STATUS_COMPLETED or project.actual_end_date is None:
-        return
-    cutoff = project.actual_end_date
+def _validate_status_dates(project: PlanningProject) -> None:
+    if project.status == PROJECT_STATUS_CANCELLED and project.cancelled_at is None:
+        raise HTTPException(status_code=400, detail="Для статуса «Отменен» укажите дату отмены")
+    if project.status == PROJECT_STATUS_FROZEN and project.freeze_until_date is None:
+        raise HTTPException(status_code=400, detail="Для статуса «Заморожен» укажите дату окончания заморозки")
+
+
+def _apply_status_side_effects(project: PlanningProject) -> None:
+    """Нормализует даты статуса и плановое завершение при заморозке."""
+    if project.status != PROJECT_STATUS_CANCELLED:
+        project.cancelled_at = None
+    if project.status != PROJECT_STATUS_FROZEN:
+        project.freeze_until_date = None
+    if (
+        project.status == PROJECT_STATUS_FROZEN
+        and project.freeze_until_date is not None
+        and (project.planned_end_date is None or project.freeze_until_date > project.planned_end_date)
+    ):
+        project.planned_end_date = project.freeze_until_date
+
+
+def _clear_allocations_after_cutoff(db: Session, project: PlanningProject, cutoff: date) -> None:
+    """Убирает выделения после cutoff (день > cutoff)."""
     allocations = list(
         db.scalars(
             select(PlanningAllocation)
             .options(joinedload(PlanningAllocation.days))
             .where(PlanningAllocation.project_id == project.id)
-        ).unique().all()
+        )
+        .unique()
+        .all()
     )
     for allocation in allocations:
         db.execute(
@@ -314,13 +346,94 @@ def _clear_allocations_after_completion(db: Session, project: PlanningProject) -
             allocation.allocation_end_date = cutoff
 
 
+def _clear_allocations_through_date(db: Session, project: PlanningProject, until: date) -> None:
+    """Убирает выделения по день until включительно; хвост после until сохраняется."""
+    allocations = list(
+        db.scalars(
+            select(PlanningAllocation)
+            .options(joinedload(PlanningAllocation.days))
+            .where(PlanningAllocation.project_id == project.id)
+        )
+        .unique()
+        .all()
+    )
+    for allocation in allocations:
+        db.execute(
+            delete(PlanningAllocationDay).where(
+                PlanningAllocationDay.allocation_id == allocation.id,
+                PlanningAllocationDay.day <= until,
+            )
+        )
+        if allocation.allocation_end_date <= until:
+            db.delete(allocation)
+            continue
+        if allocation.allocation_start_date <= until:
+            allocation.allocation_start_date = until + timedelta(days=1)
+
+
+def _clear_project_allocations_for_status(db: Session, project: PlanningProject) -> None:
+    if project.status == PROJECT_STATUS_COMPLETED and project.actual_end_date is not None:
+        _clear_allocations_after_cutoff(db, project, project.actual_end_date)
+        return
+    if project.status == PROJECT_STATUS_CANCELLED and project.cancelled_at is not None:
+        _clear_allocations_after_cutoff(db, project, project.cancelled_at)
+        return
+    if project.status == PROJECT_STATUS_FROZEN and project.freeze_until_date is not None:
+        _clear_allocations_through_date(db, project, project.freeze_until_date)
+
+
 def _project_completion_cutoff(db: Session, project_id: int) -> date | None:
+    """Дата, после которой нельзя выделять ресурсы (завершён / отменён)."""
     project = db.get(PlanningProject, project_id)
     if project is None:
         return None
     if project.status == PROJECT_STATUS_COMPLETED and project.actual_end_date is not None:
         return project.actual_end_date
+    if project.status == PROJECT_STATUS_CANCELLED and project.cancelled_at is not None:
+        return project.cancelled_at
     return None
+
+
+def _project_freeze_until(db: Session, project_id: int) -> date | None:
+    project = db.get(PlanningProject, project_id)
+    if project is None:
+        return None
+    if project.status == PROJECT_STATUS_FROZEN and project.freeze_until_date is not None:
+        return project.freeze_until_date
+    return None
+
+
+def _clamp_allocation_dates_for_project(
+    db: Session,
+    project_id: int,
+    start_date: date,
+    end_date: date,
+) -> tuple[date, date]:
+    cutoff = _project_completion_cutoff(db, project_id)
+    freeze_until = _project_freeze_until(db, project_id)
+    if cutoff is not None:
+        if start_date > cutoff:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Проект закрыт для выделений с {cutoff.isoformat()}: нельзя выделять ресурсы после этой даты",
+            )
+        if end_date > cutoff:
+            end_date = cutoff
+    if freeze_until is not None:
+        # До конца заморозки ресурсы недоступны — сдвигаем старт после freeze_until.
+        if end_date <= freeze_until:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Проект заморожен до {freeze_until.isoformat()}: "
+                    "нельзя выделять ресурсы в период заморозки"
+                ),
+            )
+        if start_date <= freeze_until:
+            start_date = freeze_until + timedelta(days=1)
+    if end_date < start_date:
+        raise HTTPException(status_code=400, detail="Дата окончания раньше даты начала")
+    return start_date, end_date
 
 
 def _project_out(db: Session, project: PlanningProject) -> PlanningProjectOut:
@@ -350,7 +463,14 @@ def _project_out(db: Session, project: PlanningProject) -> PlanningProjectOut:
         actualStartDate=project.actual_start_date,
         plannedEndDate=project.planned_end_date,
         actualEndDate=project.actual_end_date,
-        status=_resolve_project_status(project.status, project.actual_end_date),
+        status=_resolve_project_status(
+            project.status,
+            project.actual_end_date,
+            cancelled_at=project.cancelled_at,
+            freeze_until_date=project.freeze_until_date,
+        ),
+        cancelledAt=project.cancelled_at,
+        freezeUntilDate=project.freeze_until_date,
         notes=project.notes,
         createdByLabel=project.created_by_label,
         createdAt=project.created_at.date() if project.created_at else None,
@@ -391,6 +511,12 @@ def get_project(db: Session, project_id: int) -> PlanningProjectOut:
 def create_project(db: Session, data: PlanningProjectIn, meta: dict) -> PlanningProjectOut:
     org_user_id, label = _created_by_label(db, meta)
     _ensure_customer_department(db, data.customerDepartmentId)
+    status = _resolve_project_status(
+        data.status,
+        data.actualEndDate,
+        cancelled_at=data.cancelledAt,
+        freeze_until_date=data.freezeUntilDate,
+    )
     project = PlanningProject(
         request_number=data.requestNumber.strip(),
         request_name=data.requestName.strip(),
@@ -403,14 +529,19 @@ def create_project(db: Session, data: PlanningProjectIn, meta: dict) -> Planning
         actual_start_date=data.actualStartDate,
         planned_end_date=data.plannedEndDate,
         actual_end_date=data.actualEndDate,
-        status=_resolve_project_status(data.status, data.actualEndDate),
+        status=status,
+        cancelled_at=data.cancelledAt if status == PROJECT_STATUS_CANCELLED else None,
+        freeze_until_date=data.freezeUntilDate if status == PROJECT_STATUS_FROZEN else None,
         notes=data.notes,
         created_by_org_user_id=org_user_id,
         created_by_label=label,
     )
+    _validate_status_dates(project)
+    _apply_status_side_effects(project)
     db.add(project)
     db.flush()
     _set_project_executors(db, project.id, _resolve_executor_ids(data.executorIds, data.customerEmployeeId))
+    _clear_project_allocations_for_status(db, project)
     db.commit()
     return get_project(db, project.id)
 
@@ -435,6 +566,8 @@ def update_project(db: Session, project_id: int, data: PlanningProjectUpdateIn) 
         "plannedEndDate": "planned_end_date",
         "actualEndDate": "actual_end_date",
         "status": "status",
+        "cancelledAt": "cancelled_at",
+        "freezeUntilDate": "freeze_until_date",
         "notes": "notes",
     }
     for api_field, db_field in field_map.items():
@@ -446,15 +579,25 @@ def update_project(db: Session, project_id: int, data: PlanningProjectUpdateIn) 
         if api_field in {"requestUrl", "customerName", "notes"} and isinstance(value, str):
             value = value.strip() or None
         setattr(project, db_field, value)
-    if "actualEndDate" in patch or "status" in patch:
-        project.status = _resolve_project_status(project.status, project.actual_end_date)
-    elif project.actual_end_date is not None and project.status != PROJECT_STATUS_COMPLETED:
+    if any(key in patch for key in ("actualEndDate", "status", "cancelledAt", "freezeUntilDate")):
+        project.status = _resolve_project_status(
+            project.status,
+            project.actual_end_date,
+            cancelled_at=project.cancelled_at,
+            freeze_until_date=project.freeze_until_date,
+        )
+    elif (
+        project.actual_end_date is not None
+        and project.status not in {PROJECT_STATUS_COMPLETED, PROJECT_STATUS_CANCELLED, PROJECT_STATUS_FROZEN}
+    ):
         project.status = PROJECT_STATUS_COMPLETED
+    _validate_status_dates(project)
+    _apply_status_side_effects(project)
     if "executorIds" in patch:
         _set_project_executors(db, project_id, _resolve_executor_ids(patch["executorIds"], patch.get("customerEmployeeId")))
     elif "customerEmployeeId" in patch and patch["customerEmployeeId"] is not None:
         _set_project_executors(db, project_id, [int(patch["customerEmployeeId"])])
-    _clear_allocations_after_completion(db, project)
+    _clear_project_allocations_for_status(db, project)
     db.commit()
     return get_project(db, project_id)
 
@@ -717,17 +860,11 @@ def create_allocation(db: Session, project_id: int, data: PlanningAllocationIn, 
         raise HTTPException(status_code=400, detail="Сотрудник не найден")
     if data.allocationEndDate < data.allocationStartDate:
         raise HTTPException(status_code=400, detail="Дата окончания раньше даты начала")
+    start_date, end_date = _clamp_allocation_dates_for_project(
+        db, project_id, data.allocationStartDate, data.allocationEndDate
+    )
     cutoff = _project_completion_cutoff(db, project_id)
-    start_date = data.allocationStartDate
-    end_date = data.allocationEndDate
-    if cutoff is not None:
-        if start_date > cutoff:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Проект завершён {cutoff.isoformat()}: нельзя выделять ресурсы после даты завершения",
-            )
-        if end_date > cutoff:
-            end_date = cutoff
+    freeze_until = _project_freeze_until(db, project_id)
     booking_mode = data.bookingMode if data.bookingMode in (BOOKING_MODE_DAILY, BOOKING_MODE_PERIOD) else BOOKING_MODE_PERIOD
     org_user_id, label = _created_by_label(db, meta)
     allocation = PlanningAllocation(
@@ -744,7 +881,9 @@ def create_allocation(db: Session, project_id: int, data: PlanningAllocationIn, 
     db.flush()
     day_items = data.days
     if cutoff is not None:
-        day_items = [item for item in data.days if item.day <= cutoff]
+        day_items = [item for item in day_items if item.day <= cutoff]
+    if freeze_until is not None:
+        day_items = [item for item in day_items if item.day > freeze_until]
     _apply_allocation_days(db, allocation, booking_mode, data.plannedHoursPerDay, day_items)
     _persist_executors_from_allocations(db, project_id)
     db.commit()
@@ -767,15 +906,14 @@ def update_allocation(db: Session, allocation_id: int, data: PlanningAllocationU
         allocation.allocation_start_date = data.allocationStartDate
     if data.allocationEndDate is not None:
         allocation.allocation_end_date = data.allocationEndDate
-    cutoff = _project_completion_cutoff(db, allocation.project_id)
-    if cutoff is not None:
-        if allocation.allocation_start_date > cutoff:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Проект завершён {cutoff.isoformat()}: нельзя выделять ресурсы после даты завершения",
-            )
-        if allocation.allocation_end_date > cutoff:
-            allocation.allocation_end_date = cutoff
+    start_date, end_date = _clamp_allocation_dates_for_project(
+        db,
+        allocation.project_id,
+        allocation.allocation_start_date,
+        allocation.allocation_end_date,
+    )
+    allocation.allocation_start_date = start_date
+    allocation.allocation_end_date = end_date
     if allocation.allocation_end_date < allocation.allocation_start_date:
         raise HTTPException(status_code=400, detail="Дата окончания раньше даты начала")
     booking_mode = data.bookingMode or allocation.booking_mode
@@ -784,8 +922,12 @@ def update_allocation(db: Session, allocation_id: int, data: PlanningAllocationU
         PlanningAllocationDayIn(day=day.day, plannedHours=day.planned_hours, actualHours=day.actual_hours)
         for day in allocation.days
     ]
+    cutoff = _project_completion_cutoff(db, allocation.project_id)
+    freeze_until = _project_freeze_until(db, allocation.project_id)
     if cutoff is not None:
         day_items = [item for item in day_items if item.day <= cutoff]
+    if freeze_until is not None:
+        day_items = [item for item in day_items if item.day > freeze_until]
     _apply_allocation_days(
         db,
         allocation,

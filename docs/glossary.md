@@ -1368,7 +1368,7 @@ API: `GET /api/revenue-activities`, `POST /api/revenue-activities/save`, `GET /a
 | `sort_order` | int | Порядок в справочнике |
 | `is_active` | boolean | Активна ли запись |
 
-Seed: Низкая, Средняя, Высокая, Критическая.
+Seed: Низкая, Средняя, Высокая, Критическая. Ведение справочника — напрямую в БД (UI-вкладка «Справочники» убрана).
 
 ---
 
@@ -1401,7 +1401,9 @@ Seed: Низкая, Средняя, Высокая, Критическая.
 | `actual_start_date` | date | Фактическая дата старта |
 | `planned_end_date` | date | Плановая дата завершения |
 | `actual_end_date` | date | Фактическая дата завершения |
-| `status` | varchar(32) | Статус: `new` (Новый), `in_progress` (В работе), `completed` (Завершен); при заполнении `actual_end_date` автоматически `completed`. При статусе «Завершен» выделенные часы после `actual_end_date` очищаются. |
+| `status` | varchar(32) | Статус: `new` (Новый), `in_progress` (В работе), `completed` (Завершен), `cancelled` (Отменен), `frozen` (Заморожен). При заполнении `actual_end_date` автоматически `completed` (кроме явных `cancelled`/`frozen`). При «Завершен» / «Отменен» выделенные часы после cutoff-даты очищаются; при «Заморожен» — до `freeze_until_date` включительно. |
+| `cancelled_at` | date | Дата отмены (`status=cancelled`); ресурсы с этой даты снимаются |
+| `freeze_until_date` | date | До какой даты заморозка (`status=frozen`); ресурсы до даты включительно снимаются; если дата позже `planned_end_date`, план завершения сдвигается на неё |
 | `notes` | text | Примечание |
 | `created_by_org_user_id` | bigint | FK → `org_user`, кто создал запись |
 | `created_by_label` | varchar(255) | Отображаемое имя создателя |
@@ -1423,7 +1425,7 @@ Seed: Низкая, Средняя, Высокая, Критическая.
 | `created_at` | timestamptz | Создание |
 | `updated_at` | timestamptz | Обновление |
 
-Уникальность имени без учёта регистра. API: `GET/POST /api/planning/customer-departments`, `PATCH/DELETE /api/planning/customer-departments/{id}`.
+Уникальность имени без учёта регистра. Ведение — напрямую в БД (вкладка «Справочники» в UI убрана). API чтения/записи: `GET/POST /api/planning/customer-departments`, `PATCH/DELETE /api/planning/customer-departments/{id}` (для форм проекта и админских скриптов).
 
 ---
 

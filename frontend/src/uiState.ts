@@ -247,8 +247,7 @@ export function loadPlanningUiState(): PlanningUiState {
   const panel =
     planning?.panel === 'projects' ||
     planning?.panel === 'allocations' ||
-    planning?.panel === 'workload' ||
-    planning?.panel === 'directories'
+    planning?.panel === 'workload'
       ? planning.panel
       : 'projects'
   const selectedProjectId =
