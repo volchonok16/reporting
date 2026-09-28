@@ -8,13 +8,16 @@ export function resolveApiBase(): string {
   const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1'
   const isCorpUiHost =
     hostname === 'taskatestovaya.ru' || hostname === 'www.taskatestovaya.ru'
-  const isPallinkHost = hostname === 'pallink.fun' || hostname === 'www.pallink.fun'
+  const isT2ProductHost =
+    hostname === 't2product.ru' ||
+    hostname === 'www.t2product.ru' ||
+    hostname.endsWith('.t2product.ru')
   const isDevStandHost =
     hostname === 'my-testing.ru' ||
     hostname === 'www.my-testing.ru' ||
     hostname.endsWith('.my-testing.ru')
 
-  if (isCorpUiHost || isPallinkHost || isDevStandHost) {
+  if (isCorpUiHost || isT2ProductHost || isDevStandHost) {
     // nginx проксирует /api/ → backend (HTTP или HTTPS), same-origin
     return ''
   }

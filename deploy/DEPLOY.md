@@ -1,4 +1,4 @@
-# Деплой на pallink.fun / taskatestovaya.ru / my-testing.ru
+# Деплой на t2product.ru / taskatestovaya.ru / my-testing.ru
 
 ## Ветка `dev` (тестовый стенд)
 
@@ -27,7 +27,7 @@ sudo bash deploy/setup-nginx-http.sh --any-host
 | `minio.my-testing.ru` | MinIO (опционально) |
 | `minio-console.my-testing.ru` | MinIO Console (опционально) |
 
-## Production (corp + pallink)
+## Production (corp HTTPS + t2product.ru HTTP)
 
 ### Требования
 
@@ -36,7 +36,28 @@ sudo bash deploy/setup-nginx-http.sh --any-host
 - DNS на IP сервера (см. таблицу ниже)
 - Порты `8000` и `5173` на localhost свободны (backend и frontend)
 
-### DNS (оба домена на одном сервере)
+### DNS: прод VPS `t2product.ru` (HTTP, без сертификата)
+
+Все записи типа **A** на **один и тот же IPv4 сервера** (тот, что сейчас у `pallink.fun`, если стенд тот же).
+
+| Хост | Тип | Назначение |
+|------|-----|------------|
+| `t2product.ru` | A | UI (обязательно) |
+| `www.t2product.ru` | A | UI (обязательно) |
+| `api.t2product.ru` | A | API (обязательно, если открываете `api.*`) |
+| `minio.t2product.ru` | A | MinIO S3 (опционально) |
+| `minio-console.t2product.ru` | A | MinIO Console (опционально) |
+
+AAAA не нужны, если нет публичного IPv6. CNAME на `www` вместо A допустим (`www` → `t2product.ru`), остальные лучше A на IP.
+
+Nginx: `deploy/nginx/t2product-http.conf` — только порт 80, без SSL.
+
+```bash
+cp .env.t2product-offline.example .env
+sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --t2product --tunnel
+```
+
+### DNS: corp `taskatestovaya.ru` (HTTPS)
 
 | Хост | Назначение |
 |------|------------|
@@ -45,11 +66,8 @@ sudo bash deploy/setup-nginx-http.sh --any-host
 | `api.taskatestovaya.ru` | API |
 | `minio.taskatestovaya.ru` | MinIO S3 |
 | `minio-console.taskatestovaya.ru` | MinIO Console |
-| `pallink.fun` | UI (legacy VPS) |
-| `www.pallink.fun` | → редирект |
-| `api.pallink.fun` | API |
 
-Nginx: `deploy/nginx/reporting.conf` — **оба домена параллельно**, pallink не отключается.
+Nginx: `deploy/nginx/reporting.conf` (HTTPS).
 
 > На том же сервере не должно работать другое приложение на `:8000` / `:5173` (например, старый roadmap).
 
@@ -166,7 +184,7 @@ docker-compose --version
 
 ```bash
 # 1. DNS указывает на этот сервер?
-dig +short pallink.fun
+dig +short t2product.ru
 curl -4 ifconfig.me   # IP сервера — должны совпадать
 
 # 2. nginx запущен?
@@ -192,7 +210,7 @@ sudo bash scripts/production.sh
 После обновления конфига nginx на сервере:
 
 ```bash
-sudo cp deploy/nginx/pallink.conf /etc/nginx/sites-available/pallink.conf
+sudo cp deploy/nginx/t2product-http.conf /etc/nginx/sites-available/reporting.conf
 sudo cp deploy/nginx/snippets/proxy-common.conf /etc/nginx/snippets/proxy-common.conf
 sudo nginx -t && sudo systemctl reload nginx
 ```
@@ -218,12 +236,12 @@ sudo bash scripts/production.sh
 
 ## URL
 
-| Сервис | Corp (taskatestovaya.ru) | VPS (pallink.fun) |
-|--------|--------------------------|-------------------|
-| UI | https://taskatestovaya.ru | https://pallink.fun |
-| API | https://api.taskatestovaya.ru | https://api.pallink.fun |
-| MinIO | https://minio.taskatestovaya.ru | — |
-| MinIO Console | https://minio-console.taskatestovaya.ru | — |
+| Сервис | Corp (taskatestovaya.ru) | VPS (t2product.ru) |
+|--------|--------------------------|--------------------|
+| UI | https://taskatestovaya.ru | http://t2product.ru |
+| API | https://api.taskatestovaya.ru | http://t2product.ru/api/ или http://api.t2product.ru |
+| MinIO | https://minio.taskatestovaya.ru | http://minio.t2product.ru (опционально) |
+| MinIO Console | https://minio-console.taskatestovaya.ru | http://minio-console.t2product.ru (опционально) |
 
 ## Локальная разработка
 
@@ -262,7 +280,6 @@ sudo systemctl reload nginx
 sudo certbot certonly --webroot -w /var/www/certbot \
   --cert-name reporting \
   -d taskatestovaya.ru -d www.taskatestovaya.ru \
-  -d api.taskatestovaya.ru -d minio.taskatestovaya.ru -d minio-console.taskatestovaya.ru \
-  -d pallink.fun -d www.pallink.fun -d api.pallink.fun
+  -d api.taskatestovaya.ru -d minio.taskatestovaya.ru -d minio-console.taskatestovaya.ru
 sudo bash scripts/production.sh
 ```

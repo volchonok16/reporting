@@ -56,11 +56,24 @@ source "$(dirname "$0")/resolve-compose.sh" offline
 # Compose/buildx на новых Docker иначе клеит attestation-манифесты.
 export BUILDX_NO_DEFAULT_ATTESTATIONS=1
 
+pull_or_local() {
+  local image="$1"
+  if docker pull --platform "$PLATFORM" "$image"; then
+    return 0
+  fi
+  if docker image inspect "$image" >/dev/null 2>&1; then
+    echo "    предупреждение: pull не удался, использую локальный образ ${image}" >&2
+    return 0
+  fi
+  echo "Ошибка: нет образа ${image} (pull не удался и локально не найден)." >&2
+  return 1
+}
+
 echo "==> Платформа: ${PLATFORM}"
 echo "==> Pull upstream-образов…"
-docker pull --platform "$PLATFORM" "$POSTGRES_UPSTREAM"
-docker pull --platform "$PLATFORM" "$MINIO_UPSTREAM"
-docker pull --platform "$PLATFORM" "$MC_UPSTREAM"
+pull_or_local "$POSTGRES_UPSTREAM"
+pull_or_local "$MINIO_UPSTREAM"
+pull_or_local "$MC_UPSTREAM"
 
 echo "==> Flatten → reporting/* (обход бага docker save на multi-arch)…"
 flatten_image "$POSTGRES_UPSTREAM" "$POSTGRES_IMAGE"
@@ -122,8 +135,8 @@ echo "  ${MANIFEST}"
 echo ""
 echo "На сервер (образы + HTTP nginx):"
 echo "  scp ${OUTPUT} root@SERVER:/tmp/"
-echo "  # pallink.fun (HTTP + tunnel):"
-echo "  sudo bash scripts/offline-deploy.sh /tmp/$(basename "$OUTPUT") --with-nginx --pallink --tunnel"
+echo "  # t2product.ru (HTTP без SSL + tunnel):"
+echo "  sudo bash scripts/offline-deploy.sh /tmp/$(basename "$OUTPUT") --with-nginx --t2product --tunnel"
 echo "  # corp taskatestovaya.ru:"
 echo "  sudo bash scripts/offline-deploy.sh /tmp/$(basename "$OUTPUT") --with-nginx --tunnel"
-echo "  # открывать: http://pallink.fun/  или  http://taskatestovaya.ru/"
+echo "  # открывать: http://t2product.ru/  или  http://taskatestovaya.ru/"

@@ -46,6 +46,9 @@ sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --an
 
 # Явный домен:
 sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --domain=example.com --tunnel
+
+# Прод HTTP без сертификата (t2product.ru):
+sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --t2product --tunnel
 ```
 
 Поднимает offline-образы, Voice, HTTP nginx и Postgres на `127.0.0.1:5432` (SSH → DBeaver).
@@ -53,9 +56,6 @@ sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --do
 Другие варианты:
 
 ```bash
-# Legacy pallink.fun:
-sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --pallink --tunnel
-
 # только контейнеры (без nginx):
 bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --tunnel
 
@@ -66,16 +66,17 @@ sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-ssl --tunn
 `--with-nginx` (dev) → `deploy/nginx/dev-http.conf.template` с `APP_DOMAIN` / `my-testing.ru` (www, api, minio + `/voice/`).  
 `--with-nginx --any-host` → `deploy/nginx/dev-any-host.conf` (любой Host/IP).  
 `--with-nginx --domain=X` → тот же шаблон под домен `X`.  
-`--with-nginx --pallink` → `deploy/nginx/pallink-http.conf` (legacy).  
+`--with-nginx --t2product` → `deploy/nginx/t2product-http.conf` (прод HTTP, без SSL).  
 `--tunnel` → `docker-compose.db-tunnel.yml` (Postgres `:5432` на localhost).  
 `--with-ssl` → `deploy/setup-nginx-ssl.sh`.
 
+DNS для прода HTTP: `t2product.ru`, `www.t2product.ru`, `api.t2product.ru` → IP сервера.  
 DNS для тестового HTTP: `my-testing.ru`, `www.my-testing.ru`, `api.my-testing.ru` → IP сервера (или `--any-host`).  
 UI ходит в API same-origin (`/api/…`); Voice — `/voice/` и `/voice-api/`.
 
 Compose-файлы: `docker-compose.prod.yml` + `docker-compose.offline.yml` (+ `db-tunnel.yml` при `--tunnel`).
 
-Обновление: `offline-bundle.sh` на Mac → `scp` tar → на сервере `git pull` + `offline-deploy.sh … --with-nginx --tunnel`.
+Обновление: `offline-bundle.sh` на Mac → `scp` tar → на сервере `git pull` + `offline-deploy.sh … --with-nginx --t2product --tunnel`.
 
 ## Полный стек вручную (dev)
 

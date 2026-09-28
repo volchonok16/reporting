@@ -6,13 +6,14 @@
 #   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --domain=example.com --tunnel
 #   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --any-host --tunnel
 #
-# Legacy:
-#   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --pallink --tunnel
+# Прод HTTP без сертификата (t2product.ru):
+#   sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --t2product --tunnel
 #
-# --with-nginx: HTTP nginx (без certbot); без --pallink → APP_DOMAIN / my-testing.ru
+# --with-nginx: HTTP nginx (без certbot); без --t2product → APP_DOMAIN / my-testing.ru
 # --domain=X:   nginx под домен X
 # --any-host:   nginx принимает любой Host/IP
-# --pallink:    только pallink.fun
+# --t2product:  только t2product.ru (HTTP, без SSL)
+# --pallink:    alias → --t2product
 # --tunnel:     Postgres на 127.0.0.1:5432 (SSH → DBeaver)
 # --with-ssl:   nginx + Let's Encrypt / corp-сертификат
 set -euo pipefail
@@ -30,7 +31,7 @@ TAR=""
 TUNNEL=0
 WITH_NGINX=0
 WITH_SSL=0
-PALLINK=0
+T2PRODUCT=0
 ANY_HOST=0
 NGINX_DOMAIN=""
 
@@ -39,7 +40,7 @@ for arg in "$@"; do
     --tunnel) TUNNEL=1 ;;
     --with-nginx) WITH_NGINX=1 ;;
     --with-ssl) WITH_SSL=1; WITH_NGINX=1 ;;
-    --pallink) PALLINK=1 ;;
+    --t2product|--pallink) T2PRODUCT=1 ;;
     --any-host|--any) ANY_HOST=1 ;;
     --domain=*)
       NGINX_DOMAIN="${arg#--domain=}"
@@ -68,15 +69,15 @@ fi
 
 if [[ -z "$TAR" || ! -f "$TAR" ]]; then
   echo "Использование:" >&2
-  echo "  sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --pallink --tunnel" >&2
-  echo "Флаги: [--tunnel] [--with-nginx] [--pallink] [--with-ssl]" >&2
+  echo "  sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --t2product --tunnel" >&2
+  echo "Флаги: [--tunnel] [--with-nginx] [--t2product] [--with-ssl]" >&2
   echo "Bundle не найден: ${TAR:-<пусто>}" >&2
   exit 1
 fi
 
 if [[ "$WITH_NGINX" -eq 1 && "${EUID:-0}" -ne 0 ]]; then
   echo "Ошибка: --with-nginx / --with-ssl требуют root:" >&2
-  echo "  sudo bash scripts/offline-deploy.sh $TAR --with-nginx --pallink --tunnel" >&2
+  echo "  sudo bash scripts/offline-deploy.sh $TAR --with-nginx --t2product --tunnel" >&2
   exit 1
 fi
 
@@ -92,7 +93,7 @@ MODE=offline
 source "$(dirname "$0")/resolve-compose.sh" "$MODE"
 
 echo "==> Режим: ${MODE}"
-echo "    nginx=$WITH_NGINX  pallink=$PALLINK  tunnel=$TUNNEL  ssl=$WITH_SSL"
+echo "    nginx=$WITH_NGINX  t2product=$T2PRODUCT  tunnel=$TUNNEL  ssl=$WITH_SSL"
 echo "==> docker load ← ${TAR}"
 docker load -i "$TAR"
 
@@ -176,9 +177,9 @@ if [[ -n "$NGINX_DOMAIN" ]]; then
 elif [[ "$ANY_HOST" -eq 1 ]]; then
   UI_URL="http://<host-or-ip>/"
   API_CHECK="http://127.0.0.1/api/health"
-elif [[ "$PALLINK" -eq 1 ]]; then
-  UI_URL="http://pallink.fun/"
-  API_CHECK="http://pallink.fun/api/health"
+elif [[ "$T2PRODUCT" -eq 1 ]]; then
+  UI_URL="http://t2product.ru/"
+  API_CHECK="http://t2product.ru/api/health"
 else
   UI_URL="http://${APP_DOMAIN_HINT}/"
   API_CHECK="http://${APP_DOMAIN_HINT}/api/health"
@@ -192,8 +193,8 @@ if [[ "$WITH_NGINX" -eq 1 ]]; then
   else
     echo "==> Nginx HTTP…"
     NGINX_ARGS=()
-    if [[ "$PALLINK" -eq 1 ]]; then
-      NGINX_ARGS+=(--pallink)
+    if [[ "$T2PRODUCT" -eq 1 ]]; then
+      NGINX_ARGS+=(--t2product)
     elif [[ "$ANY_HOST" -eq 1 ]]; then
       NGINX_ARGS+=(--any-host)
     elif [[ -n "$NGINX_DOMAIN" ]]; then
@@ -239,5 +240,5 @@ fi
 if [[ "$WITH_NGINX" -eq 0 ]]; then
   echo ""
   echo "Nginx не трогали. Полный деплой одной командой:"
-  echo "  sudo bash scripts/offline-deploy.sh $TAR --with-nginx --pallink --tunnel"
+  echo "  sudo bash scripts/offline-deploy.sh $TAR --with-nginx --t2product --tunnel"
 fi

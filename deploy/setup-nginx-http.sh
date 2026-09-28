@@ -6,9 +6,10 @@
 #   sudo bash deploy/setup-nginx-http.sh --domain example.com
 #   sudo bash deploy/setup-nginx-http.sh --any-host       # любой Host/IP/домен
 #
-# Legacy:
-#   sudo bash deploy/setup-nginx-http.sh --pallink        # pallink.fun
-#   sudo bash deploy/setup-nginx-http.sh --bootstrap      # taskatestovaya.ru + pallink
+# Прод HTTP (без SSL):
+#   sudo bash deploy/setup-nginx-http.sh --t2product      # t2product.ru
+#   sudo bash deploy/setup-nginx-http.sh --pallink        # alias → t2product.ru
+#   sudo bash deploy/setup-nginx-http.sh --bootstrap      # taskatestovaya.ru HTTP bootstrap
 #
 #   /api/ → backend :8000
 #   /    → frontend :5173 (без Host localhost — иначе 400 от nginx 1.27)
@@ -34,7 +35,7 @@ SITE=dev
 DOMAIN=""
 for arg in "$@"; do
   case "$arg" in
-    --pallink) SITE=pallink ;;
+    --t2product|--pallink) SITE=t2product ;;
     --bootstrap|--corp) SITE=bootstrap ;;
     --any-host|--any) SITE=any-host ;;
     --domain=*)
@@ -51,7 +52,7 @@ for arg in "$@"; do
     *)
       if [[ "$arg" == --* ]]; then
         echo "Неизвестный аргумент: $arg" >&2
-        echo "Ожидается: [--domain=HOST] [--any-host] [--pallink] [--bootstrap]" >&2
+        echo "Ожидается: [--domain=HOST] [--any-host] [--t2product] [--bootstrap]" >&2
         exit 1
       fi
       # Позиционный домен: setup-nginx-http.sh my-testing.ru
@@ -62,7 +63,7 @@ for arg in "$@"; do
 done
 
 if [[ "${EUID:-0}" -ne 0 ]]; then
-  echo "Запустите с sudo: sudo bash deploy/setup-nginx-http.sh [--domain=HOST|--any-host|--pallink]" >&2
+  echo "Запустите с sudo: sudo bash deploy/setup-nginx-http.sh [--domain=HOST|--any-host|--t2product]" >&2
   exit 1
 fi
 
@@ -91,10 +92,10 @@ case "$SITE" in
     UI_HINT="http://<любой-хост-или-IP>/"
     API_HINT="http://<любой-хост-или-IP>/api/health"
     ;;
-  pallink)
-    CONF_SRC="$ROOT/deploy/nginx/pallink-http.conf"
-    UI_HINT="http://pallink.fun/"
-    API_HINT="http://pallink.fun/api/health"
+  t2product)
+    CONF_SRC="$ROOT/deploy/nginx/t2product-http.conf"
+    UI_HINT="http://t2product.ru/"
+    API_HINT="http://t2product.ru/api/health"
     ;;
   bootstrap)
     CONF_SRC="$ROOT/deploy/nginx/reporting.certbot-bootstrap.conf"
