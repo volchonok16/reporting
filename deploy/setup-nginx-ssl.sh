@@ -6,7 +6,7 @@
 # Закрытый контур без SSL: sudo bash deploy/setup-nginx-http.sh
 #   или: sudo bash scripts/offline-deploy.sh TAR --with-nginx
 #
-# Домены: taskatestovaya.ru (+ api, minio, minio-console, www) и pallink.fun (+ api, www).
+# Домены: taskatestovaya.ru (+ www, api, minio, minio-console).
 # Читает .env: CERTBOT_EMAIL, CERTBOT_CERT_NAME, CERTBOT_DOMAINS, APP_PUBLIC_URL.
 set -euo pipefail
 
@@ -38,17 +38,12 @@ MINIO_PUBLIC_URL="$(read_env MINIO_PUBLIC_URL https://minio.taskatestovaya.ru)"
 CERTBOT_EMAIL="$(read_env CERTBOT_EMAIL "")"
 CERTBOT_CERT_NAME="$(read_env CERTBOT_CERT_NAME reporting)"
 CERTBOT_DOMAINS="$(read_env CERTBOT_DOMAINS \
-  "taskatestovaya.ru,www.taskatestovaya.ru,api.taskatestovaya.ru,minio.taskatestovaya.ru,minio-console.taskatestovaya.ru,pallink.fun,www.pallink.fun,api.pallink.fun")"
+  "taskatestovaya.ru,www.taskatestovaya.ru,api.taskatestovaya.ru,minio.taskatestovaya.ru,minio-console.taskatestovaya.ru")"
 
 resolve_cert_dir() {
   local dir="/etc/letsencrypt/live/${CERTBOT_CERT_NAME}"
   if [[ -f "${dir}/fullchain.pem" && -f "${dir}/privkey.pem" ]]; then
     echo "$dir"
-    return
-  fi
-  # Legacy: сертификат только под pallink.fun
-  if [[ -f /etc/letsencrypt/live/pallink.fun/fullchain.pem ]]; then
-    echo "/etc/letsencrypt/live/pallink.fun"
     return
   fi
   echo "$dir"
@@ -203,7 +198,7 @@ setup_certbot_auto_renewal
 echo ""
 if [[ -f "$CERT_DIR/fullchain.pem" ]]; then
   echo "HTTPS готов."
-  echo "  taskatestovaya.ru + pallink.fun (оба активны)"
+  echo "  taskatestovaya.ru"
   echo "  Проверка renew: sudo certbot renew --dry-run"
 else
   echo "Nginx на HTTP (bootstrap). HTTPS пока нет."

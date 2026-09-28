@@ -8,7 +8,6 @@
 #
 # Прод HTTP (без SSL):
 #   sudo bash deploy/setup-nginx-http.sh --t2product      # t2product.ru
-#   sudo bash deploy/setup-nginx-http.sh --pallink        # alias → t2product.ru
 #   sudo bash deploy/setup-nginx-http.sh --bootstrap      # taskatestovaya.ru HTTP bootstrap
 #
 #   /api/ → backend :8000
@@ -35,7 +34,7 @@ SITE=dev
 DOMAIN=""
 for arg in "$@"; do
   case "$arg" in
-    --t2product|--pallink) SITE=t2product ;;
+    --t2product) SITE=t2product ;;
     --bootstrap|--corp) SITE=bootstrap ;;
     --any-host|--any) SITE=any-host ;;
     --domain=*)

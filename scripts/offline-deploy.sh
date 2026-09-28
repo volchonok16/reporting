@@ -13,7 +13,6 @@
 # --domain=X:   nginx под домен X
 # --any-host:   nginx принимает любой Host/IP
 # --t2product:  только t2product.ru (HTTP, без SSL)
-# --pallink:    alias → --t2product
 # --tunnel:     Postgres на 127.0.0.1:5432 (SSH → DBeaver)
 # --with-ssl:   nginx + Let's Encrypt / corp-сертификат
 set -euo pipefail
@@ -40,7 +39,7 @@ for arg in "$@"; do
     --tunnel) TUNNEL=1 ;;
     --with-nginx) WITH_NGINX=1 ;;
     --with-ssl) WITH_SSL=1; WITH_NGINX=1 ;;
-    --t2product|--pallink) T2PRODUCT=1 ;;
+    --t2product) T2PRODUCT=1 ;;
     --any-host|--any) ANY_HOST=1 ;;
     --domain=*)
       NGINX_DOMAIN="${arg#--domain=}"
