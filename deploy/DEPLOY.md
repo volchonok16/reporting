@@ -56,7 +56,7 @@ AAAA не нужны, если нет публичного IPv6. CNAME на `www
 sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --t2product --tunnel
 ```
 
-**HTTPS:** сертификат **не кладут в tar**. На сервер копируют `fullchain.pem` + `privkey.pem` (имена в SAN: `t2product.ru`, лучше ещё `www` и `api`):
+**HTTPS (закрытый контур, без certbot):** скопируйте `fullchain.pem` + `privkey.pem` (SAN: `t2product.ru`, лучше ещё `www` и `api`):
 
 ```bash
 sudo mkdir -p /etc/letsencrypt/live/t2product
@@ -64,8 +64,6 @@ sudo cp fullchain.pem privkey.pem /etc/letsencrypt/live/t2product/
 # .env: APP_PUBLIC_URL=https://t2product.ru  CORS на https://…
 sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-ssl --t2product --tunnel
 ```
-
-Если с сервера есть интернет до Let's Encrypt — можно `CERTBOT_EMAIL` в `.env` вместо готовых pem.
 
 ### DNS: corp `taskatestovaya.ru` (HTTPS)
 

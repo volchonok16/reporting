@@ -14,7 +14,7 @@
 # --any-host:   nginx принимает любой Host/IP
 # --t2product:  t2product.ru (HTTP без --with-ssl; HTTPS с --with-ssl)
 # --tunnel:     Postgres на 127.0.0.1:5432 (SSH → DBeaver)
-# --with-ssl:   nginx + готовые pem в /etc/letsencrypt/live/… или Let's Encrypt
+# --with-ssl:   nginx + готовые pem (t2product — без certbot)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"

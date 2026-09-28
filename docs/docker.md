@@ -72,7 +72,7 @@ sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-ssl --tunn
 `--with-nginx --any-host` → `deploy/nginx/dev-any-host.conf` (любой Host/IP).  
 `--with-nginx --domain=X` → тот же шаблон под домен `X`.  
 `--with-nginx --t2product` → `deploy/nginx/t2product-http.conf` (прод HTTP).  
-`--with-ssl --t2product` → `deploy/nginx/t2product.conf` (HTTPS; pem в `/etc/letsencrypt/live/t2product/` или Let's Encrypt).  
+`--with-ssl --t2product` → HTTPS из pem в `/etc/letsencrypt/live/t2product/` (без certbot).  
 `--with-ssl` без `--t2product` → corp `taskatestovaya.ru`.
 
 DNS для прода HTTP: `t2product.ru`, `www.t2product.ru`, `api.t2product.ru` → IP сервера.  

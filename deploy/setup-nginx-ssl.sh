@@ -3,14 +3,11 @@
 # Вызывается из production.sh и offline-deploy.sh --with-ssl.
 #
 #   sudo bash deploy/setup-nginx-ssl.sh
-#   sudo bash deploy/setup-nginx-ssl.sh --t2product   # t2product.ru + готовые pem или certbot
-# Закрытый контур без SSL: sudo bash deploy/setup-nginx-http.sh
-#   или: sudo bash scripts/offline-deploy.sh TAR --with-nginx
-#
-# Сертификат не из tar: положите fullchain.pem + privkey.pem в
-#   /etc/letsencrypt/live/${CERTBOT_CERT_NAME}/
-# либо задайте CERTBOT_EMAIL — выпуск Let's Encrypt (нужен интернет с сервера).
-# Читает .env: CERTBOT_EMAIL, CERTBOT_CERT_NAME, CERTBOT_DOMAINS, APP_PUBLIC_URL.
+#   sudo bash deploy/setup-nginx-ssl.sh --t2product
+# Закрытый прод: без certbot. Положите fullchain.pem + privkey.pem в
+#   /etc/letsencrypt/live/t2product/
+# Corp (taskatestovaya.ru): certbot только если задан CERTBOT_EMAIL.
+# Читает .env: CERTBOT_CERT_NAME, SSL_CERT_DIR, APP_PUBLIC_URL.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -55,6 +52,7 @@ if [[ "$SITE" == "t2product" ]]; then
     "t2product.ru,www.t2product.ru,api.t2product.ru,minio.t2product.ru,minio-console.t2product.ru")"
   HTTPS_CONF="$ROOT/deploy/nginx/t2product.conf"
   HTTP_BOOTSTRAP="$ROOT/deploy/nginx/t2product-http.conf"
+  USE_CERTBOT=0
 else
   APP_PUBLIC_URL="$(read_env APP_PUBLIC_URL https://taskatestovaya.ru)"
   API_PUBLIC_URL="$(read_env API_PUBLIC_URL https://api.taskatestovaya.ru)"
@@ -64,15 +62,17 @@ else
     "taskatestovaya.ru,www.taskatestovaya.ru,api.taskatestovaya.ru,minio.taskatestovaya.ru,minio-console.taskatestovaya.ru")"
   HTTPS_CONF="$ROOT/deploy/nginx/reporting.conf"
   HTTP_BOOTSTRAP="$ROOT/deploy/nginx/reporting.certbot-bootstrap.conf"
+  USE_CERTBOT=1
 fi
 CERTBOT_EMAIL="$(read_env CERTBOT_EMAIL "")"
+SSL_CERT_DIR="$(read_env SSL_CERT_DIR "")"
 
 resolve_cert_dir() {
-  local dir="/etc/letsencrypt/live/${CERTBOT_CERT_NAME}"
-  if [[ -f "${dir}/fullchain.pem" && -f "${dir}/privkey.pem" ]]; then
-    echo "$dir"
+  if [[ -n "$SSL_CERT_DIR" && -f "${SSL_CERT_DIR}/fullchain.pem" && -f "${SSL_CERT_DIR}/privkey.pem" ]]; then
+    echo "$SSL_CERT_DIR"
     return
   fi
+  local dir="/etc/letsencrypt/live/${CERTBOT_CERT_NAME}"
   echo "$dir"
 }
 
@@ -121,7 +121,7 @@ install_nginx_config() {
     cp -f "$HTTPS_CONF" /etc/nginx/sites-available/reporting.conf
   else
     echo "==> SSL нет — HTTP bootstrap ($(basename "$HTTP_BOOTSTRAP"))."
-    echo "    Положите pem в $CERT_DIR или задайте CERTBOT_EMAIL для Let's Encrypt."
+    echo "    Положите fullchain.pem и privkey.pem в $CERT_DIR (certbot не используется)."
     cp -f "$HTTP_BOOTSTRAP" /etc/nginx/sites-available/reporting.conf
   fi
   ln -sf /etc/nginx/sites-available/reporting.conf /etc/nginx/sites-enabled/reporting.conf
@@ -215,21 +215,32 @@ if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: a
   ufw allow 'Nginx Full' 2>/dev/null || ufw allow 80/tcp 443/tcp 2>/dev/null || true
 fi
 
-if [[ ! -f "$CERT_DIR/fullchain.pem" ]]; then
-  issue_certificate || true
-  CERT_DIR="$(resolve_cert_dir)"
+if [[ "$USE_CERTBOT" -eq 1 ]]; then
+  if [[ ! -f "$CERT_DIR/fullchain.pem" ]]; then
+    issue_certificate || true
+    CERT_DIR="$(resolve_cert_dir)"
+  fi
+  ensure_certbot 2>/dev/null || true
+  setup_certbot_auto_renewal
+else
+  echo "==> Certbot пропущен (закрытый контур). Только готовые pem."
 fi
-
-ensure_certbot 2>/dev/null || true
-setup_certbot_auto_renewal
 
 echo ""
 if [[ -f "$CERT_DIR/fullchain.pem" ]]; then
   echo "HTTPS готов."
   echo "  $APP_PUBLIC_URL"
-  echo "  Проверка renew: sudo certbot renew --dry-run"
+  if [[ "$USE_CERTBOT" -eq 1 ]]; then
+    echo "  Проверка renew: sudo certbot renew --dry-run"
+  fi
 else
-  echo "Nginx на HTTP (bootstrap). HTTPS пока нет."
-  echo "  Let's Encrypt: CERTBOT_EMAIL + DNS + интернет"
-  echo "  Corp-сертификат: /etc/letsencrypt/live/${CERTBOT_CERT_NAME}/fullchain.pem + privkey.pem"
+  echo "Nginx на HTTP (нет pem)."
+  echo "  Скопируйте сертификат:"
+  echo "    sudo mkdir -p $CERT_DIR"
+  echo "    sudo cp fullchain.pem privkey.pem $CERT_DIR/"
+  if [[ "$SITE" == "t2product" ]]; then
+    echo "    sudo bash deploy/setup-nginx-ssl.sh --t2product"
+  else
+    echo "    sudo bash deploy/setup-nginx-ssl.sh"
+  fi
 fi
