@@ -3,10 +3,13 @@
 # Вызывается из production.sh и offline-deploy.sh --with-ssl.
 #
 #   sudo bash deploy/setup-nginx-ssl.sh
+#   sudo bash deploy/setup-nginx-ssl.sh --t2product   # t2product.ru + готовые pem или certbot
 # Закрытый контур без SSL: sudo bash deploy/setup-nginx-http.sh
 #   или: sudo bash scripts/offline-deploy.sh TAR --with-nginx
 #
-# Домены: taskatestovaya.ru (+ www, api, minio, minio-console).
+# Сертификат не из tar: положите fullchain.pem + privkey.pem в
+#   /etc/letsencrypt/live/${CERTBOT_CERT_NAME}/
+# либо задайте CERTBOT_EMAIL — выпуск Let's Encrypt (нужен интернет с сервера).
 # Читает .env: CERTBOT_EMAIL, CERTBOT_CERT_NAME, CERTBOT_DOMAINS, APP_PUBLIC_URL.
 set -euo pipefail
 
@@ -14,9 +17,20 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 if [[ "${EUID:-0}" -ne 0 ]]; then
-  echo "Запустите с sudo: sudo bash deploy/setup-nginx-ssl.sh" >&2
+  echo "Запустите с sudo: sudo bash deploy/setup-nginx-ssl.sh [--t2product]" >&2
   exit 1
 fi
+
+SITE=corp
+for arg in "$@"; do
+  case "$arg" in
+    --t2product) SITE=t2product ;;
+    *)
+      echo "Неизвестный аргумент: $arg (ожидается --t2product)" >&2
+      exit 1
+      ;;
+  esac
+done
 
 read_env() {
   local key="$1"
@@ -32,13 +46,26 @@ read_env() {
   echo "$default"
 }
 
-APP_PUBLIC_URL="$(read_env APP_PUBLIC_URL https://taskatestovaya.ru)"
-API_PUBLIC_URL="$(read_env API_PUBLIC_URL https://api.taskatestovaya.ru)"
-MINIO_PUBLIC_URL="$(read_env MINIO_PUBLIC_URL https://minio.taskatestovaya.ru)"
+if [[ "$SITE" == "t2product" ]]; then
+  APP_PUBLIC_URL="$(read_env APP_PUBLIC_URL https://t2product.ru)"
+  API_PUBLIC_URL="$(read_env API_PUBLIC_URL https://t2product.ru)"
+  MINIO_PUBLIC_URL="$(read_env MINIO_PUBLIC_URL "")"
+  CERTBOT_CERT_NAME="$(read_env CERTBOT_CERT_NAME t2product)"
+  CERTBOT_DOMAINS="$(read_env CERTBOT_DOMAINS \
+    "t2product.ru,www.t2product.ru,api.t2product.ru,minio.t2product.ru,minio-console.t2product.ru")"
+  HTTPS_CONF="$ROOT/deploy/nginx/t2product.conf"
+  HTTP_BOOTSTRAP="$ROOT/deploy/nginx/t2product-http.conf"
+else
+  APP_PUBLIC_URL="$(read_env APP_PUBLIC_URL https://taskatestovaya.ru)"
+  API_PUBLIC_URL="$(read_env API_PUBLIC_URL https://api.taskatestovaya.ru)"
+  MINIO_PUBLIC_URL="$(read_env MINIO_PUBLIC_URL https://minio.taskatestovaya.ru)"
+  CERTBOT_CERT_NAME="$(read_env CERTBOT_CERT_NAME reporting)"
+  CERTBOT_DOMAINS="$(read_env CERTBOT_DOMAINS \
+    "taskatestovaya.ru,www.taskatestovaya.ru,api.taskatestovaya.ru,minio.taskatestovaya.ru,minio-console.taskatestovaya.ru")"
+  HTTPS_CONF="$ROOT/deploy/nginx/reporting.conf"
+  HTTP_BOOTSTRAP="$ROOT/deploy/nginx/reporting.certbot-bootstrap.conf"
+fi
 CERTBOT_EMAIL="$(read_env CERTBOT_EMAIL "")"
-CERTBOT_CERT_NAME="$(read_env CERTBOT_CERT_NAME reporting)"
-CERTBOT_DOMAINS="$(read_env CERTBOT_DOMAINS \
-  "taskatestovaya.ru,www.taskatestovaya.ru,api.taskatestovaya.ru,minio.taskatestovaya.ru,minio-console.taskatestovaya.ru")"
 
 resolve_cert_dir() {
   local dir="/etc/letsencrypt/live/${CERTBOT_CERT_NAME}"
@@ -89,12 +116,13 @@ cp -f "$ROOT/deploy/nginx/snippets/voice-proxy.conf" /etc/nginx/snippets/
 
 install_nginx_config() {
   if [[ -f "$CERT_DIR/fullchain.pem" && -f "$CERT_DIR/privkey.pem" ]]; then
-    echo "==> SSL найден — HTTPS (reporting.conf)."
+    echo "==> SSL найден — HTTPS ($(basename "$HTTPS_CONF"))."
     write_ssl_snippet
-    cp -f "$ROOT/deploy/nginx/reporting.conf" /etc/nginx/sites-available/reporting.conf
+    cp -f "$HTTPS_CONF" /etc/nginx/sites-available/reporting.conf
   else
-    echo "==> SSL нет — HTTP bootstrap."
-    cp -f "$ROOT/deploy/nginx/reporting.certbot-bootstrap.conf" /etc/nginx/sites-available/reporting.conf
+    echo "==> SSL нет — HTTP bootstrap ($(basename "$HTTP_BOOTSTRAP"))."
+    echo "    Положите pem в $CERT_DIR или задайте CERTBOT_EMAIL для Let's Encrypt."
+    cp -f "$HTTP_BOOTSTRAP" /etc/nginx/sites-available/reporting.conf
   fi
   ln -sf /etc/nginx/sites-available/reporting.conf /etc/nginx/sites-enabled/reporting.conf
   rm -f /etc/nginx/sites-enabled/pallink-reporting.conf /etc/nginx/sites-enabled/default
@@ -198,7 +226,7 @@ setup_certbot_auto_renewal
 echo ""
 if [[ -f "$CERT_DIR/fullchain.pem" ]]; then
   echo "HTTPS готов."
-  echo "  taskatestovaya.ru"
+  echo "  $APP_PUBLIC_URL"
   echo "  Проверка renew: sudo certbot renew --dry-run"
 else
   echo "Nginx на HTTP (bootstrap). HTTPS пока нет."

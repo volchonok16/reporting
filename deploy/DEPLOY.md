@@ -27,7 +27,7 @@ sudo bash deploy/setup-nginx-http.sh --any-host
 | `minio.my-testing.ru` | MinIO (опционально) |
 | `minio-console.my-testing.ru` | MinIO Console (опционально) |
 
-## Production (corp HTTPS + t2product.ru HTTP)
+## Production (corp HTTPS + t2product.ru)
 
 ### Требования
 
@@ -36,7 +36,7 @@ sudo bash deploy/setup-nginx-http.sh --any-host
 - DNS на IP сервера (см. таблицу ниже)
 - Порты `8000` и `5173` на localhost свободны (backend и frontend)
 
-### DNS: прод VPS `t2product.ru` (HTTP, без сертификата)
+### DNS: прод VPS `t2product.ru`
 
 Все записи типа **A** на **один и тот же IPv4 сервера**.
 
@@ -50,12 +50,22 @@ sudo bash deploy/setup-nginx-http.sh --any-host
 
 AAAA не нужны, если нет публичного IPv6. CNAME на `www` вместо A допустим (`www` → `t2product.ru`), остальные лучше A на IP.
 
-Nginx: `deploy/nginx/t2product-http.conf` — только порт 80, без SSL.
+**HTTP** (без сертификата): `deploy/nginx/t2product-http.conf`
 
 ```bash
-cp .env.t2product-offline.example .env
 sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --t2product --tunnel
 ```
+
+**HTTPS:** сертификат **не кладут в tar**. На сервер копируют `fullchain.pem` + `privkey.pem` (имена в SAN: `t2product.ru`, лучше ещё `www` и `api`):
+
+```bash
+sudo mkdir -p /etc/letsencrypt/live/t2product
+sudo cp fullchain.pem privkey.pem /etc/letsencrypt/live/t2product/
+# .env: APP_PUBLIC_URL=https://t2product.ru  CORS на https://…
+sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-ssl --t2product --tunnel
+```
+
+Если с сервера есть интернет до Let's Encrypt — можно `CERTBOT_EMAIL` в `.env` вместо готовых pem.
 
 ### DNS: corp `taskatestovaya.ru` (HTTPS)
 

@@ -12,9 +12,9 @@
 # --with-nginx: HTTP nginx (без certbot); без --t2product → APP_DOMAIN / my-testing.ru
 # --domain=X:   nginx под домен X
 # --any-host:   nginx принимает любой Host/IP
-# --t2product:  только t2product.ru (HTTP, без SSL)
+# --t2product:  t2product.ru (HTTP без --with-ssl; HTTPS с --with-ssl)
 # --tunnel:     Postgres на 127.0.0.1:5432 (SSH → DBeaver)
-# --with-ssl:   nginx + Let's Encrypt / corp-сертификат
+# --with-ssl:   nginx + готовые pem в /etc/letsencrypt/live/… или Let's Encrypt
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
@@ -177,8 +177,13 @@ elif [[ "$ANY_HOST" -eq 1 ]]; then
   UI_URL="http://<host-or-ip>/"
   API_CHECK="http://127.0.0.1/api/health"
 elif [[ "$T2PRODUCT" -eq 1 ]]; then
-  UI_URL="http://t2product.ru/"
-  API_CHECK="http://t2product.ru/api/health"
+  if [[ "$WITH_SSL" -eq 1 ]]; then
+    UI_URL="https://t2product.ru/"
+    API_CHECK="https://t2product.ru/api/health"
+  else
+    UI_URL="http://t2product.ru/"
+    API_CHECK="http://t2product.ru/api/health"
+  fi
 else
   UI_URL="http://${APP_DOMAIN_HINT}/"
   API_CHECK="http://${APP_DOMAIN_HINT}/api/health"
@@ -188,7 +193,9 @@ if [[ "$WITH_NGINX" -eq 1 ]]; then
   echo ""
   if [[ "$WITH_SSL" -eq 1 ]]; then
     echo "==> Nginx + SSL…"
-    bash "$ROOT/deploy/setup-nginx-ssl.sh" || echo "Предупреждение: nginx/ssl не настроены полностью" >&2
+    SSL_ARGS=()
+    [[ "$T2PRODUCT" -eq 1 ]] && SSL_ARGS+=(--t2product)
+    bash "$ROOT/deploy/setup-nginx-ssl.sh" "${SSL_ARGS[@]}" || echo "Предупреждение: nginx/ssl не настроены полностью" >&2
   else
     echo "==> Nginx HTTP…"
     NGINX_ARGS=()

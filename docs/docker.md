@@ -49,6 +49,11 @@ sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --do
 
 # Прод HTTP без сертификата (t2product.ru):
 sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-nginx --t2product --tunnel
+
+# Прод HTTPS: pem на сервере (не в tar), затем:
+# sudo mkdir -p /etc/letsencrypt/live/t2product
+# sudo cp fullchain.pem privkey.pem /etc/letsencrypt/live/t2product/
+sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-ssl --t2product --tunnel
 ```
 
 Поднимает offline-образы, Voice, HTTP nginx и Postgres на `127.0.0.1:5432` (SSH → DBeaver).
@@ -66,9 +71,9 @@ sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-ssl --tunn
 `--with-nginx` (dev) → `deploy/nginx/dev-http.conf.template` с `APP_DOMAIN` / `my-testing.ru` (www, api, minio + `/voice/`).  
 `--with-nginx --any-host` → `deploy/nginx/dev-any-host.conf` (любой Host/IP).  
 `--with-nginx --domain=X` → тот же шаблон под домен `X`.  
-`--with-nginx --t2product` → `deploy/nginx/t2product-http.conf` (прод HTTP, без SSL).  
-`--tunnel` → `docker-compose.db-tunnel.yml` (Postgres `:5432` на localhost).  
-`--with-ssl` → `deploy/setup-nginx-ssl.sh`.
+`--with-nginx --t2product` → `deploy/nginx/t2product-http.conf` (прод HTTP).  
+`--with-ssl --t2product` → `deploy/nginx/t2product.conf` (HTTPS; pem в `/etc/letsencrypt/live/t2product/` или Let's Encrypt).  
+`--with-ssl` без `--t2product` → corp `taskatestovaya.ru`.
 
 DNS для прода HTTP: `t2product.ru`, `www.t2product.ru`, `api.t2product.ru` → IP сервера.  
 DNS для тестового HTTP: `my-testing.ru`, `www.my-testing.ru`, `api.my-testing.ru` → IP сервера (или `--any-host`).  
