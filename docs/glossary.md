@@ -780,6 +780,8 @@
 
 Для сотрудников с `employee.hide_from_pyramid = true` (**Другие пользователи**) список разрешённых вкладок хранится в `org_user_page_access` (см. `app_page`). API: `GET /api/org/app-pages` (админ), поле `allowedPageKeys` в карточке сотрудника; в `/api/auth/status` — `otherUser` и `allowedPageKeys`.
 
+Вкладка **Планирование** (`page_key = planning`) по умолчанию скрыта. Доступ выдаётся явно: галочка **Планирование** в карточке сотрудника (пишет `org_user_page_access.planning`) или выбор вкладки в списке для «Других пользователей». Администраторы reporting (`canManageOrg`) видят Планирование без отдельного гранта. В `/api/auth/status` — флаг `planningAccess`; API `/api/planning/*` без гранта возвращает 403.
+
 **Мастер-файл Voice** хранится в PostgreSQL reporting (миграция `050_voice_master.sql`, hash-индексы — `053_voice_master_signature_hash.sql`, числовые PK — `056_voice_master_numeric_ids.sql`; откат числовых индексов A — `057_voice_master_rollback_numeric_a_indexes.sql`; индекс активных префиксов — `058_voice_master_prefix_index.sql`). **Uploads и jobs** — PostgreSQL (`051_voice_registry.sql`: `voice_uploads`, `voice_jobs`). **Auth Voice** — только через reporting SSO (`POST /api/voice/sso-token` → `POST /api/auth/reporting-sso`); отдельных учёток и таблиц auth в Voice нет. Bearer-сессия — подписанный stateless-токен (`VOICE_SSO_SECRET`). На диске (`CAROUSEL_DATA_DIR`) — только файлы загрузок и workspace. Legacy `registry.sqlite3` (uploads/jobs) импортируется один раз при старте.
 
 ---
@@ -800,7 +802,9 @@
 
 ---
 
-## org_user_page_access — доступ «других пользователей» к вкладкам
+## org_user_page_access — доступ к вкладкам (в т.ч. «других пользователей»)
+
+Список разрешённых `page_key` для учётной записи. Для **Других пользователей** (`hide_from_pyramid`) ограничивает все вкладки; для остальных сотрудников используется как минимум для явного доступа к **Планированию** (`planning`).
 
 | Поле | Тип | Описание |
 |------|-----|----------|
@@ -808,7 +812,7 @@
 | `page_key` | varchar(64) | FK → `app_page` |
 | `created_at` | timestamptz | Когда выдан доступ |
 
-PK: (`org_user_id`, `page_key`). Используется только при `employee.hide_from_pyramid = true`.
+PK: (`org_user_id`, `page_key`). Для обычных сотрудников обычно хранит только `planning` при выданном доступе; для «Других пользователей» — полный список разрешённых вкладок.
 
 ---
 

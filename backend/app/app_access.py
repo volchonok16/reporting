@@ -59,7 +59,12 @@ def is_admin_user(meta: dict) -> bool:
 
 
 def ensure_page_access(db: Session, meta: dict, page_key: str) -> None:
-    """Для «других пользователей» (employee.hide_from_pyramid) — только разрешённые вкладки."""
+    """Проверка доступа к вкладке.
+
+    - Voice-only: только Voice.
+    - Планирование: только при явном гранте в `org_user_page_access` (или админ/PAT).
+    - «Другие пользователи»: только разрешённые вкладки.
+    """
     if is_voice_only(meta):
         raise HTTPException(status_code=403, detail="Доступен только раздел Voice.")
     org_user_id = meta.get("org_user_id")
@@ -69,6 +74,14 @@ def ensure_page_access(db: Session, meta: dict, page_key: str) -> None:
     from app.app_page_service import get_user_allowed_page_keys, is_other_user_employee
     from app.org_service import get_employee_for_org_user
 
+    if page_key == "planning":
+        if can_manage_org(meta):
+            return
+        allowed = get_user_allowed_page_keys(db, int(org_user_id))
+        if "planning" not in allowed:
+            raise HTTPException(status_code=403, detail="Нет доступа к разделу Планирование.")
+        return
+
     employee = get_employee_for_org_user(db, int(org_user_id))
     if not is_other_user_employee(employee):
         return
@@ -76,6 +89,20 @@ def ensure_page_access(db: Session, meta: dict, page_key: str) -> None:
     allowed = get_user_allowed_page_keys(db, int(org_user_id))
     if page_key not in allowed:
         raise HTTPException(status_code=403, detail="Нет доступа к этому разделу.")
+
+
+def has_planning_access(db: Session, meta: dict) -> bool:
+    """UI-флаг: админ/PAT или явный доступ к вкладке planning."""
+    if is_voice_only(meta):
+        return False
+    if can_manage_org(meta):
+        return True
+    org_user_id = meta.get("org_user_id")
+    if not org_user_id:
+        return False
+    from app.app_page_service import get_user_allowed_page_keys
+
+    return "planning" in get_user_allowed_page_keys(db, int(org_user_id))
 
 
 def require_app_page(page_key: str):

@@ -167,6 +167,7 @@ const EMPTY_EMPLOYEE = {
   userIsAdmin: false,
   userVoiceOnly: false,
   userVoiceAdmin: false,
+  userPlanningAccess: false,
 }
 
 const EMPTY_DEPARTMENT = {
@@ -642,6 +643,10 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       userIsAdmin: emp.user?.role === 'admin',
       userVoiceOnly: Boolean(emp.user?.voiceOnly),
       userVoiceAdmin: Boolean(emp.user?.voiceAdmin),
+      userPlanningAccess: Boolean(
+        emp.user?.planningAccess ||
+          (emp.allowedPageKeys ?? emp.user?.allowedPageKeys ?? []).includes('planning'),
+      ),
     })
     setShowEmployeeModal(true)
   }
@@ -694,12 +699,17 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       isActive: employeeForm.isActive,
       isOrganizationHead: employeeForm.isOrganizationHead,
       hideFromPyramid: employeeForm.hideFromPyramid,
-      allowedPageKeys: employeeForm.hideFromPyramid ? employeeForm.allowedPageKeys : [],
+      allowedPageKeys: employeeForm.hideFromPyramid
+        ? employeeForm.userPlanningAccess
+          ? Array.from(new Set([...employeeForm.allowedPageKeys, 'planning']))
+          : employeeForm.allowedPageKeys.filter((key) => key !== 'planning')
+        : [],
       createUserAccount: true,
       userPassword: '12345678',
       userIsAdmin: employeeForm.userIsAdmin,
       userVoiceOnly: employeeForm.userVoiceOnly,
       userVoiceAdmin: employeeForm.userVoiceAdmin,
+      userPlanningAccess: employeeForm.userPlanningAccess,
       departmentIds: employeeDepartmentIds,
     }
     setSavingEmployee(true)
@@ -719,6 +729,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
           userIsAdmin: body.userIsAdmin,
           userVoiceOnly: body.userVoiceOnly,
           userVoiceAdmin: body.userVoiceAdmin,
+          userPlanningAccess: body.userPlanningAccess,
           userPassword: employeeForm.userPassword.trim() || undefined,
           departmentIds: body.departmentIds,
         })
@@ -1599,7 +1610,11 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                         pages={appPages.map((page) => ({ pageKey: page.pageKey, label: page.label }))}
                         value={employeeForm.allowedPageKeys}
                         onChange={(allowedPageKeys) =>
-                          setEmployeeForm({ ...employeeForm, allowedPageKeys })
+                          setEmployeeForm({
+                            ...employeeForm,
+                            allowedPageKeys,
+                            userPlanningAccess: allowedPageKeys.includes('planning'),
+                          })
                         }
                         disabled={appPages.length === 0}
                       />
@@ -1636,6 +1651,23 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                     <label className="org-checkbox">
                       <input
                         type="checkbox"
+                        checked={employeeForm.userPlanningAccess}
+                        onChange={(e) => {
+                          const enabled = e.target.checked
+                          setEmployeeForm({
+                            ...employeeForm,
+                            userPlanningAccess: enabled,
+                            allowedPageKeys: enabled
+                              ? Array.from(new Set([...employeeForm.allowedPageKeys, 'planning']))
+                              : employeeForm.allowedPageKeys.filter((key) => key !== 'planning'),
+                          })
+                        }}
+                      />
+                      Планирование
+                    </label>
+                    <label className="org-checkbox">
+                      <input
+                        type="checkbox"
                         checked={employeeForm.userVoiceAdmin}
                         onChange={(e) =>
                           setEmployeeForm({ ...employeeForm, userVoiceAdmin: e.target.checked })
@@ -1645,8 +1677,9 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                     </label>
                     <p className="org-hint">
                       С галочкой «Voice сервисы» — только вкладка Voice. Без галочки — Voice и все
-                      остальные вкладки. «Администратор Voice» — очистка журнала/версии и очистка
-                      мастер-файла.
+                      остальные вкладки. «Планирование» — отдельный доступ к вкладке Планирование
+                      (без галочки вкладка скрыта). «Администратор Voice» — очистка журнала/версии и
+                      очистка мастер-файла.
                     </p>
                   </section>
                 ) : editingEmployee ? (
@@ -1679,6 +1712,23 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                           }
                         />
                         Voice сервисы
+                      </label>
+                      <label className="org-checkbox org-checkbox-field">
+                        <input
+                          type="checkbox"
+                          checked={employeeForm.userPlanningAccess}
+                          onChange={(e) => {
+                            const enabled = e.target.checked
+                            setEmployeeForm({
+                              ...employeeForm,
+                              userPlanningAccess: enabled,
+                              allowedPageKeys: enabled
+                                ? Array.from(new Set([...employeeForm.allowedPageKeys, 'planning']))
+                                : employeeForm.allowedPageKeys.filter((key) => key !== 'planning'),
+                            })
+                          }}
+                        />
+                        Планирование
                       </label>
                       <label className="org-checkbox org-checkbox-field">
                         <input

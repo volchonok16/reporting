@@ -42,6 +42,7 @@ class TfsAuthStatusOut(BaseModel):
     canManageOrg: bool = False
     voiceOnly: bool = False
     otherUser: bool = False
+    planningAccess: bool = False
     allowedPageKeys: list[str] = Field(default_factory=list)
     orgUserId: int | None = None
     orgEmployeeId: int | None = None

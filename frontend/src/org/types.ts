@@ -100,6 +100,7 @@ export type OrgUserBrief = {
   status: 'active' | 'inactive' | 'deleted'
   voiceOnly?: boolean
   voiceAdmin?: boolean
+  planningAccess?: boolean
   allowedPageKeys?: string[]
 }
 
