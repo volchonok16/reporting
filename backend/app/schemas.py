@@ -126,6 +126,11 @@ class ChangeRequestOut(BaseModel):
     externalComment: str | None = None
     externalCategoryId: int | None = None
     externalCategoryName: str | None = None
+    pilotEnteredAt: date | None = None
+    missingCustomer: bool = False
+    desiredDateFromPlan: bool = False
+    actualPeriodFromPilot: bool = False
+    actualPeriodFromClosed: bool = False
 
 
 class DashboardMetricsOut(BaseModel):

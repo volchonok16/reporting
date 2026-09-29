@@ -52,6 +52,7 @@ export type DashboardUiState = {
   tagGroupFilter: string[]
   metricFilter: string
   externalFieldsVisible: boolean
+  columnWidths?: import('./zniColumnResize').ZniColumnWidths
 }
 
 export type PlanningUiState = {

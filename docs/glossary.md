@@ -323,14 +323,23 @@
 
 Локальные данные карточки ЗНИ, **не приходят из TFS** и не затираются синхронизацией. Заполняются в дашборде ЗНИ (`PATCH /api/tasks/{id}/external-data`). Остальные поля — любой авторизованный пользователь; **`actual_period`** («Фактическая дата месяц/квартал») — только администратор и только в статусах из `ZNI_ACTUAL_PERIOD_EDITABLE_STATES`. Одна строка на `task.id`.
 
+Отображение в `GET /api/dashboard` (без записи в БД, пока пользователь не сохранит вручную):
+
+- если `desired_date` пустая — в ответе подставляется плановая дата задачи (`planned_date` / допполе плана); флаг `desiredDateFromPlan=true`;
+- если `actual_period` пустой:
+  - для ЗНИ в статусе Closed — дата перехода в Closed (`closed_at` / `closed_transitions`); флаг `actualPeriodFromClosed=true`;
+  - иначе — дата первого перехода в Pilot (`pilot_transitions` / `pilotEnteredAt`); флаг `actualPeriodFromPilot=true`;
+  - ручное сохранение по-прежнему только в разрешённых статусах;
+- ЗНИ без заказчика (`Заказчик` / `Заказчик ЗНИ` / `customer_name` в `extra_json`) показываются в таблице с `missingCustomer=true` (подсветка строки); в метрики дашборда такие строки не входят.
+
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `task_id` | bigint PK | ЗНИ (`task.id`, `task_type = change_request`); ON DELETE CASCADE |
 | `priority` | varchar(255) | Приоритет |
 | `category_id` | bigint FK → `zni_category` | Категория (выбор из справочника); ON DELETE SET NULL |
 | `commercial_effect` | text | Коммерческий эффект |
-| `actual_period` | varchar(128) | Фактическая дата месяц/квартал. Редактирование только в статусах из `ZNI_ACTUAL_PERIOD_EDITABLE_STATES` (по умолчанию `UAT,Pilot,Closed`) — колонка доски или `System.State` |
-| `desired_date` | date | Желаемая дата |
+| `actual_period` | varchar(128) | Фактическая дата месяц/квартал. Редактирование только в статусах из `ZNI_ACTUAL_PERIOD_EDITABLE_STATES` (по умолчанию `UAT,Pilot,Closed`) — колонка доски или `System.State`. Если пусто: для Closed — дата входа в Closed, иначе — дата входа в Pilot |
+| `desired_date` | date | Желаемая дата. Если пусто — в UI/API подставляется плановая дата |
 | `comment` | text | Комментарий |
 | `updated_at` | timestamptz | Последнее сохранение |
 
