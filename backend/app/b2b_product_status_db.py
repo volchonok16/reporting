@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.app_access import can_manage_org
 from app.config import settings
+from app.product_status_rich_text import display_cell_text
 from app.product_status_save_helpers import (
     apply_row_order,
     fetch_row_cell,
@@ -29,6 +30,21 @@ from app.schemas import (
 )
 
 ROW_ID_KEY = "__rowId"
+
+SUMMARY_GID = "summary"
+SUMMARY_SHEET_NAME = "Сводка"
+SUMMARY_OFFICE_COLUMN = "Офис"
+SUMMARY_PROJECT_COLUMN = "Название проекта"
+SUMMARY_STATUS_COLUMN = "Статус"
+SUMMARY_COLUMNS: tuple[str, ...] = (
+    SUMMARY_OFFICE_COLUMN,
+    SUMMARY_PROJECT_COLUMN,
+    SUMMARY_STATUS_COLUMN,
+    "Зачем и для чего делаем",
+)
+_COORDINATION_COLUMN = "Проект координация"
+_PRESENTATION_STATUS_COLUMN = "Для презентации Описание проекта и статус"
+_PRESENTATION_FLAG_COLUMN = "Идет в презентацию"
 
 B2B_PRODUCT_STATUS_COLUMNS: tuple[str, ...] = (
     "Дата запуска",
@@ -171,6 +187,67 @@ def _sheet_from_rows(
     )
 
 
+def _office_summary_label(name: str) -> str:
+    raw = (name or "").strip()
+    prefix = "Офис:"
+    if raw.casefold().startswith(prefix.casefold()):
+        return raw[len(prefix) :].strip() or raw
+    return raw
+
+
+def _is_presentation_flag_yes(value: str) -> bool:
+    normalized = display_cell_text(value or "").strip().casefold()
+    if normalized in ("нет", "no", "0", "false"):
+        return False
+    return normalized in ("да", "yes", "1", "true")
+
+
+def build_summary_rows(offices_with_rows: list[tuple[dict[str, Any], list[dict[str, Any]]]]) -> list[dict[str, str]]:
+    """Строки сводки: офисы в их порядке, внутри — порядок строк офиса."""
+    rows: list[dict[str, str]] = []
+    for office, office_rows in offices_with_rows:
+        office_gid = str(office["gid"])
+        office_name = str(office["name"])
+        for row in office_rows:
+            cells = _normalize_cells(row.get("cells"))
+            if not _is_presentation_flag_yes(cells.get(_PRESENTATION_FLAG_COLUMN, "")):
+                continue
+            rows.append(
+                {
+                    SUMMARY_OFFICE_COLUMN: _office_summary_label(office_name),
+                    SUMMARY_PROJECT_COLUMN: cells.get(_COORDINATION_COLUMN, ""),
+                    SUMMARY_STATUS_COLUMN: cells.get(_PRESENTATION_STATUS_COLUMN, ""),
+                    WHY_COLUMN: cells.get(WHY_COLUMN, ""),
+                    ROW_ID_KEY: f"{SUMMARY_GID}-{office_gid}-{row.get('id')}",
+                }
+            )
+    return rows
+
+
+def _summary_sheet(rows: list[dict[str, str]] | None = None) -> ProductStatusSheetOut:
+    sheet_rows = list(rows or [])
+    return ProductStatusSheetOut(
+        gid=SUMMARY_GID,
+        name=SUMMARY_SHEET_NAME,
+        columns=list(SUMMARY_COLUMNS),
+        rows=sheet_rows,
+        totalShown=len(sheet_rows),
+        projects=[],
+        editingLocked=True,
+        readOnly=True,
+    )
+
+
+def _load_summary_sheet(db: Session, *, offices: list[dict[str, Any]], meta_only: bool) -> ProductStatusSheetOut:
+    if meta_only:
+        return _summary_sheet()
+    packed: list[tuple[dict[str, Any], list[dict[str, Any]]]] = [
+        (office, _load_office_rows(db, office_id=int(office["id"])))
+        for office in offices
+    ]
+    return _summary_sheet(build_summary_rows(packed))
+
+
 def _load_offices(db: Session) -> list[dict[str, Any]]:
     result = db.execute(
         text(
@@ -249,19 +326,33 @@ def load_b2b_product_status_from_db(
     gid: str | None = None,
     meta_only: bool = False,
 ) -> ProductStatusB2BOut:
-    offices = _load_offices(db)
-    if not offices:
+    all_offices = _load_offices(db)
+    if not all_offices:
         raise HTTPException(
             status_code=503,
             detail="Таблицы статуса продукта B2B не инициализированы.",
         )
 
+    if gid == SUMMARY_GID:
+        return ProductStatusB2BOut(
+            title=_TITLE,
+            sourceUrl=None,
+            presentationReferenceUrl=(
+                settings.b2b_product_status_presentation_reference_url or None
+            ),
+            sheets=[_load_summary_sheet(db, offices=all_offices, meta_only=meta_only)],
+        )
+
+    offices = all_offices
     if gid:
-        offices = [office for office in offices if office["gid"] == gid]
+        offices = [office for office in all_offices if office["gid"] == gid]
         if not offices:
             raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
 
     sheets: list[ProductStatusSheetOut] = []
+    if gid is None:
+        sheets.append(_load_summary_sheet(db, offices=all_offices, meta_only=meta_only))
+
     projects_by_office = _load_office_projects(
         db,
         office_ids=[int(office["id"]) for office in offices],
@@ -368,6 +459,11 @@ def set_b2b_product_status_office_editing_locked(
 ) -> ProductStatusSheetOut:
     office = _load_office(db, gid=gid)
     if office is None:
+        if gid == SUMMARY_GID:
+            raise HTTPException(
+                status_code=400,
+                detail="Вкладка «Сводка» только для чтения.",
+            )
         raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
 
     db.execute(
@@ -415,6 +511,11 @@ def save_b2b_product_status_to_db(
 
     processed_gids = set(updates_by_gid) | set(deleted_by_gid) | set(row_order_by_gid)
     for gid in processed_gids:
+        if gid == SUMMARY_GID:
+            raise HTTPException(
+                status_code=400,
+                detail="Вкладка «Сводка» только для чтения.",
+            )
         office = _load_office(db, gid=gid)
         if office is None:
             raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
@@ -648,6 +749,11 @@ def delete_b2b_product_status_row(
 ) -> None:
     office = _load_office(db, gid=gid)
     if office is None:
+        if gid == SUMMARY_GID:
+            raise HTTPException(
+                status_code=400,
+                detail="Вкладка «Сводка» только для чтения.",
+            )
         raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
     _assert_office_editable(office)
 

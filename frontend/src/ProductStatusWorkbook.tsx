@@ -29,6 +29,8 @@ import {
   isPriorityColumn,
 } from './productStatusCoordination'
 
+const PRODUCT_STATUS_SUMMARY_GID = 'summary'
+
 type ProductStatusSheet = {
   gid: string
   name: string
@@ -37,6 +39,7 @@ type ProductStatusSheet = {
   totalShown: number
   projects?: string[]
   editingLocked?: boolean
+  readOnly?: boolean
 }
 
 type ProductStatusData = {
@@ -353,6 +356,9 @@ function collectSheetUpdates(
   const deletedRows: Array<{ gid: string; rowId: number }> = []
   const rowOrder: Array<{ gid: string; rowIds: number[] }> = []
   for (const sheet of sheets) {
+    if (sheet.readOnly || sheet.gid === PRODUCT_STATUS_SUMMARY_GID) {
+      continue
+    }
     if (!loadedGids.has(sheet.gid) || sheet.columns.length === 0) {
       continue
     }
@@ -457,6 +463,9 @@ function isAttentionColumn(column: string): boolean {
 function resolveColumnClass(column: string): string | undefined {
   const key = column.trim().toLowerCase()
   if (key === 'зни') return 'col-zni'
+  if (key === 'офис') return 'col-office'
+  if (key === 'название проекта') return 'col-project'
+  if (key === 'статус') return 'col-description'
   if (key.includes('координац')) return 'col-project'
   if (isPresentationFlagColumn(column) || isAttentionColumn(column)) return 'col-presentation-flag'
   if (key === 'дата' || key.startsWith('дата')) return 'col-date'
@@ -908,7 +917,11 @@ export default function ProductStatusWorkbook({
         throw new Error(message)
       }
       setActiveCell(null)
-      await reloadSheetsAfterSave(gidsToReload)
+      await reloadSheetsAfterSave(
+        loadedGids.has(PRODUCT_STATUS_SUMMARY_GID)
+          ? [...new Set([...gidsToReload, PRODUCT_STATUS_SUMMARY_GID])]
+          : gidsToReload,
+      )
       setDirty(false)
       if (enableHistory && activeGid && viewMode === 'history') {
         void loadHistory(activeGid)
@@ -968,7 +981,12 @@ export default function ProductStatusWorkbook({
     [activeGid, sheets],
   )
 
-  const isSheetReadOnly = activeSheetEditingLocked
+  const activeSheetReadOnly = useMemo(
+    () => Boolean(sheets.find((sheet) => sheet.gid === activeGid)?.readOnly),
+    [activeGid, sheets],
+  )
+
+  const isSheetReadOnly = activeSheetEditingLocked || activeSheetReadOnly
 
   const toggleOfficeEditingLock = useCallback(async () => {
     if (!enableOfficeEditLock || !canEditAdminColumns || !activeGid) return
@@ -1742,8 +1760,13 @@ export default function ProductStatusWorkbook({
         void ensureSheetLoaded(gid)
       }
       if (enableHistory && viewMode === 'history') {
-        void loadHistory(gid)
-        void loadSnapshots(gid)
+        const nextSheet = sheets.find((item) => item.gid === gid)
+        if (nextSheet?.readOnly || gid === PRODUCT_STATUS_SUMMARY_GID) {
+          setViewMode('table')
+        } else {
+          void loadHistory(gid)
+          void loadSnapshots(gid)
+        }
       }
     },
     [
@@ -1815,7 +1838,7 @@ export default function ProductStatusWorkbook({
                 </a>
               ) : null}
               {data?.presentationReferenceUrl && enableHistory ? ' · ' : null}
-              {enableHistory && viewMode === 'table' ? (
+              {enableHistory && viewMode === 'table' && !activeSheetReadOnly ? (
                 <button type="button" className="product-status-subtitle-link" onClick={openHistory}>
                   История
                 </button>
@@ -1866,7 +1889,7 @@ export default function ProductStatusWorkbook({
               ) : null}
             </div>
           ) : null}
-          {enableOfficeEditLock && canEditAdminColumns && activeGid && viewMode === 'table' ? (
+          {enableOfficeEditLock && canEditAdminColumns && activeGid && viewMode === 'table' && !activeSheetReadOnly ? (
             <div className="product-status-toolbar-actions-group">
               <button
                 type="button"
@@ -1928,7 +1951,9 @@ export default function ProductStatusWorkbook({
 
       {isSheetReadOnly && viewMode === 'table' && activeSheet ? (
         <p className="product-status-editing-locked-banner" role="status">
-          Редактирование офиса «{activeSheet.name}» заблокировано администратором — доступен только просмотр.
+          {activeSheetReadOnly
+            ? 'Сводка собирается автоматически из строк с галочкой «Идет в презентацию» и сгруппирована по офисам — только просмотр.'
+            : `Редактирование офиса «${activeSheet.name}» заблокировано администратором — доступен только просмотр.`}
         </p>
       ) : null}
 
@@ -1941,10 +1966,16 @@ export default function ProductStatusWorkbook({
                 type="button"
                 className={`product-status-sheet-tab${
                   activeSheet?.gid === sheet.gid ? ' product-status-sheet-tab-active' : ''
-                }${sheet.editingLocked ? ' product-status-sheet-tab-locked' : ''}`}
+                }${sheet.editingLocked && !sheet.readOnly ? ' product-status-sheet-tab-locked' : ''}`}
                 onClick={() => selectSheet(sheet.gid)}
                 aria-selected={activeSheet?.gid === sheet.gid}
-                title={sheet.editingLocked ? 'Редактирование заблокировано' : undefined}
+                title={
+                  sheet.readOnly
+                    ? 'Сводка по офисам'
+                    : sheet.editingLocked
+                      ? 'Редактирование заблокировано'
+                      : undefined
+                }
               >
                 {sheet.name}
               </button>

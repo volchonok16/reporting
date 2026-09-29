@@ -1185,6 +1185,8 @@ API: префикс `/api/youjail/*`. `DELETE /api/youjail/boards/{id}`, `POST /
 
 Seed: миграция `013_b2b_product_status.sql` — SMS, VOICE, Перспективные продукты, M2M / IoT, Продуктовый маркетинг, CORE, CORE (операционка); `030_b2b_product_status_offices_analytics_projects.sql` — Проекты (Саша и Ваня) (`gid=projects`); `044_b2b_product_status_analytics_split.sql` — Аналитики: планирование (`gid=analytics_planning`), Аналитики: бизнес-анализа (`gid=analytics_business`); старая вкладка Аналитики (`gid=analytics`) деактивирована.
 
+Первая вкладка UI — виртуальная **«Сводка»** (`gid=summary`, не строка в `b2b_product_status_office`): только просмотр, строки с «Идет в презентацию» = да со всех офисов, порядок офисов как у вкладок. Колонки: «Офис», «Название проекта» (из «Проект координация»), «Статус» (из «Для презентации Описание проекта и статус»), «Зачем и для чего делаем». В PPTX не входит.
+
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `id` | bigserial | PK |

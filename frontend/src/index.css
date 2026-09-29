@@ -2146,6 +2146,10 @@ body {
   width: 96px;
 }
 
+.product-status-table col.col-office {
+  width: 160px;
+}
+
 .product-status-table col.col-project {
   width: 140px;
 }

@@ -10,10 +10,17 @@ from app.b2b_product_status_db import (
     ADMIN_ONLY_COLUMNS,
     B2B_PRODUCT_STATUS_COLUMNS,
     ROW_ID_KEY,
+    SUMMARY_GID,
+    SUMMARY_OFFICE_COLUMN,
+    SUMMARY_PROJECT_COLUMN,
+    SUMMARY_STATUS_COLUMN,
+    WHY_COLUMN,
     _office_snapshot_json,
     _normalize_cells,
     _cells_json,
+    _office_summary_label,
     _row_has_content,
+    build_summary_rows,
     save_b2b_product_status_to_db,
     set_b2b_product_status_office_editing_locked,
 )
@@ -35,6 +42,60 @@ def test_columns_include_coordination_and_flags() -> None:
     assert "Неактуальное" in B2B_PRODUCT_STATUS_COLUMNS
     assert "ЗНИ" in B2B_PRODUCT_STATUS_COLUMNS
     assert "Проект координация" not in ADMIN_ONLY_COLUMNS
+
+
+def test_office_summary_label_strips_prefix() -> None:
+    assert _office_summary_label("Офис: SMS") == "SMS"
+    assert _office_summary_label("Аналитики: планирование") == "Аналитики: планирование"
+
+
+def test_build_summary_rows_only_presentation_and_office_order() -> None:
+    offices = [
+        {"gid": "voice", "name": "Офис: VOICE"},
+        {"gid": "sms", "name": "Офис: SMS"},
+    ]
+    voice_rows = [
+        {
+            "id": 1,
+            "cells": {
+                "Проект координация": "Voice A",
+                "Для презентации Описание проекта и статус": "Статус A",
+                "Зачем и для чего делаем": "Зачем A",
+                "Идет в презентацию": "Нет",
+            },
+        },
+        {
+            "id": 2,
+            "cells": {
+                "Проект координация": "Voice B",
+                "Для презентации Описание проекта и статус": "Статус B",
+                "Зачем и для чего делаем": "Зачем B",
+                "Идет в презентацию": "Да",
+            },
+        },
+    ]
+    sms_rows = [
+        {
+            "id": 3,
+            "cells": {
+                "Проект координация": "SMS C",
+                "Для презентации Описание проекта и статус": "Статус C",
+                "Зачем и для чего делаем": "Зачем C",
+                "Идет в презентацию": "да",
+            },
+        },
+    ]
+    rows = build_summary_rows(
+        [
+            (offices[0], voice_rows),
+            (offices[1], sms_rows),
+        ]
+    )
+    assert [row[SUMMARY_OFFICE_COLUMN] for row in rows] == ["VOICE", "SMS"]
+    assert [row[SUMMARY_PROJECT_COLUMN] for row in rows] == ["Voice B", "SMS C"]
+    assert [row[SUMMARY_STATUS_COLUMN] for row in rows] == ["Статус B", "Статус C"]
+    assert [row[WHY_COLUMN] for row in rows] == ["Зачем B", "Зачем C"]
+    assert rows[0][ROW_ID_KEY].startswith(f"{SUMMARY_GID}-voice-")
 
 
 def test_normalize_cells_fills_missing_columns() -> None:

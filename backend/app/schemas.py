@@ -189,6 +189,7 @@ class ProductStatusSheetOut(BaseModel):
     totalShown: int
     projects: list[str] = Field(default_factory=list)
     editingLocked: bool = False
+    readOnly: bool = False
 
 
 class ProductStatusOfficeEditingLockIn(BaseModel):

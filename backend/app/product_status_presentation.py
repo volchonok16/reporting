@@ -20,6 +20,7 @@ from pptx.oxml.xmlchemy import OxmlElement
 from pptx.util import Pt
 
 from app.b2b_news_service import load_b2b_news
+from app.b2b_product_status_db import SUMMARY_GID
 from app.config import settings
 from app.product_status_rich_text import (
     CellStyle,
@@ -1485,6 +1486,8 @@ def _build_slide_specs(
 ) -> list[tuple[ProductStatusSheetOut, ContentSlideTemplate, list[dict[str, str]]]]:
     specs: list[tuple[ProductStatusSheetOut, ContentSlideTemplate, list[dict[str, str]]]] = []
     for sheet in data.sheets:
+        if sheet.gid == SUMMARY_GID or sheet.readOnly:
+            continue
         rows = _filter_presentation_rows(sheet.rows, sheet.columns)
         if not rows:
             continue
