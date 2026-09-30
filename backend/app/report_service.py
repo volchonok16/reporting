@@ -38,7 +38,8 @@ from app.models import Task, ZniExternalData
 from app.roadmap_priority_service import roadmap_comment_from_task, roadmap_priority_from_task
 from app.digital_plan_service import ect_acceptance_from_task, has_uc_from_task
 from app.zni_external_data_service import actual_period_editable_statuses, load_external_data_by_task_ids
-from app.completed_metrics import has_customer_name
+from app.completed_metrics import effective_closed_date, has_customer_name
+from app.pilot_metrics import first_pilot_entered_at
 from app.resource_reservation import ect_resource_reservation_label
 from app.zni_description import tfs_identity_display_name
 from app.schemas import (
@@ -363,6 +364,29 @@ def _load_products_by_id(db: Session, rows: list[Task]) -> dict[int, Task]:
     return {product.id: product for product in products}
 
 
+def _pilot_entered_at(task: Task) -> date | None:
+    return first_pilot_entered_at(task)
+
+
+def _effective_actual_period(
+    row: Task,
+    external: ZniExternalData | None,
+) -> tuple[str | None, bool, bool]:
+    """Фактическая дата: сохранённая → дата Closed (если Closed) → дата Pilot."""
+    if external is not None and external.actual_period and str(external.actual_period).strip():
+        return str(external.actual_period).strip(), False, False
+
+    if _is_closed_zni(row):
+        closed_at = effective_closed_date(row)
+        if closed_at is not None:
+            return closed_at.isoformat(), False, True
+
+    pilot_at = _pilot_entered_at(row)
+    if pilot_at is not None:
+        return pilot_at.isoformat(), True, False
+    return None, False, False
+
+
 def _change_request_to_out(
     row: Task,
     linked_errors: list[Task],
@@ -371,6 +395,10 @@ def _change_request_to_out(
 ) -> ChangeRequestOut:
     board_code_value = _extra(row).get("board_code")
     planned_date, _, quarter_label, planned_label = _task_plan_meta(row)
+    customer = _customer_name(row)
+    stored_desired = external.desired_date if external else None
+    effective_desired = stored_desired if stored_desired is not None else planned_date
+    effective_actual, actual_from_pilot, actual_from_closed = _effective_actual_period(row, external)
     return ChangeRequestOut(
         id=str(row.id),
         number=row.external_id,
@@ -388,7 +416,7 @@ def _change_request_to_out(
         createdAt=row.created_at,
         boardCode=str(board_code_value) if board_code_value else None,
         boardName=row.source_team or _board_name_by_code(str(board_code_value) if board_code_value else None),
-        customerName=_customer_name(row),
+        customerName=customer,
         product=_product_out(product),
         businessGoal=_business_goal(row),
         businessValue=_business_value(row),
@@ -409,13 +437,18 @@ def _change_request_to_out(
         ],
         externalPriority=external.priority if external else None,
         externalCommercialEffect=external.commercial_effect if external else None,
-        externalActualPeriod=external.actual_period if external else None,
-        externalDesiredDate=external.desired_date if external else None,
+        externalActualPeriod=effective_actual,
+        externalDesiredDate=effective_desired,
         externalComment=external.comment if external else None,
         externalCategoryId=external.category_id if external else None,
         externalCategoryName=(
             external.category.name if external and external.category is not None else None
         ),
+        pilotEnteredAt=_pilot_entered_at(row),
+        missingCustomer=not bool(customer),
+        desiredDateFromPlan=stored_desired is None and planned_date is not None,
+        actualPeriodFromPilot=actual_from_pilot,
+        actualPeriodFromClosed=actual_from_closed,
     )
 
 
@@ -788,9 +821,10 @@ def load_change_requests(
 
     errors_by_parent = _build_errors_by_parent(rows, error_rows)
 
+    # В таблице показываем и ЗНИ без заказчика (подсветка на UI); метрики — только с заказчиком.
     filtered = [
         row
-        for row in rows_with_customer
+        for row in rows
         if _matches_search(row, search or "")
         and _matches_status(row, status)
         and _matches_quarter(row, quarter)
@@ -870,14 +904,14 @@ def load_change_requests(
         items=items,
         totalShown=len(items),
         availableStatuses=_collect_available_statuses(
-            rows_with_customer + (
+            filtered + (
                 _standalone_incident_errors(error_rows)
                 if is_all_boards(board_code)
                 or (board_code or "").strip().lower() == BERCUT_BOARD_CODE
                 else []
             )
         ),
-        availableQuarters=_collect_available_quarters(rows_with_customer),
+        availableQuarters=_collect_available_quarters(filtered),
         availableTagGroups=(
             _tag_filter_groups_out(board_code)
             if tag_filter_supported_for_board(board_code)

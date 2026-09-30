@@ -52,6 +52,7 @@ export type DashboardUiState = {
   tagGroupFilter: string[]
   metricFilter: string
   externalFieldsVisible: boolean
+  columnWidths?: import('./zniColumnResize').ZniColumnWidths
 }
 
 export type PlanningUiState = {
@@ -247,8 +248,7 @@ export function loadPlanningUiState(): PlanningUiState {
   const panel =
     planning?.panel === 'projects' ||
     planning?.panel === 'allocations' ||
-    planning?.panel === 'workload' ||
-    planning?.panel === 'directories'
+    planning?.panel === 'workload'
       ? planning.panel
       : 'projects'
   const selectedProjectId =

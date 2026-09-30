@@ -41,6 +41,7 @@ type WorkbookAppProps = {
   canSyncTfs: boolean
   canManageOrg: boolean
   voiceOnly: boolean
+  planningAccess: boolean
   otherUser: boolean
   allowedPageKeys: string[]
   orgUserId: number | null
@@ -56,6 +57,7 @@ export default function WorkbookApp({
   canSyncTfs,
   canManageOrg,
   voiceOnly,
+  planningAccess,
   otherUser,
   allowedPageKeys,
   orgUserId,
@@ -83,12 +85,16 @@ export default function WorkbookApp({
     if (!canSyncTfs) {
       sheets = sheets.filter((sheet) => sheet.id !== 'roadmap')
     }
+    // Планирование — только при явном доступе к вкладке (или админ).
+    if (!planningAccess) {
+      sheets = sheets.filter((sheet) => sheet.id !== 'planning')
+    }
     if (otherUser) {
       const allowed = new Set(allowedPageKeys)
       sheets = sheets.filter((sheet) => allowed.has(sheet.id))
     }
     return sheets
-  }, [appRole, canSyncTfs, voiceOnly, otherUser, allowedPageKeys])
+  }, [appRole, canSyncTfs, voiceOnly, planningAccess, otherUser, allowedPageKeys])
   const visibleSheetIds = useMemo(() => new Set(visibleSheets.map((sheet) => sheet.id)), [visibleSheets])
   const [activeSheet, setActiveSheet] = useState<SheetId>(() => {
     const saved = loadActiveSheet()

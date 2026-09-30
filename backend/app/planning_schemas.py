@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-PlanningProjectStatus = Literal["new", "in_progress", "completed"]
+PlanningProjectStatus = Literal["new", "in_progress", "completed", "cancelled", "frozen"]
 
 
 class PlanningComplexityOut(BaseModel):
@@ -64,6 +64,8 @@ class PlanningProjectOut(BaseModel):
     plannedEndDate: date | None = None
     actualEndDate: date | None = None
     status: PlanningProjectStatus = "new"
+    cancelledAt: date | None = None
+    freezeUntilDate: date | None = None
     notes: str | None = None
     createdByLabel: str | None = None
     createdAt: date | None = None
@@ -86,6 +88,8 @@ class PlanningProjectIn(BaseModel):
     plannedEndDate: date | None = None
     actualEndDate: date | None = None
     status: PlanningProjectStatus = "new"
+    cancelledAt: date | None = None
+    freezeUntilDate: date | None = None
     notes: str | None = None
 
 
@@ -103,6 +107,8 @@ class PlanningProjectUpdateIn(BaseModel):
     plannedEndDate: date | None = None
     actualEndDate: date | None = None
     status: PlanningProjectStatus | None = None
+    cancelledAt: date | None = None
+    freezeUntilDate: date | None = None
     notes: str | None = None
 
 

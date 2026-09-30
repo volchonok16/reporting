@@ -999,6 +999,78 @@ body {
   table-layout: fixed;
 }
 
+.zni-table th {
+  position: relative;
+}
+
+.zni-col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  z-index: 2;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+}
+
+.zni-col-resize-handle:hover,
+body.zni-col-resizing .zni-col-resize-handle {
+  background: color-mix(in srgb, var(--brand, #5b8def) 35%, transparent);
+}
+
+body.zni-col-resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+.zni-table-row-no-customer > td {
+  background: color-mix(in srgb, #d97706 12%, transparent);
+}
+
+.zni-table-row-no-customer:hover > td {
+  background: color-mix(in srgb, #d97706 18%, transparent);
+}
+
+.zni-field-derived {
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.zni-field-overdue,
+input.zni-field-overdue,
+input[type='date'].zni-field-overdue {
+  color: #b42318 !important;
+  -webkit-text-fill-color: #b42318;
+  border-color: #f04438 !important;
+  background: color-mix(in srgb, #f04438 12%, var(--surface-1)) !important;
+  font-weight: 600;
+  caret-color: #b42318;
+}
+
+.zni-field-overdue.zni-field-derived,
+input.zni-field-overdue.zni-field-derived {
+  color: #b42318 !important;
+  -webkit-text-fill-color: #b42318;
+  font-style: italic;
+}
+
+.zni-field-overdue::-webkit-datetime-edit,
+.zni-field-overdue::-webkit-datetime-edit-fields-wrapper,
+.zni-field-overdue::-webkit-datetime-edit-text,
+.zni-field-overdue::-webkit-datetime-edit-month-field,
+.zni-field-overdue::-webkit-datetime-edit-day-field,
+.zni-field-overdue::-webkit-datetime-edit-year-field {
+  color: #b42318;
+  -webkit-text-fill-color: #b42318;
+}
+
+.zni-missing-customer {
+  color: #b45309;
+  font-weight: 600;
+}
+
 .zni-table-all {
   min-width: 1080px;
 }
@@ -1052,9 +1124,12 @@ body {
 }
 
 .zni-table col.col-external-actual,
-.zni-table col.col-external-desired-date,
-.zni-table col.col-external-comment {
+.zni-table col.col-external-desired-date {
   width: 120px;
+}
+
+.zni-table col.col-external-comment {
+  width: 180px;
 }
 
 .zni-table thead th.th-active {
@@ -1188,8 +1263,23 @@ body {
   color: var(--text-secondary);
 }
 
+.zni-comment-input {
+  min-height: 2.5em;
+  max-height: 240px;
+  line-height: 1.35;
+  font-variant-numeric: normal;
+  white-space: pre-wrap;
+  overflow-y: auto;
+  resize: both;
+  field-sizing: content;
+}
+
 .cell-business-value {
   font-variant-numeric: tabular-nums;
+}
+
+.cell-business-value:has(.zni-comment-input) {
+  vertical-align: top;
 }
 
 .zni-table thead th {

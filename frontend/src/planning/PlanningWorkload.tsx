@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { getJson } from '../api'
+import { apiFetch, getJson } from '../api'
 import { MONTH_NAMES_FULL } from '../org/scheduleUtils'
-import { notifyProblem } from '../toast'
+import { notifyError, notifyProblem, notifySuccess } from '../toast'
 import { monthBounds } from './planningUtils'
 import type {
   PlanningWorkload,
@@ -153,6 +153,7 @@ export default function PlanningWorkload() {
   const [viewMode, setViewMode] = useState<WorkloadViewMode>('byProject')
   const [workload, setWorkload] = useState<PlanningWorkload | null>(null)
   const [loading, setLoading] = useState(false)
+  const [exporting, setExporting] = useState<'csv' | 'xlsx' | null>(null)
   const [expandedIds, setExpandedIds] = useState<Set<number>>(() => new Set())
 
   const bounds = useMemo(() => monthBounds(year, month), [year, month])
@@ -182,6 +183,43 @@ export default function PlanningWorkload() {
     setExpandedIds(new Set())
   }, [year, month, viewMode])
 
+  const downloadExport = useCallback(
+    async (format: 'csv' | 'xlsx') => {
+      setExporting(format)
+      try {
+        const params = new URLSearchParams({
+          dateFrom: bounds.from,
+          dateTo: bounds.to,
+          viewMode,
+        })
+        const response = await apiFetch(`/api/planning/workload/export.${format}?${params.toString()}`)
+        if (!response.ok) {
+          throw new Error(await response.text())
+        }
+        const blob = await response.blob()
+        const disposition = response.headers.get('Content-Disposition') ?? ''
+        const match = disposition.match(/filename="([^"]+)"/)
+        const fallback =
+          format === 'csv'
+            ? `planning-workload-${bounds.from}_${bounds.to}.csv`
+            : `planning-workload-${bounds.from}_${bounds.to}.xlsx`
+        const filename = match?.[1] ?? fallback
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = filename
+        link.click()
+        URL.revokeObjectURL(url)
+        notifySuccess(format === 'csv' ? 'CSV выгружен' : 'Excel выгружен')
+      } catch (error) {
+        notifyError(error, 'Не удалось выгрузить нагрузку')
+      } finally {
+        setExporting(null)
+      }
+    },
+    [bounds.from, bounds.to, viewMode],
+  )
+
   const dayKeys = workload?.days.map((day) => day.slice(0, 10)) ?? []
 
   const groups = useMemo(() => {
@@ -203,6 +241,22 @@ export default function PlanningWorkload() {
       <div className="org-panel-toolbar">
         <h2>Нагрузка</h2>
         <div className="org-panel-toolbar-actions">
+          <button
+            type="button"
+            className="btn-ghost"
+            disabled={exporting != null || !isValidCalendarYear(year)}
+            onClick={() => void downloadExport('csv')}
+          >
+            {exporting === 'csv' ? 'CSV…' : 'CSV'}
+          </button>
+          <button
+            type="button"
+            className="btn-ghost"
+            disabled={exporting != null || !isValidCalendarYear(year)}
+            onClick={() => void downloadExport('xlsx')}
+          >
+            {exporting === 'xlsx' ? 'Excel…' : 'Excel'}
+          </button>
           <button type="button" className="btn-ghost" onClick={() => void load()}>
             Обновить
           </button>

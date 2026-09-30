@@ -323,14 +323,23 @@
 
 Локальные данные карточки ЗНИ, **не приходят из TFS** и не затираются синхронизацией. Заполняются в дашборде ЗНИ (`PATCH /api/tasks/{id}/external-data`). Остальные поля — любой авторизованный пользователь; **`actual_period`** («Фактическая дата месяц/квартал») — только администратор и только в статусах из `ZNI_ACTUAL_PERIOD_EDITABLE_STATES`. Одна строка на `task.id`.
 
+Отображение в `GET /api/dashboard` (без записи в БД, пока пользователь не сохранит вручную):
+
+- если `desired_date` пустая — в ответе подставляется плановая дата задачи (`planned_date` / допполе плана); флаг `desiredDateFromPlan=true`;
+- если `actual_period` пустой:
+  - для ЗНИ в статусе Closed — дата перехода в Closed (`closed_at` / `closed_transitions`); флаг `actualPeriodFromClosed=true`;
+  - иначе — дата первого перехода в Pilot (`pilot_transitions` / `pilotEnteredAt`); флаг `actualPeriodFromPilot=true`;
+  - ручное сохранение по-прежнему только в разрешённых статусах;
+- ЗНИ без заказчика (`Заказчик` / `Заказчик ЗНИ` / `customer_name` в `extra_json`) показываются в таблице с `missingCustomer=true` (подсветка строки); в метрики дашборда такие строки не входят.
+
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `task_id` | bigint PK | ЗНИ (`task.id`, `task_type = change_request`); ON DELETE CASCADE |
 | `priority` | varchar(255) | Приоритет |
 | `category_id` | bigint FK → `zni_category` | Категория (выбор из справочника); ON DELETE SET NULL |
 | `commercial_effect` | text | Коммерческий эффект |
-| `actual_period` | varchar(128) | Фактическая дата месяц/квартал. Редактирование только в статусах из `ZNI_ACTUAL_PERIOD_EDITABLE_STATES` (по умолчанию `UAT,Pilot,Closed`) — колонка доски или `System.State` |
-| `desired_date` | date | Желаемая дата |
+| `actual_period` | varchar(128) | Фактическая дата месяц/квартал. Редактирование только в статусах из `ZNI_ACTUAL_PERIOD_EDITABLE_STATES` (по умолчанию `UAT,Pilot,Closed`) — колонка доски или `System.State`. Если пусто: для Closed — дата входа в Closed, иначе — дата входа в Pilot |
+| `desired_date` | date | Желаемая дата. Если пусто — в UI/API подставляется плановая дата |
 | `comment` | text | Комментарий |
 | `updated_at` | timestamptz | Последнее сохранение |
 
@@ -771,6 +780,8 @@
 
 Для сотрудников с `employee.hide_from_pyramid = true` (**Другие пользователи**) список разрешённых вкладок хранится в `org_user_page_access` (см. `app_page`). API: `GET /api/org/app-pages` (админ), поле `allowedPageKeys` в карточке сотрудника; в `/api/auth/status` — `otherUser` и `allowedPageKeys`.
 
+Вкладка **Планирование** (`page_key = planning`) по умолчанию скрыта. Доступ выдаётся явно: галочка **Планирование** в карточке сотрудника (пишет `org_user_page_access.planning`) или выбор вкладки в списке для «Других пользователей». Администраторы reporting (`canManageOrg`) видят Планирование без отдельного гранта. В `/api/auth/status` — флаг `planningAccess`; API `/api/planning/*` без гранта возвращает 403.
+
 **Мастер-файл Voice** хранится в PostgreSQL reporting (миграция `050_voice_master.sql`, hash-индексы — `053_voice_master_signature_hash.sql`, числовые PK — `056_voice_master_numeric_ids.sql`; откат числовых индексов A — `057_voice_master_rollback_numeric_a_indexes.sql`; индекс активных префиксов — `058_voice_master_prefix_index.sql`). **Uploads и jobs** — PostgreSQL (`051_voice_registry.sql`: `voice_uploads`, `voice_jobs`). **Auth Voice** — только через reporting SSO (`POST /api/voice/sso-token` → `POST /api/auth/reporting-sso`); отдельных учёток и таблиц auth в Voice нет. Bearer-сессия — подписанный stateless-токен (`VOICE_SSO_SECRET`). На диске (`CAROUSEL_DATA_DIR`) — только файлы загрузок и workspace. Legacy `registry.sqlite3` (uploads/jobs) импортируется один раз при старте.
 
 ---
@@ -791,7 +802,9 @@
 
 ---
 
-## org_user_page_access — доступ «других пользователей» к вкладкам
+## org_user_page_access — доступ к вкладкам (в т.ч. «других пользователей»)
+
+Список разрешённых `page_key` для учётной записи. Для **Других пользователей** (`hide_from_pyramid`) ограничивает все вкладки; для остальных сотрудников используется как минимум для явного доступа к **Планированию** (`planning`).
 
 | Поле | Тип | Описание |
 |------|-----|----------|
@@ -799,7 +812,7 @@
 | `page_key` | varchar(64) | FK → `app_page` |
 | `created_at` | timestamptz | Когда выдан доступ |
 
-PK: (`org_user_id`, `page_key`). Используется только при `employee.hide_from_pyramid = true`.
+PK: (`org_user_id`, `page_key`). Для обычных сотрудников обычно хранит только `planning` при выданном доступе; для «Других пользователей» — полный список разрешённых вкладок.
 
 ---
 
@@ -1370,7 +1383,7 @@ API: `GET /api/revenue-activities`, `POST /api/revenue-activities/save`, `GET /a
 | `sort_order` | int | Порядок в справочнике |
 | `is_active` | boolean | Активна ли запись |
 
-Seed: Низкая, Средняя, Высокая, Критическая.
+Seed: Низкая, Средняя, Высокая, Критическая. Ведение справочника — напрямую в БД (UI-вкладка «Справочники» убрана).
 
 ---
 
@@ -1403,7 +1416,9 @@ Seed: Низкая, Средняя, Высокая, Критическая.
 | `actual_start_date` | date | Фактическая дата старта |
 | `planned_end_date` | date | Плановая дата завершения |
 | `actual_end_date` | date | Фактическая дата завершения |
-| `status` | varchar(32) | Статус: `new` (Новый), `in_progress` (В работе), `completed` (Завершен); при заполнении `actual_end_date` автоматически `completed`. При статусе «Завершен» выделенные часы после `actual_end_date` очищаются. |
+| `status` | varchar(32) | Статус: `new` (Новый), `in_progress` (В работе), `completed` (Завершен), `cancelled` (Отменен), `frozen` (Заморожен). При заполнении `actual_end_date` автоматически `completed` (кроме явных `cancelled`/`frozen`). При «Завершен» / «Отменен» выделенные часы после cutoff-даты очищаются; при «Заморожен» — до `freeze_until_date` включительно. |
+| `cancelled_at` | date | Дата отмены (`status=cancelled`); ресурсы с этой даты снимаются |
+| `freeze_until_date` | date | До какой даты заморозка (`status=frozen`); ресурсы до даты включительно снимаются; если дата позже `planned_end_date`, план завершения сдвигается на неё |
 | `notes` | text | Примечание |
 | `created_by_org_user_id` | bigint | FK → `org_user`, кто создал запись |
 | `created_by_label` | varchar(255) | Отображаемое имя создателя |
@@ -1425,7 +1440,7 @@ Seed: Низкая, Средняя, Высокая, Критическая.
 | `created_at` | timestamptz | Создание |
 | `updated_at` | timestamptz | Обновление |
 
-Уникальность имени без учёта регистра. API: `GET/POST /api/planning/customer-departments`, `PATCH/DELETE /api/planning/customer-departments/{id}`.
+Уникальность имени без учёта регистра. Ведение — напрямую в БД (вкладка «Справочники» в UI убрана). API чтения/записи: `GET/POST /api/planning/customer-departments`, `PATCH/DELETE /api/planning/customer-departments/{id}` (для форм проекта и админских скриптов).
 
 ---
 

@@ -148,6 +148,7 @@ class OrgUserBriefOut(BaseModel):
     status: Literal["active", "inactive", "deleted"]
     voiceOnly: bool = False
     voiceAdmin: bool = False
+    planningAccess: bool = False
     allowedPageKeys: list[str] = Field(default_factory=list)
 
 
@@ -226,6 +227,7 @@ class EmployeeIn(BaseModel):
     userIsAdmin: bool = False
     userVoiceOnly: bool = False
     userVoiceAdmin: bool = False
+    userPlanningAccess: bool = False
     departmentIds: list[int] = Field(default_factory=list)
 
 
@@ -242,6 +244,7 @@ class EmployeeUpdateIn(BaseModel):
     userIsAdmin: bool | None = None
     userVoiceOnly: bool | None = None
     userVoiceAdmin: bool | None = None
+    userPlanningAccess: bool | None = None
     userPassword: str | None = None
     departmentIds: list[int] | None = None
 

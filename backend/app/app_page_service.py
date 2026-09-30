@@ -92,6 +92,17 @@ def set_user_page_access(db: Session, org_user_id: int, page_keys: list[str]) ->
     return get_user_allowed_page_keys(db, org_user_id)
 
 
+def set_planning_page_access(db: Session, org_user_id: int, enabled: bool) -> list[str]:
+    """Включить/выключить только вкладку Планирование, не трогая остальные гранты."""
+    current = get_user_allowed_page_keys(db, org_user_id)
+    has_planning = "planning" in current
+    if enabled and not has_planning:
+        return set_user_page_access(db, org_user_id, [*current, "planning"])
+    if not enabled and has_planning:
+        return set_user_page_access(db, org_user_id, [key for key in current if key != "planning"])
+    return current
+
+
 def clear_user_page_access(db: Session, org_user_id: int) -> None:
     for row in db.scalars(select(OrgUserPageAccess).where(OrgUserPageAccess.org_user_id == org_user_id)).all():
         db.delete(row)

@@ -42,6 +42,7 @@ class TfsAuthStatusOut(BaseModel):
     canManageOrg: bool = False
     voiceOnly: bool = False
     otherUser: bool = False
+    planningAccess: bool = False
     allowedPageKeys: list[str] = Field(default_factory=list)
     orgUserId: int | None = None
     orgEmployeeId: int | None = None
@@ -126,6 +127,11 @@ class ChangeRequestOut(BaseModel):
     externalComment: str | None = None
     externalCategoryId: int | None = None
     externalCategoryName: str | None = None
+    pilotEnteredAt: date | None = None
+    missingCustomer: bool = False
+    desiredDateFromPlan: bool = False
+    actualPeriodFromPilot: bool = False
+    actualPeriodFromClosed: bool = False
 
 
 class DashboardMetricsOut(BaseModel):

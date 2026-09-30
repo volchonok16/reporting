@@ -12,7 +12,15 @@ BOOKING_MODE_PERIOD = "period"
 PROJECT_STATUS_NEW = "new"
 PROJECT_STATUS_IN_PROGRESS = "in_progress"
 PROJECT_STATUS_COMPLETED = "completed"
-PROJECT_STATUSES = {PROJECT_STATUS_NEW, PROJECT_STATUS_IN_PROGRESS, PROJECT_STATUS_COMPLETED}
+PROJECT_STATUS_CANCELLED = "cancelled"
+PROJECT_STATUS_FROZEN = "frozen"
+PROJECT_STATUSES = {
+    PROJECT_STATUS_NEW,
+    PROJECT_STATUS_IN_PROGRESS,
+    PROJECT_STATUS_COMPLETED,
+    PROJECT_STATUS_CANCELLED,
+    PROJECT_STATUS_FROZEN,
+}
 
 
 class PlanningProjectComplexity(Base):
@@ -70,6 +78,8 @@ class PlanningProject(Base):
     planned_end_date: Mapped[date | None] = mapped_column(Date)
     actual_end_date: Mapped[date | None] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(32), default=PROJECT_STATUS_NEW, nullable=False)
+    cancelled_at: Mapped[date | None] = mapped_column(Date)
+    freeze_until_date: Mapped[date | None] = mapped_column(Date)
     notes: Mapped[str | None] = mapped_column(Text)
     created_by_org_user_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("org_user.id", ondelete="SET NULL")

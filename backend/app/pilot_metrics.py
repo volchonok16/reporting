@@ -16,6 +16,22 @@ def _parse_transition_date(value: str | None) -> date | None:
     return parsed.date() if parsed else None
 
 
+def first_pilot_entered_at(task: Task) -> date | None:
+    """Самая ранняя дата перехода в статус Pilot из extra_json.pilot_transitions."""
+    extra = task.extra_json if isinstance(task.extra_json, dict) else {}
+    transitions = extra.get("pilot_transitions")
+    if not isinstance(transitions, list):
+        return None
+    dates: list[date] = []
+    for entry in transitions:
+        if not isinstance(entry, dict):
+            continue
+        transition_date = _parse_transition_date(str(entry.get("at") or ""))
+        if transition_date is not None:
+            dates.append(transition_date)
+    return min(dates) if dates else None
+
+
 def pilot_entered_in_period(
     task: Task,
     *,

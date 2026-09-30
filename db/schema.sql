@@ -1266,7 +1266,9 @@ CREATE TABLE planning_project (
     planned_end_date        DATE,
     actual_end_date         DATE,
     status                  VARCHAR(32)   NOT NULL DEFAULT 'new'
-        CHECK (status IN ('new', 'in_progress', 'completed')),
+        CHECK (status IN ('new', 'in_progress', 'completed', 'cancelled', 'frozen')),
+    cancelled_at            DATE,
+    freeze_until_date       DATE,
     notes                   TEXT,
     created_by_org_user_id  BIGINT        REFERENCES org_user(id) ON DELETE SET NULL,
     created_by_label        VARCHAR(255),

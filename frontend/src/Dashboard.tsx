@@ -1,8 +1,13 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type RefObject } from 'react'
 import { apiFetch, getJson, readApiError } from './api'
 import { notifyError, notifyLoading, notifyProblem, notifySuccess, notifyWarning, updateLoading } from './toast'
 import { loadDashboardUiState, saveDashboardUiState } from './uiState'
 import { boardNameLabel, setBoardDisplayLabels } from './zniDisplay'
+import {
+  startZniColumnResize,
+  type ZniColumnKey,
+  type ZniColumnWidths,
+} from './zniColumnResize'
 
 type ZniCategory = {
   id: number
@@ -82,6 +87,11 @@ type ChangeRequest = {
   externalComment?: string | null
   externalCategoryId?: number | null
   externalCategoryName?: string | null
+  pilotEnteredAt?: string | null
+  missingCustomer?: boolean
+  desiredDateFromPlan?: boolean
+  actualPeriodFromPilot?: boolean
+  actualPeriodFromClosed?: boolean
 }
 
 type DashboardData = {
@@ -195,6 +205,32 @@ type ColumnHeaderProps = {
   filterOptions?: ColumnMenuOption[]
   filterValue?: string
   onFilterChange?: (value: string) => void
+  columnKey?: ZniColumnKey
+  columnWidth?: number
+  onColumnResize?: (key: ZniColumnKey, width: number) => void
+}
+
+function ColumnResizeHandle({
+  columnKey,
+  columnWidth,
+  onColumnResize,
+}: {
+  columnKey: ZniColumnKey
+  columnWidth?: number
+  onColumnResize?: (key: ZniColumnKey, width: number) => void
+}) {
+  if (!onColumnResize) return null
+  return (
+    <span
+      className="zni-col-resize-handle"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Изменить ширину столбца"
+      onMouseDown={(event: MouseEvent<HTMLSpanElement>) =>
+        startZniColumnResize(event, columnKey, columnWidth, onColumnResize)
+      }
+    />
+  )
 }
 
 function useDismissOnOutsideClick(
@@ -223,6 +259,9 @@ function ColumnHeader({
   filterOptions,
   filterValue,
   onFilterChange,
+  columnKey,
+  columnWidth,
+  onColumnResize,
 }: ColumnHeaderProps) {
   const menuRef = useRef<HTMLDivElement>(null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -290,6 +329,40 @@ function ColumnHeader({
           </div>
         ) : null}
       </div>
+      {columnKey ? (
+        <ColumnResizeHandle
+          columnKey={columnKey}
+          columnWidth={columnWidth}
+          onColumnResize={onColumnResize}
+        />
+      ) : null}
+    </th>
+  )
+}
+
+function PlainColumnHeader({
+  label,
+  title,
+  columnKey,
+  columnWidth,
+  onColumnResize,
+}: {
+  label: string
+  title?: string
+  columnKey: ZniColumnKey
+  columnWidth?: number
+  onColumnResize?: (key: ZniColumnKey, width: number) => void
+}) {
+  return (
+    <th title={title}>
+      <div className="th-header">
+        <span>{label}</span>
+      </div>
+      <ColumnResizeHandle
+        columnKey={columnKey}
+        columnWidth={columnWidth}
+        onColumnResize={onColumnResize}
+      />
     </th>
   )
 }
@@ -402,6 +475,9 @@ type ExternalFieldEditorProps = {
   disabled: boolean
   saving: boolean
   title?: string
+  derived?: boolean
+  derivedHint?: string
+  overdue?: boolean
   onSave: (item: ChangeRequest, field: ExternalFieldKey, value: string) => void
 }
 
@@ -422,7 +498,7 @@ function externalFieldValue(item: ChangeRequest, field: ExternalFieldKey): strin
     case 'actualPeriod':
       return item.externalActualPeriod ?? ''
     case 'desiredDate':
-      return item.externalDesiredDate ?? ''
+      return (item.externalDesiredDate ?? '').slice(0, 10)
     case 'comment':
       return item.externalComment ?? ''
     case 'categoryId':
@@ -456,19 +532,41 @@ function CategorySelect({ item, categories, disabled, saving, onSave }: Category
 
 const DEFAULT_ACTUAL_PERIOD_EDITABLE_STATUSES = ['UAT', 'Pilot', 'Closed']
 
+/** Статусы, при которых просроченная желаемая дата не подсвечивается. */
+const DESIRED_DATE_OVERDUE_EXEMPT_STATUSES = ['UAT', 'Pilot', 'Closed', 'Rejected']
+
 function actualPeriodEditableStatuses(data: DashboardData | null): string[] {
   const fromApi = data?.actualPeriodEditableStatuses
   if (fromApi && fromApi.length > 0) return fromApi
   return DEFAULT_ACTUAL_PERIOD_EDITABLE_STATUSES
 }
 
-function isActualPeriodEditable(item: ChangeRequest, allowed: string[]): boolean {
+function itemMatchesAnyStatus(item: ChangeRequest, allowed: string[]): boolean {
   const statuses = new Set(allowed.map((value) => value.trim().toLowerCase()).filter(Boolean))
   if (statuses.size === 0) return false
   return [item.status, item.boardColumn].some((value) => {
     const token = value?.trim().toLowerCase()
     return Boolean(token && statuses.has(token))
   })
+}
+
+function isActualPeriodEditable(item: ChangeRequest, allowed: string[]): boolean {
+  return itemMatchesAnyStatus(item, allowed)
+}
+
+function todayIsoDateLocal(): string {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+function isDesiredDateOverdue(item: ChangeRequest): boolean {
+  if (itemMatchesAnyStatus(item, DESIRED_DATE_OVERDUE_EXEMPT_STATUSES)) return false
+  const desired = (item.externalDesiredDate ?? '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(desired)) return false
+  return desired < todayIsoDateLocal()
 }
 
 function ExternalFieldEditor({
@@ -478,6 +576,9 @@ function ExternalFieldEditor({
   disabled,
   saving,
   title,
+  derived = false,
+  derivedHint,
+  overdue = false,
   onSave,
 }: ExternalFieldEditorProps) {
   const [draft, setDraft] = useState(externalFieldValue(item, field))
@@ -500,14 +601,53 @@ function ExternalFieldEditor({
     onSave(item, field, draft)
   }
 
+  const className = [
+    'business-value-input',
+    derived ? 'zni-field-derived' : '',
+    overdue ? 'zni-field-overdue' : '',
+    field === 'comment' ? 'zni-comment-input' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+  const fieldTitle =
+    title ??
+    (overdue
+      ? 'Желаемая дата раньше текущей'
+      : derived
+        ? derivedHint
+        : field === 'comment'
+          ? draft || undefined
+          : undefined)
+
+  if (field === 'comment') {
+    return (
+      <textarea
+        className={className}
+        value={draft}
+        disabled={disabled || saving}
+        placeholder="—"
+        title={fieldTitle}
+        rows={2}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault()
+            event.currentTarget.blur()
+          }
+        }}
+      />
+    )
+  }
+
   return (
     <input
       type={inputType}
-      className="business-value-input"
+      className={className}
       value={draft}
       disabled={disabled || saving}
       placeholder="—"
-      title={title}
+      title={fieldTitle}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={commit}
       onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
@@ -633,6 +773,9 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
   const [externalFieldsVisible, setExternalFieldsVisible] = useState(
     savedUi.externalFieldsVisible === true,
   )
+  const [columnWidths, setColumnWidths] = useState<ZniColumnWidths>(
+    () => (savedUi.columnWidths && typeof savedUi.columnWidths === 'object' ? savedUi.columnWidths : {}),
+  )
   const [zniCategories, setZniCategories] = useState<ZniCategory[]>([])
 
   const loadZniCategories = useCallback(async () => {
@@ -691,6 +834,7 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
       tagGroupFilter,
       metricFilter,
       externalFieldsVisible,
+      columnWidths,
     })
   }, [
     boardCode,
@@ -705,8 +849,20 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
     tagGroupFilter,
     metricFilter,
     externalFieldsVisible,
+    columnWidths,
   ])
 
+  const handleColumnResize = useCallback((key: ZniColumnKey, width: number) => {
+    setColumnWidths((prev) => ({ ...prev, [key]: width }))
+  }, [])
+
+  const colStyle = useCallback(
+    (key: ZniColumnKey): { width?: number } | undefined => {
+      const width = columnWidths[key]
+      return width ? { width } : undefined
+    },
+    [columnWidths],
+  )
   const loadDashboard = useCallback(async () => {
     if (!boardCode) return
     setLoading(true)
@@ -1174,31 +1330,39 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
           <div className="table-scroll">
             <table className={`zni-table${data?.allBoards ? ' zni-table-all' : ''}`}>
               <colgroup>
-                <col className="col-expand" />
-                <col className="col-id" />
-                {data?.allBoards && <col className="col-board" />}
-                <col className="col-title" />
-                <col className="col-goal" />
-                <col className="col-business-value" />
-                <col className="col-status" />
-                <col className="col-quarter" />
-                <col className="col-reservation" />
+                <col className="col-expand" style={colStyle('expand')} />
+                <col className="col-id" style={colStyle('id')} />
+                {data?.allBoards && <col className="col-board" style={colStyle('board')} />}
+                <col className="col-title" style={colStyle('title')} />
+                <col className="col-goal" style={colStyle('goal')} />
+                <col className="col-business-value" style={colStyle('businessValue')} />
+                <col className="col-status" style={colStyle('status')} />
+                <col className="col-quarter" style={colStyle('quarter')} />
+                <col className="col-reservation" style={colStyle('reservation')} />
                 {externalFieldsVisible ? (
                   <>
-                    <col className="col-external-priority" />
-                    <col className="col-external-category" />
-                    <col className="col-external-effect" />
-                    <col className="col-external-actual" />
-                    <col className="col-external-desired-date" />
-                    <col className="col-external-comment" />
+                    <col className="col-external-priority" style={colStyle('externalPriority')} />
+                    <col className="col-external-category" style={colStyle('externalCategory')} />
+                    <col className="col-external-effect" style={colStyle('externalEffect')} />
+                    <col className="col-external-actual" style={colStyle('externalActual')} />
+                    <col className="col-external-desired-date" style={colStyle('externalDesired')} />
+                    <col className="col-external-comment" style={colStyle('externalComment')} />
                   </>
                 ) : null}
               </colgroup>
               <thead>
                 <tr>
-                  <th aria-label="Подробнее" />
+                  <PlainColumnHeader
+                    label=""
+                    columnKey="expand"
+                    columnWidth={columnWidths.expand}
+                    onColumnResize={handleColumnResize}
+                  />
                   <ColumnHeader
                     label="Номер ЗНИ"
+                    columnKey="id"
+                    columnWidth={columnWidths.id}
+                    onColumnResize={handleColumnResize}
                     sort={sort}
                     onSortChange={setSort}
                     sortOptions={[
@@ -1206,9 +1370,19 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                       { value: 'id_asc', label: 'От меньшего к большему' },
                     ]}
                   />
-                  {data?.allBoards && <th>Доска</th>}
+                  {data?.allBoards && (
+                    <PlainColumnHeader
+                      label="Доска"
+                      columnKey="board"
+                      columnWidth={columnWidths.board}
+                      onColumnResize={handleColumnResize}
+                    />
+                  )}
                   <ColumnHeader
                     label="ЗНИ"
+                    columnKey="title"
+                    columnWidth={columnWidths.title}
+                    onColumnResize={handleColumnResize}
                     sort={sort}
                     onSortChange={setSort}
                     sortOptions={[
@@ -1216,9 +1390,17 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                       { value: 'title_desc', label: 'Я → А' },
                     ]}
                   />
-                  <th>Цель и бизнес-смысл доработки</th>
+                  <PlainColumnHeader
+                    label="Цель и бизнес-смысл доработки"
+                    columnKey="goal"
+                    columnWidth={columnWidths.goal}
+                    onColumnResize={handleColumnResize}
+                  />
                   <ColumnHeader
                     label="Ценность для бизнеса"
+                    columnKey="businessValue"
+                    columnWidth={columnWidths.businessValue}
+                    onColumnResize={handleColumnResize}
                     sort={sort}
                     onSortChange={setSort}
                     sortOptions={[
@@ -1226,27 +1408,69 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                       { value: 'business_value_desc', label: 'Пустые в начале, больше → меньше' },
                     ]}
                   />
-                  <th>Статус</th>
+                  <PlainColumnHeader
+                    label="Статус"
+                    columnKey="status"
+                    columnWidth={columnWidths.status}
+                    onColumnResize={handleColumnResize}
+                  />
                   <ColumnHeader
                     label="План квартала"
+                    columnKey="quarter"
+                    columnWidth={columnWidths.quarter}
+                    onColumnResize={handleColumnResize}
                     filterOptions={quarterFilterOptions()}
                     filterValue={quarterFilter}
                     onFilterChange={setQuarterFilter}
                   />
                   <ColumnHeader
                     label="Бронь ЕЦТ"
+                    columnKey="reservation"
+                    columnWidth={columnWidths.reservation}
+                    onColumnResize={handleColumnResize}
                     filterOptions={ECT_FILTER_OPTIONS}
                     filterValue={ectReservationFilter}
                     onFilterChange={setEctReservationFilter}
                   />
                   {externalFieldsVisible ? (
                     <>
-                      <th>Приоритет</th>
-                      <th>Категория</th>
-                      <th>Коммерческий эффект</th>
-                      <th title={periodEditableHint}>Фактическая дата месяц/квартал</th>
-                      <th>Желаемая дата</th>
-                      <th>Комментарий</th>
+                      <PlainColumnHeader
+                        label="Приоритет"
+                        columnKey="externalPriority"
+                        columnWidth={columnWidths.externalPriority}
+                        onColumnResize={handleColumnResize}
+                      />
+                      <PlainColumnHeader
+                        label="Категория"
+                        columnKey="externalCategory"
+                        columnWidth={columnWidths.externalCategory}
+                        onColumnResize={handleColumnResize}
+                      />
+                      <PlainColumnHeader
+                        label="Коммерческий эффект"
+                        columnKey="externalEffect"
+                        columnWidth={columnWidths.externalEffect}
+                        onColumnResize={handleColumnResize}
+                      />
+                      <PlainColumnHeader
+                        label="Фактическая дата месяц/квартал"
+                        title={periodEditableHint}
+                        columnKey="externalActual"
+                        columnWidth={columnWidths.externalActual}
+                        onColumnResize={handleColumnResize}
+                      />
+                      <PlainColumnHeader
+                        label="Желаемая дата"
+                        columnKey="externalDesired"
+                        columnWidth={columnWidths.externalDesired}
+                        onColumnResize={handleColumnResize}
+                      />
+                      <PlainColumnHeader
+                        label="Комментарий"
+                        columnKey="externalComment"
+                        columnWidth={columnWidths.externalComment}
+                        onColumnResize={handleColumnResize}
+                      />
                     </>
                   ) : null}
                 </tr>
@@ -1266,9 +1490,11 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                       className={[
                         expanded ? 'zni-table-row-expanded' : '',
                         isErrorRow(item) ? 'zni-table-row-error' : '',
+                        item.missingCustomer ? 'zni-table-row-no-customer' : '',
                       ]
                         .filter(Boolean)
                         .join(' ') || undefined}
+                      title={item.missingCustomer ? 'Не указан заказчик (Заказчик ЗНИ / Logrocon.PO)' : undefined}
                     >
                       <td className="cell-expand">
                         {hasDetails ? (
@@ -1401,11 +1627,23 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                                   !isActualPeriodEditable(item, periodEditableStatuses)
                                 }
                                 title={
-                                  !canManageOrg
-                                    ? actualPeriodAdminHint
-                                    : isActualPeriodEditable(item, periodEditableStatuses)
-                                      ? undefined
-                                      : periodEditableHint
+                                  item.actualPeriodFromClosed
+                                    ? 'Из даты перехода в Closed (можно изменить вручную при доступном статусе)'
+                                    : item.actualPeriodFromPilot
+                                      ? 'Из даты перехода в Pilot (можно изменить вручную при доступном статусе)'
+                                      : !canManageOrg
+                                        ? actualPeriodAdminHint
+                                        : isActualPeriodEditable(item, periodEditableStatuses)
+                                          ? undefined
+                                          : periodEditableHint
+                                }
+                                derived={Boolean(
+                                  item.actualPeriodFromPilot || item.actualPeriodFromClosed,
+                                )}
+                                derivedHint={
+                                  item.actualPeriodFromClosed
+                                    ? 'Из даты перехода в Closed'
+                                    : 'Из даты перехода в Pilot'
                                 }
                                 saving={savingExternalKey === `${item.number}:actualPeriod`}
                                 onSave={saveExternalField}
@@ -1421,6 +1659,16 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                                 field="desiredDate"
                                 inputType="date"
                                 disabled={externalFieldsReadOnly}
+                                derived={Boolean(item.desiredDateFromPlan)}
+                                derivedHint="Подставлена плановая дата"
+                                overdue={isDesiredDateOverdue(item)}
+                                title={
+                                  isDesiredDateOverdue(item)
+                                    ? 'Желаемая дата раньше текущей'
+                                    : item.desiredDateFromPlan
+                                      ? 'Подставлена плановая дата (можно изменить)'
+                                      : undefined
+                                }
                                 saving={savingExternalKey === `${item.number}:desiredDate`}
                                 onSave={saveExternalField}
                               />
@@ -1460,7 +1708,7 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                                     ))}
                                   </span>
                                 ) : (
-                                  '—'
+                                  <span className="zni-missing-customer">Не указан</span>
                                 )}
                               </div>
                             </div>

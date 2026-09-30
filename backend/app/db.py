@@ -220,6 +220,7 @@ def ensure_startup_schema() -> None:
         "063_zni_category.sql",
         "064_zni_drop_desired_quarter.sql",
         "065_task_iteration_path_backfill.sql",
+        "066_planning_project_cancelled_frozen.sql",
     )
 
     auth_session_sql = """

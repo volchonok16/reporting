@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { loadPlanningUiState, savePlanningUiState } from '../uiState'
 import '../org/org.css'
 import PlanningAllocations from './PlanningAllocations'
-import PlanningDirectories from './PlanningDirectories'
 import PlanningProjects from './PlanningProjects'
 import PlanningWorkload from './PlanningWorkload'
 import type { PlanningPanelId } from './types'
@@ -16,7 +15,6 @@ const PANELS: Array<{ id: PlanningPanelId; label: string }> = [
   { id: 'projects', label: 'Проекты' },
   { id: 'allocations', label: 'Выделение ресурсов' },
   { id: 'workload', label: 'Нагрузка' },
-  { id: 'directories', label: 'Справочники' },
 ]
 
 export default function Planning({ onNavigateToZni }: PlanningProps) {
@@ -61,8 +59,6 @@ export default function Planning({ onNavigateToZni }: PlanningProps) {
         />
       ) : panel === 'allocations' ? (
         <PlanningAllocations selectedProjectId={selectedProjectId} onSelectProject={changeProject} />
-      ) : panel === 'directories' ? (
-        <PlanningDirectories />
       ) : (
         <PlanningWorkload />
       )}

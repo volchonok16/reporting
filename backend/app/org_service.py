@@ -13,6 +13,7 @@ from app.app_page_service import (
     clear_user_page_access,
     get_user_allowed_page_keys,
     is_other_user_employee,
+    set_planning_page_access,
     set_user_page_access,
 )
 from app.org_models import (
@@ -115,8 +116,7 @@ def _employee_out(db: Session, emp: Employee) -> EmployeeOut:
     user_out = None
     allowed_page_keys: list[str] = []
     if emp.user:
-        if is_other_user_employee(emp):
-            allowed_page_keys = get_user_allowed_page_keys(db, emp.user.id)
+        allowed_page_keys = get_user_allowed_page_keys(db, emp.user.id)
         user_out = OrgUserBriefOut(
             id=emp.user.id,
             email=emp.user.email,
@@ -124,7 +124,10 @@ def _employee_out(db: Session, emp: Employee) -> EmployeeOut:
             status=_user_status_label(emp.user.status),  # type: ignore[arg-type]
             voiceOnly=bool(emp.user.voice_only),
             voiceAdmin=bool(getattr(emp.user, "voice_admin", False)),
-            allowedPageKeys=allowed_page_keys,
+            planningAccess="planning" in allowed_page_keys,
+            allowedPageKeys=allowed_page_keys if is_other_user_employee(emp) else (
+                ["planning"] if "planning" in allowed_page_keys else []
+            ),
         )
     expertises = [
         EmployeeExpertiseOut(
@@ -506,8 +509,11 @@ def create_employee(db: Session, data: EmployeeIn) -> EmployeeOut:
         voice_admin=data.userVoiceAdmin,
     )
     emp.user_id = user.id
-    if is_other_user_employee(emp) and data.allowedPageKeys:
-        set_user_page_access(db, user.id, data.allowedPageKeys)
+    page_keys = list(data.allowedPageKeys) if is_other_user_employee(emp) else []
+    if data.userPlanningAccess and "planning" not in page_keys:
+        page_keys.append("planning")
+    if is_other_user_employee(emp) or page_keys:
+        set_user_page_access(db, user.id, page_keys)
     if data.departmentIds:
         _sync_employee_departments(db, emp.id, data.departmentIds)
     db.commit()
@@ -540,12 +546,30 @@ def update_employee(db: Session, employee_ref: str, data: EmployeeUpdateIn) -> E
         emp.hide_from_pyramid = bool(data.hideFromPyramid)
         if emp.user:
             if emp.hide_from_pyramid:
-                if data.allowedPageKeys is not None:
-                    set_user_page_access(db, emp.user.id, data.allowedPageKeys)
+                keys = list(data.allowedPageKeys) if data.allowedPageKeys is not None else get_user_allowed_page_keys(db, emp.user.id)
+                if data.userPlanningAccess is True and "planning" not in keys:
+                    keys.append("planning")
+                if data.userPlanningAccess is False:
+                    keys = [key for key in keys if key != "planning"]
+                set_user_page_access(db, emp.user.id, keys)
             else:
+                keep_planning = (
+                    bool(data.userPlanningAccess)
+                    if data.userPlanningAccess is not None
+                    else "planning" in get_user_allowed_page_keys(db, emp.user.id)
+                )
                 clear_user_page_access(db, emp.user.id)
+                if keep_planning:
+                    set_planning_page_access(db, emp.user.id, True)
     elif data.allowedPageKeys is not None and emp.user and is_other_user_employee(emp):
-        set_user_page_access(db, emp.user.id, data.allowedPageKeys)
+        keys = list(data.allowedPageKeys)
+        if data.userPlanningAccess is True and "planning" not in keys:
+            keys.append("planning")
+        if data.userPlanningAccess is False:
+            keys = [key for key in keys if key != "planning"]
+        set_user_page_access(db, emp.user.id, keys)
+    elif data.userPlanningAccess is not None and emp.user and not is_other_user_employee(emp):
+        set_planning_page_access(db, emp.user.id, bool(data.userPlanningAccess))
     if data.userIsAdmin is not None and emp.user:
         emp.user.role = ORG_USER_ROLE_ADMIN if data.userIsAdmin else ORG_USER_ROLE_USER
     if data.userVoiceOnly is not None and emp.user:
@@ -573,6 +597,8 @@ def update_employee(db: Session, employee_ref: str, data: EmployeeUpdateIn) -> E
             voice_admin=bool(data.userVoiceAdmin),
         )
         emp.user_id = user.id
+        if data.userPlanningAccess:
+            set_planning_page_access(db, user.id, True)
     _sync_position_name(db, emp)
     if data.departmentIds is not None:
         _sync_employee_departments(db, employee_id, data.departmentIds)

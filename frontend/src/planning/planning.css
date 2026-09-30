@@ -364,6 +364,16 @@
   color: var(--text-primary);
 }
 
+.planning-status-cancelled {
+  background: color-mix(in srgb, var(--danger, #c44848) 16%, transparent);
+  color: var(--text-primary);
+}
+
+.planning-status-frozen {
+  background: color-mix(in srgb, #6b8cae 18%, transparent);
+  color: var(--text-primary);
+}
+
 .planning-project-name-links {
   display: inline;
 }

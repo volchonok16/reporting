@@ -108,11 +108,20 @@ export default function PlanningAllocations({
   const loadProjects = useCallback(async () => {
     try {
       const rows = await getJson<PlanningProject[]>('/api/planning/projects')
-      setProjects(rows)
+      const active = rows.filter(
+        (project) => project.status !== 'cancelled' && project.status !== 'completed',
+      )
+      setProjects(active)
+      if (
+        selectedProjectId != null &&
+        !active.some((project) => project.id === selectedProjectId)
+      ) {
+        onSelectProject(null)
+      }
     } catch (error) {
       notifyProblem('Не удалось загрузить проекты', error)
     }
-  }, [])
+  }, [onSelectProject, selectedProjectId])
 
   const loadAllocations = useCallback(async (projectId: number) => {
     setLoading(true)

@@ -165,7 +165,7 @@
 | `schema_migration` | Журнал применённых SQL-миграций (`ensure_startup_schema`) |
 | `planning_project_complexity` | Справочник сложности проектов планирования |
 | `production_calendar_day` | Производственный календарь (переопределения рабочих дней) |
-| `planning_project` | Проекты/запросы планирования ресурсов |
+| `planning_project` | Проекты/запросы планирования ресурсов (`status`: new/in_progress/completed/cancelled/frozen; `cancelled_at`, `freeze_until_date`) |
 | `planning_customer_department` | Справочник департаментов заказчика (планирование) |
 | `planning_allocation` | Выделение сотрудника на проект |
 | `planning_allocation_day` | Подневная занятость и факт по выделению |
