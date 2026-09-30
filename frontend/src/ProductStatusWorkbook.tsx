@@ -2036,7 +2036,7 @@ export default function ProductStatusWorkbook({
       ) : null}
 
       {viewMode === 'table' && !isSummarySheet ? (
-        <ProductStatusFormatToolbar>
+        <ProductStatusFormatToolbar
           disabled={toolbarBusy}
           hasActiveCell={activeCell !== null}
           onTextStyle={applyTextStyle}
