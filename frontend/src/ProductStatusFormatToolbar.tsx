@@ -91,6 +91,8 @@ function styleButtonHandlers(
     },
   }
 }
+
+function readFormatToolbarOpen(): boolean {
   try {
     return sessionStorage.getItem(FORMAT_TOOLBAR_OPEN_KEY) === 'true'
   } catch {
