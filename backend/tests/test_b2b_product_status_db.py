@@ -98,6 +98,83 @@ def test_build_summary_rows_only_presentation_and_office_order() -> None:
     assert rows[0][ROW_ID_KEY].startswith(f"{SUMMARY_GID}-voice-")
 
 
+def test_build_summary_rows_keeps_embedded_table_token() -> None:
+    import base64
+
+    payload = {
+        "text": "Сверху",
+        "afterText": "",
+        "table": {
+            "rows": 1,
+            "cols": 2,
+            "cells": [["Q1", "Q2"]],
+        },
+    }
+    token = (
+        "<<tablejson:"
+        + base64.b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
+        + ">>"
+    )
+    rows = build_summary_rows(
+        [
+            (
+                {"gid": "voice", "name": "Офис: VOICE"},
+                [
+                    {
+                        "id": 1,
+                        "cells": {
+                            "Проект координация": "Voice T",
+                            "Для презентации Описание проекта и статус": token,
+                            "Зачем и для чего делаем": "Зачем",
+                            "Идет в презентацию": "Да",
+                        },
+                    }
+                ],
+            )
+        ]
+    )
+    assert rows[0][SUMMARY_STATUS_COLUMN] == token
+
+
+def test_build_summary_rows_takes_table_from_full_status_when_presentation_plain() -> None:
+    import base64
+
+    payload = {
+        "text": "",
+        "afterText": "",
+        "table": {
+            "rows": 1,
+            "cols": 1,
+            "cells": [["Из полного"]],
+        },
+    }
+    token = (
+        "<<tablejson:"
+        + base64.b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
+        + ">>"
+    )
+    rows = build_summary_rows(
+        [
+            (
+                {"gid": "voice", "name": "Офис: VOICE"},
+                [
+                    {
+                        "id": 1,
+                        "cells": {
+                            "Проект координация": "Voice T",
+                            "Полное Описание проекта и статус": token,
+                            "Для презентации Описание проекта и статус": "Короткий статус",
+                            "Зачем и для чего делаем": "Зачем",
+                            "Идет в презентацию": "Да",
+                        },
+                    }
+                ],
+            )
+        ]
+    )
+    assert rows[0][SUMMARY_STATUS_COLUMN] == token
+
+
 def test_normalize_cells_fills_missing_columns() -> None:
     cells = _normalize_cells(
         {"Дата запуска": "01.07", "ЗНИ": "123456, 789012"}

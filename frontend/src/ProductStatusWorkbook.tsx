@@ -1642,6 +1642,33 @@ export default function ProductStatusWorkbook({
       )
   }, [activeSheet, columnFilters, enableColumnFilters])
 
+  const isSummarySheet = activeGid === PRODUCT_STATUS_SUMMARY_GID
+
+  const summaryOfficeGroupClassByRowIndex = useMemo(() => {
+    const byRowIndex = new Map<number, string>()
+    if (!isSummarySheet) return byRowIndex
+    let lastOffice: string | null = null
+    let officeStripe = 0
+    for (const { row, rowIndex } of visibleRows) {
+      const office = displayCellText(row['Офис'] ?? '').trim()
+      if (lastOffice !== null && office !== lastOffice) {
+        officeStripe += 1
+      }
+      const classes: string[] = []
+      if (lastOffice === null || office !== lastOffice) {
+        classes.push('product-status-row--summary-office-start')
+      }
+      if (officeStripe % 2 === 1) {
+        classes.push('product-status-row--summary-office-alt')
+      }
+      if (classes.length > 0) {
+        byRowIndex.set(rowIndex, classes.join(' '))
+      }
+      lastOffice = office
+    }
+    return byRowIndex
+  }, [isSummarySheet, visibleRows])
+
   const activeSheetReady = Boolean(activeSheet && activeSheet.columns.length > 0)
   const tablePending = Boolean(activeSheetReady && sheetLoading && sheetLoadingGid === activeGid)
 
@@ -2008,8 +2035,8 @@ export default function ProductStatusWorkbook({
         </nav>
       ) : null}
 
-      {viewMode === 'table' ? (
-        <ProductStatusFormatToolbar
+      {viewMode === 'table' && !isSummarySheet ? (
+        <ProductStatusFormatToolbar>
           disabled={toolbarBusy}
           hasActiveCell={activeCell !== null}
           onTextStyle={applyTextStyle}
@@ -2216,6 +2243,7 @@ export default function ProductStatusWorkbook({
                 className={[
                   'product-status-table',
                   compactRows ? 'product-status-table--compact' : '',
+                  isSummarySheet ? 'product-status-table--summary' : '',
                 ]
                   .filter(Boolean)
                   .join(' ')}
@@ -2283,6 +2311,7 @@ export default function ProductStatusWorkbook({
                           ? 'product-status-row--presentation'
                           : '',
                       isAttention ? 'product-status-row--attention' : '',
+                      summaryOfficeGroupClassByRowIndex.get(rowIndex) ?? '',
                     ]
                       .filter(Boolean)
                       .join(' ')

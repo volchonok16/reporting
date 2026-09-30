@@ -403,33 +403,147 @@ export function createStyledMark(segment: TextStyleSegment): HTMLElement {
   return element
 }
 
+export type TextRangeOffsets = {
+  start: number
+  end: number
+}
+
+function styleKeysMatch(left: TextStyleSegment, right: TextStyleSegment): boolean {
+  return (
+    left.bg === right.bg &&
+    left.fg === right.fg &&
+    left.strike === right.strike &&
+    left.bold === right.bold &&
+    left.italic === right.italic &&
+    left.underline === right.underline
+  )
+}
+
+function mergeStyleSegments(segments: TextStyleSegment[]): TextStyleSegment[] {
+  const merged: TextStyleSegment[] = []
+  for (const segment of segments) {
+    if (!segment.text) continue
+    const last = merged[merged.length - 1]
+    if (last && styleKeysMatch(last, segment)) {
+      last.text += segment.text
+    } else {
+      merged.push({ ...segment })
+    }
+  }
+  return merged
+}
+
+export function rangeToOffsets(root: HTMLElement, range: Range): TextRangeOffsets | null {
+  const ancestor = range.commonAncestorContainer
+  if (ancestor !== root && !root.contains(ancestor)) {
+    return null
+  }
+  try {
+    const before = document.createRange()
+    before.selectNodeContents(root)
+    before.setEnd(range.startContainer, range.startOffset)
+    const start = before.toString().length
+    const end = start + range.toString().length
+    if (end <= start) return null
+    return { start, end }
+  } catch {
+    return null
+  }
+}
+
+function applyPatchToOffsetRange(
+  segments: TextStyleSegment[],
+  start: number,
+  end: number,
+  patch: Partial<TextStyleSegment>,
+): TextStyleSegment[] {
+  const total = segments.reduce((sum, segment) => sum + segment.text.length, 0)
+  const from = Math.max(0, Math.min(start, total))
+  const to = Math.max(from, Math.min(end, total))
+  if (to <= from) return segments
+  const next: TextStyleSegment[] = []
+  let pos = 0
+  for (const segment of segments) {
+    const segStart = pos
+    const segEnd = pos + segment.text.length
+    pos = segEnd
+    if (segEnd <= from || segStart >= to) {
+      next.push({ ...segment })
+      continue
+    }
+    if (segStart < from) {
+      next.push({ ...segment, text: segment.text.slice(0, from - segStart) })
+    }
+    next.push(
+      applyPatchToSegment(
+        {
+          ...segment,
+          text: segment.text.slice(Math.max(from, segStart) - segStart, Math.min(to, segEnd) - segStart),
+        },
+        patch,
+      ),
+    )
+    if (segEnd > to) {
+      next.push({ ...segment, text: segment.text.slice(to - segStart) })
+    }
+  }
+  return mergeStyleSegments(next)
+}
+
+function setSelectionOffsets(root: HTMLElement, start: number, end: number) {
+  const selection = window.getSelection()
+  if (!selection) return
+  const range = document.createRange()
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let pos = 0
+  let started = false
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text
+    const length = node.data.length
+    if (!started && start <= pos + length) {
+      range.setStart(node, Math.max(0, Math.min(start - pos, length)))
+      started = true
+    }
+    if (started && end <= pos + length) {
+      range.setEnd(node, Math.max(0, Math.min(end - pos, length)))
+      selection.removeAllRanges()
+      selection.addRange(range)
+      return
+    }
+    pos += length
+  }
+  if (started) {
+    range.setEnd(root, root.childNodes.length)
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }
+}
+
+function segmentsFromEditableRoot(root: HTMLElement): TextStyleSegment[] {
+  const inner = serializeEditableCell(root, { bg: null, border: null })
+  return splitStyleSegments(inner)
+}
+
+function applyStyleToOffsets(
+  root: HTMLElement,
+  patch: Partial<TextStyleSegment>,
+  offsets: TextRangeOffsets,
+): boolean {
+  const segments = segmentsFromEditableRoot(root)
+  const next = applyPatchToOffsetRange(segments, offsets.start, offsets.end, patch)
+  renderSegmentsToRoot(root, next)
+  setSelectionOffsets(root, offsets.start, offsets.end)
+  return true
+}
+
 export function applyStyleToSelection(root: HTMLElement, patch: Partial<TextStyleSegment>): boolean {
   const selection = window.getSelection()
-  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+  if (!selection || selection.rangeCount === 0) {
     return false
   }
-  const range = selection.getRangeAt(0)
-  if (!root.contains(range.commonAncestorContainer)) {
-    return false
-  }
-
-  const styled = document.createElement(STYLED_TEXT_TAG)
-  const current = readMarkStyle(styled)
-  const next = applyPatchToSegment({ ...current, text: '' }, patch)
-  decorateStyledText(styled, next)
-
-  try {
-    range.surroundContents(styled)
-  } catch {
-    const fragment = range.extractContents()
-    styled.appendChild(fragment)
-    range.insertNode(styled)
-    const merged = applyPatchToSegment(readMarkStyle(styled), patch)
-    decorateStyledText(styled, merged)
-  }
-
-  selection.removeAllRanges()
-  return true
+  const offsets = rangeToOffsets(root, selection.getRangeAt(0))
+  if (!offsets) return false
+  return applyStyleToOffsets(root, patch, offsets)
 }
 
 function readSegmentsFromRoot(root: HTMLElement): TextStyleSegment[] {
@@ -496,9 +610,14 @@ function renderSegmentsToRoot(root: HTMLElement, segments: TextStyleSegment[]) {
 export function applyStyleToCellOrSelection(
   root: HTMLElement,
   patch: Partial<TextStyleSegment>,
+  preferredOffsets?: TextRangeOffsets | null,
 ): boolean {
-  if (applyStyleToSelection(root, patch)) {
-    return true
+  const selection = window.getSelection()
+  const liveOffsets =
+    selection && selection.rangeCount > 0 ? rangeToOffsets(root, selection.getRangeAt(0)) : null
+  const offsets = liveOffsets ?? preferredOffsets ?? null
+  if (offsets && offsets.end > offsets.start) {
+    return applyStyleToOffsets(root, patch, offsets)
   }
 
   const segments = readSegmentsFromRoot(root)

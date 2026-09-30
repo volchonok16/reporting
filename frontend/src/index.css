@@ -2256,6 +2256,64 @@ input.zni-field-overdue.zni-field-derived {
   width: 300px;
 }
 
+.product-status-table.product-status-table--summary {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.product-status-table--summary col.col-office {
+  width: 132px;
+}
+
+.product-status-table--summary col.col-project {
+  width: 220px;
+}
+
+.product-status-table--summary col.col-description {
+  width: 46%;
+}
+
+.product-status-table--summary col.col-why {
+  width: 28%;
+}
+
+.product-status-table--summary thead th {
+  padding: 10px 14px;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+
+.product-status-table--summary > tbody > tr > td {
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.product-status-table--summary .product-status-cell-readonly-value {
+  color: var(--text-primary);
+  line-height: 1.55;
+}
+
+.product-status-table--summary td.col-office .product-status-cell-readonly-value {
+  font-weight: 650;
+}
+
+.product-status-table--summary td.col-project .product-status-cell-readonly-value {
+  font-weight: 550;
+}
+
+.product-status-table--summary > tbody > tr.product-status-row--summary-office-start:not(:first-child) > td {
+  border-top: 2px solid var(--border-strong);
+}
+
+.product-status-table--summary > tbody > tr.product-status-row--summary-office-alt > td {
+  background: color-mix(in srgb, var(--surface-2) 72%, var(--surface-1));
+}
+
+.product-status-table--summary > tbody > tr.product-status-row--summary-office-alt:hover > td {
+  background: var(--table-row-hover);
+}
+
 .product-status-table col.col-comment {
   width: 180px;
 }
@@ -3057,6 +3115,29 @@ input.zni-field-overdue.zni-field-derived {
   vertical-align: top;
 }
 
+.product-status-table .product-status-inline-table td {
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  background: var(--surface-1);
+}
+
+.product-status-inline-table-host--readonly {
+  gap: 8px;
+}
+
+.product-status-inline-table-preamble-readonly,
+.product-status-inline-table-postamble-readonly {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.product-status-inline-table td.product-status-inline-table-cell-readonly {
+  padding: 6px 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .product-status-inline-table-cell {
   width: 100%;
   min-height: 30px;
@@ -3268,6 +3349,11 @@ body.product-status-row-drag-active {
 
 .product-status-cell-readonly-value {
   color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.product-status-rich-text {
   white-space: pre-wrap;
   word-break: break-word;
 }

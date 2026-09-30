@@ -9,7 +9,9 @@ import {
   serializeEditableCell,
   splitCellWrapper,
   splitStyleSegments,
+  rangeToOffsets,
   type CellStyle,
+  type TextRangeOffsets,
   type TextStyleSegment,
 } from './productStatusRichText'
 import {
@@ -80,7 +82,12 @@ function renderSegments(inner: string, container: HTMLElement) {
     if (!segment.text) continue
     const normalized = normalizeTextSegment(segment)
     const hasStyle =
-      normalized.bg || normalized.fg || normalized.strike || normalized.bold || normalized.italic
+      normalized.bg ||
+      normalized.fg ||
+      normalized.strike ||
+      normalized.bold ||
+      normalized.italic ||
+      normalized.underline
     if (!hasStyle) {
       container.append(document.createTextNode(normalized.text))
       continue
@@ -226,6 +233,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
     const lastSerialized = useRef<string | null>(null)
     const cellStyleRef = useRef<CellStyle>({ bg: null, border: null })
     const shouldFocusPreambleRef = useRef(false)
+    const savedOffsetsRef = useRef<TextRangeOffsets | null>(null)
 
     const tableDoc = parseEmbeddedTableDoc(value)
     const focusPreamble = shouldFocusPreambleRef.current && Boolean(tableDoc)
@@ -313,6 +321,28 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       lastSerialized.current = value
     }, [tableDoc, value])
 
+    useEffect(() => {
+      const rememberSelection = () => {
+        const element = elementRef.current
+        if (!element || tableDoc) return
+        const selection = window.getSelection()
+        if (!selection || selection.rangeCount === 0) return
+        const range = selection.getRangeAt(0)
+        const ancestor = range.commonAncestorContainer
+        if (ancestor !== element && !element.contains(ancestor)) return
+        if (selection.isCollapsed) {
+          if (document.activeElement === element) {
+            savedOffsetsRef.current = null
+          }
+          return
+        }
+        const offsets = rangeToOffsets(element, range)
+        if (offsets) savedOffsetsRef.current = offsets
+      }
+      document.addEventListener('selectionchange', rememberSelection)
+      return () => document.removeEventListener('selectionchange', rememberSelection)
+    }, [tableDoc])
+
     const handleFormattingShortcut = (event: KeyboardEvent<HTMLDivElement>) => {
       const isPrimary = event.ctrlKey || event.metaKey
       if (!isPrimary || event.altKey) return
@@ -326,7 +356,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       event.preventDefault()
       const element = elementRef.current
       if (!element) return
-      const applied = applyStyleToCellOrSelection(element, patch)
+      const applied = applyStyleToCellOrSelection(element, patch, savedOffsetsRef.current)
       if (!applied) return
       commitValue(serializeEditableCell(element, cellStyleRef.current))
     }
@@ -335,7 +365,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       applyTextStyle(patch) {
         const element = elementRef.current
         if (!element || tableDoc) return false
-        const applied = applyStyleToCellOrSelection(element, patch)
+        const applied = applyStyleToCellOrSelection(element, patch, savedOffsetsRef.current)
         if (!applied) return false
         commitValue(serializeEditableCell(element, cellStyleRef.current))
         return true

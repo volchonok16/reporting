@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import type { TextStyleSegment } from './productStatusRichText'
 import { PRODUCT_STATUS_ATTENTION_FG } from './productStatusRichText'
 
@@ -49,21 +49,48 @@ function FormatButton({
   inactive: boolean
   onApply: (patch: Partial<TextStyleSegment>) => void
 }) {
+  const apply = () => {
+    if (inactive) return
+    onApply(preset.patch)
+  }
   return (
     <button
       type="button"
       className={['btn-secondary product-status-format-btn', preset.className].filter(Boolean).join(' ')}
       disabled={inactive}
       title={preset.title ?? preset.label}
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={() => onApply(preset.patch)}
+      onMouseDown={(event) => {
+        event.preventDefault()
+        if (event.button === 0) apply()
+      }}
+      onClick={(event) => {
+        if (event.detail !== 0) return
+        apply()
+      }}
     >
       {preset.label}
     </button>
   )
 }
 
-function readFormatToolbarOpen(): boolean {
+function styleButtonHandlers(
+  inactive: boolean,
+  apply: () => void,
+): {
+  onMouseDown: (event: MouseEvent<HTMLButtonElement>) => void
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void
+} {
+  return {
+    onMouseDown: (event) => {
+      event.preventDefault()
+      if (!inactive && event.button === 0) apply()
+    },
+    onClick: (event) => {
+      if (event.detail !== 0) return
+      if (!inactive) apply()
+    },
+  }
+}
   try {
     return sessionStorage.getItem(FORMAT_TOOLBAR_OPEN_KEY) === 'true'
   } catch {
@@ -156,8 +183,7 @@ export default function ProductStatusFormatToolbar({
             className="btn-secondary product-status-format-btn product-status-format-btn-strong"
             disabled={inactive}
             title="Жирный"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => onTextStyle({ bold: true })}
+            {...styleButtonHandlers(inactive, () => onTextStyle({ bold: true }))}
           >
             Ж
           </button>
@@ -166,8 +192,7 @@ export default function ProductStatusFormatToolbar({
             className="btn-secondary product-status-format-btn product-status-format-btn-em"
             disabled={inactive}
             title="Курсив"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => onTextStyle({ italic: true })}
+            {...styleButtonHandlers(inactive, () => onTextStyle({ italic: true }))}
           >
             К
           </button>
@@ -176,8 +201,7 @@ export default function ProductStatusFormatToolbar({
             className="btn-secondary product-status-format-btn product-status-format-btn-underline"
             disabled={inactive}
             title="Подчёркнутый"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => onTextStyle({ underline: true })}
+            {...styleButtonHandlers(inactive, () => onTextStyle({ underline: true }))}
           >
             Ч
           </button>
@@ -186,8 +210,7 @@ export default function ProductStatusFormatToolbar({
             className="btn-secondary product-status-format-btn product-status-format-btn-strike"
             disabled={inactive}
             title="Зачёркнутый"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => onTextStyle({ strike: true })}
+            {...styleButtonHandlers(inactive, () => onTextStyle({ strike: true }))}
           >
             S̶
           </button>
@@ -195,8 +218,7 @@ export default function ProductStatusFormatToolbar({
             type="button"
             className="btn-secondary product-status-format-btn"
             disabled={inactive}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={onClearFormatting}
+            {...styleButtonHandlers(inactive, onClearFormatting)}
           >
             Сбросить
           </button>

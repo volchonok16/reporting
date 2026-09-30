@@ -13,6 +13,7 @@ import {
   PRODUCT_STATUS_ROW_ID_KEY,
   ZNI_NUMBERS_PLACEHOLDER,
 } from './productStatusZni'
+import ProductStatusReadonlyCellValue from './ProductStatusReadonlyCellValue'
 import { displayCellText } from './productStatusRichText'
 import type { ChangeRequest } from './zniTypes'
 
@@ -337,7 +338,9 @@ function ProductStatusTableRow({
         if (readOnly) {
           return (
             <td key={column} className={cellClassName}>
-              <div className="product-status-cell-readonly-value">{displayCellText(cellValue) || '—'}</div>
+              <div className="product-status-cell-readonly-value">
+                <ProductStatusReadonlyCellValue value={cellValue} />
+              </div>
             </td>
           )
         }

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.app_access import can_manage_org
 from app.config import settings
-from app.product_status_rich_text import display_cell_text
+from app.product_status_rich_text import display_cell_text, parse_embedded_table_doc
 from app.product_status_save_helpers import (
     apply_row_order,
     fetch_row_cell,
@@ -43,6 +43,7 @@ SUMMARY_COLUMNS: tuple[str, ...] = (
     "Зачем и для чего делаем",
 )
 _COORDINATION_COLUMN = "Проект координация"
+_FULL_STATUS_COLUMN = "Полное Описание проекта и статус"
 _PRESENTATION_STATUS_COLUMN = "Для презентации Описание проекта и статус"
 _PRESENTATION_FLAG_COLUMN = "Идет в презентацию"
 
@@ -202,6 +203,15 @@ def _is_presentation_flag_yes(value: str) -> bool:
     return normalized in ("да", "yes", "1", "true")
 
 
+def _copy_cell_preserving_table(primary: str, fallback: str = "") -> str:
+    """В сводку уходит исходная ячейка, в том числе вставленная таблица."""
+    if parse_embedded_table_doc(primary) is not None:
+        return primary
+    if fallback and parse_embedded_table_doc(fallback) is not None:
+        return fallback
+    return primary
+
+
 def build_summary_rows(offices_with_rows: list[tuple[dict[str, Any], list[dict[str, Any]]]]) -> list[dict[str, str]]:
     """Строки сводки: офисы в их порядке, внутри — порядок строк офиса."""
     rows: list[dict[str, str]] = []
@@ -216,8 +226,11 @@ def build_summary_rows(offices_with_rows: list[tuple[dict[str, Any], list[dict[s
                 {
                     SUMMARY_OFFICE_COLUMN: _office_summary_label(office_name),
                     SUMMARY_PROJECT_COLUMN: cells.get(_COORDINATION_COLUMN, ""),
-                    SUMMARY_STATUS_COLUMN: cells.get(_PRESENTATION_STATUS_COLUMN, ""),
-                    WHY_COLUMN: cells.get(WHY_COLUMN, ""),
+                    SUMMARY_STATUS_COLUMN: _copy_cell_preserving_table(
+                        cells.get(_PRESENTATION_STATUS_COLUMN, ""),
+                        cells.get(_FULL_STATUS_COLUMN, ""),
+                    ),
+                    WHY_COLUMN: _copy_cell_preserving_table(cells.get(WHY_COLUMN, "")),
                     ROW_ID_KEY: f"{SUMMARY_GID}-{office_gid}-{row.get('id')}",
                 }
             )
