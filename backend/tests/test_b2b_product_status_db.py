@@ -12,7 +12,7 @@ from app.b2b_product_status_db import (
     ROW_ID_KEY,
     SUMMARY_GID,
     SUMMARY_OFFICE_COLUMN,
-    SUMMARY_PROJECT_COLUMN,
+    SUMMARY_PROJECT_TITLE_KEY,
     SUMMARY_STATUS_COLUMN,
     WHY_COLUMN,
     _office_snapshot_json,
@@ -92,8 +92,9 @@ def test_build_summary_rows_only_presentation_and_office_order() -> None:
         ]
     )
     assert [row[SUMMARY_OFFICE_COLUMN] for row in rows] == ["VOICE", "SMS"]
-    assert [row[SUMMARY_PROJECT_COLUMN] for row in rows] == ["Voice B", "SMS C"]
+    assert [row[SUMMARY_PROJECT_TITLE_KEY] for row in rows] == ["Voice B", "SMS C"]
     assert [row[SUMMARY_STATUS_COLUMN] for row in rows] == ["Статус B", "Статус C"]
+    assert "Название проекта" not in rows[0]
     assert [row[WHY_COLUMN] for row in rows] == ["Зачем B", "Зачем C"]
     assert rows[0][ROW_ID_KEY].startswith(f"{SUMMARY_GID}-voice-")
 
@@ -134,6 +135,7 @@ def test_build_summary_rows_keeps_embedded_table_token() -> None:
         ]
     )
     assert rows[0][SUMMARY_STATUS_COLUMN] == token
+    assert rows[0][SUMMARY_PROJECT_TITLE_KEY] == "Voice T"
 
 
 def test_build_summary_rows_takes_table_from_full_status_when_presentation_plain() -> None:

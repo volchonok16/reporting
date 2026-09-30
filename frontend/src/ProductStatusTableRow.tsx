@@ -14,8 +14,12 @@ import {
   ZNI_NUMBERS_PLACEHOLDER,
 } from './productStatusZni'
 import ProductStatusReadonlyCellValue from './ProductStatusReadonlyCellValue'
+import ProductStatusRichText from './ProductStatusRichText'
+import { parseEmbeddedTableDoc } from './productStatusEmbeddedTable'
 import { displayCellText } from './productStatusRichText'
 import type { ChangeRequest } from './zniTypes'
+
+const PRODUCT_STATUS_SUMMARY_TITLE_KEY = '__summaryTitle'
 
 export type ActiveCell = {
   rowIndex: number
@@ -336,10 +340,22 @@ function ProductStatusTableRow({
           : row[column] ?? ''
 
         if (readOnly) {
+          const summaryTitle = row[PRODUCT_STATUS_SUMMARY_TITLE_KEY] ?? ''
+          const showSummaryTitle =
+            column === 'Статус' && Boolean(displayCellText(summaryTitle).trim())
+          const statusBodyEmpty =
+            !displayCellText(cellValue).trim() && !parseEmbeddedTableDoc(cellValue)
           return (
             <td key={column} className={cellClassName}>
               <div className="product-status-cell-readonly-value">
-                <ProductStatusReadonlyCellValue value={cellValue} />
+                {showSummaryTitle ? (
+                  <div className="product-status-summary-status-title">
+                    <ProductStatusRichText value={summaryTitle} empty="" />
+                  </div>
+                ) : null}
+                {showSummaryTitle && statusBodyEmpty ? null : (
+                  <ProductStatusReadonlyCellValue value={cellValue} />
+                )}
               </div>
             </td>
           )

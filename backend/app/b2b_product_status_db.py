@@ -34,11 +34,10 @@ ROW_ID_KEY = "__rowId"
 SUMMARY_GID = "summary"
 SUMMARY_SHEET_NAME = "Сводка"
 SUMMARY_OFFICE_COLUMN = "Офис"
-SUMMARY_PROJECT_COLUMN = "Название проекта"
 SUMMARY_STATUS_COLUMN = "Статус"
+SUMMARY_PROJECT_TITLE_KEY = "__summaryTitle"
 SUMMARY_COLUMNS: tuple[str, ...] = (
     SUMMARY_OFFICE_COLUMN,
-    SUMMARY_PROJECT_COLUMN,
     SUMMARY_STATUS_COLUMN,
     "Зачем и для чего делаем",
 )
@@ -225,12 +224,12 @@ def build_summary_rows(offices_with_rows: list[tuple[dict[str, Any], list[dict[s
             rows.append(
                 {
                     SUMMARY_OFFICE_COLUMN: _office_summary_label(office_name),
-                    SUMMARY_PROJECT_COLUMN: cells.get(_COORDINATION_COLUMN, ""),
                     SUMMARY_STATUS_COLUMN: _copy_cell_preserving_table(
                         cells.get(_PRESENTATION_STATUS_COLUMN, ""),
                         cells.get(_FULL_STATUS_COLUMN, ""),
                     ),
                     WHY_COLUMN: _copy_cell_preserving_table(cells.get(WHY_COLUMN, "")),
+                    SUMMARY_PROJECT_TITLE_KEY: cells.get(_COORDINATION_COLUMN, ""),
                     ROW_ID_KEY: f"{SUMMARY_GID}-{office_gid}-{row.get('id')}",
                 }
             )

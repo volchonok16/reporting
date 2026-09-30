@@ -2265,16 +2265,12 @@ input.zni-field-overdue.zni-field-derived {
   width: 132px;
 }
 
-.product-status-table--summary col.col-project {
-  width: 220px;
-}
-
 .product-status-table--summary col.col-description {
-  width: 46%;
+  width: 58%;
 }
 
 .product-status-table--summary col.col-why {
-  width: 28%;
+  width: 32%;
 }
 
 .product-status-table--summary thead th {
@@ -2298,8 +2294,16 @@ input.zni-field-overdue.zni-field-derived {
   font-weight: 650;
 }
 
-.product-status-table--summary td.col-project .product-status-cell-readonly-value {
-  font-weight: 550;
+.product-status-summary-status-title {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
+  margin: 0 0 0.85em;
+}
+
+.product-status-summary-status-title .product-status-rich-text {
+  font-size: inherit;
+  font-weight: inherit;
 }
 
 .product-status-table--summary > tbody > tr.product-status-row--summary-office-start:not(:first-child) > td {
