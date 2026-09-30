@@ -2178,14 +2178,16 @@ export default function ProductStatusWorkbook({
                 </select>
               </label>
             ) : null}
+            {enableRowDelete && !isSheetReadOnly ? (
             <button
               type="button"
               className="btn-secondary"
               onClick={addRow}
-              disabled={toolbarBusy || !activeSheetReady || isSheetReadOnly}
+              disabled={toolbarBusy || !activeSheetReady}
             >
               + Строка
             </button>
+            ) : null}
             {!fixedColumns ? (
               <button
                 type="button"
@@ -2219,7 +2221,9 @@ export default function ProductStatusWorkbook({
                   .join(' ')}
               >
                 <colgroup>
-                  {enableRowDelete ? <col className="col-row-actions" /> : null}
+                  {enableRowDelete && !isSheetReadOnly ? (
+                    <col className="col-row-actions" />
+                  ) : null}
                   {showRowNumbers ? <col className="col-row-number" /> : null}
                   {activeSheet!.columns.map((column, index) => (
                     <col key={index} className={resolveColumnClass(column)} />
@@ -2227,7 +2231,7 @@ export default function ProductStatusWorkbook({
                 </colgroup>
                 <thead>
                   <tr>
-                    {enableRowDelete ? (
+                    {enableRowDelete && !isSheetReadOnly ? (
                       <th className="product-status-row-actions-header" aria-label="Действия" />
                     ) : null}
                     {showRowNumbers ? (
@@ -2328,7 +2332,7 @@ export default function ProductStatusWorkbook({
                 {totalsRow ? (
                   <tfoot>
                     <tr className="product-status-totals-row">
-                      {enableRowDelete ? (
+                      {enableRowDelete && !isSheetReadOnly ? (
                         <td className="product-status-row-actions" aria-hidden="true" />
                       ) : null}
                       {showRowNumbers ? (
