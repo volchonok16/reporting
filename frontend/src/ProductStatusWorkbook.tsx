@@ -11,7 +11,7 @@ import {
   isZniColumn,
 } from './productStatusZni'
 import { resolveBooleanColors } from './productStatusBoolean'
-import { displayCellText, type TextStyleSegment } from './productStatusRichText'
+import { displayCellText, type TextStyleSegment } from './productStatusRichTextUtils'
 import { formatProductStatusColumnHeader } from './productStatusColumns'
 import {
   productStatusLiveHeaders,
@@ -28,6 +28,13 @@ import {
   isObsoleteColumn,
   isPriorityColumn,
 } from './productStatusCoordination'
+import {
+  clampProductStatusColumnWidth,
+  loadProductStatusColumnWidths,
+  productStatusColumnWidthKey,
+  saveProductStatusColumnWidths,
+  startProductStatusColumnResize,
+} from './productStatusColumnResize'
 
 const PRODUCT_STATUS_SUMMARY_GID = 'summary'
 
@@ -114,6 +121,8 @@ export type ProductStatusWorkbookConfig = {
   canEditAdminColumns?: boolean
   /** Блокировка редактирования по офисам (только B2B, для администратора) */
   enableOfficeEditLock?: boolean
+  /** Суперадмин: правки даже при editing_locked */
+  bypassOfficeEditLock?: boolean
   /** Правки в БД только по «Обновить»; до этого можно откатить */
   commitOnRefresh?: boolean
   /** Числовые колонки (простой ввод, без rich-text) */
@@ -462,7 +471,7 @@ function isAttentionColumn(column: string): boolean {
 
 function resolveColumnClass(column: string): string | undefined {
   const key = column.trim().toLowerCase()
-  if (key === 'зни') return 'col-zni'
+  if (isZniColumn(column)) return 'col-zni'
   if (key === 'офис') return 'col-office'
   if (key === 'название проекта') return 'col-project'
   if (key === 'статус') return 'col-description'
@@ -546,6 +555,7 @@ export default function ProductStatusWorkbook({
   enableHistory = false,
   canEditAdminColumns = false,
   enableOfficeEditLock = false,
+  bypassOfficeEditLock = false,
   commitOnRefresh = false,
   numericColumns,
   sumColumn,
@@ -587,6 +597,7 @@ export default function ProductStatusWorkbook({
   const [loadedGids, setLoadedGids] = useState<Set<string>>(() => new Set())
   const [sheetLoadingGid, setSheetLoadingGid] = useState<string | null>(null)
   const [columnFilters, setColumnFilters] = useState<Record<string, Set<string> | null>>({})
+  const [columnWidths, setColumnWidths] = useState(loadProductStatusColumnWidths)
   const activeCellRef = useRef<ProductStatusCellHandle | null>(null)
   const blurTimerRef = useRef<number | null>(null)
   const tableScrollRef = useRef<HTMLDivElement | null>(null)
@@ -885,7 +896,7 @@ export default function ProductStatusWorkbook({
           .filter((name): name is string => Boolean(name)),
       ),
     ]
-    if (lockedSheetNames.length > 0) {
+    if (lockedSheetNames.length > 0 && !bypassOfficeEditLock) {
       notifyWarning(
         lockedSheetNames.length === 1
           ? `Редактирование офиса «${lockedSheetNames[0]}» заблокировано администратором`
@@ -946,6 +957,7 @@ export default function ProductStatusWorkbook({
   }, [
     activeGid,
     apiBase,
+    bypassOfficeEditLock,
     commitOnRefresh,
     enableHistory,
     loadHistory,
@@ -986,7 +998,8 @@ export default function ProductStatusWorkbook({
     [activeGid, sheets],
   )
 
-  const isSheetReadOnly = activeSheetEditingLocked || activeSheetReadOnly
+  const isSheetReadOnly =
+    (activeSheetEditingLocked && !bypassOfficeEditLock) || activeSheetReadOnly
 
   const toggleOfficeEditingLock = useCallback(async () => {
     if (!enableOfficeEditLock || !canEditAdminColumns || !activeGid) return
@@ -1026,7 +1039,7 @@ export default function ProductStatusWorkbook({
             : item,
         ),
       )
-      if (payload.editingLocked && dirty) {
+      if (payload.editingLocked && dirty && !bypassOfficeEditLock) {
         setDirty(false)
         setActiveCell(null)
         if (loadedGids.has(activeGid)) {
@@ -1045,6 +1058,7 @@ export default function ProductStatusWorkbook({
   }, [
     activeGid,
     apiBase,
+    bypassOfficeEditLock,
     canEditAdminColumns,
     dirty,
     enableOfficeEditLock,
@@ -1203,7 +1217,7 @@ export default function ProductStatusWorkbook({
     (gid: string, rowIndex: number, column: string, value: string) => {
       if (sumColumn && column === sumColumn) return
       const sheet = sheetsRef.current.find((item) => item.gid === gid)
-      if (sheet?.editingLocked) return
+      if (sheet?.editingLocked && !bypassOfficeEditLock) return
       setDirty(true)
       let nextActiveRowIndex: number | null = null
       setSheets((current) =>
@@ -1249,7 +1263,7 @@ export default function ProductStatusWorkbook({
         })
       }
     },
-    [sumColumn, sumSourceColumns],
+    [bypassOfficeEditLock, sumColumn, sumSourceColumns],
   )
 
   const handleExportPresentation = useCallback(async () => {
@@ -1344,15 +1358,33 @@ export default function ProductStatusWorkbook({
   const addRow = useCallback(() => {
     if (!activeGid || isSheetReadOnly) return
     setDirty(true)
-    const prepend = rowNumberDirection !== 'bottom'
+    const selectedRow = activeCellPositionRef.current?.rowIndex
+    let insertedAt = 0
     setSheets((current) =>
       current.map((sheet) => {
         if (sheet.gid !== activeGid) return sheet
         const emptyRow = Object.fromEntries(sheet.columns.map((column) => [column, '']))
-        const rows = prepend ? [emptyRow, ...sheet.rows] : [...sheet.rows, emptyRow]
-        return { ...sheet, rows, totalShown: sheet.rows.length + 1 }
+        const rows = [...sheet.rows]
+        if (typeof selectedRow === 'number' && selectedRow >= 0 && selectedRow < rows.length) {
+          insertedAt = selectedRow + 1
+        } else if (rowNumberDirection !== 'bottom') {
+          insertedAt = 0
+        } else {
+          insertedAt = rows.length
+        }
+        rows.splice(insertedAt, 0, emptyRow)
+        return { ...sheet, rows, totalShown: rows.length }
       }),
     )
+    if (typeof selectedRow === 'number' && selectedRow >= 0) {
+      const column = activeCellPositionRef.current?.column ?? ''
+      const nextCell = { rowIndex: selectedRow + 1, column }
+      activeCellPositionRef.current = nextCell
+      setActiveCell((current) => ({
+        rowIndex: selectedRow + 1,
+        column: current?.column || column,
+      }))
+    }
   }, [activeGid, isSheetReadOnly, rowNumberDirection])
 
   const addColumn = useCallback(() => {
@@ -1547,6 +1579,55 @@ export default function ProductStatusWorkbook({
   const activeSheet = useMemo(
     () => sheets.find((sheet) => sheet.gid === activeGid) ?? sheets[0] ?? null,
     [activeGid, sheets],
+  )
+
+  const activeSheetColumnWidths = useMemo(() => {
+    if (!activeSheet) return {} as Record<string, number>
+    const map: Record<string, number> = {}
+    for (const column of activeSheet.columns) {
+      const key = productStatusColumnWidthKey(activeSheet.gid, column)
+      const width = columnWidths[key]
+      if (typeof width === 'number') map[column] = width
+    }
+    return map
+  }, [activeSheet, columnWidths])
+
+  const hasCustomColumnWidths = Object.keys(activeSheetColumnWidths).length > 0
+
+  const measureActiveSheetColumnWidths = useCallback((): Record<string, number> => {
+    const result: Record<string, number> = {}
+    if (!activeSheet) return result
+    const root = tableScrollRef.current
+    for (const column of activeSheet.columns) {
+      const stored = activeSheetColumnWidths[column]
+      if (typeof stored === 'number') {
+        result[column] = stored
+        continue
+      }
+      const th = root?.querySelector(
+        `th[data-product-status-column="${CSS.escape(column)}"]`,
+      ) as HTMLElement | null
+      result[column] = clampProductStatusColumnWidth(th?.getBoundingClientRect().width || 120)
+    }
+    return result
+  }, [activeSheet, activeSheetColumnWidths])
+
+  const handleColumnWidthChange = useCallback(
+    (column: string, width: number, locked: Record<string, number>) => {
+      if (!activeSheet) return
+      setColumnWidths((prev) => {
+        const next = { ...prev }
+        for (const [col, lockedWidth] of Object.entries(locked)) {
+          next[productStatusColumnWidthKey(activeSheet.gid, col)] =
+            clampProductStatusColumnWidth(lockedWidth)
+        }
+        next[productStatusColumnWidthKey(activeSheet.gid, column)] =
+          clampProductStatusColumnWidth(width)
+        saveProductStatusColumnWidths(next)
+        return next
+      })
+    },
+    [activeSheet],
   )
 
   const booleanColorsByColumn = useMemo(() => {
@@ -1983,6 +2064,11 @@ export default function ProductStatusWorkbook({
             : `Редактирование офиса «${activeSheet.name}» заблокировано администратором — доступен только просмотр.`}
         </p>
       ) : null}
+      {!isSheetReadOnly && activeSheetEditingLocked && bypassOfficeEditLock && viewMode === 'table' && activeSheet ? (
+        <p className="product-status-editing-locked-banner" role="status">
+          Офис «{activeSheet.name}» заблокирован для внесения изменений.
+        </p>
+      ) : null}
 
       {!useTitleSheetNav && sheets.length > 1 && viewMode === 'table' ? (
         <nav className="product-status-sheet-tabs" aria-label="Таблицы">
@@ -2037,7 +2123,7 @@ export default function ProductStatusWorkbook({
 
       {viewMode === 'table' && !isSummarySheet ? (
         <ProductStatusFormatToolbar
-          disabled={toolbarBusy}
+          disabled={toolbarBusy || isSheetReadOnly}
           hasActiveCell={activeCell !== null}
           onTextStyle={applyTextStyle}
           onClearFormatting={clearFormatting}
@@ -2244,9 +2330,23 @@ export default function ProductStatusWorkbook({
                   'product-status-table',
                   compactRows ? 'product-status-table--compact' : '',
                   isSummarySheet ? 'product-status-table--summary' : '',
+                  hasCustomColumnWidths ? 'product-status-table--custom-widths' : '',
                 ]
                   .filter(Boolean)
                   .join(' ')}
+                style={
+                  hasCustomColumnWidths
+                    ? {
+                        width:
+                          activeSheet!.columns.reduce(
+                            (sum, column) => sum + (activeSheetColumnWidths[column] ?? 120),
+                            0,
+                          ) +
+                          (enableRowDelete && !isSheetReadOnly ? 42 : 0) +
+                          (showRowNumbers ? 44 : 0),
+                      }
+                    : undefined
+                }
               >
                 <colgroup>
                   {enableRowDelete && !isSheetReadOnly ? (
@@ -2254,7 +2354,18 @@ export default function ProductStatusWorkbook({
                   ) : null}
                   {showRowNumbers ? <col className="col-row-number" /> : null}
                   {activeSheet!.columns.map((column, index) => (
-                    <col key={index} className={resolveColumnClass(column)} />
+                    <col
+                      key={index}
+                      className={resolveColumnClass(column)}
+                      style={
+                        activeSheetColumnWidths[column]
+                          ? {
+                              width: activeSheetColumnWidths[column],
+                              minWidth: activeSheetColumnWidths[column],
+                            }
+                          : undefined
+                      }
+                    />
                   ))}
                 </colgroup>
                 <thead>
@@ -2270,13 +2381,24 @@ export default function ProductStatusWorkbook({
                     {activeSheet!.columns.map((column) => (
                       <th
                         key={column}
+                        data-product-status-column={column}
                         className={[
                           resolveColumnClass(column),
                           isBooleanColumn(column) ? 'product-status-bool-header' : '',
                           enableColumnFilters ? 'product-status-th-filterable' : '',
+                          'product-status-th-resizable',
                         ]
                           .filter(Boolean)
                           .join(' ')}
+                        style={
+                          activeSheetColumnWidths[column]
+                            ? {
+                                width: activeSheetColumnWidths[column],
+                                minWidth: activeSheetColumnWidths[column],
+                                maxWidth: activeSheetColumnWidths[column],
+                              }
+                            : undefined
+                        }
                       >
                         <div className="product-status-th-inner">
                           <span title={column}>{formatProductStatusColumnHeader(column)}</span>
@@ -2294,6 +2416,21 @@ export default function ProductStatusWorkbook({
                             />
                           ) : null}
                         </div>
+                        <span
+                          className="product-status-col-resize-handle"
+                          role="separator"
+                          aria-orientation="vertical"
+                          aria-label={`Изменить ширину столбца ${column}`}
+                          onMouseDown={(event) =>
+                            startProductStatusColumnResize(
+                              event,
+                              column,
+                              activeSheetColumnWidths[column],
+                              handleColumnWidthChange,
+                              measureActiveSheetColumnWidths,
+                            )
+                          }
+                        />
                       </th>
                     ))}
                   </tr>

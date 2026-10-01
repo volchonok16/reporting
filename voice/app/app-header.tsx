@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { MouseEvent } from "react";
 import { useAuth } from "./auth-provider";
+import VoiceBrandLogo from "./voice-brand-logo";
 
 type AppHeaderProps = {
   onBeforeNavigate?: () => boolean | void | Promise<boolean | void>;
@@ -45,7 +46,7 @@ export function AppHeader({ onBeforeNavigate }: AppHeaderProps = {}) {
         aria-label="Агент мобильной карусели — главная"
       >
         <span className="brand-mark" aria-hidden="true">
-          t2
+          <VoiceBrandLogo variant="mark" height={42} />
         </span>
         <span>
           <strong>Агент мобильной карусели</strong>

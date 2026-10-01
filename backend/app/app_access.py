@@ -42,29 +42,42 @@ def sync_board_denied_reason(role: str | None, board_code: str | None) -> str | 
 
 
 def can_manage_org(meta: dict) -> bool:
-    """PAT, legacy app_user (full) без org_user, org admin."""
+    """PAT, legacy app_user (full) без org_user, org admin / superadmin."""
     auth_mode = meta.get("auth_mode")
     app_role = meta.get("app_role") or FULL_APP_ROLE
     org_user_role = meta.get("org_user_role")
     return (
         auth_mode == "pat"
         or (auth_mode == "app_user" and app_role == FULL_APP_ROLE and org_user_role is None)
-        or org_user_role == "admin"
+        or org_user_role in {"admin", "superadmin"}
     )
 
 
+def is_superadmin_user(meta: dict | None) -> bool:
+    """Суперадминистратор: org_user.role = 1000 (только через БД)."""
+    if not meta:
+        return False
+    return meta.get("org_user_role") == "superadmin"
+
+
 def is_admin_user(meta: dict) -> bool:
-    """Администратор приложения: PAT или org_user.role = admin."""
-    return meta.get("auth_mode") == "pat" or meta.get("org_user_role") == "admin"
+    """Администратор приложения: PAT, org admin или superadmin."""
+    return (
+        meta.get("auth_mode") == "pat"
+        or meta.get("org_user_role") in {"admin", "superadmin"}
+    )
 
 
 def ensure_page_access(db: Session, meta: dict, page_key: str) -> None:
     """Проверка доступа к вкладке.
 
-    - Voice-only: только Voice.
+    - Voice-only: только Voice (суперадмин — исключение, все разделы).
     - Планирование: только при явном гранте в `org_user_page_access` (или админ/PAT).
-    - «Другие пользователи»: только разрешённые вкладки.
+    - «Другие пользователи» или пользователи с явным списком вкладок (не только planning):
+      только разрешённые вкладки.
     """
+    if is_superadmin_user(meta):
+        return
     if is_voice_only(meta):
         raise HTTPException(status_code=403, detail="Доступен только раздел Voice.")
     org_user_id = meta.get("org_user_id")
@@ -83,10 +96,11 @@ def ensure_page_access(db: Session, meta: dict, page_key: str) -> None:
         return
 
     employee = get_employee_for_org_user(db, int(org_user_id))
-    if not is_other_user_employee(employee):
+    allowed = get_user_allowed_page_keys(db, int(org_user_id))
+    restricted = is_other_user_employee(employee) or any(key != "planning" for key in allowed)
+    if not restricted:
         return
 
-    allowed = get_user_allowed_page_keys(db, int(org_user_id))
     if page_key not in allowed:
         raise HTTPException(status_code=403, detail="Нет доступа к этому разделу.")
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { displayCellText } from './productStatusRichText'
+import { displayCellText } from './productStatusRichTextUtils'
 import {
   isCoordinationProjectColumn,
   splitCoordinationProjects,

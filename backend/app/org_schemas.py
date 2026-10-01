@@ -144,7 +144,7 @@ class EmployeeExpertiseIn(BaseModel):
 class OrgUserBriefOut(BaseModel):
     id: int
     email: str
-    role: Literal["user", "admin"]
+    role: Literal["user", "admin", "superadmin"]
     status: Literal["active", "inactive", "deleted"]
     voiceOnly: bool = False
     voiceAdmin: bool = False
@@ -305,7 +305,7 @@ class DepartmentMemberUpdateIn(BaseModel):
 
 class ProfileOut(BaseModel):
     email: str
-    role: Literal["user", "admin", "full", "roadmap"]
+    role: Literal["user", "admin", "superadmin", "full", "roadmap"]
     employee: EmployeeOut | None = None
 
 
@@ -322,7 +322,7 @@ class PasswordChangeIn(BaseModel):
 class OrgUserOut(BaseModel):
     id: int
     email: str
-    role: Literal["user", "admin"]
+    role: Literal["user", "admin", "superadmin"]
     status: Literal["active", "inactive", "deleted"]
     voiceOnly: bool = False
     voiceAdmin: bool = False

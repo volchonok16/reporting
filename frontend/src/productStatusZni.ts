@@ -1,11 +1,15 @@
-import { displayCellText, splitCellWrapper } from './productStatusRichText'
+import { displayCellText, splitCellWrapper } from './productStatusRichTextUtils'
 
 export const PRODUCT_STATUS_ROW_ID_KEY = '__rowId'
 
 export const ZNI_NUMBERS_PLACEHOLDER = '123456, 789012'
 
 export function isZniColumn(column: string): boolean {
-  return column.trim().toLowerCase() === 'зни'
+  const key = column.trim().toLowerCase().replace(/ё/g, 'е')
+  if (!key) return false
+  if (key === 'зни') return true
+  // «Номер ЗнИ» в Госинициативах и похожие заголовки
+  return key === 'номер зни' || /(^|\s)номер\s+зни(\s|$)/.test(key)
 }
 
 function normalizeIntegerNumberText(text: string): string {

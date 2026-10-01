@@ -47,7 +47,7 @@ def _is_org_admin(meta: dict) -> bool:
     return (
         auth_mode == "pat"
         or (auth_mode == "app_user" and app_role == "full" and org_user_role is None)
-        or org_user_role == "admin"
+        or org_user_role in {"admin", "superadmin"}
     )
 
 

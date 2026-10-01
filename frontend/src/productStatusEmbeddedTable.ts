@@ -1,9 +1,11 @@
-import { displayCellText, normalizeCellValue, splitCellWrapper } from './productStatusRichText'
+import { displayCellText, normalizeCellValue, splitCellWrapper } from './productStatusRichTextUtils'
 
 export type EmbeddedTable = {
   rows: number
   cols: number
   cells: string[][]
+  /** Ширины столбцов в px; если заданы — остальные столбцы не перераспределяются. */
+  colWidths?: number[]
 }
 
 export type EmbeddedTableDoc = {
@@ -17,11 +19,51 @@ export type EmbeddedTableDoc = {
 export const TABLE_TOKEN_PREFIX = '<<tablejson:'
 export const TABLE_TOKEN_SUFFIX = '>>'
 
+export const EMBEDDED_TABLE_DEFAULT_COL_WIDTH = 120
+export const EMBEDDED_TABLE_MIN_COL_WIDTH = 48
+export const EMBEDDED_TABLE_MAX_COL_WIDTH = 480
+
+export function clampEmbeddedColWidth(width: number): number {
+  return Math.min(
+    EMBEDDED_TABLE_MAX_COL_WIDTH,
+    Math.max(EMBEDDED_TABLE_MIN_COL_WIDTH, Math.round(width)),
+  )
+}
+
+function normalizeColWidths(cols: number, widths?: number[]): number[] | undefined {
+  if (!widths || !Array.isArray(widths) || widths.length === 0) return undefined
+  return Array.from({ length: cols }, (_, index) => {
+    const value = widths[index]
+    return typeof value === 'number' && Number.isFinite(value) && value > 0
+      ? clampEmbeddedColWidth(value)
+      : EMBEDDED_TABLE_DEFAULT_COL_WIDTH
+  })
+}
+
+function withColWidths(table: EmbeddedTable, colWidths?: number[]): EmbeddedTable {
+  const next = normalizeColWidths(table.cols, colWidths)
+  if (!next) {
+    return {
+      rows: table.rows,
+      cols: table.cols,
+      cells: table.cells,
+    }
+  }
+  return { ...table, colWidths: next }
+}
+
 export function serializeEmbeddedTableDoc(doc: EmbeddedTableDoc): string {
+  const table: EmbeddedTable = {
+    rows: doc.table.rows,
+    cols: doc.table.cols,
+    cells: doc.table.cells,
+  }
+  const widths = normalizeColWidths(doc.table.cols, doc.table.colWidths)
+  if (widths) table.colWidths = widths
   const payload = JSON.stringify({
     text: doc.text,
     afterText: doc.afterText || '',
-    table: doc.table,
+    table,
   })
   return `${TABLE_TOKEN_PREFIX}${btoa(unescape(encodeURIComponent(payload)))}${TABLE_TOKEN_SUFFIX}`
 }
@@ -45,7 +87,14 @@ export function parseEmbeddedTableDoc(value: string): EmbeddedTableDoc | null {
     const cells = Array.from({ length: table.rows }, (_, row) =>
       Array.from({ length: table.cols }, (_, col) => table.cells[row]?.[col] ?? ''),
     )
-    return { text, afterText, table: { rows: table.rows, cols: table.cols, cells } }
+    const colWidths = normalizeColWidths(table.cols, table.colWidths)
+    return {
+      text,
+      afterText,
+      table: colWidths
+        ? { rows: table.rows, cols: table.cols, cells, colWidths }
+        : { rows: table.rows, cols: table.cols, cells },
+    }
   } catch {
     return null
   }
@@ -72,6 +121,7 @@ export function cloneEmbeddedTable(table: EmbeddedTable): EmbeddedTable {
     rows: table.rows,
     cols: table.cols,
     cells: table.cells.map((row) => [...row]),
+    ...(table.colWidths ? { colWidths: [...table.colWidths] } : {}),
   }
 }
 
@@ -110,16 +160,22 @@ export function readTableDocFromHost(host: HTMLElement, table: EmbeddedTable): E
     }
   })
   if (nextCells.length === 0) {
-    return { text, afterText, table }
+    return { text, afterText, table: cloneEmbeddedTable(table) }
   }
+  const cols = Math.max(...nextCells.map((row) => row.length), table.cols)
   return {
     text,
     afterText,
-    table: {
-      rows: nextCells.length,
-      cols: Math.max(...nextCells.map((row) => row.length), table.cols),
-      cells: nextCells,
-    },
+    table: withColWidths(
+      {
+        rows: nextCells.length,
+        cols,
+        cells: nextCells.map((row) =>
+          Array.from({ length: cols }, (_, index) => row[index] ?? ''),
+        ),
+      },
+      table.colWidths,
+    ),
   }
 }
 
@@ -226,12 +282,55 @@ export function removeTableRow(table: EmbeddedTable, rowIndex: number): Embedded
   if (table.rows <= 1) return null
   const idx = Math.max(0, Math.min(rowIndex, table.rows - 1))
   const cells = table.cells.filter((_, i) => i !== idx).map((row) => [...row])
-  return { rows: cells.length, cols: table.cols, cells }
+  return withColWidths({ rows: cells.length, cols: table.cols, cells }, table.colWidths)
 }
 
 export function removeTableColumn(table: EmbeddedTable, colIndex: number): EmbeddedTable | null {
   if (table.cols <= 1) return null
   const idx = Math.max(0, Math.min(colIndex, table.cols - 1))
   const cells = table.cells.map((row) => row.filter((_, i) => i !== idx))
-  return { rows: table.rows, cols: table.cols - 1, cells }
+  const colWidths = table.colWidths
+    ? normalizeColWidths(table.cols, table.colWidths)!.filter((_, i) => i !== idx)
+    : undefined
+  return withColWidths({ rows: table.rows, cols: table.cols - 1, cells }, colWidths)
+}
+
+/** Вставить строку сразу под `afterRowIndex` (−1 = в начало). */
+export function insertTableRow(table: EmbeddedTable, afterRowIndex: number): EmbeddedTable {
+  const insertAt = Math.max(0, Math.min(afterRowIndex + 1, table.rows))
+  const empty = Array.from({ length: table.cols }, () => '')
+  const cells = table.cells.map((row) => [...row])
+  cells.splice(insertAt, 0, empty)
+  return withColWidths({ rows: cells.length, cols: table.cols, cells }, table.colWidths)
+}
+
+/** Вставить столбец сразу справа от `afterColIndex` (−1 = в начало). */
+export function insertTableColumn(table: EmbeddedTable, afterColIndex: number): EmbeddedTable {
+  const insertAt = Math.max(0, Math.min(afterColIndex + 1, table.cols))
+  const cells = table.cells.map((row) => {
+    const next = [...row]
+    next.splice(insertAt, 0, '')
+    return next
+  })
+  let colWidths = table.colWidths ? normalizeColWidths(table.cols, table.colWidths) : undefined
+  if (colWidths) {
+    colWidths = [...colWidths]
+    colWidths.splice(insertAt, 0, EMBEDDED_TABLE_DEFAULT_COL_WIDTH)
+  }
+  return withColWidths({ rows: table.rows, cols: table.cols + 1, cells }, colWidths)
+}
+
+export function setEmbeddedColWidth(
+  table: EmbeddedTable,
+  colIndex: number,
+  width: number,
+  lockedWidths?: number[],
+): EmbeddedTable {
+  const idx = Math.max(0, Math.min(colIndex, table.cols - 1))
+  const base =
+    normalizeColWidths(table.cols, lockedWidths ?? table.colWidths) ??
+    Array.from({ length: table.cols }, () => EMBEDDED_TABLE_DEFAULT_COL_WIDTH)
+  const colWidths = [...base]
+  colWidths[idx] = clampEmbeddedColWidth(width)
+  return withColWidths({ rows: table.rows, cols: table.cols, cells: table.cells.map((r) => [...r]) }, colWidths)!
 }

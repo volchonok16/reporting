@@ -1,4 +1,4 @@
-import { forwardRef, memo, useEffect, useImperativeHandle, useLayoutEffect, useRef, type KeyboardEvent, type RefObject } from 'react'
+import { forwardRef, memo, useEffect, useImperativeHandle, useLayoutEffect, useRef, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type RefObject } from 'react'
 import {
   applyCellStylePatch,
   applyStyleToCellOrSelection,
@@ -13,11 +13,13 @@ import {
   type CellStyle,
   type TextRangeOffsets,
   type TextStyleSegment,
-} from './productStatusRichText'
+} from './productStatusRichTextUtils'
 import {
   cloneEmbeddedTableDoc,
   createEmbeddedTable,
   extractEmbeddedTablePayload,
+  insertTableColumn,
+  insertTableRow,
   parseEmbeddedTableDoc,
   readEmbeddedTableClipboard,
   readTableDocFromHost,
@@ -27,6 +29,7 @@ import {
   removeTableRow,
   resolvePreambleForTableInsert,
   serializeDocWithTable,
+  setEmbeddedColWidth,
   setLastCopiedEmbeddedTable,
   tableToTsv,
   writeEmbeddedTableClipboard,
@@ -234,6 +237,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
     const cellStyleRef = useRef<CellStyle>({ bg: null, border: null })
     const shouldFocusPreambleRef = useRef(false)
     const savedOffsetsRef = useRef<TextRangeOffsets | null>(null)
+    const embeddedFocusRef = useRef({ row: 0, col: 0 })
 
     const tableDoc = parseEmbeddedTableDoc(value)
     const focusPreamble = shouldFocusPreambleRef.current && Boolean(tableDoc)
@@ -478,7 +482,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
     }
 
     if (tableDoc) {
-      const focusedCellRef = { current: { row: 0, col: 0 } as { row: number; col: number } }
+      const focusedCellRef = embeddedFocusRef
 
       const readCurrentDoc = (): EmbeddedTableDoc => {
         const host = tableHostRef.current
@@ -525,6 +529,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
           rows: current.table.rows,
           cols: current.table.cols,
           cells: current.table.cells.map((items) => [...items]),
+          ...(current.table.colWidths ? { colWidths: [...current.table.colWidths] } : {}),
         }
         nextTable.cells[rowIndex][colIndex] = cellValue
         commitValue(serializeDocWithTable(withDocTexts(current, nextTable)))
@@ -543,32 +548,90 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         commitValue(parts.join('\n\n'))
       }
 
-      const deleteLastRow = () => {
+      const deleteFocusedRow = () => {
         const current = readCurrentDoc()
-        const next = removeTableRow(current.table, current.table.rows - 1)
+        const rowIndex = focusedCellRef.current.row
+        const next = removeTableRow(current.table, rowIndex)
         if (!next) {
           notifyWarning('Нельзя удалить единственную строку')
           return
         }
         focusedCellRef.current = {
-          row: Math.min(focusedCellRef.current.row, next.rows - 1),
+          row: Math.min(rowIndex, next.rows - 1),
           col: Math.min(focusedCellRef.current.col, next.cols - 1),
         }
         updateTable(next)
       }
 
-      const deleteLastColumn = () => {
+      const deleteFocusedColumn = () => {
         const current = readCurrentDoc()
-        const next = removeTableColumn(current.table, current.table.cols - 1)
+        const colIndex = focusedCellRef.current.col
+        const next = removeTableColumn(current.table, colIndex)
         if (!next) {
           notifyWarning('Нельзя удалить единственный столбец')
           return
         }
         focusedCellRef.current = {
           row: Math.min(focusedCellRef.current.row, next.rows - 1),
+          col: Math.min(colIndex, next.cols - 1),
+        }
+        updateTable(next)
+      }
+
+      const addRowBelowFocus = () => {
+        const current = readCurrentDoc()
+        const afterRow = focusedCellRef.current.row
+        const next = insertTableRow(current.table, afterRow)
+        focusedCellRef.current = {
+          row: Math.min(afterRow + 1, next.rows - 1),
           col: Math.min(focusedCellRef.current.col, next.cols - 1),
         }
         updateTable(next)
+      }
+
+      const addColumnAfterFocus = () => {
+        const current = readCurrentDoc()
+        const afterCol = focusedCellRef.current.col
+        const next = insertTableColumn(current.table, afterCol)
+        focusedCellRef.current = {
+          row: Math.min(focusedCellRef.current.row, next.rows - 1),
+          col: Math.min(afterCol + 1, next.cols - 1),
+        }
+        updateTable(next)
+      }
+
+      const startColumnResize = (event: ReactMouseEvent, colIndex: number) => {
+        event.preventDefault()
+        event.stopPropagation()
+        const tableEl = tableHostRef.current?.querySelector('.product-status-inline-table')
+        if (!(tableEl instanceof HTMLTableElement)) return
+        const firstRow = tableEl.rows[0]
+        if (!firstRow) return
+        const measured = Array.from(firstRow.cells).map(
+          (cell) => cell.getBoundingClientRect().width || 120,
+        )
+        const startX = event.clientX
+        const startWidth = measured[colIndex] ?? 120
+        const locked = [...measured]
+
+        const onMove = (moveEvent: MouseEvent) => {
+          const current = readCurrentDoc()
+          const next = setEmbeddedColWidth(
+            current.table,
+            colIndex,
+            startWidth + (moveEvent.clientX - startX),
+            locked,
+          )
+          updateTable(next)
+        }
+        const onUp = () => {
+          window.removeEventListener('mousemove', onMove)
+          window.removeEventListener('mouseup', onUp)
+          document.body.classList.remove('product-status-col-resizing')
+        }
+        document.body.classList.add('product-status-col-resizing')
+        window.addEventListener('mousemove', onMove)
+        window.addEventListener('mouseup', onUp)
       }
 
       const copyCurrentTable = () => {
@@ -660,49 +723,36 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
               <button
                 type="button"
                 className="btn-secondary product-status-inline-table-btn"
+                title="Добавить строку ниже выделенной"
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  updateTable({
-                    rows: tableDoc.table.rows + 1,
-                    cols: tableDoc.table.cols,
-                    cells: [
-                      ...tableDoc.table.cells.map((items) => [...items]),
-                      Array.from({ length: tableDoc.table.cols }, () => ''),
-                    ],
-                  })
-                }}
+                onClick={addRowBelowFocus}
               >
                 + Строка
               </button>
               <button
                 type="button"
                 className="btn-secondary product-status-inline-table-btn"
+                title="Добавить столбец справа от выделенного"
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  updateTable({
-                    rows: tableDoc.table.rows,
-                    cols: tableDoc.table.cols + 1,
-                    cells: tableDoc.table.cells.map((items) => [...items, '']),
-                  })
-                }}
+                onClick={addColumnAfterFocus}
               >
                 + Столбец
               </button>
               <button
                 type="button"
                 className="btn-secondary product-status-inline-table-btn"
-                title="Удалить последнюю нижнюю строку"
+                title="Удалить выделенную строку"
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={deleteLastRow}
+                onClick={deleteFocusedRow}
               >
                 − Строка
               </button>
               <button
                 type="button"
                 className="btn-secondary product-status-inline-table-btn"
-                title="Удалить самый правый столбец"
+                title="Удалить выделенный столбец"
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={deleteLastColumn}
+                onClick={deleteFocusedColumn}
               >
                 − Столбец
               </button>
@@ -742,12 +792,38 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
                 Удалить таблицу
               </button>
             </div>
-            <table className="product-status-inline-table">
+            <table
+              className={[
+                'product-status-inline-table',
+                tableDoc.table.colWidths ? 'product-status-inline-table--sized' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+            >
+              {tableDoc.table.colWidths ? (
+                <colgroup>
+                  {tableDoc.table.colWidths.map((width, colIndex) => (
+                    <col key={colIndex} style={{ width, minWidth: width }} />
+                  ))}
+                </colgroup>
+              ) : null}
               <tbody>
                 {tableDoc.table.cells.map((row, rowIndex) => (
                   <tr key={rowIndex}>
                     {row.map((cell, colIndex) => (
-                      <td key={colIndex}>
+                      <td
+                        key={colIndex}
+                        className="product-status-inline-table-td"
+                        style={
+                          tableDoc.table.colWidths?.[colIndex]
+                            ? {
+                                width: tableDoc.table.colWidths[colIndex],
+                                minWidth: tableDoc.table.colWidths[colIndex],
+                                maxWidth: tableDoc.table.colWidths[colIndex],
+                              }
+                            : undefined
+                        }
+                      >
                         <InlineTableCell
                           value={cell}
                           onFocus={() => {
@@ -756,6 +832,15 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
                           }}
                           onCommit={(nextValue) => updateTableCell(rowIndex, colIndex, nextValue)}
                         />
+                        {rowIndex === 0 ? (
+                          <span
+                            className="product-status-inline-col-resize"
+                            role="separator"
+                            aria-orientation="vertical"
+                            aria-label={`Изменить ширину столбца ${colIndex + 1}`}
+                            onMouseDown={(event) => startColumnResize(event, colIndex)}
+                          />
+                        ) : null}
                       </td>
                     ))}
                   </tr>

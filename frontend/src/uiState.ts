@@ -5,6 +5,7 @@ export type SheetId =
   | 'products'
   | 'product-status-b2b'
   | 'revenue-activities'
+  | 'gov-initiatives'
   | 'roadmap'
   | 'youjail-board'
   | 'departments'
@@ -93,6 +94,7 @@ const WORKBOOK_SHEETS: SheetId[] = [
   'products',
   'product-status-b2b',
   'revenue-activities',
+  'gov-initiatives',
   'roadmap',
   'youjail-board',
   'departments',

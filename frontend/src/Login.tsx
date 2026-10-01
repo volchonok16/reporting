@@ -3,6 +3,7 @@ import { apiFetch, getJson, HttpError, readApiError, setSessionId } from './api'
 import { notifyProblem, notifyWarning } from './toast'
 import PasswordInput from './org/PasswordInput'
 import ThemeToggle from './ThemeToggle'
+import BrandLogo from './BrandLogo'
 
 type AuthDefaults = {
   baseUrl: string
@@ -88,7 +89,10 @@ export default function Login({ onSuccess }: LoginProps) {
     <main className="login-page">
       <ThemeToggle className="login-theme-switch" />
       <section className="login-panel">
-        <h1>Reporting</h1>
+        <div className="login-brand">
+          <BrandLogo height={44} />
+        </div>
+        <h1 className="login-app-title">Reporting</h1>
         <p className="login-subtitle">Вход в отчётность по ЗНИ</p>
 
         <div className="login-tabs">

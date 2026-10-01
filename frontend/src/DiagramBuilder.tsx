@@ -496,7 +496,7 @@ function renderFlowchartSvg(input: string, theme: DiagramTheme): string | null {
     nodes.push(`<text x="${x + node.width / 2}" y="${y + node.height / 2 + 5}" text-anchor="middle" font-size="${node.level === 0 ? 14 : 13}" font-weight="600" fill="${getContrastColor(fill)}">${escapeXml(node.text)}</text>`)
   }
   walk(root)
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="font-family:Inter,sans-serif">${lines.join('')}${nodes.join('')}</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="font-family:'T2 Rooftop',system-ui,sans-serif">${lines.join('')}${nodes.join('')}</svg>`
 }
 
 function parseSequenceData(text: string): { participants: string[]; messages: Array<{ from: string; to: string; text: string; dashed: boolean }>; blocks: Array<{ kind: 'alt' | 'loop' | 'par'; label: string; start: number; end: number }> } | null {
@@ -610,7 +610,7 @@ function renderSequenceSvg(input: string, theme: DiagramTheme): string | null {
     lines.push(`<text x="${(x1 + x2) / 2}" y="${y - 8}" text-anchor="middle" font-size="12" fill="${primaryTextColor}">${escapeXml(msg.text)}</text>`)
   })
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="font-family:Inter,sans-serif">${bg.join('')}${lines.join('')}${labels.join('')}</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="font-family:'T2 Rooftop',system-ui,sans-serif">${bg.join('')}${lines.join('')}${labels.join('')}</svg>`
 }
 
 function parseBpmnData(text: string): { lanes: string[]; elements: Array<{ id: string; name: string; type: 'task' | 'event' | 'gateway'; lane: string }>; flows: Array<{ from: string; to: string; dashed: boolean; label: string }> } | null {
@@ -693,7 +693,7 @@ function renderBpmnSvg(input: string, theme: DiagramTheme): string | null {
     return `<polygon points="${el.x + 25},${el.y} ${el.x + 50},${el.y + 25} ${el.x + 25},${el.y + 50} ${el.x},${el.y + 25}" fill="${elementFill}" stroke="${elementStroke}" stroke-width="2"/><text x="${el.x + 25}" y="${el.y + 66}" text-anchor="middle" font-size="11" fill="${textColor}">${escapeXml(el.name)}</text>`
   }).join('')
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="font-family:Inter,sans-serif">${laneSvg}${flows}${elements}</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="font-family:'T2 Rooftop',system-ui,sans-serif">${laneSvg}${flows}${elements}</svg>`
 }
 
 function parseWaveData(text: string): { nodes: string[]; links: Array<{ source: string; target: string; value: number }> } | null {
@@ -776,7 +776,7 @@ function renderWaveSvg(input: string, theme: DiagramTheme): string | null {
     const color = colorByNode.get(name) ?? defaultColor
     return `<rect x="${pos.x}" y="${pos.y}" width="${nodeWidth}" height="${pos.h}" rx="4" fill="${color}"/><text x="${pos.x + nodeWidth / 2}" y="${pos.y + pos.h / 2 + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="${getContrastColor(color)}">${escapeXml(name)}</text>`
   }).join('')
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="font-family:Inter,sans-serif">${links}${nodes}</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="font-family:'T2 Rooftop',system-ui,sans-serif">${links}${nodes}</svg>`
 }
 
 function escapeHtml(text: string): string {
@@ -812,12 +812,12 @@ function mermaidThemeDirective(theme: DiagramTheme): string {
     return `%%{init: {"theme":"${theme}"}}%%`
   }
   if (theme === 'neon') {
-    return '%%{init: {"theme":"base","themeVariables":{"primaryColor":"#00F6FF","primaryTextColor":"#0b1020","primaryBorderColor":"#ff00ff","lineColor":"#8b5cf6","fontFamily":"Inter"}}}%%'
+    return '%%{init: {"theme":"base","themeVariables":{"primaryColor":"#16D5DF","primaryTextColor":"#000000","primaryBorderColor":"#FF3495","lineColor":"#3c7480","fontFamily":"T2 Rooftop"}}}%%'
   }
   if (theme === 'ocean') {
-    return '%%{init: {"theme":"base","themeVariables":{"primaryColor":"#bfdbfe","primaryTextColor":"#0f172a","primaryBorderColor":"#0369a1","lineColor":"#0ea5e9","fontFamily":"Inter"}}}%%'
+    return '%%{init: {"theme":"base","themeVariables":{"primaryColor":"#6fbed0","primaryTextColor":"#000000","primaryBorderColor":"#0fb8c2","lineColor":"#3c7480","fontFamily":"T2 Rooftop"}}}%%'
   }
-  return '%%{init: {"theme":"base","themeVariables":{"primaryColor":"#fce7f3","primaryTextColor":"#1f2937","primaryBorderColor":"#fb7185","lineColor":"#f59e0b","fontFamily":"Inter"}}}%%'
+  return '%%{init: {"theme":"base","themeVariables":{"primaryColor":"#e8f9ff","primaryTextColor":"#000000","primaryBorderColor":"#FF3495","lineColor":"#3c7480","fontFamily":"T2 Rooftop"}}}%%'
 }
 
 function normalizeMindmapSource(input: string): string {

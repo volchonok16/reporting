@@ -16,12 +16,14 @@ logger = logging.getLogger(__name__)
 WORKBOOK_B2B = "b2b"
 WORKBOOK_B2B_NEWS = "b2b-news"
 WORKBOOK_REVENUE_ACTIVITIES = "revenue-activities"
+WORKBOOK_GOV_INITIATIVES = "gov-initiatives"
 
 ALLOWED_WORKBOOKS = frozenset(
     {
         WORKBOOK_B2B,
         WORKBOOK_B2B_NEWS,
         WORKBOOK_REVENUE_ACTIVITIES,
+        WORKBOOK_GOV_INITIATIVES,
     }
 )
 

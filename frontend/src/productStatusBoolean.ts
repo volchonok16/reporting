@@ -2,7 +2,7 @@ import {
   displayCellText,
   splitCellWrapper,
   splitStyleSegments,
-} from './productStatusRichText'
+} from './productStatusRichTextUtils'
 
 /** Зелёная заливка «да» и красная «нет» — как в Google Sheets dropdown. */
 export const BOOLEAN_YES_BG = 'C6EFCE'

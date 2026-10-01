@@ -14,7 +14,7 @@ APP_PAGES: list[AppPageDef] = [
     {"page_key": "zni", "label": "ЗНИ", "sort_order": 10},
     {"page_key": "products", "label": "Продукты", "sort_order": 15},
     {"page_key": "product-status-b2b", "label": "Статус продукта B2B", "sort_order": 20},
-    {"page_key": "revenue-activities", "label": "Активности по выручкам", "sort_order": 30},
+    {"page_key": "gov-initiatives", "label": "Госинициативы", "sort_order": 35},
     {"page_key": "roadmap", "label": "Планы Digital", "sort_order": 40},
     {"page_key": "youjail-board", "label": "Доска", "sort_order": 50},
     {"page_key": "departments", "label": "Staffing", "sort_order": 60},

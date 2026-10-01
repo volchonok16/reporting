@@ -52,22 +52,14 @@
 
   .workbook-header {
     padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
+    padding-right: max(var(--page-gutter), env(safe-area-inset-right));
   }
 
   .workbook-tabs {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
+    flex-wrap: wrap;
+    overflow: visible;
     gap: 2px;
-    padding-bottom: 6px;
-    scroll-snap-type: x proximity;
-  }
-
-  .workbook-tabs::-webkit-scrollbar {
-    display: none;
+    padding-bottom: 0;
   }
 
   .workbook-tab {
@@ -75,13 +67,11 @@
     padding: 8px 14px 9px;
     font-size: 12px;
     white-space: nowrap;
-    scroll-snap-align: start;
     min-height: var(--mobile-tap-min);
   }
 
   .workbook-header-tools {
     flex: 0 0 auto;
-    margin-left: auto;
     padding-bottom: 6px;
     gap: 4px;
   }

@@ -138,7 +138,7 @@ def _load_session_meta_basic(
 def require_org_admin(meta: dict = Depends(_load_session_meta)) -> dict:
     if meta.get("app_role") == "roadmap":
         raise HTTPException(status_code=403, detail="Недостаточно прав.")
-    if meta.get("org_user_role") == "admin":
+    if meta.get("org_user_role") in {"admin", "superadmin"}:
         return meta
     if meta.get("auth_mode") == "app_user" and meta.get("app_role") == "full":
         return meta
@@ -256,9 +256,9 @@ def api_get_employee(
 def api_create_employee(
     data: EmployeeIn,
     db: Session = Depends(get_db),
-    _: dict = Depends(require_org_admin),
+    meta: dict = Depends(require_org_admin),
 ) -> EmployeeOut:
-    return create_employee(db, data)
+    return create_employee(db, data, allow_full_page_acl=meta.get("org_user_role") == "superadmin")
 
 
 @router.patch("/employees/{employee_ref}", response_model=EmployeeOut)
@@ -266,9 +266,14 @@ def api_update_employee(
     employee_ref: str,
     data: EmployeeUpdateIn,
     db: Session = Depends(get_db),
-    _: dict = Depends(require_org_admin),
+    meta: dict = Depends(require_org_admin),
 ) -> EmployeeOut:
-    return update_employee(db, employee_ref, data)
+    return update_employee(
+        db,
+        employee_ref,
+        data,
+        allow_full_page_acl=meta.get("org_user_role") == "superadmin",
+    )
 
 
 @router.delete("/employees/{employee_ref}")

@@ -96,7 +96,7 @@ export type EmployeeExpertise = {
 export type OrgUserBrief = {
   id: number
   email: string
-  role: 'user' | 'admin'
+  role: 'user' | 'admin' | 'superadmin'
   status: 'active' | 'inactive' | 'deleted'
   voiceOnly?: boolean
   voiceAdmin?: boolean
@@ -193,7 +193,7 @@ export type AppPage = {
 
 export type ProfileData = {
   email: string
-  role: 'user' | 'admin' | 'full' | 'roadmap'
+  role: 'user' | 'admin' | 'superadmin' | 'full' | 'roadmap'
   employee?: Employee | null
 }
 

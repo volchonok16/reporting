@@ -16,7 +16,7 @@ import {
 import ProductStatusReadonlyCellValue from './ProductStatusReadonlyCellValue'
 import ProductStatusRichText from './ProductStatusRichText'
 import { parseEmbeddedTableDoc } from './productStatusEmbeddedTable'
-import { displayCellText } from './productStatusRichText'
+import { displayCellText } from './productStatusRichTextUtils'
 import type { ChangeRequest } from './zniTypes'
 
 const PRODUCT_STATUS_SUMMARY_TITLE_KEY = '__summaryTitle'

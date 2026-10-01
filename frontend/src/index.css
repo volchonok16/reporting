@@ -25,6 +25,36 @@ body {
   display: grid;
   place-items: center;
   padding: 24px;
+  background-color: var(--bg-app);
+  background-image: url('/brand/Gradient_light.svg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+[data-theme='dark'] .login-page {
+  background-image: url('/brand/Gradient_dark.svg');
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.login-app-title {
+  margin: 0 0 8px;
+}
+
+.brand-logo-full {
+  display: block;
+  height: auto;
+  max-width: min(280px, 100%);
+  object-fit: contain;
+}
+
+.workbook-brand .brand-logo-full {
+  max-width: min(168px, 42vw);
 }
 
 .login-panel {
@@ -122,7 +152,7 @@ body {
 
 .btn-secondary {
   background: var(--surface-1);
-  border: 1px solid var(--border);
+  border: 1px solid var(--brand);
   color: var(--text-primary);
 }
 
@@ -152,26 +182,47 @@ body {
 .workbook-header {
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
   background: var(--bg-header);
   border-bottom: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
+  padding-right: var(--page-gutter);
+}
+
+.workbook-brand {
+  display: flex;
+  align-items: center;
+  flex: none;
+  margin-right: 4px;
+  padding-bottom: 8px;
+}
+
+.workbook-brand .brand-logo-mark {
+  display: block;
+  border-radius: 7px;
 }
 
 .workbook-tabs {
   display: flex;
+  flex: 1 1 auto;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 4px;
-  padding: 10px var(--page-gutter) 0;
+  min-width: 0;
+  padding: 10px 0 0 var(--page-gutter);
+  overflow: visible;
 }
 
 .workbook-header-tools {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-left: auto;
-  padding-bottom: 2px;
+  flex: none;
+  align-self: flex-end;
+  padding-bottom: 8px;
 }
 
 .workbook-header-account {
@@ -484,6 +535,7 @@ body {
 }
 
 .workbook-tab {
+  flex: 0 0 auto;
   padding: 9px 20px 10px;
   border: 1px solid transparent;
   border-bottom: none;
@@ -493,6 +545,7 @@ body {
   font: inherit;
   font-size: 13px;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
   transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
@@ -1983,7 +2036,7 @@ input.zni-field-overdue.zni-field-derived {
   align-items: stretch;
   position: fixed;
   right: max(12px, var(--page-gutter));
-  top: 64px;
+  top: calc(var(--workbook-header-offset, 56px) + 8px);
   z-index: 30;
   padding: 3px;
   border: 1px solid var(--border);
@@ -2188,6 +2241,29 @@ input.zni-field-overdue.zni-field-derived {
   border-collapse: collapse;
   table-layout: fixed;
   border: 1px solid var(--border);
+}
+
+.product-status-table--custom-widths {
+  min-width: 0;
+}
+
+.product-status-th-resizable {
+  position: relative;
+}
+
+.product-status-col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  z-index: 3;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.product-status-col-resize-handle:hover,
+body.product-status-col-resizing .product-status-col-resize-handle {
+  background: color-mix(in srgb, var(--brand-accent, #16d5df) 45%, transparent);
 }
 
 .product-status-table col.col-zni {
@@ -3111,12 +3187,40 @@ input.zni-field-overdue.zni-field-derived {
   width: 100%;
   border-collapse: collapse;
   border: 1px solid var(--border-strong);
+  table-layout: fixed;
 }
 
-.product-status-inline-table td {
+.product-status-inline-table--sized {
+  width: max-content;
+  min-width: 100%;
+}
+
+.product-status-inline-table td,
+.product-status-inline-table-td {
+  position: relative;
   border: 1px solid var(--border-strong);
   padding: 0;
   vertical-align: top;
+}
+
+.product-status-inline-col-resize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  z-index: 2;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.product-status-inline-col-resize:hover,
+body.product-status-col-resizing .product-status-inline-col-resize {
+  background: color-mix(in srgb, var(--brand-accent, #16d5df) 55%, transparent);
+}
+
+body.product-status-col-resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 .product-status-table .product-status-inline-table td {

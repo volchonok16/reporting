@@ -18,6 +18,7 @@ from app.app_page_service import (
 )
 from app.org_models import (
     ORG_USER_ROLE_ADMIN,
+    ORG_USER_ROLE_SUPERADMIN,
     ORG_USER_ROLE_USER,
     ORG_USER_STATUS_ACTIVE,
     ORG_USER_STATUS_DELETED,
@@ -74,7 +75,11 @@ DEFAULT_NEW_EMPLOYEE_PASSWORD = "12345678"
 
 
 def _user_role_label(role: int) -> str:
-    return "admin" if role == ORG_USER_ROLE_ADMIN else "user"
+    if role == ORG_USER_ROLE_SUPERADMIN:
+        return "superadmin"
+    if role == ORG_USER_ROLE_ADMIN:
+        return "admin"
+    return "user"
 
 
 def _user_status_label(status: int) -> str:
@@ -125,7 +130,9 @@ def _employee_out(db: Session, emp: Employee) -> EmployeeOut:
             voiceOnly=bool(emp.user.voice_only),
             voiceAdmin=bool(getattr(emp.user, "voice_admin", False)),
             planningAccess="planning" in allowed_page_keys,
-            allowedPageKeys=allowed_page_keys if is_other_user_employee(emp) else (
+            allowedPageKeys=allowed_page_keys if (
+                is_other_user_employee(emp) or any(key != "planning" for key in allowed_page_keys)
+            ) else (
                 ["planning"] if "planning" in allowed_page_keys else []
             ),
         )
@@ -478,7 +485,12 @@ def get_employee(db: Session, employee_ref: str) -> EmployeeDetailOut:
     )
 
 
-def create_employee(db: Session, data: EmployeeIn) -> EmployeeOut:
+def create_employee(
+    db: Session,
+    data: EmployeeIn,
+    *,
+    allow_full_page_acl: bool = False,
+) -> EmployeeOut:
     _validate_manager_cycle(db, 0, data.managerId)
     emp = Employee(
         full_name=data.fullName.strip(),
@@ -509,10 +521,10 @@ def create_employee(db: Session, data: EmployeeIn) -> EmployeeOut:
         voice_admin=data.userVoiceAdmin,
     )
     emp.user_id = user.id
-    page_keys = list(data.allowedPageKeys) if is_other_user_employee(emp) else []
+    page_keys = list(data.allowedPageKeys) if (is_other_user_employee(emp) or allow_full_page_acl) else []
     if data.userPlanningAccess and "planning" not in page_keys:
         page_keys.append("planning")
-    if is_other_user_employee(emp) or page_keys:
+    if is_other_user_employee(emp) or allow_full_page_acl or page_keys:
         set_user_page_access(db, user.id, page_keys)
     if data.departmentIds:
         _sync_employee_departments(db, emp.id, data.departmentIds)
@@ -520,7 +532,13 @@ def create_employee(db: Session, data: EmployeeIn) -> EmployeeOut:
     return get_employee(db, str(emp.public_id))
 
 
-def update_employee(db: Session, employee_ref: str, data: EmployeeUpdateIn) -> EmployeeOut:
+def update_employee(
+    db: Session,
+    employee_ref: str,
+    data: EmployeeUpdateIn,
+    *,
+    allow_full_page_acl: bool = False,
+) -> EmployeeOut:
     emp = resolve_employee(db, employee_ref)
     employee_id = emp.id
     if data.fullName is not None:
@@ -545,7 +563,7 @@ def update_employee(db: Session, employee_ref: str, data: EmployeeUpdateIn) -> E
     if data.hideFromPyramid is not None:
         emp.hide_from_pyramid = bool(data.hideFromPyramid)
         if emp.user:
-            if emp.hide_from_pyramid:
+            if emp.hide_from_pyramid or allow_full_page_acl:
                 keys = list(data.allowedPageKeys) if data.allowedPageKeys is not None else get_user_allowed_page_keys(db, emp.user.id)
                 if data.userPlanningAccess is True and "planning" not in keys:
                     keys.append("planning")
@@ -561,7 +579,9 @@ def update_employee(db: Session, employee_ref: str, data: EmployeeUpdateIn) -> E
                 clear_user_page_access(db, emp.user.id)
                 if keep_planning:
                     set_planning_page_access(db, emp.user.id, True)
-    elif data.allowedPageKeys is not None and emp.user and is_other_user_employee(emp):
+    elif data.allowedPageKeys is not None and emp.user and (
+        is_other_user_employee(emp) or allow_full_page_acl
+    ):
         keys = list(data.allowedPageKeys)
         if data.userPlanningAccess is True and "planning" not in keys:
             keys.append("planning")
@@ -571,7 +591,11 @@ def update_employee(db: Session, employee_ref: str, data: EmployeeUpdateIn) -> E
     elif data.userPlanningAccess is not None and emp.user and not is_other_user_employee(emp):
         set_planning_page_access(db, emp.user.id, bool(data.userPlanningAccess))
     if data.userIsAdmin is not None and emp.user:
-        emp.user.role = ORG_USER_ROLE_ADMIN if data.userIsAdmin else ORG_USER_ROLE_USER
+        # Суперадмин назначается только через БД; UI не может выдать/снять эту роль.
+        if emp.user.role == ORG_USER_ROLE_SUPERADMIN:
+            pass
+        else:
+            emp.user.role = ORG_USER_ROLE_ADMIN if data.userIsAdmin else ORG_USER_ROLE_USER
     if data.userVoiceOnly is not None and emp.user:
         emp.user.voice_only = bool(data.userVoiceOnly)
     if data.userVoiceAdmin is not None and emp.user:
@@ -1033,7 +1057,7 @@ def load_profile(db: Session, *, org_user_id: int | None, app_login: str | None,
         user = db.get(OrgUser, org_user_id)
         if user:
             email = user.email
-            role = "admin" if user.role == ORG_USER_ROLE_ADMIN else "user"
+            role = _user_role_label(user.role)
             emp = get_employee_for_org_user(db, org_user_id)
             if emp:
                 employee_out = get_employee(db, str(emp.public_id))

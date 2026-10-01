@@ -12,6 +12,7 @@ import {
 
 type ProductStatusB2BProps = {
   canManageOrg?: boolean
+  isSuperAdmin?: boolean
 }
 
 function B2bTitleSwitcher({
@@ -52,7 +53,10 @@ function B2bTitleSwitcher({
   )
 }
 
-export default function ProductStatusB2B({ canManageOrg = false }: ProductStatusB2BProps) {
+export default function ProductStatusB2B({
+  canManageOrg = false,
+  isSuperAdmin = false,
+}: ProductStatusB2BProps) {
   const [panel, setPanel] = useState<B2bPanelId>(() => loadB2bPanel())
 
   useEffect(() => {
@@ -85,6 +89,7 @@ export default function ProductStatusB2B({ canManageOrg = false }: ProductStatus
           enableHistory={canManageOrg}
           canEditAdminColumns={canManageOrg}
           enableOfficeEditLock={canManageOrg}
+          bypassOfficeEditLock={isSuperAdmin}
           commitOnRefresh
         />
       ) : null}

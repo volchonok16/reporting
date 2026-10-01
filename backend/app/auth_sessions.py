@@ -135,25 +135,87 @@ def _empty_session_meta() -> dict:
     }
 
 
-def get_session_meta(session_id: str | None) -> dict:
-    payload = _load_session_payload(session_id)
-    if payload is None:
-        return _empty_session_meta()
-    return _session_meta_from_payload(payload)
+def _resolve_org_user_role_label(role: int | None) -> str | None:
+    from app.org_models import ORG_USER_ROLE_ADMIN, ORG_USER_ROLE_SUPERADMIN
 
-
-def get_session(session_id: str | None) -> TfsAuth | None:
-    payload = _load_session_payload(session_id)
-    if payload is None:
+    if role == ORG_USER_ROLE_SUPERADMIN:
+        return "superadmin"
+    if role == ORG_USER_ROLE_ADMIN:
+        return "admin"
+    if role is None:
         return None
-    return _auth_from_payload(payload)
+    return "user"
+
+
+def _refresh_org_user_flags(payload: dict) -> dict:
+    """Подтягивает role / voice_* из БД, чтобы смена роли без повторного логина работала."""
+    org_user_id = payload.get("org_user_id")
+    if org_user_id is None:
+        return payload
+    try:
+        user_id = int(org_user_id)
+    except (TypeError, ValueError):
+        return payload
+
+    db = SessionLocal()
+    try:
+        from app.org_models import OrgUser
+
+        org_user = db.get(OrgUser, user_id)
+        if org_user is None:
+            return payload
+        role_label = _resolve_org_user_role_label(int(org_user.role))
+        voice_only = bool(getattr(org_user, "voice_only", False))
+        voice_admin = bool(getattr(org_user, "voice_admin", False))
+        if (
+            payload.get("org_user_role") == role_label
+            and bool(payload.get("voice_only")) == voice_only
+            and bool(payload.get("voice_admin")) == voice_admin
+        ):
+            return payload
+        next_payload = dict(payload)
+        next_payload["org_user_role"] = role_label
+        next_payload["voice_only"] = voice_only
+        next_payload["voice_admin"] = voice_admin
+        return next_payload
+    finally:
+        db.close()
+
+
+def _persist_session_payload(session_id: str, payload: dict) -> None:
+    db = SessionLocal()
+    try:
+        row = db.get(AuthSession, session_id)
+        if row is None:
+            return
+        row.payload = payload
+        db.commit()
+    finally:
+        db.close()
 
 
 def get_session_with_meta(session_id: str | None) -> tuple[TfsAuth | None, dict]:
     payload = _load_session_payload(session_id)
     if payload is None:
         return None, _empty_session_meta()
-    return _auth_from_payload(payload), _session_meta_from_payload(payload)
+    refreshed = _refresh_org_user_flags(payload)
+    if refreshed is not payload and session_id:
+        try:
+            _persist_session_payload(session_id, refreshed)
+        except Exception:
+            # Не блокируем запрос, если не удалось записать обновлённую сессию.
+            pass
+    return _auth_from_payload(refreshed), _session_meta_from_payload(refreshed)
+
+
+def get_session_meta(session_id: str | None) -> dict:
+    _, meta = get_session_with_meta(session_id)
+    return meta
+
+
+def get_session(session_id: str | None) -> TfsAuth | None:
+    auth, _ = get_session_with_meta(session_id)
+    return auth
 
 
 def delete_session(session_id: str | None) -> None:

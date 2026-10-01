@@ -55,6 +55,16 @@ def read_row_cell(row: dict[str, Any], column: str, *, normalize_cells) -> str:
     return cells.get(column, "")
 
 
+_ALLOWED_CELL_TABLES = frozenset(
+    {
+        "b2b_product_status_row",
+        "b2b_news_row",
+        "revenue_activity_row",
+        "gov_initiative_row",
+    }
+)
+
+
 def fetch_row_cell(
     db: Session,
     *,
@@ -63,7 +73,7 @@ def fetch_row_cell(
     column: str,
     normalize_cells,
 ) -> str | None:
-    if table not in {"b2b_product_status_row", "b2b_news_row", "revenue_activity_row"}:
+    if table not in _ALLOWED_CELL_TABLES:
         raise ValueError(f"Unsupported table: {table}")
     result = db.execute(
         text(f"SELECT cells FROM {table} WHERE id = :row_id"),
@@ -88,7 +98,7 @@ def update_row_cell_if_expected(
     new_value: str,
     updated_at: datetime | None = None,
 ) -> bool:
-    if table not in {"b2b_product_status_row", "b2b_news_row", "revenue_activity_row"}:
+    if table not in _ALLOWED_CELL_TABLES:
         raise ValueError(f"Unsupported table: {table}")
     if parent_column not in {"office_id", "section_id"}:
         raise ValueError(f"Unsupported parent column: {parent_column}")

@@ -1,13 +1,9 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono } from "next/font/google";
 import { AuthProvider } from "./auth-provider";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["cyrillic", "latin"],
-});
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["cyrillic", "latin"],
@@ -33,8 +29,8 @@ export async function generateMetadata(): Promise<Metadata> {
     title,
     description,
     icons: {
-      icon: "/favicon.svg",
-      shortcut: "/favicon.svg",
+      icon: "/brand/T2_B2B_Avatar.svg",
+      shortcut: "/brand/T2_B2B_Avatar.svg",
     },
     openGraph: {
       title,
@@ -69,10 +65,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
       </head>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable}`}
-        suppressHydrationWarning
-      >
+      <body className={geistMono.variable} suppressHydrationWarning>
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

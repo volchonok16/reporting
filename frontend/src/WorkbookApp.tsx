@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch, clearSessionId, getJson } from './api'
 import Dashboard from './Dashboard'
 import Products from './Products'
 import DiagramBuilder from './DiagramBuilder'
 import ProductStatusB2B from './ProductStatusB2B'
-import RevenueActivities from './RevenueActivities'
+import GovInitiatives from './GovInitiatives'
 import Roadmap from './Roadmap'
 import YouJailBoard from './YouJailBoard'
 import Departments from './org/Departments'
@@ -14,6 +14,7 @@ import EmployeeProfile from './org/EmployeeProfile'
 import OrgPhoto from './org/OrgPhoto'
 import ThemeToggle from './ThemeToggle'
 import NotificationBell from './NotificationBell'
+import BrandLogo from './BrandLogo'
 import type { AppRole } from './App'
 import { loadActiveSheet, saveActiveSheet, saveDashboardSearch, type SheetId } from './uiState'
 import { setBoardDisplayLabels } from './zniDisplay'
@@ -27,7 +28,7 @@ const SHEETS: SheetTab[] = [
   { id: 'zni', label: 'ЗНИ' },
   { id: 'products', label: 'Продукты' },
   { id: 'product-status-b2b', label: 'Статус продукта B2B' },
-  { id: 'revenue-activities', label: 'Активности по выручкам' },
+  { id: 'gov-initiatives', label: 'Госинициативы' },
   { id: 'roadmap', label: 'Планы Digital' },
   { id: 'youjail-board', label: 'Доска' },
   { id: 'departments', label: 'Staffing' },
@@ -40,9 +41,11 @@ type WorkbookAppProps = {
   appRole: AppRole
   canSyncTfs: boolean
   canManageOrg: boolean
+  isSuperAdmin: boolean
   voiceOnly: boolean
   planningAccess: boolean
   otherUser: boolean
+  pageAccessRestricted: boolean
   allowedPageKeys: string[]
   orgUserId: number | null
   orgEmployeeId: number | null
@@ -56,9 +59,11 @@ export default function WorkbookApp({
   appRole,
   canSyncTfs,
   canManageOrg,
+  isSuperAdmin,
   voiceOnly,
   planningAccess,
   otherUser,
+  pageAccessRestricted,
   allowedPageKeys,
   orgUserId,
   orgEmployeeId,
@@ -68,6 +73,10 @@ export default function WorkbookApp({
   onLogout,
 }: WorkbookAppProps) {
   const visibleSheets = useMemo(() => {
+    // Суперадмин — все вкладки.
+    if (isSuperAdmin) {
+      return SHEETS
+    }
     // «Voice сервисы»: только вкладка Voice. Без флага — все обычные вкладки + Voice.
     if (voiceOnly) {
       return SHEETS.filter((sheet) => sheet.id === 'voice')
@@ -89,12 +98,21 @@ export default function WorkbookApp({
     if (!planningAccess) {
       sheets = sheets.filter((sheet) => sheet.id !== 'planning')
     }
-    if (otherUser) {
+    if (otherUser || pageAccessRestricted) {
       const allowed = new Set(allowedPageKeys)
       sheets = sheets.filter((sheet) => allowed.has(sheet.id))
     }
     return sheets
-  }, [appRole, canSyncTfs, voiceOnly, planningAccess, otherUser, allowedPageKeys])
+  }, [
+    appRole,
+    canSyncTfs,
+    voiceOnly,
+    planningAccess,
+    otherUser,
+    pageAccessRestricted,
+    allowedPageKeys,
+    isSuperAdmin,
+  ])
   const visibleSheetIds = useMemo(() => new Set(visibleSheets.map((sheet) => sheet.id)), [visibleSheets])
   const [activeSheet, setActiveSheet] = useState<SheetId>(() => {
     const saved = loadActiveSheet()
@@ -113,6 +131,7 @@ export default function WorkbookApp({
     return candidate
   })
   const [profileOpen, setProfileOpen] = useState(false)
+  const headerRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     if (!visibleSheetIds.has(activeSheet)) {
@@ -133,6 +152,21 @@ export default function WorkbookApp({
       })
   }, [voiceOnly])
 
+  useEffect(() => {
+    const el = headerRef.current
+    if (!el) return
+    const syncOffset = () => {
+      document.documentElement.style.setProperty('--workbook-header-offset', `${el.offsetHeight}px`)
+    }
+    syncOffset()
+    const ro = new ResizeObserver(syncOffset)
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+      document.documentElement.style.removeProperty('--workbook-header-offset')
+    }
+  }, [voiceOnly, visibleSheets.length])
+
   const handleLogout = async () => {
     await apiFetch('/api/auth/logout', { method: 'POST' })
     clearSessionId()
@@ -141,8 +175,13 @@ export default function WorkbookApp({
 
   return (
     <div className={`workbook${voiceOnly ? ' workbook-voice-only' : ''}`}>
-      <header className="workbook-header">
+      <header ref={headerRef} className="workbook-header">
         <nav className="workbook-tabs" aria-label="Вкладки книги">
+          {!voiceOnly ? (
+            <div className="workbook-brand" aria-hidden="true">
+              <BrandLogo variant="mark" height={26} />
+            </div>
+          ) : null}
           {voiceOnly ? (
             <span className="workbook-tab workbook-tab-active workbook-voice-title" aria-current="page">
               Voice
@@ -160,34 +199,34 @@ export default function WorkbookApp({
               </button>
             ))
           )}
-          <div className="workbook-header-tools">
-            <ThemeToggle compact />
-            <NotificationBell canManageOrg={canManageOrg} enabled={orgUserId != null} />
-            <div className="workbook-header-account">
-              {!voiceOnly ? (
-                <button
-                  type="button"
-                  className="workbook-tab workbook-profile-btn"
-                  onClick={() => setProfileOpen(true)}
-                  title="Личный кабинет"
-                >
-                  <OrgPhoto
-                    url={orgEmployeePhotoUrl}
-                    name={accountLabel ?? 'Пользователь'}
-                    className="workbook-header-avatar-img"
-                    placeholderClassName="workbook-header-avatar"
-                  />
-                  <span className="workbook-profile-label">{accountLabel ?? 'Пользователь'}</span>
-                </button>
-              ) : (
-                <span className="workbook-profile-label">{accountLabel ?? 'Пользователь'}</span>
-              )}
-              <button type="button" className="workbook-tab" onClick={() => void handleLogout()}>
-                Выйти
-              </button>
-            </div>
-          </div>
         </nav>
+        <div className="workbook-header-tools">
+          <ThemeToggle compact />
+          <NotificationBell canManageOrg={canManageOrg} enabled={orgUserId != null} />
+          <div className="workbook-header-account">
+            {!voiceOnly ? (
+              <button
+                type="button"
+                className="workbook-tab workbook-profile-btn"
+                onClick={() => setProfileOpen(true)}
+                title="Личный кабинет"
+              >
+                <OrgPhoto
+                  url={orgEmployeePhotoUrl}
+                  name={accountLabel ?? 'Пользователь'}
+                  className="workbook-header-avatar-img"
+                  placeholderClassName="workbook-header-avatar"
+                />
+                <span className="workbook-profile-label">{accountLabel ?? 'Пользователь'}</span>
+              </button>
+            ) : (
+              <span className="workbook-profile-label">{accountLabel ?? 'Пользователь'}</span>
+            )}
+            <button type="button" className="workbook-tab" onClick={() => void handleLogout()}>
+              Выйти
+            </button>
+          </div>
+        </div>
       </header>
 
       <div className="workbook-content">
@@ -210,13 +249,17 @@ export default function WorkbookApp({
           </div>
         ) : activeSheet === 'departments' ? (
           <div className="app">
-            <Departments canManage={canManageOrg} orgEmployeeId={orgEmployeeId} />
+            <Departments
+              canManage={canManageOrg}
+              isSuperAdmin={isSuperAdmin}
+              orgEmployeeId={orgEmployeeId}
+            />
           </div>
         ) : activeSheet === 'diagrams' ? (
           <DiagramBuilder />
-        ) : activeSheet === 'revenue-activities' ? (
+        ) : activeSheet === 'gov-initiatives' ? (
           <div className="app">
-            <RevenueActivities canManageOrg={canManageOrg} />
+            <GovInitiatives canManageOrg={canManageOrg} />
           </div>
         ) : activeSheet === 'planning' ? (
           <div className="app">
@@ -231,7 +274,7 @@ export default function WorkbookApp({
           <Voice />
         ) : (
           <div className="app">
-            <ProductStatusB2B canManageOrg={canManageOrg} />
+            <ProductStatusB2B canManageOrg={canManageOrg} isSuperAdmin={isSuperAdmin} />
           </div>
         )}
       </div>

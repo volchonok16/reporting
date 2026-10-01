@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from app.app_access import can_manage_org, has_planning_access, is_roadmap_role, is_voice_only, sync_board_denied_reason
+from app.app_access import can_manage_org, has_planning_access, is_roadmap_role, is_superadmin_user, is_voice_only, sync_board_denied_reason
 from app.app_page_service import get_user_allowed_page_keys, is_other_user_employee, sync_app_pages
 from app.auth_service import login_with_app_user, login_with_pat
 from app.auth_sessions import delete_session, get_session, get_session_with_meta
@@ -42,6 +42,14 @@ from app.revenue_activities_service import (
     restore_revenue_activity_snapshot,
     save_revenue_activities_to_db,
 )
+from app.gov_initiatives_service import (
+    delete_gov_initiative_row,
+    load_gov_initiatives,
+    load_gov_initiatives_history,
+    load_gov_initiatives_snapshots,
+    restore_gov_initiative_snapshot,
+    save_gov_initiatives_to_db,
+)
 from app.b2b_product_status_db import (
     delete_b2b_product_status_row,
     load_b2b_product_status_history,
@@ -53,10 +61,12 @@ from app.b2b_product_status_db import (
 from app.product_status_service import load_b2b_product_status
 from app.product_status_excel import generate_b2b_product_status_excel
 from app.revenue_activities_excel import generate_revenue_activities_excel
+from app.gov_initiatives_excel import generate_gov_initiatives_excel
 from app.product_status_presentation import generate_b2b_product_status_presentation
 from app.product_status_live import (
     WORKBOOK_B2B,
     WORKBOOK_B2B_NEWS,
+    WORKBOOK_GOV_INITIATIVES,
     WORKBOOK_REVENUE_ACTIVITIES,
     gids_from_save_payload,
     notify_product_status_saved,
@@ -202,7 +212,7 @@ def _can_sync_tfs(auth: TfsAuth | None, meta: dict) -> bool:
         return False
     if meta.get("auth_mode") == "pat":
         return True
-    return meta.get("org_user_role") == "admin"
+    return meta.get("org_user_role") in {"admin", "superadmin"}
 
 
 @app.get("/api/health")
@@ -223,7 +233,7 @@ def voice_sso_token(
         login = "user@reporting.local"
     if "@" not in login:
         login = f"{login}@reporting.local"
-    is_admin = meta.get("org_user_role") == "admin" or meta.get("auth_mode") == "pat"
+    is_admin = meta.get("org_user_role") in {"admin", "superadmin"} or meta.get("auth_mode") == "pat"
     voice_admin = bool(meta.get("voice_admin"))
     if meta.get("org_user_id") is not None and not voice_admin:
         # Подтянуть актуальный флаг из БД (если сессия создана до назначения роли).
@@ -264,13 +274,15 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
     app_role = meta.get("app_role") or "full"
     auth_mode = meta.get("auth_mode")
     voice_only_flag = is_voice_only(meta)
-    can_sync_tfs = False if voice_only_flag else _can_sync_tfs(auth, meta)
-    can_manage_org_flag = False if voice_only_flag else can_manage_org(meta)
+    superadmin_flag = is_superadmin_user(meta)
+    can_sync_tfs = False if (voice_only_flag and not superadmin_flag) else _can_sync_tfs(auth, meta)
+    can_manage_org_flag = False if (voice_only_flag and not superadmin_flag) else can_manage_org(meta)
     org_user_id = int(meta["org_user_id"]) if meta.get("org_user_id") else None
     org_employee_id: int | None = None
     org_employee_name: str | None = None
     org_employee_photo_url: str | None = None
     other_user_flag = False
+    page_access_restricted = False
     planning_access_flag = False
     allowed_page_keys: list[str] = []
     if org_user_id is not None:
@@ -278,8 +290,8 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
         try:
             org_user = db.get(OrgUser, org_user_id)
             if org_user is not None:
-                voice_only_flag = bool(org_user.voice_only)
-                if voice_only_flag:
+                voice_only_flag = bool(org_user.voice_only) and not superadmin_flag
+                if voice_only_flag and not superadmin_flag:
                     can_sync_tfs = False
                     can_manage_org_flag = False
             emp = get_employee_for_org_user(db, org_user_id)
@@ -288,9 +300,17 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
                 org_employee_name = emp.full_name
                 org_employee_photo_url = photo_public_url(emp.photo_path)
                 other_user_flag = is_other_user_employee(emp)
-                if other_user_flag:
-                    allowed_page_keys = get_user_allowed_page_keys(db, org_user_id)
-            planning_access_flag = False if voice_only_flag else has_planning_access(db, meta)
+                allowed_page_keys = get_user_allowed_page_keys(db, org_user_id)
+                page_access_restricted = (not superadmin_flag) and (
+                    other_user_flag or any(key != "planning" for key in allowed_page_keys)
+                )
+                if not page_access_restricted:
+                    allowed_page_keys = ["planning"] if "planning" in allowed_page_keys else []
+            planning_access_flag = (
+                True
+                if superadmin_flag
+                else (False if voice_only_flag else has_planning_access(db, meta))
+            )
         finally:
             close_db_session(db)
     else:
@@ -304,10 +324,12 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
         appRole=app_role,  # type: ignore[arg-type]
         canSyncTfs=can_sync_tfs,
         canManageOrg=can_manage_org_flag,
-        voiceOnly=voice_only_flag,
+        isSuperAdmin=superadmin_flag,
+        voiceOnly=voice_only_flag and not superadmin_flag,
         otherUser=other_user_flag,
+        pageAccessRestricted=page_access_restricted,
         planningAccess=planning_access_flag,
-        allowedPageKeys=allowed_page_keys,
+        allowedPageKeys=allowed_page_keys if page_access_restricted or other_user_flag else allowed_page_keys,
         orgUserId=org_user_id,
         orgEmployeeId=org_employee_id,
         orgEmployeeName=org_employee_name,
@@ -970,6 +992,127 @@ def revenue_activities_restore_snapshot(
     restore_revenue_activity_snapshot(db, snapshot_id=snapshot_id, gid=gid, meta=meta)
     notify_product_status_saved(
         workbook=WORKBOOK_REVENUE_ACTIVITIES,
+        gids=[gid],
+        changed_by=_live_changed_by(meta),
+        origin_connection_id=x_live_connection_id,
+    )
+    return {"status": "ok"}
+
+
+@app.get("/api/gov-initiatives", response_model=ProductStatusB2BOut)
+def gov_initiatives(
+    gid: str | None = Query(default=None),
+    meta_only: bool = Query(default=False),
+    refresh: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_full_app_access),
+) -> ProductStatusB2BOut:
+    del refresh
+    return load_gov_initiatives(
+        db=db,
+        gid=gid,
+        meta_only=meta_only,
+    )
+
+
+@app.get("/api/gov-initiatives/excel")
+def gov_initiatives_excel(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_full_app_access),
+) -> Response:
+    content, filename = generate_gov_initiatives_excel(load_gov_initiatives(db=db))
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/api/gov-initiatives/excel")
+def gov_initiatives_excel_from_payload(
+    payload: ProductStatusB2BOut,
+    _: None = Depends(require_full_app_access),
+) -> Response:
+    content, filename = generate_gov_initiatives_excel(payload)
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/api/gov-initiatives/save")
+def gov_initiatives_save(
+    payload: ProductStatusSaveIn,
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
+    _: None = Depends(require_full_app_access),
+) -> dict[str, str]:
+    _, meta = get_session_with_meta(x_session_id)
+    save_gov_initiatives_to_db(db, payload, meta=meta)
+    notify_product_status_saved(
+        workbook=WORKBOOK_GOV_INITIATIVES,
+        gids=gids_from_save_payload(payload),
+        changed_by=_live_changed_by(meta),
+        origin_connection_id=x_live_connection_id,
+    )
+    return {"status": "ok"}
+
+
+@app.delete("/api/gov-initiatives/rows/{row_id}")
+def gov_initiatives_delete_row(
+    row_id: int,
+    gid: str = Query(...),
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
+    _: None = Depends(require_full_app_access),
+) -> dict[str, str]:
+    _, meta = get_session_with_meta(x_session_id)
+    delete_gov_initiative_row(db, gid=gid, row_id=row_id, meta=meta)
+    notify_product_status_saved(
+        workbook=WORKBOOK_GOV_INITIATIVES,
+        gids=[gid],
+        changed_by=_live_changed_by(meta),
+        origin_connection_id=x_live_connection_id,
+    )
+    return {"status": "ok"}
+
+
+@app.get("/api/gov-initiatives/history", response_model=ProductStatusHistoryOut)
+def gov_initiatives_history(
+    gid: str = Query(...),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_org_manage_access),
+) -> ProductStatusHistoryOut:
+    return load_gov_initiatives_history(db, gid=gid, limit=limit)
+
+
+@app.get("/api/gov-initiatives/snapshots", response_model=ProductStatusSnapshotsOut)
+def gov_initiatives_snapshots(
+    gid: str = Query(...),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_org_manage_access),
+) -> ProductStatusSnapshotsOut:
+    return load_gov_initiatives_snapshots(db, gid=gid, limit=limit)
+
+
+@app.post("/api/gov-initiatives/snapshots/{snapshot_id}/restore")
+def gov_initiatives_restore_snapshot(
+    snapshot_id: int,
+    gid: str = Query(...),
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
+    _: None = Depends(require_org_manage_access),
+) -> dict[str, str]:
+    _, meta = get_session_with_meta(x_session_id)
+    restore_gov_initiative_snapshot(db, snapshot_id=snapshot_id, gid=gid, meta=meta)
+    notify_product_status_saved(
+        workbook=WORKBOOK_GOV_INITIATIVES,
         gids=[gid],
         changed_by=_live_changed_by(meta),
         origin_connection_id=x_live_connection_id,

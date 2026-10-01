@@ -7,7 +7,7 @@ from app.auth_sessions import create_session
 from app.config import settings
 from app.db import SessionLocal
 from app.http_auth import auth_attempts
-from app.org_models import ORG_USER_ROLE_ADMIN
+from app.org_models import ORG_USER_ROLE_ADMIN, ORG_USER_ROLE_SUPERADMIN
 from app.org_service import find_org_user_by_email, verify_org_user_password
 from app.schemas import AuthLoginOut
 from app.tfs_auth import TfsAuth, build_tfs_auth
@@ -97,7 +97,12 @@ async def login_with_app_user(
             if not verify_org_user_password(org_user, password):
                 raise HTTPException(status_code=401, detail="Неверный логин или пароль.")
             org_user_id = org_user.id
-            org_user_role = "admin" if org_user.role == ORG_USER_ROLE_ADMIN else "user"
+            if org_user.role == ORG_USER_ROLE_SUPERADMIN:
+                org_user_role = "superadmin"
+            elif org_user.role == ORG_USER_ROLE_ADMIN:
+                org_user_role = "admin"
+            else:
+                org_user_role = "user"
             voice_only = bool(getattr(org_user, "voice_only", False))
             voice_admin = bool(getattr(org_user, "voice_admin", False))
             app_login = org_user.email

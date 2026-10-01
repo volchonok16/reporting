@@ -34,6 +34,7 @@ import './org.css'
 
 type DepartmentsProps = {
   canManage: boolean
+  isSuperAdmin?: boolean
   orgEmployeeId: number | null
 }
 
@@ -165,6 +166,7 @@ const EMPTY_EMPLOYEE = {
   createUserAccount: true,
   userPassword: '12345678',
   userIsAdmin: false,
+  userIsSuperAdmin: false,
   userVoiceOnly: false,
   userVoiceAdmin: false,
   userPlanningAccess: false,
@@ -187,7 +189,11 @@ const EMPTY_MEMBER = {
   sortOrder: '0',
 }
 
-export default function Departments({ canManage, orgEmployeeId }: DepartmentsProps) {
+export default function Departments({
+  canManage,
+  isSuperAdmin = false,
+  orgEmployeeId,
+}: DepartmentsProps) {
   const savedOrgUi = loadOrgUiState()
   const [panel, setPanel] = useState<OrgPanel>(() => savedOrgUi.panel)
   const [departments, setDepartments] = useState<Department[]>([])
@@ -640,7 +646,8 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       allowedPageKeys: emp.allowedPageKeys ?? emp.user?.allowedPageKeys ?? [],
       createUserAccount: false,
       userPassword: '',
-      userIsAdmin: emp.user?.role === 'admin',
+      userIsAdmin: emp.user?.role === 'admin' || emp.user?.role === 'superadmin',
+      userIsSuperAdmin: emp.user?.role === 'superadmin',
       userVoiceOnly: Boolean(emp.user?.voiceOnly),
       userVoiceAdmin: Boolean(emp.user?.voiceAdmin),
       userPlanningAccess: Boolean(
@@ -699,11 +706,14 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
       isActive: employeeForm.isActive,
       isOrganizationHead: employeeForm.isOrganizationHead,
       hideFromPyramid: employeeForm.hideFromPyramid,
-      allowedPageKeys: employeeForm.hideFromPyramid
-        ? employeeForm.userPlanningAccess
-          ? Array.from(new Set([...employeeForm.allowedPageKeys, 'planning']))
-          : employeeForm.allowedPageKeys.filter((key) => key !== 'planning')
-        : [],
+      allowedPageKeys:
+        employeeForm.hideFromPyramid || isSuperAdmin
+          ? employeeForm.userPlanningAccess
+            ? Array.from(new Set([...employeeForm.allowedPageKeys, 'planning']))
+            : employeeForm.allowedPageKeys.filter((key) => key !== 'planning')
+          : employeeForm.userPlanningAccess
+            ? ['planning']
+            : [],
       createUserAccount: true,
       userPassword: '12345678',
       userIsAdmin: employeeForm.userIsAdmin,
@@ -1603,7 +1613,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                     «Сотрудники в офисе»; в списке сотрудников остаётся только в подразделе «Другие сотрудники».
                     Для таких учётных записей можно ограничить доступ к вкладкам приложения.
                   </p>
-                  {employeeForm.hideFromPyramid ? (
+                  {employeeForm.hideFromPyramid || isSuperAdmin ? (
                     <label>
                       Доступ к страницам
                       <AppPageMultiSelect
@@ -1632,6 +1642,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                       <input
                         type="checkbox"
                         checked={employeeForm.userIsAdmin}
+                        disabled={employeeForm.userIsSuperAdmin}
                         onChange={(e) =>
                           setEmployeeForm({ ...employeeForm, userIsAdmin: e.target.checked })
                         }
@@ -1697,6 +1708,7 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                         <input
                           type="checkbox"
                           checked={employeeForm.userIsAdmin}
+                          disabled={employeeForm.userIsSuperAdmin}
                           onChange={(e) =>
                             setEmployeeForm({ ...employeeForm, userIsAdmin: e.target.checked })
                           }
@@ -1740,7 +1752,8 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                         />
                         Администратор Voice
                       </label>
-                      <label>
+                    </div>
+                    <label>
                         Новый пароль (сброс)
                         <div className="org-password-reset-actions">
                           <input
@@ -1760,7 +1773,6 @@ export default function Departments({ canManage, orgEmployeeId }: DepartmentsPro
                           </button>
                         </div>
                       </label>
-                    </div>
                   </section>
                 ) : null}
               </div>

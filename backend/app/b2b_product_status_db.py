@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.app_access import can_manage_org
+from app.app_access import can_manage_org, is_superadmin_user
 from app.config import settings
 from app.product_status_rich_text import display_cell_text, parse_embedded_table_doc
 from app.product_status_save_helpers import (
@@ -453,8 +453,8 @@ def _resolve_changed_by(meta: dict[str, Any]) -> str | None:
     return None
 
 
-def _assert_office_editable(office: dict[str, Any]) -> None:
-    if bool(office.get("editing_locked")):
+def _assert_office_editable(office: dict[str, Any], meta: dict[str, Any] | None = None) -> None:
+    if bool(office.get("editing_locked")) and not is_superadmin_user(meta):
         raise HTTPException(
             status_code=403,
             detail=(
@@ -531,7 +531,7 @@ def save_b2b_product_status_to_db(
         office = _load_office(db, gid=gid)
         if office is None:
             raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
-        _assert_office_editable(office)
+        _assert_office_editable(office, meta)
 
         updates = updates_by_gid.get(gid, [])
         for update in updates:
@@ -767,7 +767,7 @@ def delete_b2b_product_status_row(
                 detail="Вкладка «Сводка» только для чтения.",
             )
         raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
-    _assert_office_editable(office)
+    _assert_office_editable(office, meta)
 
     office_id = int(office["id"])
     rows = _load_office_rows(db, office_id=office_id)
@@ -882,7 +882,7 @@ def restore_b2b_product_status_snapshot(
     office = _load_office(db, gid=gid)
     if office is None:
         raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
-    _assert_office_editable(office)
+    _assert_office_editable(office, meta)
 
     office_id = int(office["id"])
     office_name = str(office["name"])

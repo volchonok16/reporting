@@ -287,6 +287,15 @@
 | `revenue_activity_history` | `section_id`, `row_id`, `action` | Журнал create/update/delete/restore |
 | `revenue_activity_snapshot` | `section_id`, `rows`, `changed_by` | Снимок для отката версии |
 
+## gov_initiative_* — госинициативы
+
+| Таблица | Ключевые поля | Назначение |
+|--------|---------------|------------|
+| `gov_initiative_section` | `gid`, `name`, `sort_order` | Вкладка `main` («Госинициативы») |
+| `gov_initiative_row` | `section_id`, `sort_order`, `cells` | Закон / Описание / Номер ЗнИ / Статус |
+| `gov_initiative_history` | `section_id`, `row_id`, `action` | Журнал изменений |
+| `gov_initiative_snapshot` | `section_id`, `rows`, `changed_by` | Снимок для отката |
+
 ## schema_migration — журнал SQL-миграций
 
 | Таблица | Ключевые поля | Назначение |

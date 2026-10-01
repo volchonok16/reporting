@@ -40,8 +40,10 @@ class TfsAuthStatusOut(BaseModel):
     appRole: Literal["full", "roadmap"] = "full"
     canSyncTfs: bool = False
     canManageOrg: bool = False
+    isSuperAdmin: bool = False
     voiceOnly: bool = False
     otherUser: bool = False
+    pageAccessRestricted: bool = False
     planningAccess: bool = False
     allowedPageKeys: list[str] = Field(default_factory=list)
     orgUserId: int | None = None

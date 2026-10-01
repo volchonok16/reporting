@@ -8,7 +8,7 @@ import {
   splitStyleSegments,
   type CellStyle,
   type TextStyleSegment,
-} from './productStatusRichText'
+} from './productStatusRichTextUtils'
 
 type ProductStatusRichTextProps = {
   value: string

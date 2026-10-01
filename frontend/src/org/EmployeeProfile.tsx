@@ -10,7 +10,7 @@ const APP_PAGE_LABELS: Record<string, string> = {
   zni: 'ЗНИ',
   products: 'Продукты',
   'product-status-b2b': 'Статус продукта B2B',
-  'revenue-activities': 'Активности по выручкам',
+  'gov-initiatives': 'Госинициативы',
   roadmap: 'Планы Digital',
   'youjail-board': 'Доска',
   departments: 'Staffing',

@@ -10,6 +10,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import VoiceBrandLogo from "./voice-brand-logo";
 
 export type AuthUser = {
   id: string;
@@ -398,7 +399,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return (
       <main className="auth-loading">
         <span className="brand-mark" aria-hidden="true">
-          t2
+          <VoiceBrandLogo variant="mark" height={42} />
         </span>
         <strong>Voice</strong>
         <p>{ssoError}</p>
@@ -411,7 +412,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {blockForAuth ? (
         <main className="auth-loading">
           <span className="brand-mark" aria-hidden="true">
-            t2
+            <VoiceBrandLogo variant="mark" height={42} />
           </span>
           <strong>
             {masterDenied

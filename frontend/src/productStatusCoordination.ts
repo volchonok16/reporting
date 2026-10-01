@@ -1,4 +1,4 @@
-import { displayCellText } from './productStatusRichText'
+import { displayCellText } from './productStatusRichTextUtils'
 
 export const COORDINATION_PROJECT_SEPARATOR = '; '
 

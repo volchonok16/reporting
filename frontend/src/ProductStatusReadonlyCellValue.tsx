@@ -6,7 +6,7 @@ import {
   normalizeCellValue,
   splitCellWrapper,
   type CellStyle,
-} from './productStatusRichText'
+} from './productStatusRichTextUtils'
 
 type ProductStatusReadonlyCellValueProps = {
   value: string
@@ -45,12 +45,38 @@ export default function ProductStatusReadonlyCellValue({
           <ProductStatusRichText value={tableDoc.text} empty="" />
         </div>
       ) : null}
-      <table className="product-status-inline-table">
+      <table
+        className={[
+          'product-status-inline-table',
+          tableDoc.table.colWidths ? 'product-status-inline-table--sized' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+      >
+        {tableDoc.table.colWidths ? (
+          <colgroup>
+            {tableDoc.table.colWidths.map((width, colIndex) => (
+              <col key={colIndex} style={{ width, minWidth: width }} />
+            ))}
+          </colgroup>
+        ) : null}
         <tbody>
           {tableDoc.table.cells.map((row, rowIndex) => (
             <tr key={rowIndex}>
               {row.map((cell, colIndex) => (
-                <td key={colIndex} className="product-status-inline-table-cell-readonly">
+                <td
+                  key={colIndex}
+                  className="product-status-inline-table-cell-readonly"
+                  style={
+                    tableDoc.table.colWidths?.[colIndex]
+                      ? {
+                          width: tableDoc.table.colWidths[colIndex],
+                          minWidth: tableDoc.table.colWidths[colIndex],
+                          maxWidth: tableDoc.table.colWidths[colIndex],
+                        }
+                      : undefined
+                  }
+                >
                   {displayCellText(cell).trim() ? (
                     <ProductStatusRichText value={cell} empty="" />
                   ) : (

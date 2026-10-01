@@ -162,6 +162,10 @@
 | `revenue_activity_row` | Строки таблицы активностей (`cells` по вкладке: база или выручка + gmc, Комментарий) |
 | `revenue_activity_history` | История изменений активностей по выручкам |
 | `revenue_activity_snapshot` | Снимки версий для отката |
+| `gov_initiative_section` | Вкладка «Госинициативы» (`main`) |
+| `gov_initiative_row` | Строки: Закон / Описание / Номер ЗнИ / Статус |
+| `gov_initiative_history` | История изменений госинициатив |
+| `gov_initiative_snapshot` | Снимки версий госинициатив |
 | `schema_migration` | Журнал применённых SQL-миграций (`ensure_startup_schema`) |
 | `planning_project_complexity` | Справочник сложности проектов планирования |
 | `production_calendar_day` | Производственный календарь (переопределения рабочих дней) |

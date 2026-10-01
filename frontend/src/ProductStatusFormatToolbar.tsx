@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
-import type { TextStyleSegment } from './productStatusRichText'
-import { PRODUCT_STATUS_ATTENTION_FG } from './productStatusRichText'
+import type { TextStyleSegment } from './productStatusRichTextUtils'
+import { PRODUCT_STATUS_ATTENTION_FG } from './productStatusRichTextUtils'
 
 const FORMAT_TOOLBAR_OPEN_KEY = 'product-status-format-toolbar-open'
 

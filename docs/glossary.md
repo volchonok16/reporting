@@ -766,11 +766,13 @@
 | `id` | bigserial | PK |
 | `email` | varchar(255) | Email для входа (уникальный) |
 | `password_hash` | text | Хеш пароля (PBKDF2-SHA256) |
-| `role` | smallint | `10` — пользователь, `100` — администратор отделов |
+| `role` | smallint | `10` — пользователь, `100` — администратор отделов, `1000` — **суперадминистратор** (только через БД) |
 | `status` | smallint | `0` удалён, `9` неактивен, `10` активен |
 | `voice_only` | boolean | Галочка **Voice сервисы** (только админ reporting): если true — доступна только вкладка **Voice**; если false — Voice и все остальные вкладки |
 | `voice_admin` | boolean | Галочка **Администратор Voice** (только админ reporting): если true — доступны «Очистить журнал и обнулить версию» и «Очистить мастер-файл»; без флага эти действия недоступны |
 | `created_at`, `updated_at` | timestamptz | Метки времени |
+
+Суперадминистратор (`role = 1000`, сессия `org_user_role=superadmin`): доступ ко всем вкладкам; правки в заблокированных офисах статуса продукта (`editing_locked`); управление `allowedPageKeys` для любого сотрудника в Staffing. Назначение: `UPDATE org_user SET role = 1000 WHERE email = '…';` — через UI выдать/снять нельзя. В `/api/auth/status` — `isSuperAdmin`, `pageAccessRestricted`.
 
 Связь: `employee.user_id` → `org_user.id`. Вход по email/паролю через `POST /api/auth/login` (режим app_user).
 
@@ -1207,7 +1209,7 @@ Seed: миграция `013_b2b_product_status.sql` — SMS, VOICE, Перспе
 | `name` | varchar(255) | Подпись вкладки, напр. «Офис: SMS» |
 | `sort_order` | int | Порядок вкладок |
 | `is_active` | boolean | Скрыть офис без удаления |
-| `editing_locked` | boolean | Блокировка редактирования таблицы офиса для всех пользователей; управляет администратор (`PATCH /api/product-status/b2b/offices/{gid}/editing-lock`) |
+| `editing_locked` | boolean | Блокировка редактирования таблицы офиса для всех, кроме суперадминистратора; управляет администратор (`PATCH /api/product-status/b2b/offices/{gid}/editing-lock`) |
 
 ---
 
@@ -1321,6 +1323,33 @@ API: `GET /api/b2b-news`, `POST /api/b2b-news/save`, `GET /api/b2b-news/history?
 | `is_active` | boolean | Активна ли вкладка |
 
 Seed (миграция `036`): `base` → «Влияние по базе», `revenue` → «Влияние по выручке». Вкладка `main` («Активности по выручкам») деактивирована после копирования строк.
+
+---
+
+## gov_initiative_section — вкладка «Госинициативы»
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `gid` | varchar(32) | Стабильный ключ (`main`) |
+| `name` | varchar(255) | Название вкладки |
+| `sort_order` | int | Порядок |
+| `is_active` | boolean | Активна ли вкладка |
+
+Рядом с «Активности по выручкам» (`page_key = gov-initiatives`). Миграция `067_gov_initiatives.sql`.
+
+---
+
+## gov_initiative_row — строка госинициатив
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `section_id` | bigint | FK → `gov_initiative_section` |
+| `sort_order` | int | Порядок строки |
+| `cells` | jsonb | Колонки: «Закон», «Описание», «Номер ЗнИ», «Статус» |
+
+API: `/api/gov-initiatives` (load/save/excel/history/snapshots), по образцу revenue-activities. История/снимки: `gov_initiative_history`, `gov_initiative_snapshot`.
 
 ---
 

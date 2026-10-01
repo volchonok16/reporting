@@ -40,6 +40,10 @@ def test_can_manage_org_org_admin() -> None:
     assert can_manage_org({"auth_mode": "app_user", "app_role": "full", "org_user_role": "admin"})
 
 
+def test_can_manage_org_superadmin() -> None:
+    assert can_manage_org({"auth_mode": "app_user", "app_role": "full", "org_user_role": "superadmin"})
+
+
 def test_can_manage_org_org_user_denied() -> None:
     assert not can_manage_org({"auth_mode": "app_user", "app_role": "full", "org_user_role": "user"})
 
