@@ -1,4 +1,17 @@
-import { displayCellText, normalizeCellValue, splitCellWrapper } from './productStatusRichTextUtils'
+import {
+  displayCellText,
+  normalizeCellValue,
+  serializeEditableCell,
+  splitCellWrapper,
+  type CellStyle,
+} from './productStatusRichTextUtils'
+
+function cellStyleFromElement(element: HTMLElement): CellStyle {
+  return {
+    bg: element.dataset.cellBg?.toUpperCase() ?? null,
+    border: element.dataset.cellBorder?.toUpperCase() ?? null,
+  }
+}
 
 export type EmbeddedTable = {
   rows: number
@@ -153,7 +166,11 @@ export function readTableDocFromHost(host: HTMLElement, table: EmbeddedTable): E
   host.querySelectorAll('.product-status-inline-table tbody tr').forEach((rowElement) => {
     const row: string[] = []
     rowElement.querySelectorAll('.product-status-inline-table-cell').forEach((cellElement) => {
-      row.push(cellElement.textContent ?? '')
+      if (cellElement instanceof HTMLElement) {
+        row.push(serializeEditableCell(cellElement, cellStyleFromElement(cellElement)))
+      } else {
+        row.push(cellElement.textContent ?? '')
+      }
     })
     if (row.length > 0) {
       nextCells.push(row)

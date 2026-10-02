@@ -76,7 +76,13 @@ function applyCellStyle(element: HTMLElement, cellStyle: CellStyle) {
     delete element.dataset.cellBg
     element.style.backgroundColor = ''
   }
-  element.style.border = cellStyle.border ? `2px solid #${cellStyle.border}` : ''
+  if (cellStyle.border) {
+    element.dataset.cellBorder = cellStyle.border
+    element.style.border = `2px solid #${cellStyle.border}`
+  } else {
+    delete element.dataset.cellBorder
+    element.style.border = ''
+  }
 }
 
 function renderSegments(inner: string, container: HTMLElement) {
@@ -153,14 +159,65 @@ function InlineTableCell({
   /** null until first DOM sync — otherwise mount skips writing value into an empty div */
   const lastSynced = useRef<string | null>(null)
   const isFocusedRef = useRef(false)
+  const cellStyleRef = useRef<CellStyle>({ bg: null, border: null })
+  const savedOffsetsRef = useRef<TextRangeOffsets | null>(null)
 
   useLayoutEffect(() => {
     const element = elementRef.current
     if (!element || inlineTableCellIsEditing(element, isFocusedRef)) return
-    if (lastSynced.current === value && element.textContent === value) return
-    element.textContent = value
+    const current = serializeEditableCell(element, cellStyleRef.current)
+    if (lastSynced.current === value && current === value) return
+    const { cellStyle, inner } = splitCellWrapper(normalizeCellValue(value))
+    cellStyleRef.current = cellStyle
+    applyCellStyle(element, cellStyle)
+    renderSegments(inner, element)
     lastSynced.current = value
   }, [value])
+
+  useEffect(() => {
+    const rememberSelection = () => {
+      const element = elementRef.current
+      if (!element || !isFocusedRef.current) return
+      const selection = window.getSelection()
+      if (!selection || selection.rangeCount === 0) return
+      const range = selection.getRangeAt(0)
+      const ancestor = range.commonAncestorContainer
+      if (ancestor !== element && !element.contains(ancestor)) return
+      if (selection.isCollapsed) {
+        savedOffsetsRef.current = null
+        return
+      }
+      const offsets = rangeToOffsets(element, range)
+      if (offsets) savedOffsetsRef.current = offsets
+    }
+    document.addEventListener('selectionchange', rememberSelection)
+    return () => document.removeEventListener('selectionchange', rememberSelection)
+  }, [])
+
+  const commitFromElement = (element: HTMLElement) => {
+    const next = serializeEditableCell(element, cellStyleRef.current)
+    lastSynced.current = next
+    if (next !== value) onCommit(next)
+  }
+
+  const handleFormattingShortcut = (event: KeyboardEvent<HTMLDivElement>) => {
+    const isPrimary = event.ctrlKey || event.metaKey
+    if (!isPrimary || event.altKey) return
+    const key = event.key.toLowerCase()
+    let patch: Partial<TextStyleSegment> | null = null
+    if (key === 'b') patch = { bold: true }
+    else if (key === 'i') patch = { italic: true }
+    else if (key === 'u') patch = { underline: true }
+    else if (key === 'x' && event.shiftKey) patch = { strike: true }
+    if (!patch) return
+    event.preventDefault()
+    event.stopPropagation()
+    const element = elementRef.current
+    if (!element) return
+    const applied = applyStyleToCellOrSelection(element, patch, savedOffsetsRef.current)
+    if (!applied) return
+    commitFromElement(element)
+  }
 
   return (
     <div
@@ -174,19 +231,18 @@ function InlineTableCell({
       onMouseDown={(event) => {
         event.stopPropagation()
       }}
+      onKeyDown={handleFormattingShortcut}
       onFocus={() => {
         isFocusedRef.current = true
         onFocus?.()
       }}
       onBlur={(event) => {
         isFocusedRef.current = false
-        const next = event.currentTarget.textContent ?? ''
-        lastSynced.current = next
-        if (next !== value) onCommit(next)
+        commitFromElement(event.currentTarget)
       }}
       onInput={(event) => {
         isFocusedRef.current = true
-        lastSynced.current = event.currentTarget.textContent ?? ''
+        lastSynced.current = serializeEditableCell(event.currentTarget, cellStyleRef.current)
       }}
     />
   )
@@ -327,25 +383,70 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
 
     useEffect(() => {
       const rememberSelection = () => {
-        const element = elementRef.current
-        if (!element || tableDoc) return
+        const plain = elementRef.current
+        const host = tableHostRef.current
         const selection = window.getSelection()
         if (!selection || selection.rangeCount === 0) return
         const range = selection.getRangeAt(0)
         const ancestor = range.commonAncestorContainer
-        if (ancestor !== element && !element.contains(ancestor)) return
+
+        let root: HTMLElement | null = null
+        if (plain && (ancestor === plain || plain.contains(ancestor))) {
+          root = plain
+        } else if (host) {
+          const active = document.activeElement
+          if (
+            active instanceof HTMLElement &&
+            active.classList.contains('product-status-inline-table-cell') &&
+            host.contains(active) &&
+            (ancestor === active || active.contains(ancestor))
+          ) {
+            root = active
+          }
+        }
+        if (!root) return
+
         if (selection.isCollapsed) {
-          if (document.activeElement === element) {
+          if (document.activeElement === root) {
             savedOffsetsRef.current = null
           }
           return
         }
-        const offsets = rangeToOffsets(element, range)
+        const offsets = rangeToOffsets(root, range)
         if (offsets) savedOffsetsRef.current = offsets
       }
       document.addEventListener('selectionchange', rememberSelection)
       return () => document.removeEventListener('selectionchange', rememberSelection)
     }, [tableDoc])
+
+    const getFocusedInlineTableCell = (): HTMLElement | null => {
+      const host = tableHostRef.current
+      if (!host) return null
+      const active = document.activeElement
+      if (
+        active instanceof HTMLElement &&
+        active.classList.contains('product-status-inline-table-cell') &&
+        host.contains(active)
+      ) {
+        return active
+      }
+      const { row, col } = embeddedFocusRef.current
+      const rowEl = host.querySelectorAll('.product-status-inline-table tbody tr')[row]
+      if (!rowEl) return null
+      const cell = rowEl.querySelectorAll('.product-status-inline-table-cell')[col]
+      return cell instanceof HTMLElement ? cell : null
+    }
+
+    const applyStyleInRoot = (root: HTMLElement, patch: Partial<TextStyleSegment>): boolean => {
+      const applied = applyStyleToCellOrSelection(root, patch, savedOffsetsRef.current)
+      if (!applied) return false
+      if (tableDoc) {
+        commitTableFromHostRef.current()
+      } else {
+        commitValue(serializeEditableCell(root, cellStyleRef.current))
+      }
+      return true
+    }
 
     const handleFormattingShortcut = (event: KeyboardEvent<HTMLDivElement>) => {
       const isPrimary = event.ctrlKey || event.metaKey
@@ -360,23 +461,37 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       event.preventDefault()
       const element = elementRef.current
       if (!element) return
-      const applied = applyStyleToCellOrSelection(element, patch, savedOffsetsRef.current)
-      if (!applied) return
-      commitValue(serializeEditableCell(element, cellStyleRef.current))
+      applyStyleInRoot(element, patch)
     }
 
     useImperativeHandle(ref, () => ({
       applyTextStyle(patch) {
+        if (tableDoc) {
+          const cell = getFocusedInlineTableCell()
+          if (!cell) return false
+          return applyStyleInRoot(cell, patch)
+        }
         const element = elementRef.current
-        if (!element || tableDoc) return false
-        const applied = applyStyleToCellOrSelection(element, patch, savedOffsetsRef.current)
-        if (!applied) return false
-        commitValue(serializeEditableCell(element, cellStyleRef.current))
-        return true
+        if (!element) return false
+        return applyStyleInRoot(element, patch)
       },
       applyCellStyle(patch) {
+        if (tableDoc) {
+          const cell = getFocusedInlineTableCell()
+          if (!cell) return false
+          const current = serializeEditableCell(cell, {
+            bg: cell.dataset.cellBg?.toUpperCase() ?? null,
+            border: cell.dataset.cellBorder?.toUpperCase() ?? null,
+          })
+          const next = applyCellStylePatch(current, patch)
+          const { cellStyle, inner } = splitCellWrapper(next)
+          applyCellStyle(cell, cellStyle)
+          renderSegments(inner, cell)
+          commitTableFromHostRef.current()
+          return true
+        }
         const element = elementRef.current
-        if (!element || tableDoc) return false
+        if (!element) return false
         const next = applyCellStylePatch(lastSerialized.current ?? value, patch)
         const { cellStyle, inner } = splitCellWrapper(next)
         cellStyleRef.current = cellStyle
@@ -386,16 +501,32 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
         return true
       },
       clearFormatting() {
+        if (tableDoc) {
+          const cell = getFocusedInlineTableCell()
+          if (!cell) return false
+          const applied = clearFormattingInCell(cell)
+          if (!applied) return false
+          commitTableFromHostRef.current()
+          return true
+        }
         const element = elementRef.current
-        if (!element || tableDoc) return false
+        if (!element) return false
         const applied = clearFormattingInCell(element)
         if (!applied) return false
         commitValue(serializeEditableCell(element, cellStyleRef.current))
         return true
       },
       insertText(text) {
+        if (tableDoc) {
+          const cell = getFocusedInlineTableCell()
+          if (!cell) return false
+          const inserted = insertTextAtSelection(cell, text)
+          if (!inserted) return false
+          commitTableFromHostRef.current()
+          return true
+        }
         const element = elementRef.current
-        if (!element || tableDoc) return false
+        if (!element) return false
         const inserted = insertTextAtSelection(element, text)
         if (!inserted) return false
         commitValue(serializeEditableCell(element, cellStyleRef.current))

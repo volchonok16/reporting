@@ -1,10 +1,13 @@
-# Auto-generated EIO workaround — recreate via scripts if needed
-# Frontend: bind-mount host ./frontend (named volume was desyncing from container).
+# EIO workaround (Docker Desktop / virtiofs): без bind-mount исходников.
+# Код backend — из образа (--build). Frontend — named volume + scripts/apply-frontend-local.sh
+#
+# Compose v5: !reset обнуляет volumes без подстановки списка → нужен !override.
 services:
   backend:
     ports:
       - "8000:8000"
-    volumes:
+    volumes: !override
+      - ./secrets:/app/secrets:ro
       - reporting_voice_data:/data
 
   frontend:
@@ -20,8 +23,8 @@ services:
       VITE_VOICE_WEB_PROXY_TARGET: http://voice-web:3000
       VITE_VOICE_API_PROXY_TARGET: http://backend:8000
     command: sh -c "if [ ! -d node_modules/vite ]; then npm ci --no-fund --no-audit; fi; npm run dev -- --host 0.0.0.0"
-    volumes:
-      - ./frontend:/app
+    volumes: !override
+      - reporting_frontend_src:/app
       - frontend_node_modules:/app/node_modules
 
   voice-web:
@@ -36,6 +39,8 @@ services:
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
 
 volumes:
+  reporting_frontend_src:
+    external: true
   frontend_node_modules:
   reporting_voice_data:
     external: true

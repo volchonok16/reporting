@@ -99,6 +99,24 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 
 Вход: PAT-токен TFS (Work Items Read). После входа — «Обновить из TFS» для загрузки ЗНИ и ошибок.
 
+### EIO / virtiofs (Docker Desktop на Mac)
+
+Если контейнеры падают с `OSError: [Errno 5] Input/output error` на bind-mount (`./frontend`, `./backend/app`):
+
+```bash
+# 1) named volume под frontend (один раз)
+docker volume create reporting_frontend_src
+docker volume create reporting_voice_data
+
+# 2) скопировать код в volume (без bind)
+bash scripts/apply-frontend-local.sh
+
+# 3) поднять стек без bind-mount исходников
+docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.dev.eio.yml up -d --build
+```
+
+В `docker-compose.dev.eio.yml` volumes задаются через `!override` (не `!reset`): в Compose v5 `!reset` обнуляет список volumes и не подставляет новый.
+
 ## Только PostgreSQL (локально)
 
 ```bash
