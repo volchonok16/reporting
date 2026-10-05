@@ -1,22 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Reporting">
-  <defs>
-    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
-      <stop offset="0" stop-color="#0f172a" />
-      <stop offset="1" stop-color="#1e293b" />
-    </linearGradient>
-    <linearGradient id="accent" x1="0" x2="1" y1="0" y2="1">
-      <stop offset="0" stop-color="#34d399" />
-      <stop offset="1" stop-color="#22c55e" />
-    </linearGradient>
-  </defs>
-  <rect x="4" y="4" width="56" height="56" rx="14" fill="url(#bg)" />
-  <path
-    d="M18 42h6V29h-6v13zm11 0h6V22h-6v20zm11 0h6V33h-6v9z"
-    fill="#93c5fd"
-  />
-  <path
-    d="M18 23c5 0 9-2 13-6 2.5 3.5 5.5 6 9 7.5 2 1 4.2 1.5 6 1.5v6c-2.8 0-5.9-.7-8.9-2.2-3-1.5-5.8-3.5-8.4-6.5-3.7 3.6-8 5.7-12.7 5.7v-6z"
-    fill="url(#accent)"
-  />
-  <circle cx="46" cy="26" r="2.2" fill="#bbf7d0" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -58 410 410" role="img" aria-label="T2 Бизнес">
+  <rect x="-20" y="-58" width="410" height="410" rx="92" fill="#000"/>
+  <path d="M120.347 218.82H206.869V274.295H151.33C103.549 274.295 64.8088 235.6 64.8088 187.873V1.54346H120.347V67.6806H185.145V123.155H120.347V218.82Z" fill="#fff"/>
+  <path d="M216.123 218.821H367.002V274.296H216.123V218.821ZM284.131 92.2092C301.248 92.2092 315.114 106.059 315.114 123.156C315.114 140.254 301.248 154.104 284.131 154.104H216.123V209.578H284.131C320.924 209.578 352.433 186.521 364.913 154.104C368.625 144.487 370.653 134.056 370.653 123.156C370.653 75.5057 331.842 36.7346 284.131 36.7346C236.421 36.7346 197.61 75.5007 197.61 123.156H253.148C253.148 106.059 267.014 92.2092 284.131 92.2092Z" fill="#fff"/>
+  <path d="M55.5386 67.6677H0V123.142H55.5386V67.6677Z" fill="#FF3495"/>
 </svg>

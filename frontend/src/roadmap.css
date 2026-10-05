@@ -75,12 +75,18 @@
 
 .roadmap-year-select,
 .roadmap-quarter-btn {
-  border: 1px solid var(--input-border);
+  box-sizing: border-box;
+  height: var(--btn-height);
+  min-height: var(--btn-height);
+  border: 2px solid var(--text-primary);
   border-radius: var(--radius-full);
   background: var(--surface-1);
   color: var(--text-primary);
-  font-size: 12px;
-  font-weight: 700;
+  font-family: 'T2 Rooftop', system-ui, sans-serif;
+  font-size: var(--btn-font-size);
+  font-weight: var(--btn-font-weight);
+  line-height: 1;
+  letter-spacing: 0.04em;
   cursor: pointer;
 }
 
@@ -94,12 +100,19 @@
 }
 
 .roadmap-quarter-btn {
-  padding: 6px var(--space-md);
+  padding: 0 var(--btn-pad-x);
 }
 
 .roadmap-quarter-btn:hover {
-  border-color: var(--rm-accent);
-  color: var(--accent-hover);
+  border-color: var(--text-primary);
+  color: var(--text-primary);
+  background: var(--surface-1);
+}
+
+.roadmap-quarter-btn-active:hover {
+  background: var(--surface-1);
+  color: var(--text-primary);
+  border-color: var(--text-primary);
 }
 
 .roadmap-quarter-btn-active {
@@ -320,7 +333,7 @@
   border-radius: 999px;
   background: var(--t2-mint);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: var(--btn-font-weight);
   color: #000000;
 }
 
@@ -351,7 +364,7 @@
   padding: 5px 10px;
   text-align: center;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: var(--btn-font-weight);
   text-transform: capitalize;
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--border);
@@ -459,7 +472,7 @@
 .roadmap-task-column {
   border-radius: var(--radius-sm);
   padding: 3px var(--space-sm);
-  font-weight: 800;
+  font-weight: var(--btn-font-weight);
   border: 1px solid var(--border);
   background: var(--surface-2);
 }
@@ -494,7 +507,7 @@
   padding: var(--space-sm) 10px var(--space-sm) 14px;
   color: var(--c-default-text);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: var(--btn-font-weight);
   background: var(--c-default);
   border: 1px solid var(--border);
   box-shadow:
@@ -520,7 +533,7 @@
 
 .roadmap-bar-status {
   font-size: 13px;
-  font-weight: 800;
+  font-weight: var(--btn-font-weight);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -584,7 +597,7 @@
 .roadmap-bar-bv-label {
   flex-shrink: 0;
   font-size: 10px;
-  font-weight: 800;
+  font-weight: var(--btn-font-weight);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   opacity: 0.85;
@@ -592,7 +605,7 @@
 
 .roadmap-bar-bv-value {
   font-size: 12px;
-  font-weight: 800;
+  font-weight: var(--btn-font-weight);
 }
 
 .roadmap-bar-bv-input {
@@ -606,7 +619,7 @@
   color: inherit;
   font: inherit;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: var(--btn-font-weight);
   box-sizing: border-box;
 }
 
@@ -629,7 +642,7 @@
 .roadmap-bar-uc-label {
   flex-shrink: 0;
   font-size: 10px;
-  font-weight: 800;
+  font-weight: var(--btn-font-weight);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   opacity: 0.85;
@@ -645,7 +658,7 @@
   color: inherit;
   font: inherit;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: var(--btn-font-weight);
   box-sizing: border-box;
   cursor: pointer;
 }

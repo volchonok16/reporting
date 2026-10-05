@@ -113,6 +113,11 @@
 
   --focus-ring: rgba(255, 52, 149, 0.28);
 
+  --btn-height: 32px;
+  --btn-pad-x: 12px;
+  --btn-font-size: 12px;
+  --btn-font-weight: 500;
+
   --radius-sm: 8px;
   --radius-md: 16px;
   --radius-lg: 24px;
@@ -295,9 +300,6 @@ h2,
 h3,
 .login-panel h1,
 .metric-value,
-.workbook-tab,
-.btn-primary,
-.btn-secondary,
 .product-status-title-tab,
 .zni-modal-title {
   font-family: 'T2 Halvar Breit', 'T2 Rooftop', system-ui, sans-serif;
@@ -307,8 +309,9 @@ h3,
 .btn-primary,
 .btn-secondary,
 .login-panel button:not(.login-tab):not(.org-password-input-toggle) {
+  font-family: 'T2 Rooftop', system-ui, sans-serif;
   letter-spacing: 0.04em;
-  font-weight: 800;
+  font-weight: var(--btn-font-weight);
   text-transform: uppercase;
 }
 
@@ -375,7 +378,7 @@ html.theme-switch-instant *::after {
   color: var(--text-secondary);
   font: inherit;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: var(--btn-font-weight);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -406,7 +409,7 @@ html.theme-switch-instant *::after {
   gap: 8px;
 }
 
-[data-theme='dark'] .roadmap-quarter-btn:hover {
+[data-theme='dark'] .roadmap-quarter-btn:hover:not(.roadmap-quarter-btn-active) {
   color: var(--accent-hover);
 }
 
