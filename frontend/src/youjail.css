@@ -1,8 +1,8 @@
 .youjail-page {
-  --yj-backlog: #d9e2f2;
-  --yj-backlog-text: #334155;
-  --yj-progress: #b8d4ff;
-  --yj-progress-text: #173d8f;
+  --yj-backlog: #f3f3f3;
+  --yj-backlog-text: #1a1a1a;
+  --yj-progress: color-mix(in srgb, #16d5df 42%, #ffffff);
+  --yj-progress-text: #085e64;
   --yj-blocked: #ffd0a8;
   --yj-blocked-text: #7a3f12;
   --yj-done: #bfe8c8;
@@ -340,11 +340,11 @@
   height: 28px;
   padding: 0 8px;
   border-radius: var(--radius-full);
-  background: var(--surface-1);
-  border: 1px solid var(--border);
+  background: var(--t2-mint);
+  border: none;
   font-size: 13px;
-  font-weight: 700;
-  color: var(--text-secondary);
+  font-weight: 800;
+  color: #000000;
   font-variant-numeric: tabular-nums;
 }
 
@@ -748,7 +748,7 @@
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: color-mix(in srgb, #0f172a 45%, transparent);
+  background: color-mix(in srgb, #000000 45%, transparent);
 }
 
 .youjail-delete-dialog {
@@ -1528,8 +1528,8 @@
 }
 
 .youjail-related-card-chip.is-zni {
-  border-left: 3px solid color-mix(in srgb, #2563eb 70%, var(--border));
-  background: color-mix(in srgb, #2563eb 5%, var(--surface-1));
+  border-left: 3px solid color-mix(in srgb, var(--brand-pink) 70%, var(--border));
+  background: color-mix(in srgb, var(--brand-pink) 5%, var(--surface-1));
 }
 
 .youjail-related-card-chip.is-missing {
@@ -1566,8 +1566,8 @@
 }
 
 .youjail-related-card-chip.is-zni .youjail-related-card-chip-icon {
-  background: color-mix(in srgb, #2563eb 12%, var(--surface-2));
-  color: #2563eb;
+  background: color-mix(in srgb, var(--brand-pink) 12%, var(--surface-2));
+  color: var(--brand-pink);
 }
 
 .youjail-related-card-key {
@@ -1597,8 +1597,8 @@
 }
 
 .youjail-related-card-kind-pill {
-  background: color-mix(in srgb, #2563eb 12%, var(--surface-2));
-  color: #2563eb;
+  background: color-mix(in srgb, var(--brand-pink) 12%, var(--surface-2));
+  color: var(--brand-pink);
   text-transform: uppercase;
 }
 
@@ -1645,8 +1645,8 @@
 }
 
 .youjail-related-card-btn.is-zni {
-  border-color: color-mix(in srgb, #2563eb 25%, var(--border));
-  background: color-mix(in srgb, #2563eb 6%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--brand-pink) 25%, var(--border));
+  background: color-mix(in srgb, var(--brand-pink) 6%, var(--surface-2));
 }
 
 .youjail-related-card-btn:hover {
@@ -2299,8 +2299,8 @@
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #0f172a;
-  color: #e2e8f0;
+  background: #111111;
+  color: #f3f3f3;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   line-height: 1.4;
@@ -2317,7 +2317,7 @@
 }
 
 .youjail-log-line.is-system {
-  color: #93c5fd;
+  color: var(--t2-mint);
 }
 
 .youjail-projects-panel {
@@ -3109,8 +3109,8 @@
 
 .youjail-execution-status.is-running,
 .youjail-execution-status.is-queued {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: color-mix(in srgb, var(--t2-mint) 28%, var(--surface-1));
+  color: color-mix(in srgb, var(--t2-mint) 30%, var(--text-primary));
 }
 
 .youjail-execution-status.is-succeeded {
@@ -3314,7 +3314,7 @@
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-left: 3px solid color-mix(in srgb, #0d9488 70%, var(--border));
+  border-left: 3px solid color-mix(in srgb, var(--t2-mint) 70%, var(--border));
   border-radius: 12px;
   background: var(--surface-1);
   color: inherit;
@@ -3326,8 +3326,8 @@
 }
 
 .youjail-zni-link:hover {
-  border-color: color-mix(in srgb, #0d9488 35%, var(--border));
-  background: color-mix(in srgb, #0d9488 5%, var(--surface-1));
+  border-color: color-mix(in srgb, var(--t2-mint) 35%, var(--border));
+  background: color-mix(in srgb, var(--t2-mint) 5%, var(--surface-1));
   transform: translateY(-1px);
 }
 
@@ -3342,7 +3342,7 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   font-weight: 700;
-  color: #0d9488;
+  color: color-mix(in srgb, var(--t2-mint) 28%, var(--text-primary));
 }
 
 .youjail-zni-link-title {
@@ -3396,9 +3396,9 @@
 }
 
 .youjail-card-link-chip.is-zni {
-  background: color-mix(in srgb, #0d9488 12%, var(--surface-2));
-  border-color: color-mix(in srgb, #0d9488 28%, var(--border));
-  color: color-mix(in srgb, #0d9488 85%, var(--text-primary));
+  background: color-mix(in srgb, var(--t2-mint) 18%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--t2-mint) 45%, var(--border));
+  color: color-mix(in srgb, var(--t2-mint) 32%, var(--text-primary));
 }
 
 .youjail-card-link-chip:hover {
@@ -3406,7 +3406,7 @@
 }
 
 .youjail-card-link-chip.is-zni:hover {
-  background: color-mix(in srgb, #0d9488 18%, var(--surface-2));
+  background: color-mix(in srgb, var(--t2-mint) 18%, var(--surface-2));
 }
 
 .youjail-card-zni-chip {
@@ -3414,9 +3414,9 @@
   align-items: center;
   padding: 2px 8px;
   border-radius: var(--radius-full);
-  background: color-mix(in srgb, #2563eb 12%, var(--surface-2));
-  border: 1px solid color-mix(in srgb, #2563eb 28%, var(--border));
-  color: color-mix(in srgb, #2563eb 85%, var(--text-primary));
+  background: color-mix(in srgb, var(--brand-pink) 14%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--brand-pink) 40%, var(--border));
+  color: color-mix(in srgb, var(--brand-pink) 48%, var(--text-primary));
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;
   font-weight: 700;

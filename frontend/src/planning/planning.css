@@ -355,7 +355,7 @@
 }
 
 .planning-status-in-progress {
-  background: color-mix(in srgb, var(--brand, #5b8def) 16%, transparent);
+  background: color-mix(in srgb, var(--brand, #000000) 16%, transparent);
   color: var(--text-primary);
 }
 
@@ -370,7 +370,7 @@
 }
 
 .planning-status-frozen {
-  background: color-mix(in srgb, #6b8cae 18%, transparent);
+  background: color-mix(in srgb, var(--t2-mint) 18%, transparent);
   color: var(--text-primary);
 }
 

@@ -40,7 +40,7 @@
 
   .btn-primary,
   .btn-secondary,
-  .login-panel button {
+  .login-panel button:not(.org-password-input-toggle) {
     min-height: var(--mobile-tap-min);
   }
 

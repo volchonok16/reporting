@@ -2,7 +2,7 @@
   --rm-sidebar-width: 300px;
   --rm-timeline-zoom: 1;
   --rm-today: #ef5f5f;
-  --rm-accent: #5b9aea;
+  --rm-accent: #ff3495;
   --rm-accent-soft: rgba(91, 154, 234, 0.32);
   --c-new: #ffe08a;
   --c-new-text: #5c4a12;
@@ -14,8 +14,8 @@
   --c-analysis-bl-text: #0f4a42;
   --c-analysis: #4fd9c4;
   --c-analysis-text: #0b453d;
-  --c-development: #7aa8ff;
-  --c-development-text: #173d8f;
+  --c-development: #7ee7ee;
+  --c-development-text: #085e64;
   --c-uat: #d4c4f5;
   --c-uat-text: #433768;
   --c-pilot: #c2b0e8;
@@ -314,9 +314,14 @@
 }
 
 .roadmap-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--t2-mint);
   font-size: 12px;
-  font-weight: 700;
-  color: var(--text-secondary);
+  font-weight: 800;
+  color: #000000;
 }
 
 .roadmap-timeline-head {
