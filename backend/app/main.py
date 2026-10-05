@@ -406,6 +406,10 @@ def dashboard(
     date_to: date | None = Query(default=None),
     status: str | None = Query(default=None),
     quarter: str | None = Query(default=None),
+    customer: list[str] = Query(
+        default=[],
+        description="Фильтр по заказчикам (ФИО); несколько значений — ИЛИ; __none__ — без заказчика",
+    ),
     ect_reservation: str | None = Query(
         default=None,
         description="Фильтр брони ЕЦТ: yes или no",
@@ -432,6 +436,7 @@ def dashboard(
         date_to=date_to,
         status=status,
         quarter=quarter,
+        customer=customer,
         ect_reservation=ect_reservation,
         linked_environment=linked_environment,
         metric=metric,

@@ -330,7 +330,7 @@
   - для ЗНИ в статусе Closed — дата перехода в Closed (`closed_at` / `closed_transitions`); флаг `actualPeriodFromClosed=true`;
   - иначе — дата первого перехода в Pilot (`pilot_transitions` / `pilotEnteredAt`); флаг `actualPeriodFromPilot=true`;
   - ручное сохранение по-прежнему только в разрешённых статусах;
-- ЗНИ без заказчика (`Заказчик` / `Заказчик ЗНИ` / `customer_name` в `extra_json`) показываются в таблице с `missingCustomer=true` (подсветка строки); в метрики дашборда такие строки не входят.
+- ЗНИ без заказчика (`Заказчик` / `Заказчик ЗНИ` / `customer_name` в `extra_json`) показываются в таблице с `missingCustomer=true` (подсветка строки); в метрики дашборда такие строки не входят. Фильтр UI/API `customer` — мультивыбор (несколько query-параметров, логика ИЛИ); `customer=__none__` — без заказчика; `customer=<ФИО>` — точное совпадение (без учёта регистра). В ответе — `availableCustomers`. Standalone incident-ошибки Bercut без `customer_name` скрываются при фильтре по конкретному заказчику и остаются, если среди выбранных есть `__none__`.
 
 | Поле | Тип | Описание |
 |------|-----|----------|
@@ -747,7 +747,7 @@
 | Endpoint | Описание |
 |----------|----------|
 | `POST /api/auth/login` | `{ pat, base_url?, project? }` → `{ sessionId }` |
-| `GET /api/dashboard?board=` | Метрики + список ЗНИ |
+| `GET /api/dashboard?board=` | Метрики + список ЗНИ; фильтры: `status`, `quarter`, `customer` (повтор параметра — ИЛИ по ФИО; `__none__` — без заказчика), `ect_reservation`, `linked_environment`, `metric`, `tag_group`, даты, `search` |
 | `GET /api/products?hideClosed=` | Список продуктов TFS с дочерними ЗНИ (`parent_task_id`) |
 | `POST /api/sync` | Синхронизация; body `{ board }` |
 | `GET /api/sync/status` | Статус и прогресс |

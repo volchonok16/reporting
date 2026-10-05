@@ -153,6 +153,10 @@ class DashboardOut(BaseModel):
     totalShown: int
     availableStatuses: list[str] = Field(default_factory=list)
     availableQuarters: list[QuarterOptionOut] = Field(default_factory=list)
+    availableCustomers: list[str] = Field(
+        default_factory=list,
+        description="Уникальные заказчики (ФИО) для фильтра customer",
+    )
     availableTagGroups: list[TagFilterGroupOut] = Field(default_factory=list)
     actualPeriodEditableStatuses: list[str] = Field(
         default_factory=list,

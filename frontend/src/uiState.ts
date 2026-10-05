@@ -47,6 +47,8 @@ export type DashboardUiState = {
   dateFrom: string
   dateTo: string
   statusFilter: string
+  /** Выбранные заказчики; `__none__` — без заказчика. Старый формат (string) поднимается при загрузке. */
+  customerFilter: string[]
   quarterFilter: string
   ectReservationFilter: string
   linkedEnvironmentFilter: boolean
@@ -171,7 +173,15 @@ export function saveOrgUiState(patch: Partial<OrgUiState>): void {
 }
 
 export function loadDashboardUiState(): Partial<DashboardUiState> {
-  return readUiState().dashboard ?? {}
+  const dashboard = readUiState().dashboard ?? {}
+  const raw = dashboard.customerFilter as string[] | string | undefined
+  let customerFilter: string[] | undefined
+  if (Array.isArray(raw)) {
+    customerFilter = raw.filter((value): value is string => typeof value === 'string' && value.trim() !== '')
+  } else if (typeof raw === 'string' && raw.trim()) {
+    customerFilter = [raw.trim()]
+  }
+  return customerFilter ? { ...dashboard, customerFilter } : dashboard
 }
 
 export function saveDashboardUiState(state: DashboardUiState): void {

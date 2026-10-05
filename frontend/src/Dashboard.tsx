@@ -109,6 +109,7 @@ type DashboardData = {
   totalShown: number
   availableStatuses: string[]
   availableQuarters: QuarterOption[]
+  availableCustomers: string[]
   availableTagGroups: TagFilterGroup[]
   actualPeriodEditableStatuses?: string[]
 }
@@ -409,6 +410,95 @@ function TagGroupFilter({ groups, selected, label, onToggle }: TagGroupFilterPro
               </label>
             )
           })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const CUSTOMER_NONE = '__none__'
+
+type CustomerFilterProps = {
+  customers: string[]
+  selected: string[]
+  label: string
+  onToggle: (value: string) => void
+  onClear: () => void
+}
+
+function CustomerFilter({ customers, selected, label, onToggle, onClear }: CustomerFilterProps) {
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [query, setQuery] = useState('')
+
+  useDismissOnOutsideClick(menuRef, menuOpen, () => {
+    setMenuOpen(false)
+    setQuery('')
+  })
+
+  const normalizedQuery = query.trim().toLocaleLowerCase('ru-RU')
+  const visibleCustomers = normalizedQuery
+    ? customers.filter((name) => name.toLocaleLowerCase('ru-RU').includes(normalizedQuery))
+    : customers
+  const showNone =
+    !normalizedQuery || 'не указан'.includes(normalizedQuery) || normalizedQuery.includes('не указ')
+
+  return (
+    <div className="tag-group-filter customer-filter">
+      <span className="tag-group-filter-label">Заказчик</span>
+      <div
+        ref={menuRef}
+        className={`tag-group-filter-dropdown${menuOpen ? ' is-open' : ''}`}
+      >
+        <button
+          type="button"
+          className="tag-group-filter-trigger"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((current) => !current)}
+        >
+          {label}
+        </button>
+        <div className="tag-group-filter-menu customer-filter-menu" role="group" aria-label="Фильтр по заказчику">
+          <div className="customer-filter-search">
+            <input
+              type="search"
+              value={query}
+              placeholder="Поиск заказчика…"
+              aria-label="Поиск заказчика"
+              onChange={(event) => setQuery(event.target.value)}
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+            />
+          </div>
+          {selected.length > 0 ? (
+            <button type="button" className="customer-filter-clear" onClick={onClear}>
+              Сбросить ({selected.length})
+            </button>
+          ) : null}
+          {showNone ? (
+            <label
+              className={`tag-group-filter-option${selected.includes(CUSTOMER_NONE) ? ' is-active' : ''}`}
+            >
+              <input
+                type="checkbox"
+                checked={selected.includes(CUSTOMER_NONE)}
+                onChange={() => onToggle(CUSTOMER_NONE)}
+              />
+              <span className="tag-group-filter-option-label">Не указан</span>
+            </label>
+          ) : null}
+          {visibleCustomers.map((name) => {
+            const active = selected.includes(name)
+            return (
+              <label key={name} className={`tag-group-filter-option${active ? ' is-active' : ''}`}>
+                <input type="checkbox" checked={active} onChange={() => onToggle(name)} />
+                <span className="tag-group-filter-option-label">{name}</span>
+              </label>
+            )
+          })}
+          {visibleCustomers.length === 0 && !showNone ? (
+            <div className="customer-filter-empty">Ничего не найдено</div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -752,6 +842,7 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
   const [dateFrom, setDateFrom] = useState(savedUi.dateFrom ?? defaultQuarter.from)
   const [dateTo, setDateTo] = useState(savedUi.dateTo ?? defaultQuarter.to)
   const [statusFilter, setStatusFilter] = useState(savedUi.statusFilter ?? '')
+  const [customerFilter, setCustomerFilter] = useState<string[]>(savedUi.customerFilter ?? [])
   const [quarterFilter, setQuarterFilter] = useState(savedUi.quarterFilter ?? '')
   const [ectReservationFilter, setEctReservationFilter] = useState(savedUi.ectReservationFilter ?? '')
   const [linkedEnvironmentFilter, setLinkedEnvironmentFilter] = useState(
@@ -811,6 +902,7 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
   useEffect(() => {
     if (prevBoardCodeRef.current !== null && prevBoardCodeRef.current !== boardCode) {
       setStatusFilter('')
+      setCustomerFilter([])
       setQuarterFilter('')
       setEctReservationFilter('')
       setLinkedEnvironmentFilter(false)
@@ -828,6 +920,7 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
       dateFrom,
       dateTo,
       statusFilter,
+      customerFilter,
       quarterFilter,
       ectReservationFilter,
       linkedEnvironmentFilter,
@@ -843,6 +936,7 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
     dateFrom,
     dateTo,
     statusFilter,
+    customerFilter,
     quarterFilter,
     ectReservationFilter,
     linkedEnvironmentFilter,
@@ -871,6 +965,11 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
     if (dateFrom) params.set('date_from', dateFrom)
     if (dateTo) params.set('date_to', dateTo)
     if (statusFilter) params.set('status', statusFilter)
+    if (customerFilter.length) {
+      for (const customer of customerFilter) {
+        params.append('customer', customer)
+      }
+    }
     if (quarterFilter) params.set('quarter', quarterFilter)
     if (ectReservationFilter) params.set('ect_reservation', ectReservationFilter)
     if (boardCode === DIGITAL_BOARD && linkedEnvironmentFilter) {
@@ -897,6 +996,7 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
     dateFrom,
     dateTo,
     statusFilter,
+    customerFilter,
     quarterFilter,
     ectReservationFilter,
     linkedEnvironmentFilter,
@@ -908,6 +1008,20 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
     setTagGroupFilter((current) =>
       current.includes(key) ? current.filter((value) => value !== key) : [...current, key],
     )
+  }
+
+  const toggleCustomerFilter = (value: string) => {
+    setCustomerFilter((current) =>
+      current.includes(value) ? current.filter((item) => item !== value) : [...current, value],
+    )
+  }
+
+  const customerFilterLabel = (): string => {
+    if (!customerFilter.length) return 'Все заказчики'
+    if (customerFilter.length === 1) {
+      return customerFilter[0] === CUSTOMER_NONE ? 'Не указан' : customerFilter[0]
+    }
+    return `Выбрано: ${customerFilter.length}`
   }
 
   const tagGroupFilterLabel = (): string => {
@@ -1137,6 +1251,7 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
     dateFrom !== defaultQuarter.from ? dateFrom : '',
     dateTo !== defaultQuarter.to ? dateTo : '',
     statusFilter,
+    customerFilter.length ? 'customers' : '',
     quarterFilter,
     ectReservationFilter,
     linkedEnvironmentFilter ? 'linked' : '',
@@ -1213,6 +1328,14 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
               ))}
             </select>
           </label>
+
+          <CustomerFilter
+            customers={data?.availableCustomers ?? []}
+            selected={customerFilter}
+            label={customerFilterLabel()}
+            onToggle={toggleCustomerFilter}
+            onClear={() => setCustomerFilter([])}
+          />
 
           {(data?.availableTagGroups?.length ?? 0) > 0 && (
             <TagGroupFilter

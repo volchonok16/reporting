@@ -90,3 +90,23 @@ def test_incident_error_to_item_marks_row_type() -> None:
 def test_standalone_incident_errors_filters_linked() -> None:
     rows = [_error(), _error(external_id="2", parent_task_id=99)]
     assert len(_standalone_incident_errors(rows)) == 1
+
+
+def test_incident_error_respects_customer_filter() -> None:
+    error = _error(created_at=datetime(2026, 5, 1, 12, 0, 0))
+    base = dict(
+        board_code=BERCUT_BOARD_CODE,
+        metric=None,
+        search=None,
+        status=None,
+        date_from=date(2026, 1, 1),
+        date_to=date(2026, 12, 31),
+    )
+    # Без фильтра заказчика — ошибка видна
+    assert _matches_incident_error_row(error, **base, customer=None)
+    # Конкретный заказчик — ошибки без customer_name скрываются
+    assert not _matches_incident_error_row(error, **base, customer=["Иванов"])
+    # «Не указан» — ошибки без заказчика остаются
+    assert _matches_incident_error_row(error, **base, customer=["__none__"])
+    # Несколько заказчиков без __none__ — ошибка скрыта
+    assert not _matches_incident_error_row(error, **base, customer=["Иванов", "Петров"])

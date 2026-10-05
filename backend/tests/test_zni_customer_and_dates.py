@@ -1,7 +1,12 @@
 from datetime import date
 
 from app.models import Task, ZniExternalData
-from app.report_service import _change_request_to_out, _effective_actual_period
+from app.report_service import (
+    _change_request_to_out,
+    _collect_available_customers,
+    _effective_actual_period,
+    _matches_customer,
+)
 
 
 def _zni(**kwargs) -> Task:
@@ -17,6 +22,39 @@ def _zni(**kwargs) -> Task:
     }
     defaults.update(kwargs)
     return Task(**defaults)
+
+
+def test_matches_customer_exact_and_none() -> None:
+    with_customer = _zni(extra_json={"board_code": "b2b_product_core", "customer_name": "Иванов Иван"})
+    without = _zni(extra_json={"board_code": "b2b_product_core"})
+    assert _matches_customer(with_customer, None) is True
+    assert _matches_customer(with_customer, "") is True
+    assert _matches_customer(with_customer, "иванов иван") is True
+    assert _matches_customer(with_customer, "Петров") is False
+    assert _matches_customer(with_customer, "__none__") is False
+    assert _matches_customer(without, "__none__") is True
+    assert _matches_customer(without, "Иванов") is False
+
+
+def test_matches_customer_multiple_or() -> None:
+    ivanov = _zni(id=1, extra_json={"customer_name": "Иванов"})
+    petrov = _zni(id=2, extra_json={"customer_name": "Петров"})
+    missing = _zni(id=3, extra_json={})
+    assert _matches_customer(ivanov, ["Иванов", "Петров"]) is True
+    assert _matches_customer(petrov, ["Иванов", "Петров"]) is True
+    assert _matches_customer(missing, ["Иванов", "Петров"]) is False
+    assert _matches_customer(missing, ["Иванов", "__none__"]) is True
+    assert _matches_customer(ivanov, ["Сидоров", "__none__"]) is False
+
+
+def test_collect_available_customers_sorted_unique() -> None:
+    rows = [
+        _zni(id=1, extra_json={"customer_name": "Петров"}),
+        _zni(id=2, extra_json={"customer_name": "Иванов"}),
+        _zni(id=3, extra_json={"customer_name": "Иванов"}),
+        _zni(id=4, extra_json={}),
+    ]
+    assert _collect_available_customers(rows) == ["Иванов", "Петров"]
 
 
 def test_missing_customer_flag_and_desired_from_plan() -> None:

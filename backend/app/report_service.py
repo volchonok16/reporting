@@ -181,6 +181,35 @@ def _customer_name(task: Task) -> str | None:
     return tfs_identity_display_name(value)
 
 
+def _matches_customer(task: Task, customers: list[str] | str | None) -> bool:
+    if not customers:
+        return True
+    selected = (
+        [customers.strip()]
+        if isinstance(customers, str)
+        else [value.strip() for value in customers if value and str(value).strip()]
+    )
+    selected = [value for value in selected if value]
+    if not selected:
+        return True
+    name = _customer_name(task)
+    allow_missing = any(value == "__none__" for value in selected)
+    names = [value for value in selected if value != "__none__"]
+    if name is None:
+        return allow_missing
+    name_key = name.casefold()
+    return any(value.casefold() == name_key for value in names)
+
+
+def _collect_available_customers(rows: list[Task]) -> list[str]:
+    values: set[str] = set()
+    for row in rows:
+        name = _customer_name(row)
+        if name:
+            values.add(name)
+    return sorted(values, key=str.casefold)
+
+
 def _business_goal(task: Task) -> str | None:
     value = _extra(task).get("business_goal")
     return str(value).strip() if value else None
@@ -319,6 +348,7 @@ def _matches_incident_error_row(
     status: str | None,
     date_from: date | None,
     date_to: date | None,
+    customer: str | None = None,
 ) -> bool:
     if not _is_incident_standalone_error(error):
         return False
@@ -335,6 +365,8 @@ def _matches_incident_error_row(
     if not _matches_status(error, status):
         return False
     if not _in_date_range(error, date_from, date_to):
+        return False
+    if not _matches_customer(error, customer):
         return False
     return True
 
@@ -780,6 +812,7 @@ def load_change_requests(
     linked_environment: str | None = None,
     metric: str | None = None,
     tag_groups: list[str] | None = None,
+    customer: list[str] | str | None = None,
 ) -> DashboardOut:
     boards = ensure_boards_loaded(db, refresh=True)
     all_boards = is_all_boards(board_code)
@@ -800,6 +833,7 @@ def load_change_requests(
             metrics=_empty_metrics(),
             items=[],
             totalShown=0,
+            availableCustomers=[],
             actualPeriodEditableStatuses=actual_period_editable_statuses(),
         )
     else:
@@ -822,7 +856,7 @@ def load_change_requests(
     errors_by_parent = _build_errors_by_parent(rows, error_rows)
 
     # В таблице показываем и ЗНИ без заказчика (подсветка на UI); метрики — только с заказчиком.
-    filtered = [
+    pre_customer = [
         row
         for row in rows
         if _matches_search(row, search or "")
@@ -841,6 +875,8 @@ def load_change_requests(
         and _matches_tag_groups(row, selected_tag_groups)
         and _matches_closed_table_visibility(row, metric)
     ]
+    filtered = [row for row in pre_customer if _matches_customer(row, customer)]
+    available_customers = _collect_available_customers(pre_customer)
 
     filtered_incident_errors = [
         error
@@ -853,6 +889,7 @@ def load_change_requests(
             status=status,
             date_from=date_from,
             date_to=date_to,
+            customer=customer,
         )
     ]
 
@@ -912,6 +949,7 @@ def load_change_requests(
             )
         ),
         availableQuarters=_collect_available_quarters(filtered),
+        availableCustomers=available_customers,
         availableTagGroups=(
             _tag_filter_groups_out(board_code)
             if tag_filter_supported_for_board(board_code)
