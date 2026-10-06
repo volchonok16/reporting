@@ -391,17 +391,17 @@
   white-space: nowrap;
 }
 
-.youjail-columns-btn:hover:not(.is-active),
-.youjail-columns-btn.is-active {
+.youjail-columns-btn:hover:not(.is-active) {
   border-color: var(--brand);
   background: var(--brand);
   color: var(--text-inverse);
 }
 
+.youjail-columns-btn.is-active,
 .youjail-columns-btn.is-active:hover {
-  background: var(--surface-1);
-  color: var(--text-primary);
-  border-color: var(--text-primary);
+  background: var(--t2-mint);
+  border-color: var(--t2-mint);
+  color: #000000;
 }
 
 .youjail-board-select,
@@ -2133,10 +2133,11 @@
   color: var(--text-primary);
 }
 
-.youjail-notes-tab.is-active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+.youjail-notes-tab.is-active,
+.youjail-notes-tab.is-active:hover {
+  background: var(--t2-mint);
+  border-color: var(--t2-mint);
+  color: #000000;
 }
 
 .youjail-notes-editor,
@@ -2851,10 +2852,11 @@
   color: var(--text-primary);
 }
 
-.youjail-team-tab.is-active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+.youjail-team-tab.is-active,
+.youjail-team-tab.is-active:hover {
+  background: var(--t2-mint);
+  border-color: var(--t2-mint);
+  color: #000000;
 }
 
 .youjail-team-member-name {

@@ -76,9 +76,14 @@
   cursor: pointer;
 }
 
-.planning-multi-select-option:hover,
-.planning-multi-select-option.is-selected {
+.planning-multi-select-option:hover {
   background: var(--bg-hover);
+}
+
+.planning-multi-select-option.is-selected,
+.planning-multi-select-option.is-selected:hover {
+  background: var(--t2-mint);
+  color: #000000;
 }
 
 .planning-multi-select-option input {

@@ -109,16 +109,11 @@
   background: var(--surface-1);
 }
 
+.roadmap-quarter-btn-active,
 .roadmap-quarter-btn-active:hover {
-  background: var(--surface-1);
-  color: var(--text-primary);
-  border-color: var(--text-primary);
-}
-
-.roadmap-quarter-btn-active {
-  background: var(--brand);
-  border-color: var(--brand);
-  color: var(--text-inverse);
+  background: var(--t2-mint);
+  border-color: var(--t2-mint);
+  color: #000000;
 }
 
 .roadmap-period-range {

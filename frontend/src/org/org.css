@@ -62,17 +62,12 @@
   border-color: var(--border-strong);
 }
 
-.org-subtab-active {
-  background: var(--brand);
-  color: var(--text-inverse);
-  border-color: var(--brand);
-  box-shadow: var(--shadow-sm);
-}
-
+.org-subtab-active,
 .org-subtab-active:hover {
-  background: var(--surface-1);
-  color: var(--text-primary);
-  border-color: var(--text-primary);
+  background: var(--t2-mint);
+  color: #000000;
+  border-color: var(--t2-mint);
+  box-shadow: none;
 }
 
 .org-panel {
@@ -1757,17 +1752,12 @@
   background: color-mix(in srgb, var(--surface-1) 70%, transparent);
 }
 
-.org-vacation-year-btn-active {
-  background: var(--brand);
-  color: var(--text-inverse);
-  border-color: var(--brand);
-  box-shadow: none;
-}
-
+.org-vacation-year-btn-active,
 .org-vacation-year-btn-active:hover {
-  background: var(--surface-1);
-  color: var(--text-primary);
-  border-color: var(--text-primary);
+  background: var(--t2-mint);
+  color: #000000;
+  border-color: var(--t2-mint);
+  box-shadow: none;
 }
 
 .org-vacation-brushes {
