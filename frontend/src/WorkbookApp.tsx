@@ -15,6 +15,7 @@ import OrgPhoto from './org/OrgPhoto'
 import ThemeToggle from './ThemeToggle'
 import NotificationBell from './NotificationBell'
 import BrandLogo from './BrandLogo'
+import MaintenancePanel from './MaintenancePanel'
 import type { AppRole } from './App'
 import { loadActiveSheet, saveActiveSheet, saveDashboardSearch, type SheetId } from './uiState'
 import { setBoardDisplayLabels } from './zniDisplay'
@@ -131,6 +132,7 @@ export default function WorkbookApp({
     return candidate
   })
   const [profileOpen, setProfileOpen] = useState(false)
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false)
   const headerRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
@@ -202,6 +204,16 @@ export default function WorkbookApp({
         </nav>
         <div className="workbook-header-tools">
           <ThemeToggle compact />
+          {canManageOrg ? (
+            <button
+              type="button"
+              className="workbook-tab"
+              onClick={() => setMaintenanceOpen(true)}
+              title="Режим обслуживания и массовый logout"
+            >
+              Обслуживание
+            </button>
+          ) : null}
           <NotificationBell canManageOrg={canManageOrg} enabled={orgUserId != null} />
           <div className="workbook-header-account">
             {!voiceOnly ? (
@@ -285,6 +297,13 @@ export default function WorkbookApp({
             setProfileOpen(false)
             onAuthRefresh()
           }}
+        />
+      ) : null}
+
+      {maintenanceOpen && canManageOrg ? (
+        <MaintenancePanel
+          onClose={() => setMaintenanceOpen(false)}
+          onChanged={() => onAuthRefresh()}
         />
       ) : null}
     </div>

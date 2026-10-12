@@ -311,8 +311,8 @@ const MASTER_TUTORIAL_STEPS: MasterTutorialStepDefinition[] = [
     id: "bulk-delete-a",
     title: "Пакетное удаление опорных номеров",
     description:
-      "Блок удаляет сразу несколько опорных номеров вместе со всеми привязанными АОН и записывает операцию в одну версию истории.",
-    action: "Раскройте блок, чтобы увидеть формат списка номеров.",
+      "Через форму — до 50 номеров по 11 символов. Большие списки загружайте файлом CSV/XLSX (есть шаблон). Удаление записывается одной версией истории.",
+    action: "Раскройте блок, чтобы увидеть форму и загрузку файла.",
     target: '[data-tour="master-bulk-delete-a"]',
     requiresAction: true,
   },
@@ -320,7 +320,7 @@ const MASTER_TUTORIAL_STEPS: MasterTutorialStepDefinition[] = [
     id: "bulk-delete-b",
     title: "Пакетное удаление АОН",
     description:
-      "Этот вариант удаляет каждый указанный АОН во всём мастер-файле. Если связка останется без АОН, в неё будет подставлен опорный номер.",
+      "Через форму — до 50 АОН любой длины, либо файл CSV/XLSX по шаблону. Каждый АОН удаляется во всём мастер-файле; пустая связка получает опорный номер.",
     action: "Раскройте блок пакетного удаления АОН.",
     target: '[data-tour="master-bulk-delete-b"]',
     requiresAction: true,
@@ -477,8 +477,11 @@ function hasInvalidNumberWhitespace(value: string) {
   return /\s/.test(value);
 }
 
+const MASTER_BATCH_DELETE_FORM_LIMIT = 50;
+const MASTER_BATCH_DELETE_FORM_NUMBER_LENGTH = 11;
+
 function hasInvalidNumberLength(value: string) {
-  return value.trim().length !== 11;
+  return value.trim().length !== MASTER_BATCH_DELETE_FORM_NUMBER_LENGTH;
 }
 
 function hasInvalidNumberStart(value: string) {
@@ -486,18 +489,63 @@ function hasInvalidNumberStart(value: string) {
   return !!normalized && !normalized.startsWith("7");
 }
 
+function isShortAonBody(value: string) {
+  return (
+    value.length >= 1 &&
+    value.length < 8 &&
+    /^(\*|[0-9])[0-9*]*$/.test(value)
+  );
+}
+
+function canonicalizeShortAon(value: string) {
+  const text = value.trim().replace(/^\+/, "");
+  if (text.startsWith("b") && isShortAonBody(text.slice(1))) {
+    return text.slice(1);
+  }
+  return text;
+}
+
+function isShortAonValue(value: string) {
+  const text = value.trim().replace(/^\+/, "");
+  if (text.startsWith("b") && isShortAonBody(text.slice(1))) return true;
+  return isShortAonBody(text);
+}
+
+function formatBNumberForOutput(value: string) {
+  if (!isShortAonValue(value)) return value;
+  return `b${canonicalizeShortAon(value)}`;
+}
+
 function isSingleShortAon(numbers: string[]) {
-  return numbers.length === 1 && /^\d{3,5}$/.test(numbers[0]);
+  return numbers.length === 1 && isShortAonValue(numbers[0]);
 }
 
 function invalidBNumbers(numbers: string[]) {
-  if (isSingleShortAon(numbers)) return [];
-  return numbers.filter(hasInvalidNumberLength);
+  return numbers.filter(
+    (value) => !isShortAonValue(value) && hasInvalidNumberLength(value),
+  );
 }
 
 function invalidStartBNumbers(numbers: string[]) {
-  if (isSingleShortAon(numbers)) return [];
-  return numbers.filter(hasInvalidNumberStart);
+  return numbers.filter(
+    (value) => !isShortAonValue(value) && hasInvalidNumberStart(value),
+  );
+}
+
+function batchDeleteFormIssues(
+  numbers: string[],
+  options: { requireExactLength?: boolean } = {},
+) {
+  const requireExactLength = options.requireExactLength ?? true;
+  if (numbers.length > MASTER_BATCH_DELETE_FORM_LIMIT) {
+    return `Через форму можно удалить не более ${MASTER_BATCH_DELETE_FORM_LIMIT} номеров. Для большего списка загрузите файл.`;
+  }
+  if (!requireExactLength) return "";
+  const invalid = numbers.filter(hasInvalidNumberLength);
+  if (invalid.length) {
+    return `Через форму каждый номер должен содержать ${MASTER_BATCH_DELETE_FORM_NUMBER_LENGTH} символов. Некорректно: ${invalid.slice(0, 5).join(", ")}${invalid.length > 5 ? "…" : ""}.`;
+  }
+  return "";
 }
 
 function aonNumberClass(value: string, numbers: string[]) {
@@ -734,11 +782,9 @@ function formattedImportLine(record: ImportRecord) {
     parameter.custom,
   );
   const firstBMarker =
-    bNumbers.length === 1 && first.length >= 3 && first.length <= 5
-      ? "4:2"
-      : "4:4";
-  return `${prefix}${record.aNumber}=${firstBMarker},1,${first}${rest
-    .map((number) => `;4,1,${number}`)
+    bNumbers.length === 1 && isShortAonValue(first) ? "4:2" : "4:4";
+  return `${prefix}${record.aNumber}=${firstBMarker},1,${formatBNumberForOutput(first)}${rest
+    .map((number) => `;4,1,${formatBNumberForOutput(number)}`)
     .join("")}`;
 }
 
@@ -1225,6 +1271,19 @@ export default function MasterPage() {
   const [resettingHistory, setResettingHistory] = useState(false);
   const [bulkDeleteANumbers, setBulkDeleteANumbers] = useState("");
   const [bulkDeleteBNumbers, setBulkDeleteBNumbers] = useState("");
+  const [bulkDeleteAUpload, setBulkDeleteAUpload] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [bulkDeleteBUpload, setBulkDeleteBUpload] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [bulkDeleteUploading, setBulkDeleteUploading] = useState<
+    "" | "a" | "b"
+  >("");
+  const bulkDeleteAFileRef = useRef<HTMLInputElement>(null);
+  const bulkDeleteBFileRef = useRef<HTMLInputElement>(null);
   const [scopedDeleteANumbers, setScopedDeleteANumbers] = useState("");
   const [scopedDeleteBNumbers, setScopedDeleteBNumbers] = useState("");
   const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
@@ -2827,26 +2886,102 @@ export default function MasterPage() {
     }
   };
 
+  const uploadBulkDeleteFile = async (
+    kind: "a" | "b",
+    file: File | undefined,
+  ) => {
+    if (!file || !masterEditable) return;
+    const lower = file.name.toLowerCase();
+    if (
+      !MASTER_IMPORT_EXTENSIONS.some((extension) => lower.endsWith(extension))
+    ) {
+      setError("Для удаления выберите файл CSV, XLSX, XLS или XLSB.");
+      return;
+    }
+    setBulkDeleteUploading(kind);
+    setError("");
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const response = await apiFetch("/api/uploads", {
+        method: "POST",
+        body,
+      });
+      const uploaded = (await response.json()) as { id: string; name: string };
+      if (kind === "a") {
+        setBulkDeleteAUpload({ id: uploaded.id, name: uploaded.name });
+        setBulkDeleteANumbers("");
+      } else {
+        setBulkDeleteBUpload({ id: uploaded.id, name: uploaded.name });
+        setBulkDeleteBNumbers("");
+      }
+      setNotice(
+        `Файл «${uploaded.name}» загружен. Номера будут прочитаны из первой колонки.`,
+      );
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Не удалось загрузить файл для удаления.",
+      );
+    } finally {
+      setBulkDeleteUploading("");
+    }
+  };
+
+  const downloadBulkDeleteTemplate = async (
+    kind: "a" | "b",
+    fileFormat: "xlsx" | "csv",
+  ) => {
+    try {
+      const response = await apiFetch(
+        `/api/master/templates/batch-delete-${kind}?format=${fileFormat}`,
+      );
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `voice-batch-delete-${kind}-template.${fileFormat}`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Не удалось скачать шаблон.",
+      );
+    }
+  };
+
   const batchDeleteA = async () => {
     if (!masterEditable) return;
     const aNumbers = parseNumbers(bulkDeleteANumbers);
-    if (!aNumbers.length) {
-      setError("Укажите опорные номера для пакетного удаления.");
+    if (!bulkDeleteAUpload && !aNumbers.length) {
+      setError("Укажите опорные номера в форме или загрузите файл.");
       return;
     }
-    if (
-      !window.confirm(
-        `Отметить на удаление ${aNumbers.length} опорных номеров вместе со всеми АОН? Операция будет записана в историю.`,
-      )
-    )
-      return;
+    if (!bulkDeleteAUpload) {
+      const formIssue = batchDeleteFormIssues(aNumbers);
+      if (formIssue) {
+        setError(formIssue);
+        return;
+      }
+    }
+    const confirmLabel = bulkDeleteAUpload
+      ? `Удалить опорные номера из файла «${bulkDeleteAUpload.name}» вместе со всеми АОН? Операция будет записана в историю.`
+      : `Отметить на удаление ${aNumbers.length} опорных номеров вместе со всеми АОН? Операция будет записана в историю.`;
+    if (!window.confirm(confirmLabel)) return;
     setBulkDeleting("a");
     try {
       const response = await apiFetch(
         "/api/master/records/batch-delete-a",
         {
           method: "POST",
-          body: JSON.stringify({ aNumbers }),
+          body: JSON.stringify(
+            bulkDeleteAUpload
+              ? { uploadId: bulkDeleteAUpload.id }
+              : { aNumbers },
+          ),
         },
       );
       const result = (await response.json()) as {
@@ -2855,6 +2990,7 @@ export default function MasterPage() {
         notFound: number;
       };
       setBulkDeleteANumbers("");
+      setBulkDeleteAUpload(null);
       setNotice(
         `Пакетное удаление завершено: удалено опорных номеров ${result.deleted}, не найдено ${result.notFound}. Версия ${masterVersion(result.revision)}.`,
       );
@@ -2874,23 +3010,34 @@ export default function MasterPage() {
   const batchDeleteB = async () => {
     if (!masterEditable) return;
     const bNumbers = parseNumbers(bulkDeleteBNumbers);
-    if (!bNumbers.length) {
-      setError("Укажите АОН для пакетного удаления.");
+    if (!bulkDeleteBUpload && !bNumbers.length) {
+      setError("Укажите АОН в форме или загрузите файл.");
       return;
     }
-    if (
-      !window.confirm(
-        `Удалить ${bNumbers.length} указанных АОН из всех связок мастер-файла? Если связка останется без АОН, в неё будет подставлен опорный номер.`,
-      )
-    )
-      return;
+    if (!bulkDeleteBUpload) {
+      const formIssue = batchDeleteFormIssues(bNumbers, {
+        requireExactLength: false,
+      });
+      if (formIssue) {
+        setError(formIssue);
+        return;
+      }
+    }
+    const confirmLabel = bulkDeleteBUpload
+      ? `Удалить АОН из файла «${bulkDeleteBUpload.name}» из всех связок мастер-файла? Если связка останется без АОН, в неё будет подставлен опорный номер.`
+      : `Удалить ${bNumbers.length} указанных АОН из всех связок мастер-файла? Если связка останется без АОН, в неё будет подставлен опорный номер.`;
+    if (!window.confirm(confirmLabel)) return;
     setBulkDeleting("b");
     try {
       const response = await apiFetch(
         "/api/master/records/batch-delete-b",
         {
           method: "POST",
-          body: JSON.stringify({ bNumbers }),
+          body: JSON.stringify(
+            bulkDeleteBUpload
+              ? { uploadId: bulkDeleteBUpload.id }
+              : { bNumbers },
+          ),
         },
       );
       const result = (await response.json()) as {
@@ -2899,6 +3046,7 @@ export default function MasterPage() {
         removedAons: number;
       };
       setBulkDeleteBNumbers("");
+      setBulkDeleteBUpload(null);
       setNotice(
         `Пакетное удаление АОН завершено: обновлено связок ${result.updatedRecords}, удалено АОН ${result.removedAons}. Версия ${masterVersion(result.revision)}.`,
       );
@@ -3839,8 +3987,9 @@ export default function MasterPage() {
           </small>
           {allowedShortEditorAon && (
             <small className="short-aon-note">
-              Единственный короткий АОН {allowedShortEditorAon} допустим и
-              будет сформирован с маркером 4:2.
+              Единственный короткий АОН {allowedShortEditorAon} допустим
+              (менее 8 символов, цифра или «*») и будет сформирован как{" "}
+              {`4:2,1,${formatBNumberForOutput(allowedShortEditorAon)}`}.
             </small>
           )}
           {!!invalidEditorB.length && (
@@ -4511,8 +4660,9 @@ export default function MasterPage() {
               <strong>Опорные номера с коротким АОН</strong>
               <span>
                 Найдено строк: {recordStats.shortAonRecordCount}. Единственный
-                АОН длиной 3–5 символов считается допустимым и формируется с
-                маркером 4:2.
+                короткий АОН (менее 8 символов, начинается с цифры или «*»)
+                считается допустимым и формируется с маркером 4:2 и префиксом b
+                (например, 9999 → b9999).
               </span>
             </div>
             <button
@@ -5693,7 +5843,7 @@ export default function MasterPage() {
                       }
                     }}
                   />
-                  Опорный с коротким АОН · 3–5 символов
+                  Опорный с коротким АОН · менее 8 символов
                 </label>
                 <button
                   className="text-button"
@@ -5739,37 +5889,122 @@ export default function MasterPage() {
                 {batchPanel === "a" && (
                   <div className="master-batch-body">
                   <label className="field">
-                    <span>Опорные номера</span>
+                    <span>Опорные номера (форма, до 50)</span>
                     <textarea
                       value={bulkDeleteANumbers}
-                      onChange={(event) =>
-                        setBulkDeleteANumbers(event.target.value)
-                      }
+                      onChange={(event) => {
+                        setBulkDeleteANumbers(event.target.value);
+                        if (event.target.value.trim()) {
+                          setBulkDeleteAUpload(null);
+                        }
+                      }}
                       placeholder={"79000000001\n79000000002"}
-                      disabled={!masterEditable || !!bulkDeleting}
+                      disabled={
+                        !masterEditable ||
+                        !!bulkDeleting ||
+                        !!bulkDeleteAUpload ||
+                        bulkDeleteUploading === "a"
+                      }
                       spellCheck={false}
                     />
                     <small>
-                      Каждый найденный опорный номер будет удалён вместе со
-                      всеми привязанными АОН одной версией истории.
+                      Не более {MASTER_BATCH_DELETE_FORM_LIMIT} номеров, каждый
+                      ровно {MASTER_BATCH_DELETE_FORM_NUMBER_LENGTH} символов.
+                      Каждый найденный опорный номер удаляется вместе со всеми
+                      АОН одной версией истории.
                     </small>
-                    {!!parseNumbers(bulkDeleteANumbers).filter(
-                      hasInvalidNumberLength,
-                    ).length && (
-                      <small className="number-length-warning">
-                        Среди введённых опорных номеров есть номера с длиной не 11
-                        символов. Это предупреждение не блокирует операцию.
-                      </small>
-                    )}
+                    {!!batchDeleteFormIssues(
+                      parseNumbers(bulkDeleteANumbers),
+                    ) &&
+                      !!parseNumbers(bulkDeleteANumbers).length && (
+                        <small className="number-length-warning">
+                          {batchDeleteFormIssues(
+                            parseNumbers(bulkDeleteANumbers),
+                          )}
+                        </small>
+                      )}
                   </label>
+                  <div className="command-upload master-batch-file">
+                    <span className="command-upload-mark" aria-hidden="true">
+                      +
+                    </span>
+                    <strong>Удаление через файл</strong>
+                    <p>
+                      CSV или Excel: номера из первой непустой колонки. Для
+                      больших списков используйте файл, а не форму.
+                    </p>
+                    <div className="master-batch-template-links">
+                      <button
+                        className="text-button"
+                        type="button"
+                        onClick={() =>
+                          void downloadBulkDeleteTemplate("a", "xlsx")
+                        }
+                      >
+                        Шаблон XLSX
+                      </button>
+                      <button
+                        className="text-button"
+                        type="button"
+                        onClick={() =>
+                          void downloadBulkDeleteTemplate("a", "csv")
+                        }
+                      >
+                        Шаблон CSV
+                      </button>
+                    </div>
+                    {bulkDeleteAUpload ? (
+                      <div className="mini-file">
+                        <span>{bulkDeleteAUpload.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => setBulkDeleteAUpload(null)}
+                          aria-label="Убрать файл удаления"
+                          disabled={!!bulkDeleting}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => bulkDeleteAFileRef.current?.click()}
+                        disabled={
+                          !masterEditable ||
+                          !!bulkDeleting ||
+                          bulkDeleteUploading === "a"
+                        }
+                      >
+                        {bulkDeleteUploading === "a"
+                          ? "Загружаем…"
+                          : "Выбрать файл"}
+                      </button>
+                    )}
+                    <input
+                      ref={bulkDeleteAFileRef}
+                      className="visually-hidden"
+                      type="file"
+                      accept=".xlsx,.xls,.xlsb,.csv"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        void uploadBulkDeleteFile("a", file);
+                      }}
+                    />
+                  </div>
                   <button
                     className="danger-button"
                     type="button"
                     onClick={() => void batchDeleteA()}
                     disabled={
                       !masterEditable ||
-                      !parseNumbers(bulkDeleteANumbers).length ||
-                      !!bulkDeleting
+                      (!!bulkDeleting ||
+                        (!bulkDeleteAUpload &&
+                          (!parseNumbers(bulkDeleteANumbers).length ||
+                            !!batchDeleteFormIssues(
+                              parseNumbers(bulkDeleteANumbers),
+                            ))))
                     }
                   >
                     {bulkDeleting === "a"
@@ -5797,37 +6032,124 @@ export default function MasterPage() {
                 {batchPanel === "b" && (
                   <div className="master-batch-body">
                   <label className="field">
-                    <span>АОН</span>
+                    <span>АОН (форма, до 50)</span>
                     <textarea
                       value={bulkDeleteBNumbers}
-                      onChange={(event) =>
-                        setBulkDeleteBNumbers(event.target.value)
-                      }
+                      onChange={(event) => {
+                        setBulkDeleteBNumbers(event.target.value);
+                        if (event.target.value.trim()) {
+                          setBulkDeleteBUpload(null);
+                        }
+                      }}
                       placeholder={"79100000001\n79100000002"}
-                      disabled={!masterEditable || !!bulkDeleting}
+                      disabled={
+                        !masterEditable ||
+                        !!bulkDeleting ||
+                        !!bulkDeleteBUpload ||
+                        bulkDeleteUploading === "b"
+                      }
                       spellCheck={false}
                     />
                     <small>
-                      Указанные АОН удаляются из всех связок. Пустая связка
-                      автоматически получает собственный опорный номер как АОН.
+                      Не более {MASTER_BATCH_DELETE_FORM_LIMIT} номеров; длина
+                      АОН любая (в том числе короткий). Указанные АОН удаляются
+                      из всех связок; пустая связка получает опорный номер как
+                      АОН.
                     </small>
-                    {!!parseNumbers(bulkDeleteBNumbers).filter(
-                      hasInvalidNumberLength,
-                    ).length && (
-                      <small className="number-length-warning">
-                        Среди введённых АОН есть номера с длиной не 11 символов.
-                        Это предупреждение не блокирует операцию.
-                      </small>
-                    )}
+                    {!!batchDeleteFormIssues(parseNumbers(bulkDeleteBNumbers), {
+                      requireExactLength: false,
+                    }) &&
+                      !!parseNumbers(bulkDeleteBNumbers).length && (
+                        <small className="number-length-warning">
+                          {batchDeleteFormIssues(
+                            parseNumbers(bulkDeleteBNumbers),
+                            { requireExactLength: false },
+                          )}
+                        </small>
+                      )}
                   </label>
+                  <div className="command-upload master-batch-file">
+                    <span className="command-upload-mark" aria-hidden="true">
+                      +
+                    </span>
+                    <strong>Удаление через файл</strong>
+                    <p>
+                      CSV или Excel: АОН из первой непустой колонки. Для больших
+                      списков используйте файл, а не форму.
+                    </p>
+                    <div className="master-batch-template-links">
+                      <button
+                        className="text-button"
+                        type="button"
+                        onClick={() =>
+                          void downloadBulkDeleteTemplate("b", "xlsx")
+                        }
+                      >
+                        Шаблон XLSX
+                      </button>
+                      <button
+                        className="text-button"
+                        type="button"
+                        onClick={() =>
+                          void downloadBulkDeleteTemplate("b", "csv")
+                        }
+                      >
+                        Шаблон CSV
+                      </button>
+                    </div>
+                    {bulkDeleteBUpload ? (
+                      <div className="mini-file">
+                        <span>{bulkDeleteBUpload.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => setBulkDeleteBUpload(null)}
+                          aria-label="Убрать файл удаления"
+                          disabled={!!bulkDeleting}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => bulkDeleteBFileRef.current?.click()}
+                        disabled={
+                          !masterEditable ||
+                          !!bulkDeleting ||
+                          bulkDeleteUploading === "b"
+                        }
+                      >
+                        {bulkDeleteUploading === "b"
+                          ? "Загружаем…"
+                          : "Выбрать файл"}
+                      </button>
+                    )}
+                    <input
+                      ref={bulkDeleteBFileRef}
+                      className="visually-hidden"
+                      type="file"
+                      accept=".xlsx,.xls,.xlsb,.csv"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        void uploadBulkDeleteFile("b", file);
+                      }}
+                    />
+                  </div>
                   <button
                     className="danger-button"
                     type="button"
                     onClick={() => void batchDeleteB()}
                     disabled={
                       !masterEditable ||
-                      !parseNumbers(bulkDeleteBNumbers).length ||
-                      !!bulkDeleting
+                      (!!bulkDeleting ||
+                        (!bulkDeleteBUpload &&
+                          (!parseNumbers(bulkDeleteBNumbers).length ||
+                            !!batchDeleteFormIssues(
+                              parseNumbers(bulkDeleteBNumbers),
+                              { requireExactLength: false },
+                            ))))
                     }
                   >
                     {bulkDeleting === "b" ? "Удаляем…" : "Удалить АОН"}
@@ -6289,7 +6611,7 @@ export default function MasterPage() {
                             )}
                             {shortAon && (
                               <span className="short-aon-badge">
-                                Короткий АОН · допустимо · формат 4:2
+                                Короткий АОН · допустимо · формат 4:2,1,b…
                               </span>
                             )}
                             {!!invalidStartAons.length && (

@@ -30,29 +30,58 @@ def minio_configured() -> bool:
     )
 
 
-def put_object(key: str, body: bytes, content_type: str) -> None:
+def ensure_bucket(bucket: str) -> None:
+    """Создаёт bucket при отсутствии (для приватных вложений и т.п.)."""
+    name = bucket.strip()
+    if not name:
+        return
+    client = _s3_client()
+    try:
+        client.head_bucket(Bucket=name)
+    except ClientError:
+        try:
+            client.create_bucket(Bucket=name)
+        except ClientError as exc:
+            # Гонка: bucket уже создан другим процессом
+            try:
+                client.head_bucket(Bucket=name)
+            except ClientError:
+                logger.warning("MinIO ensure_bucket failed for %s: %s", name, exc)
+                raise
+
+
+def put_object(
+    key: str,
+    body: bytes,
+    content_type: str,
+    *,
+    bucket: str | None = None,
+) -> None:
+    bucket_name = (bucket or settings.minio_bucket).strip()
     _s3_client().put_object(
-        Bucket=settings.minio_bucket,
+        Bucket=bucket_name,
         Key=key.lstrip("/"),
         Body=body,
         ContentType=content_type,
     )
 
 
-def delete_object(key: str) -> None:
+def delete_object(key: str, *, bucket: str | None = None) -> None:
+    bucket_name = (bucket or settings.minio_bucket).strip()
     try:
         _s3_client().delete_object(
-            Bucket=settings.minio_bucket,
+            Bucket=bucket_name,
             Key=key.lstrip("/"),
         )
     except ClientError as exc:
-        logger.warning("MinIO delete failed for %s: %s", key, exc)
+        logger.warning("MinIO delete failed for %s/%s: %s", bucket_name, key, exc)
 
 
-def get_object_bytes(key: str) -> tuple[bytes, str] | None:
+def get_object_bytes(key: str, *, bucket: str | None = None) -> tuple[bytes, str] | None:
+    bucket_name = (bucket or settings.minio_bucket).strip()
     try:
         response = _s3_client().get_object(
-            Bucket=settings.minio_bucket,
+            Bucket=bucket_name,
             Key=key.lstrip("/"),
         )
     except ClientError:

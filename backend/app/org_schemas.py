@@ -149,6 +149,7 @@ class OrgUserBriefOut(BaseModel):
     voiceOnly: bool = False
     voiceAdmin: bool = False
     planningAccess: bool = False
+    mustChangePassword: bool = False
     allowedPageKeys: list[str] = Field(default_factory=list)
 
 
@@ -224,6 +225,7 @@ class EmployeeIn(BaseModel):
     allowedPageKeys: list[str] = Field(default_factory=list)
     createUserAccount: bool = False
     userPassword: str | None = None
+    userMustChangePassword: bool = True
     userIsAdmin: bool = False
     userVoiceOnly: bool = False
     userVoiceAdmin: bool = False
@@ -246,6 +248,7 @@ class EmployeeUpdateIn(BaseModel):
     userVoiceAdmin: bool | None = None
     userPlanningAccess: bool | None = None
     userPassword: str | None = None
+    userMustChangePassword: bool | None = None
     departmentIds: list[int] | None = None
 
 
@@ -326,6 +329,7 @@ class OrgUserOut(BaseModel):
     status: Literal["active", "inactive", "deleted"]
     voiceOnly: bool = False
     voiceAdmin: bool = False
+    mustChangePassword: bool = False
     employeeId: int | None = None
     employeeName: str | None = None
 
@@ -336,12 +340,14 @@ class OrgUserIn(BaseModel):
     isAdmin: bool = False
     voiceOnly: bool = False
     voiceAdmin: bool = False
+    mustChangePassword: bool = True
     status: Literal["active", "inactive"] = "active"
 
 
 class OrgUserUpdateIn(BaseModel):
     email: str | None = None
     password: str | None = None
+    mustChangePassword: bool | None = None
     isAdmin: bool | None = None
     voiceOnly: bool | None = None
     voiceAdmin: bool | None = None

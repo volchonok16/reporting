@@ -16,7 +16,12 @@ from typing import Any, Iterable
 from .config import Settings
 from .errors import AppError, CancelledError
 from .importers import FormattedMappingImporter, importer_for
-from .mapping import MappingBuilder, MappingParser
+from .mapping import (
+    DELETE_NUMBER_HEADER_TOKENS,
+    MappingBuilder,
+    MappingParser,
+    _header_token,
+)
 from .models import (
     HEADER,
     NO_REGION_PREFIX,
@@ -29,7 +34,8 @@ from .models import (
     PANI_PREFIX_PATTERN,
     LEGACY_PANI_REGION_PREFIX_PATTERN,
     canonicalize_pani_region_prefix,
-    is_single_short_aon,
+    format_b_number_for_output,
+    is_short_aon_value,
     normalize_master_source_prefix,
     resolved_first_b_marker,
 )
@@ -117,8 +123,10 @@ def _logical_master_row(
     if not b_numbers:
         return f"{prefix}{a_number}="
     first_marker = resolved_first_b_marker(b_numbers)
-    first = f"{first_marker},1,{b_numbers[0]}"
-    rest = "".join(f";4,1,{number}" for number in b_numbers[1:])
+    first = f"{first_marker},1,{format_b_number_for_output(b_numbers[0])}"
+    rest = "".join(
+        f";4,1,{format_b_number_for_output(number)}" for number in b_numbers[1:]
+    )
     return f"{prefix}{a_number}={first}{rest}"
 
 
@@ -185,10 +193,7 @@ MASTER_EXACT_DUPLICATE_EXTRA_SQL = """
 MASTER_SHORT_AON_SQL = """
 (
     json_array_length(master_records.b_numbers_json) = 1
-    AND length(
-        CAST(json_extract(master_records.b_numbers_json, '$[0]') AS TEXT)
-    ) BETWEEN 3 AND 5
-    AND master_is_digits(
+    AND master_is_short_aon(
         CAST(json_extract(master_records.b_numbers_json, '$[0]') AS TEXT)
     )
 )
@@ -422,10 +427,11 @@ def _number_start_errors(
             }
         )
     b_numbers = [str(value) for value in payload["bNumbers"]]
-    short_aon = is_single_short_aon(b_numbers)
     for b_number in b_numbers:
         value = str(b_number)
-        if not short_aon and not _number_starts_with_seven(value):
+        if is_short_aon_value(value):
+            continue
+        if not _number_starts_with_seven(value):
             errors.append(
                 {
                     "itemId": item_id,
@@ -659,45 +665,32 @@ class MasterService:
         if len(unique_orders) == 1:
             order = unique_orders[0]
             return {order: MasterService._active_line(connection, order)}
-        # One window scan for large batches; per-order COUNT for small sets.
-        if len(unique_orders) >= 64:
+        # Index (deleted_at, sort_order): per-order COUNT, chunked — без
+        # полного ROW_NUMBER по всем активным строкам.
+        result: dict[int, int] = {}
+        chunk_size = 100
+        for offset in range(0, len(unique_orders), chunk_size):
+            chunk = unique_orders[offset : offset + chunk_size]
+            parts: list[str] = []
+            values: list[int] = []
+            for order in chunk:
+                parts.append(
+                    """
+                    SELECT ? AS sort_order, (
+                        SELECT COUNT(*)
+                        FROM master_records
+                        WHERE deleted_at IS NULL AND sort_order <= ?
+                    ) AS count
+                    """
+                )
+                values.extend([order, order])
             rows = connection.execute(
-                """
-                SELECT sort_order, MAX(line_number) AS count
-                FROM (
-                    SELECT
-                        sort_order,
-                        ROW_NUMBER() OVER (ORDER BY sort_order, id)
-                            AS line_number
-                    FROM master_records
-                    WHERE deleted_at IS NULL
-                ) AS numbered
-                WHERE sort_order = ANY(?)
-                GROUP BY sort_order
-                """,
-                (unique_orders,),
+                " UNION ALL ".join(parts),
+                values,
             ).fetchall()
-            return {
-                int(row["sort_order"]): int(row["count"]) for row in rows
-            }
-        parts: list[str] = []
-        values: list[int] = []
-        for order in unique_orders:
-            parts.append(
-                """
-                SELECT ? AS sort_order, (
-                    SELECT COUNT(*)
-                    FROM master_records
-                    WHERE deleted_at IS NULL AND sort_order <= ?
-                ) AS count
-                """
-            )
-            values.extend([order, order])
-        rows = connection.execute(
-            " UNION ALL ".join(parts),
-            values,
-        ).fetchall()
-        return {int(row["sort_order"]): int(row["count"]) for row in rows}
+            for row in rows:
+                result[int(row["sort_order"])] = int(row["count"])
+        return result
 
     def _list_global_stats(
         self, connection: sqlite3.Connection
@@ -4167,6 +4160,8 @@ class MasterService:
             )
             return {"revision": revision, "deletedId": record_id}
 
+    _SQL_IN_CHUNK = 1000
+
     @staticmethod
     def _normalize_batch_numbers(
         values: Iterable[str], *, field: str
@@ -4185,29 +4180,119 @@ class MasterService:
             )
         return normalized
 
+    @classmethod
+    def _iter_sql_chunks(
+        cls, values: Iterable[str], *, size: int | None = None
+    ) -> list[list[str]]:
+        items = list(values)
+        chunk_size = size or cls._SQL_IN_CHUNK
+        if not items:
+            return []
+        return [
+            items[offset : offset + chunk_size]
+            for offset in range(0, len(items), chunk_size)
+        ]
+
+    @classmethod
+    def _sql_in_clause(
+        cls, column: str, values: Iterable[str]
+    ) -> tuple[str, list[str]]:
+        """Build chunked ``column IN (...)`` (OR-combined) for large lists."""
+
+        chunks = cls._iter_sql_chunks(values)
+        if not chunks:
+            return ("FALSE", [])
+        parts: list[str] = []
+        params: list[str] = []
+        for chunk in chunks:
+            placeholders = ",".join("?" for _ in chunk)
+            parts.append(f"{column} IN ({placeholders})")
+            params.extend(chunk)
+        if len(parts) == 1:
+            return (parts[0], params)
+        return (f"({' OR '.join(parts)})", params)
+
+    @classmethod
+    def _sql_b_numbers_overlap_clause(
+        cls, values: Iterable[str]
+    ) -> tuple[str, list[str]]:
+        """Match rows whose JSON B array intersects the given numbers."""
+
+        chunks = cls._iter_sql_chunks(values)
+        if not chunks:
+            return ("FALSE", [])
+        parts: list[str] = []
+        params: list[str] = []
+        for chunk in chunks:
+            placeholders = ",".join("?" for _ in chunk)
+            parts.append(
+                f"""
+                EXISTS (
+                    SELECT 1
+                    FROM json_each(b_numbers_json) AS target_aon
+                    WHERE CAST(target_aon.value AS TEXT) IN ({placeholders})
+                )
+                """
+            )
+            params.extend(chunk)
+        if len(parts) == 1:
+            return (parts[0], params)
+        return (f"({' OR '.join(parts)})", params)
+
+    def _numbers_from_upload(
+        self, upload_id: str, session_id: str, *, field: str
+    ) -> list[str]:
+        upload = self.registry.get_upload(upload_id, session_id)
+        importer = importer_for(upload.path, upload.format)
+        sheets = importer.listSheets()
+        if not sheets:
+            raise AppError("EMPTY_FILE", "Файл не содержит листов")
+        raw_values: list[Any] = []
+        for row in importer.iterateRows(sheets[0]):
+            value = next(
+                (
+                    cell
+                    for cell in row.values
+                    if cell is not None and str(cell).strip()
+                ),
+                None,
+            )
+            if value is None or _header_token(value) in DELETE_NUMBER_HEADER_TOKENS:
+                continue
+            raw_values.append(value)
+        return self._normalize_batch_numbers(raw_values, field=field)
+
     def delete_records_by_a(
-        self, a_numbers: Iterable[str], session_id: str, *, actor: str
+        self,
+        a_numbers: Iterable[str],
+        session_id: str,
+        *,
+        actor: str,
+        upload_id: str | None = None,
     ) -> dict[str, Any]:
-        targets = set(self._normalize_batch_numbers(a_numbers, field="A"))
+        if upload_id:
+            numbers = self._numbers_from_upload(
+                upload_id, session_id, field="A"
+            )
+        else:
+            numbers = list(a_numbers)
+        targets = set(self._normalize_batch_numbers(numbers, field="A"))
         now = time.time()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            active_records = connection.execute(
-                """
-                SELECT * FROM master_records
-                WHERE deleted_at IS NULL
-                ORDER BY sort_order
-                """
+            # Index master_records_a — только совпавшие A, без полной выгрузки.
+            a_clause, a_params = self._sql_in_clause(
+                "a_number", sorted(targets)
+            )
+            records = connection.execute(
+                f"""
+                SELECT *
+                FROM master_records
+                WHERE deleted_at IS NULL AND ({a_clause})
+                ORDER BY sort_order, id
+                """,
+                a_params,
             ).fetchall()
-            line_numbers = {
-                str(record["id"]): index
-                for index, record in enumerate(active_records, start=1)
-            }
-            records = [
-                record
-                for record in active_records
-                if str(record["a_number"]) in targets
-            ]
             current_revision = self._current_revision(connection)
             if not records:
                 return {
@@ -4216,6 +4301,11 @@ class MasterService:
                     "deleted": 0,
                     "notFound": len(targets),
                 }
+            line_by_sort = self._active_lines(
+                connection,
+                (int(record["sort_order"]) for record in records),
+            )
+            matched_a = {str(record["a_number"]) for record in records}
             revision = current_revision + 1
             for sequence, record in enumerate(records, start=1):
                 record_id = str(record["id"])
@@ -4235,7 +4325,7 @@ class MasterService:
                     sequence=sequence,
                     record_id=record_id,
                     action="deleted",
-                    line_number=line_numbers[record_id],
+                    line_number=line_by_sort[int(record["sort_order"])],
                     before=_snapshot(record),
                     after=None,
                     source_file=None,
@@ -4251,7 +4341,7 @@ class MasterService:
                 "revision": revision,
                 "requested": len(targets),
                 "deleted": len(records),
-                "notFound": len(targets) - len(records),
+                "notFound": len(targets) - len(matched_a),
             }
 
     def delete_exact_duplicate_extras(
@@ -4358,10 +4448,21 @@ class MasterService:
             }
 
     def delete_b_numbers(
-        self, b_numbers: Iterable[str], session_id: str, *, actor: str
+        self,
+        b_numbers: Iterable[str],
+        session_id: str,
+        *,
+        actor: str,
+        upload_id: str | None = None,
     ) -> dict[str, Any]:
+        if upload_id:
+            numbers = self._numbers_from_upload(
+                upload_id, session_id, field="B"
+            )
+        else:
+            numbers = list(b_numbers)
         return self._delete_b_numbers(
-            b_numbers,
+            numbers,
             session_id,
             actor=actor,
             selected_a_numbers=None,
@@ -4484,34 +4585,81 @@ class MasterService:
             selection_where = "deleted_at IS NULL"
             if selection_clauses:
                 selection_where += f" AND ({' OR '.join(selection_clauses)})"
-            active_records = connection.execute(
-                f"""
-                SELECT * FROM master_records
-                WHERE {selection_where}
-                ORDER BY sort_order
-                """,
-                selection_values,
-            ).fetchall()
-            matched_a_numbers = {
-                str(record["a_number"])
-                for record in active_records
-            }
-            matched_record_ids = {
-                str(record["id"]) for record in active_records
-            }
-            not_found_records = (
-                len((selected_a_numbers or set()) - matched_a_numbers)
-                + len((selected_record_ids or set()) - matched_record_ids)
+
+            # Метаданные scope без выгрузки всех колонок.
+            not_found_records = 0
+            selected_scope_count: int | None = None
+            if selected_a_numbers is not None:
+                if selected_a_numbers:
+                    a_clause, a_params = self._sql_in_clause(
+                        "a_number", sorted(selected_a_numbers)
+                    )
+                    found_a = {
+                        str(row["a_number"])
+                        for row in connection.execute(
+                            f"""
+                            SELECT DISTINCT a_number
+                            FROM master_records
+                            WHERE deleted_at IS NULL AND ({a_clause})
+                            """,
+                            a_params,
+                        ).fetchall()
+                    }
+                    not_found_records += len(selected_a_numbers - found_a)
+                if selected_record_ids:
+                    id_clause, id_params = self._sql_in_clause(
+                        "id", sorted(selected_record_ids)
+                    )
+                    found_ids = {
+                        str(row["id"])
+                        for row in connection.execute(
+                            f"""
+                            SELECT id
+                            FROM master_records
+                            WHERE deleted_at IS NULL AND ({id_clause})
+                            """,
+                            id_params,
+                        ).fetchall()
+                    }
+                    not_found_records += len(selected_record_ids - found_ids)
+                scope_count = int(
+                    connection.execute(
+                        f"""
+                        SELECT COUNT(*) AS count
+                        FROM master_records
+                        WHERE {selection_where}
+                        """,
+                        selection_values,
+                    ).fetchone()["count"]
+                )
+                selected_scope_count = scope_count + not_found_records
+
+            # Только строки, где есть пересечение с целевыми АОН.
+            b_clause, b_params = self._sql_b_numbers_overlap_clause(
+                sorted(targets)
             )
+            candidate_records = connection.execute(
+                f"""
+                SELECT *
+                FROM master_records
+                WHERE {selection_where}
+                  AND ({b_clause})
+                ORDER BY sort_order, id
+                """,
+                [*selection_values, *b_params],
+            ).fetchall()
+
             linked_targets: set[str] = set()
             updates: list[tuple[sqlite3.Row, list[str], int]] = []
-            for record in active_records:
+            for record in candidate_records:
                 current = json.loads(str(record["b_numbers_json"]))
                 linked_targets.update(
                     number for number in current if number in targets
                 )
                 removed = sum(1 for number in current if number in targets)
-                remaining = [number for number in current if number not in targets]
+                remaining = [
+                    number for number in current if number not in targets
+                ]
                 if not remaining:
                     remaining = [str(record["a_number"])]
                 if remaining == current:
@@ -4525,7 +4673,7 @@ class MasterService:
                     "updatedRecords": 0,
                     "removedAons": 0,
                     "requestedRecords": (
-                        len(active_records) + not_found_records
+                        selected_scope_count
                         if selected_a_numbers is not None
                         else None
                     ),
@@ -4542,6 +4690,10 @@ class MasterService:
                 }
             revision = current_revision + 1
             removed_aons = 0
+            line_by_sort = self._active_lines(
+                connection,
+                (int(record["sort_order"]) for record, _, _ in updates),
+            )
             for sequence, (record, remaining, removed) in enumerate(
                 updates, start=1
             ):
@@ -4570,9 +4722,7 @@ class MasterService:
                     sequence=sequence,
                     record_id=record_id,
                     action="updated",
-                    line_number=self._active_line(
-                        connection, int(record["sort_order"])
-                    ),
+                    line_number=line_by_sort[int(record["sort_order"])],
                     before=before,
                     after=after,
                     source_file=None,
@@ -4590,7 +4740,7 @@ class MasterService:
                 "updatedRecords": len(updates),
                 "removedAons": removed_aons,
                 "requestedRecords": (
-                    len(active_records) + not_found_records
+                    selected_scope_count
                     if selected_a_numbers is not None
                     else None
                 ),

@@ -2104,22 +2104,33 @@ export default function Home() {
     options: { full?: boolean } = {},
   ) => {
     const prefix = prefixForMappingFormat(selection);
+    const formatPreviewB = (value: string) => {
+      const short =
+        value.length >= 1 &&
+        value.length < 8 &&
+        /^(\*|[0-9])[0-9*]*$/.test(value);
+      return short ? `b${value}` : value;
+    };
     const firstB = selection.bNumbers[0] ?? selection.aNumber;
     const rest = selection.bNumbers
       .slice(1, options.full ? undefined : 4)
       .map(
         (bNumber) =>
-          `;${template.nextBMarker},${template.weight},${bNumber}`,
+          `;${template.nextBMarker},${template.weight},${formatPreviewB(bNumber)}`,
       )
       .join("");
     const truncated =
       !options.full && selection.bNumbers.length > 4 ? ";…" : "";
+    const isShortAon =
+      firstB.length >= 1 &&
+      firstB.length < 8 &&
+      /^(\*|[0-9])[0-9*]*$/.test(firstB);
     const firstBMarker =
-      selection.bNumbers.length === 1 && firstB.length >= 3 && firstB.length <= 5
+      selection.bNumbers.length === 1 && isShortAon
         ? "4:2"
         : template.firstBMarker;
     const terminator = selection.kind === "pani-region" ? ";" : "";
-    return `${prefix}${selection.aNumber}=${firstBMarker},${template.weight},${firstB}${rest}${truncated}${terminator}`;
+    return `${prefix}${selection.aNumber}=${firstBMarker},${template.weight},${formatPreviewB(firstB)}${rest}${truncated}${terminator}`;
   };
 
   const addManualBatch = () => {
@@ -6365,9 +6376,12 @@ export default function Home() {
                         />
                       </label>
                       <label className="field">
-                        <span>Один короткий АОН (3–5 символов)</span>
+                        <span>Один короткий АОН (менее 8 символов)</span>
                         <input value="4:2" readOnly />
-                        <small>Применяется автоматически вместо 4:4.</small>
+                        <small>
+                          Применяется автоматически вместо 4:4; номер пишется
+                          как b9999.
+                        </small>
                       </label>
                       <label className="field">
                         <span>Следующие АОН</span>

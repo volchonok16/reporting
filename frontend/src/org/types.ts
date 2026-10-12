@@ -101,6 +101,7 @@ export type OrgUserBrief = {
   voiceOnly?: boolean
   voiceAdmin?: boolean
   planningAccess?: boolean
+  mustChangePassword?: boolean
   allowedPageKeys?: string[]
 }
 

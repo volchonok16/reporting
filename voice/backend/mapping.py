@@ -21,6 +21,7 @@ from .models import (
     PANI_REGION_PREFIX_PATTERN,
     TemplateSettings,
     canonicalize_pani_region_prefix,
+    format_b_number_for_output,
     resolved_first_b_marker,
 )
 from .reporting import ReportWriter
@@ -355,6 +356,8 @@ A_HEADER_TOKENS = {
     "основнойномер",
     "основной",
     "аномер",
+    "опорныйномер",
+    "опорный",
 }
 B_HEADER_TOKENS = {
     "b",
@@ -363,6 +366,13 @@ B_HEADER_TOKENS = {
     "номерротации",
     "ротация",
     "бномер",
+    "аон",
+    "aon",
+}
+DELETE_NUMBER_HEADER_TOKENS = A_HEADER_TOKENS | B_HEADER_TOKENS | {
+    "номер",
+    "number",
+    "msisdn",
 }
 
 
@@ -819,10 +829,11 @@ class MappingSerializer:
         )
         first = (
             f"{first_b_marker},{self.template.weight},"
-            f"{mapping.bNumbers[0]}"
+            f"{format_b_number_for_output(mapping.bNumbers[0])}"
         )
         rest = "".join(
-            f";{self.template.next_b_marker},{self.template.weight},{b_number}"
+            f";{self.template.next_b_marker},{self.template.weight},"
+            f"{format_b_number_for_output(b_number)}"
             for b_number in mapping.bNumbers[1:]
         )
         prefix = self.mapping_prefixes.get(

@@ -67,6 +67,64 @@ body {
   color: var(--text-secondary);
 }
 
+.maintenance-banner {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 2px solid var(--text-primary);
+  background: color-mix(in srgb, #FF3495 12%, var(--surface-1) 88%);
+  color: var(--text-primary);
+}
+
+.maintenance-banner strong {
+  display: block;
+  margin: 0 0 4px;
+  font-family: 'T2 Rooftop', system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: var(--btn-font-weight, 500);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.maintenance-banner p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.maintenance-banner-compact {
+  margin: 0;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+.maintenance-panel-modal {
+  max-width: 520px;
+  width: min(520px, calc(100vw - 32px));
+}
+
+.maintenance-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.maintenance-panel-modal textarea {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+}
+
 .login-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -123,7 +181,7 @@ body {
   gap: var(--space-lg);
 }
 
-.login-panel form button {
+.login-panel form button:not(.org-password-input-toggle) {
   width: 100%;
 }
 
@@ -219,6 +277,15 @@ body {
   display: flex;
   flex-direction: column;
   background: var(--bg-app);
+}
+
+/* Статус продукта: фиксированная высота окна, скролл только у таблицы */
+.workbook:has(.product-status) {
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+  overflow: hidden;
 }
 
 .workbook-header {
@@ -617,7 +684,9 @@ body {
 .workbook-content:has(.product-status) {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .workbook-content:has(.product-status) > .app {
@@ -2129,6 +2198,15 @@ input.zni-field-overdue.zni-field-derived {
   flex-direction: column;
 }
 
+/* Обёртки листов с ProductStatusWorkbook — иначе ломается цепочка flex и скролл таблицы */
+.gov-initiatives,
+.revenue-activities {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .product-status-section {
   margin: 20px 0 24px;
   padding: 16px 0 0;
@@ -2151,20 +2229,34 @@ input.zni-field-overdue.zni-field-derived {
   margin-bottom: 12px;
 }
 
+.product-status-toolbar-left {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
 .product-status-toolbar-actions {
   display: inline-flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
-  position: fixed;
-  right: max(12px, var(--page-gutter));
-  top: calc(var(--workbook-header-offset, 56px) + 8px);
-  z-index: 30;
+  position: static;
+  z-index: 5;
+  max-width: 100%;
   padding: 0;
   border: none;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+}
+
+@media (min-width: 1400px) {
+  .product-status-toolbar-actions {
+    position: sticky;
+    top: calc(var(--workbook-header-offset, 56px) + 8px);
+    align-self: flex-start;
+    z-index: 25;
+  }
 }
 
 .product-status-toolbar-actions-group {
@@ -2263,6 +2355,25 @@ input.zni-field-overdue.zni-field-derived {
   letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+.product-status-scroll-chrome {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition: grid-template-rows 0.22s ease, opacity 0.16s ease;
+}
+
+.product-status-scroll-chrome-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.product-status-scroll-chrome--collapsed {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .product-status-editing-locked-banner {
@@ -2369,8 +2480,9 @@ input.zni-field-overdue.zni-field-derived {
 
 .product-status-table {
   width: 100%;
-  min-width: 1400px;
-  border-collapse: collapse;
+  min-width: 1580px;
+  border-collapse: separate;
+  border-spacing: 0;
   table-layout: fixed;
   border: 1px solid var(--border);
 }
@@ -2467,18 +2579,23 @@ body.product-status-col-resizing .product-status-col-resize-handle {
 .product-status-table.product-status-table--summary {
   table-layout: fixed;
   width: 100%;
+  min-width: 960px;
 }
 
 .product-status-table--summary col.col-office {
-  width: 132px;
+  width: 120px;
 }
 
 .product-status-table--summary col.col-description {
-  width: 58%;
+  width: 42%;
 }
 
 .product-status-table--summary col.col-why {
-  width: 32%;
+  width: 28%;
+}
+
+.product-status-table--summary col.col-attachments {
+  width: 180px;
 }
 
 .product-status-table--summary thead th {
@@ -2527,6 +2644,10 @@ body.product-status-col-resizing .product-status-col-resize-handle {
 }
 
 .product-status-table col.col-comment {
+  width: 180px;
+}
+
+.product-status-table col.col-attachments {
   width: 180px;
 }
 
@@ -2602,7 +2723,8 @@ body.product-status-col-resizing .product-status-col-resize-handle {
   background: var(--bg-hover);
 }
 
-.product-status-priority-input {
+.product-status-priority-input,
+.product-status-priority-select {
   width: 100%;
   min-height: 2.4em;
   padding: 6px 8px;
@@ -2612,6 +2734,15 @@ body.product-status-col-resizing .product-status-col-resize-handle {
   color: var(--text-primary);
   font: inherit;
   box-sizing: border-box;
+}
+
+.product-status-priority-select {
+  cursor: pointer;
+}
+
+.product-status-priority-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 .product-status-priority-input:hover {
@@ -2626,10 +2757,11 @@ body.product-status-col-resizing .product-status-col-resize-handle {
 .product-status-table thead th {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 6;
   padding: 10px 12px;
   background: var(--table-head-bg);
   border: 1px solid var(--border);
+  border-top: none;
   font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
@@ -2637,7 +2769,7 @@ body.product-status-col-resizing .product-status-col-resize-handle {
   line-height: 1.35;
   white-space: normal;
   vertical-align: bottom;
-  box-shadow: none;
+  box-shadow: 0 1px 0 var(--border);
 }
 
 .product-status-th-inner {
@@ -2941,11 +3073,165 @@ body.product-status-col-resizing .product-status-col-resize-handle {
   visibility: hidden;
 }
 
+.product-status-attachments-td {
+  vertical-align: top;
+  overflow: hidden;
+}
+
+.product-status-attachments-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.product-status-attachments-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.product-status-attachments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-width: 0;
+}
+
+.product-status-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 2px 4px 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface-1);
+  box-sizing: border-box;
+}
+
+.product-status-attachment-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: #16d5df;
+  font-size: 12px;
+  line-height: 1.3;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.product-status-attachment-link:hover .product-status-attachment-name {
+  text-decoration: underline;
+}
+
+.product-status-attachment-icon {
+  flex-shrink: 0;
+  width: 11px;
+  height: 11px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  position: relative;
+}
+
+.product-status-attachment-icon::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: 3px;
+  border-top: 1.5px solid currentColor;
+}
+
+.product-status-attachment-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-status-attachment-remove {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.product-status-attachment-remove:hover {
+  background: color-mix(in srgb, var(--danger, #e11) 12%, transparent);
+  color: var(--danger, #e11);
+}
+
+.product-status-attachment-add {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.product-status-attachment-add:hover {
+  border-color: var(--text-primary);
+  color: var(--text-primary);
+  background: var(--surface-2);
+}
+
+.product-status-attachment-add.is-busy {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.product-status-format-dock {
+  flex-shrink: 0;
+  margin: 0 0 12px;
+  background: var(--bg-app);
+  z-index: 20;
+}
+
+.product-status-format-dock--pinned {
+  position: sticky;
+  top: 0;
+  padding-bottom: 2px;
+  box-shadow: 0 1px 0 var(--border);
+}
+
+.product-status-format-dock .product-status-format-panel {
+  margin: 0;
+}
+
 .product-status-format-panel {
   margin: 0 0 12px;
-  position: sticky;
-  top: 64px;
-  z-index: 20;
+  background: var(--bg-app);
 }
 
 .product-status-format-panel-toggle {
@@ -3289,21 +3575,19 @@ body.product-status-col-resizing .product-status-col-resize-handle {
   width: 100%;
   min-height: 2.7em;
   margin: 0;
-  padding: 0;
+  padding: 2px 0;
   border: none;
   border-radius: 0;
   background: transparent;
   color: inherit;
   font: inherit;
   line-height: inherit;
-  resize: vertical;
   box-sizing: border-box;
   outline: none;
   white-space: pre-wrap;
   word-break: break-word;
   cursor: text;
   pointer-events: auto;
-  field-sizing: content;
 }
 
 .product-status-inline-table-postamble {

@@ -12,6 +12,7 @@ from typing import Any
 
 from .config import Settings
 from .errors import AppError
+from .models import canonicalize_short_aon, is_short_aon_value
 
 
 ZIP_MAGIC = b"PK\x03\x04"
@@ -103,6 +104,8 @@ def normalize_number(
             f"В строке {source_row} формула не может использоваться как {field}-номер",
             source_row=source_row,
         )
+    if field == "B" and is_short_aon_value(text):
+        return canonicalize_short_aon(text)
     if not NUMBER_RE.fullmatch(text):
         raise AppError(code, f"В строке {source_row} некорректный {field}-номер", source_row=source_row)
     normalized = text.removeprefix("+")

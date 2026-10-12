@@ -66,6 +66,16 @@ async def resolve_working_auth(auth: TfsAuth) -> TfsAuth:
 
 
 async def login_with_pat(auth: TfsAuth) -> AuthLoginOut:
+    from app.db import SessionLocal
+    from app.maintenance import raise_if_login_blocked
+
+    db = SessionLocal()
+    try:
+        # PAT считается админским входом (can_manage_org).
+        raise_if_login_blocked(db, meta_for_user={"auth_mode": "pat"})
+    finally:
+        db.close()
+
     resolved = await resolve_working_auth(auth)
     session_id = create_session(resolved, auth_mode="pat")
     return AuthLoginOut(sessionId=session_id, authMode="pat")
@@ -116,6 +126,16 @@ async def login_with_app_user(
                 app_role = FULL_APP_ROLE
             else:
                 raise HTTPException(status_code=401, detail="Неверный логин или пароль.")
+        from app.maintenance import raise_if_login_blocked
+
+        raise_if_login_blocked(
+            db,
+            meta_for_user={
+                "auth_mode": "app_user",
+                "app_role": app_role,
+                "org_user_role": org_user_role,
+            },
+        )
     finally:
         db.close()
 

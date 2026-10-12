@@ -24,6 +24,8 @@ class AuthDefaultsOut(BaseModel):
     baseUrl: str
     project: str
     projectId: str | None = None
+    maintenanceEnabled: bool = False
+    maintenanceMessage: str = ""
 
 
 class VoiceSsoTokenOut(BaseModel):
@@ -50,6 +52,31 @@ class TfsAuthStatusOut(BaseModel):
     orgEmployeeId: int | None = None
     orgEmployeeName: str | None = None
     orgEmployeePhotoUrl: str | None = None
+    mustChangePassword: bool = False
+    maintenanceEnabled: bool = False
+    maintenanceMessage: str = ""
+    maintenanceBlocked: bool = False
+
+
+class MaintenanceOut(BaseModel):
+    enabled: bool
+    message: str
+    allowAdmin: bool
+    updatedAt: datetime | None = None
+    updatedByOrgUserId: int | None = None
+    sessionCount: int = 0
+
+
+class MaintenanceUpdateIn(BaseModel):
+    enabled: bool | None = None
+    message: str | None = None
+    allowAdmin: bool | None = None
+    revokeOtherSessions: bool = False
+
+
+class RevokeSessionsOut(BaseModel):
+    revoked: int
+    keptCurrent: bool = False
 
 
 class BoardOut(BaseModel):
@@ -193,6 +220,11 @@ class ProductsOut(BaseModel):
     totalShown: int
 
 
+class ProductStatusPriorityRangeOut(BaseModel):
+    rangeFrom: int
+    rangeTo: int
+
+
 class ProductStatusSheetOut(BaseModel):
     gid: str
     name: str
@@ -200,8 +232,22 @@ class ProductStatusSheetOut(BaseModel):
     rows: list[dict[str, str]]
     totalShown: int
     projects: list[str] = Field(default_factory=list)
+    projectPriorityRanges: dict[str, ProductStatusPriorityRangeOut] = Field(
+        default_factory=dict,
+        description="Проект координации → допустимый диапазон чисел для «Приоритет»",
+    )
     editingLocked: bool = False
     readOnly: bool = False
+
+
+class ProductStatusAttachmentOut(BaseModel):
+    id: int
+    filename: str
+    contentType: str | None = None
+    sizeBytes: int = 0
+    uploadedBy: str | None = None
+    createdAt: str | None = None
+    downloadUrl: str
 
 
 class ProductStatusOfficeEditingLockIn(BaseModel):

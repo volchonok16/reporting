@@ -62,11 +62,21 @@ def work_item_tags(fields: dict[str, Any] | None) -> list[str]:
     return [part.strip() for part in str(raw).split(";") if part.strip()]
 
 
-def has_required_tags(fields: dict[str, Any], required_tags: tuple[str, ...]) -> bool:
+def has_required_tags(
+    fields: dict[str, Any],
+    required_tags: tuple[str, ...],
+    *,
+    match: str = "any",
+) -> bool:
     if not required_tags:
         return True
     tags = {tag.casefold() for tag in work_item_tags(fields)}
-    return any(required.casefold() in tags for required in required_tags)
+    required = [tag.casefold() for tag in required_tags if tag and tag.strip()]
+    if not required:
+        return True
+    if (match or "any").strip().casefold() == "all":
+        return all(tag in tags for tag in required)
+    return any(tag in tags for tag in required)
 
 
 def has_excluded_tags(fields: dict[str, Any], excluded_tags: tuple[str, ...]) -> bool:
@@ -381,6 +391,7 @@ async def sync_board(
         zni_ids = await client.get_change_request_ids(
             area_path=board.area_path,
             tags=board.sync_tags or None,
+            tags_match=board.sync_tags_match,
             exclude_tags=board.exclude_sync_tags or None,
             exclude_states=board.exclude_sync_states or None,
         )
@@ -401,7 +412,11 @@ async def sync_board(
         zni_payloads = [
             item
             for item in as_work_item_list(zni_payloads_raw)
-            if has_required_tags(item.get("fields") or {}, board.sync_tags)
+            if has_required_tags(
+                item.get("fields") or {},
+                board.sync_tags,
+                match=board.sync_tags_match,
+            )
             and not has_excluded_tags(item.get("fields") or {}, board.exclude_sync_tags)
             and not is_excluded_sync_state(item.get("fields") or {}, board.exclude_sync_states)
             and not is_excluded_sync_title(item.get("fields") or {})
@@ -536,6 +551,7 @@ async def sync_board(
             reservation_zni_ids = await client.get_zni_resource_reservation_links(
                 board.area_path,
                 zni_tags=board.sync_tags or None,
+                zni_tags_match=board.sync_tags_match,
                 exclude_zni_states=board.exclude_sync_states or None,
                 exclude_zni_tags=board.exclude_sync_tags or None,
             )
@@ -561,6 +577,7 @@ async def sync_board(
             acceptance_zni_ids = await client.get_zni_ect_acceptance_links(
                 board.area_path,
                 zni_tags=board.sync_tags or None,
+                zni_tags_match=board.sync_tags_match,
                 exclude_zni_states=board.exclude_sync_states or None,
                 exclude_zni_tags=board.exclude_sync_tags or None,
             )
@@ -602,6 +619,7 @@ async def sync_board(
         error_child_map = await client.get_error_links_for_area(
             board.area_path,
             zni_tags=board.sync_tags or None,
+            zni_tags_match=board.sync_tags_match,
             exclude_zni_states=board.exclude_sync_states or None,
             exclude_zni_tags=board.exclude_sync_tags or None,
             exclude_error_tags=board.exclude_sync_tags or None,

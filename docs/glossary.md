@@ -152,6 +152,7 @@
 | `board_name` | varchar(255) | Имя доски / значение `task.source_team` |
 | `area_path` | varchar(500) | `System.AreaPath` для WIQL |
 | `sync_tags` | text | Теги синка ЗНИ через запятую |
+| `sync_tags_match` | text | `any` (по умолчанию) — достаточно любого тега из `sync_tags`; `all` — ЗНИ должна иметь **все** перечисленные теги (напр. `b2b_product,УКП_приоритет`) |
 | `other_tags` | text | Другие теги (алиасы тегов) через запятую |
 | `exclude_sync_tags` | text | Исключающие теги через запятую (`EFO,not_product`) |
 | `exclude_sync_states` | text | Исключающие статусы через запятую |
@@ -530,7 +531,7 @@
 
 **Планируемая дата** — из листа `System.IterationPath`: `2026.08.11.0-R` → `2026-08-11`, также `Dec.26` → `2026-12-01`; если в пути есть **TBD** — в UI выводится `TBD`; если дата из итерации не определена — подставляется **Целевая дата** (`Microsoft.VSTS.Scheduling.TargetDate`, поле `task.release_date`, напр. ЗНИ 1071033 → `03.12.2025`). **План квартала** — из даты, из квартального листа (`Q2'26`, `2026_Q3_DoC` → `Q2 2026` / `Q3 2026`) или `TBD`; фильтр `quarter` в API (`TBD`, `2026-Q3`, …). В выпадающем списке фильтра — только кварталы **текущего года** плюс отдельные пункты TBD и «Без квартала». **Плановый релиз** — из `Logrocon.FoundinRelease` или `Logrocon.Release`, если поле проставлено или релиз привязан; колонка «План. релиз» в дашборде и CSV. **Бронь ресурса ЕЦТ** — `ДА` / `НЕТ`: прямая Related-связь ЗНИ с элементом «Бронь ресурсов» (`TFS_RESOURCE_RESERVATION_TYPE_VALUES`, по умолчанию `Бронь ресурсов`).
 
-**Доски приложения** хранятся в таблице `zni_board` (не в коде): Digital (`Tele2\Digital\Streams\B2b`); Продукты (`Tele2\Продукты`, ЗНИ с `b2b_product`); Reports (`Tele2\Reports\Team A`, `b2b_product`); CORE / КАТС / Голосовые продукты / М2М / IoT / SMS / Solar / Umnico (area `Tele2\B2B Product…`, exclude `EFO`/`not_product`, метрики UAT/Pilot); Bercut (`BE-T2\BE Analytics`, `b2b_product`); ESB (`BE-T2\ESB\ESB Analytics`). Поля: `alias` (UI), `board_name`, `area_path`, `sync_tags`, `other_tags` («другие теги»), exclude/error-теги, GUID проекта/команды, статусы метрик. Seed — `db/migrations/043_zni_boards.sql`.
+**Доски приложения** хранятся в таблице `zni_board` (не в коде): Digital (`Tele2\Digital\Streams\B2b`); Продукты (`Tele2\Продукты`, ЗНИ с `b2b_product`); Reports (`Tele2\Reports\Team A`, `b2b_product`); CORE / КАТС / Голосовые продукты / М2М / IoT / SMS / Solar / Umnico (area `Tele2\B2B Product…`, exclude `EFO`/`not_product`, метрики UAT/Pilot); Bercut (`BE-T2\BE Analytics`, `b2b_product`); ESB (`BE-T2\ESB\ESB Analytics`). Поля: `alias` (UI), `board_name`, `area_path`, `sync_tags`, `sync_tags_match` (`any`/`all`), `other_tags` («другие теги»), exclude/error-теги, GUID проекта/команды, статусы метрик. Seed — `db/migrations/043_zni_boards.sql`; режим мульти-тегов — `069_zni_board_sync_tags_match.sql`. Для досок с обязательными несколькими тегами: `UPDATE zni_board SET sync_tags = 'b2b_product,УКП_приоритет', sync_tags_match = 'all' WHERE code = '…';` — остальные доски оставляют `sync_tags_match = 'any'`.
 
 **Одинаковый alias** (2, 3 и больше строк, например CRM: `Tele2\CRM\Prometheus` и `Tele2\CRM\CRM Team DoC`) — специально для склейки стримов: в селекте одна вкладка, синк идёт по каждому `area_path`, задачи сливаются. `prune_stale` чистит только свой `extra_json.board_code`, чтобы соседние area не затирали друг друга.
 
@@ -759,6 +760,23 @@
 
 ---
 
+## app_maintenance — режим обслуживания
+
+Singleton-таблица (`id = 1`): запрет авторизации обычным пользователям на время технических работ и текст сообщения.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | smallint | Всегда `1` |
+| `enabled` | boolean | Если true — вход для не-админов запрещён (HTTP 503 с `message`); существующие не-админские сессии удаляются при обращении к API |
+| `message` | text | Текст о проводимых работах (экран входа, баннер у админов). Пустое → текст по умолчанию |
+| `allow_admin` | boolean | Если true — `admin` / `superadmin` / PAT могут входить и работать |
+| `updated_by_org_user_id` | bigint | Кто менял режим (`org_user`), NULL для PAT |
+| `updated_at` | timestamptz | Время последнего изменения |
+
+API (только `canManageOrg`): `GET/PATCH /api/admin/maintenance`, `POST /api/admin/sessions/revoke-all` (массовый logout, опционально оставить сессию вызывающего). В `/api/auth/status` и `/api/auth/defaults` — `maintenanceEnabled`, `maintenanceMessage`. Миграция: `076_app_maintenance.sql`. UI: кнопка **Обслуживание** в шапке.
+
+---
+
 ## org_user — учётные записи сотрудников
 
 | Поле | Тип | Описание |
@@ -770,6 +788,7 @@
 | `status` | smallint | `0` удалён, `9` неактивен, `10` активен |
 | `voice_only` | boolean | Галочка **Voice сервисы** (только админ reporting): если true — доступна только вкладка **Voice**; если false — Voice и все остальные вкладки |
 | `voice_admin` | boolean | Галочка **Администратор Voice** (только админ reporting): если true — доступны «Очистить журнал и обнулить версию» и «Очистить мастер-файл»; без флага эти действия недоступны |
+| `must_change_password` | boolean | Если true — при входе показывается блокирующее окно смены пароля; закрыть и продолжить работу нельзя, пока не задан новый пароль (не пустой и не временный `12345678`). Ставится при создании/сбросе пароля (галочка в карточке сотрудника) или автоматически, если пароль = `12345678`. Сбрасывается после успешной смены через `POST /api/profile/password`. В `/api/auth/status` — `mustChangePassword`. Миграция: `075_org_user_must_change_password.sql` |
 | `created_at`, `updated_at` | timestamptz | Метки времени |
 
 Суперадминистратор (`role = 1000`, сессия `org_user_role=superadmin`): доступ ко всем вкладкам; правки в заблокированных офисах статуса продукта (`editing_locked`); управление `allowedPageKeys` для любого сотрудника в Staffing. Назначение: `UPDATE org_user SET role = 1000 WHERE email = '…';` — через UI выдать/снять нельзя. В `/api/auth/status` — `isSuperAdmin`, `pageAccessRestricted`.
@@ -824,7 +843,7 @@ PK: (`org_user_id`, `page_key`). Для обычных сотрудников о
 |------|-----|----------|
 | `id` | bigint (identity) | PK (числовой id строки) |
 | `a_number` | text | Номер A (отображение / сравнение / btree) |
-| `b_numbers_json` | text | JSON-массив номеров B |
+| `b_numbers_json` | text | JSON-массив номеров B (АОН). Короткий АОН: меньше 8 символов, начинается с цифры или `*`; в JSON без префикса `b` |
 | `source_prefix` | text | Префикс/параметры строки (PANI, регион и т.п.) |
 | `comment` | text | Комментарий (до 50000 символов, проверка в API) |
 | `sort_order` | integer | Порядок в файле |
@@ -832,6 +851,10 @@ PK: (`org_user_id`, `page_key`). Для обычных сотрудников о
 | `created_at` / `updated_at` | double precision | Unix time |
 | `created_revision` / `updated_revision` | integer | Ревизии мастер-ветки |
 | `deleted_at` / `deleted_revision` | double precision / integer | Soft-delete |
+
+**Короткий АОН:** единственный B короче 8 символов (цифра/`*`) → в выгрузке маркер `4:2` и префикс `b` (`null/$ & null/$ & null/$ &79999999999=4:2,1,b9999`). Функция `master_is_short_aon` / `master_logical_row` — миграция `074_voice_short_aon_format.sql`.
+
+**Пакетное удаление** в UI мастер-файла: форма ≤ 50 номеров; для опорных — по 11 символов, для АОН — любая длина; большие списки — загрузка CSV/XLSX (`uploadId` в `POST /api/master/records/batch-delete-a|b`), шаблоны `GET /api/master/templates/batch-delete-a|b`.
 
 Связанные таблицы: `master_state`, `master_schema_meta`, `master_a_counts`, `master_exact_counts` (PK `signature_hash` = md5 связки, без btree по длинному `b_numbers_json`), `master_changes` (`id`/`record_id` — bigint), `master_imports` (`id` — bigint identity), `master_import_items` (`id`/`import_id`/`existing_record_id` — bigint), `master_import_number_warnings` (`import_id`/`item_id` — bigint), `master_duplicate_findings` (`import_id` — bigint), `master_edit_lock` (`owner_session_expires_at` — срок bearer-сессии SSO). Индекс `master_records_a` — по `a_number` (TEXT); `master_records_signature` — по `master_b_signature(b_numbers_json, source_prefix)`; `master_records_active_prefix` — по `source_prefix` для активных строк (фильтры parameterGroup/region, `058`). Числовые PK — миграция `056_voice_master_numeric_ids.sql` (откат `a_number_key` — `057`).
 
@@ -1200,7 +1223,7 @@ API: префикс `/api/youjail/*`. `DELETE /api/youjail/boards/{id}`, `POST /
 
 Seed: миграция `013_b2b_product_status.sql` — SMS, VOICE, Перспективные продукты, M2M / IoT, Продуктовый маркетинг, CORE, CORE (операционка); `030_b2b_product_status_offices_analytics_projects.sql` — Проекты (Саша и Ваня) (`gid=projects`); `044_b2b_product_status_analytics_split.sql` — Аналитики: планирование (`gid=analytics_planning`), Аналитики: бизнес-анализа (`gid=analytics_business`); старая вкладка Аналитики (`gid=analytics`) деактивирована.
 
-Первая вкладка UI — виртуальная **«Сводка»** (`gid=summary`, не строка в `b2b_product_status_office`): только просмотр, строки с «Идет в презентацию» = да со всех офисов, порядок офисов как у вкладок. Колонки: «Офис», «Статус» (название из «Проект координация» сверху в ячейке, ниже описание из «Для презентации Описание проекта и статус»), «Зачем и для чего делаем». Служебное поле `__summaryTitle` в строке API — текст названия для шапки статуса, в таблицу не выводится. В PPTX не входит.
+Первая вкладка UI — виртуальная **«Сводка»** (`gid=summary`, не строка в `b2b_product_status_office`): только просмотр, строки с «Идет в презентацию» = да со всех офисов, порядок офисов как у вкладок. Колонки: «Офис», «Статус» (название из «Проект координация» сверху в ячейке, ниже описание из «Для презентации Описание проекта и статус»), «Зачем и для чего делаем», «Вложения» (файлы исходной строки офиса). Служебные поля `__summaryTitle` и `__attachments` в строке API — название для шапки статуса и JSON вложений; в таблицу как отдельные колонки не выводятся. В PPTX не входит.
 
 | Поле | Тип | Описание |
 |------|-----|----------|
@@ -1222,7 +1245,24 @@ Seed: миграция `013_b2b_product_status.sql` — SMS, VOICE, Перспе
 | `sort_order` | int | Порядок строк на вкладке |
 | `cells` | jsonb | Значения колонок (rich-text разметка `product_status_rich_text`) |
 
-Фиксированные ключи в `cells`: «Дата запуска», «Проект координация» (мультиселект из справочника офиса через `"; "`, либо свободный текст для офисов без seed), «Полное Описание проекта и статус», «Для презентации Описание проекта и статус», «Зачем и для чего делаем» (текст на слайде презентации), «ЗНИ» (несколько номеров через запятую с пробелом, напр. `123456, 789012`), «Идет в презентацию», «Обратить внимание», «Комментарий» (служебный, не в презентацию), «Приоритет» (число; 1 сверху), «Неактуальное» (да/нет; голубая подсветка строки). Легаси-ключи «Зачем и для чего делаем полное описание» / «…для презентации» при чтении сливаются в «Зачем и для чего делаем» (миграция `016_b2b_product_status_merge_why_columns.sql`).
+Фиксированные ключи в `cells`: «Дата запуска», «Проект координация» (мультиселект из справочника офиса через `"; "`, либо свободный текст для офисов без seed), «Полное Описание проекта и статус», «Для презентации Описание проекта и статус», «Зачем и для чего делаем» (текст на слайде презентации), «ЗНИ» (несколько номеров через запятую с пробелом, напр. `123456, 789012`), «Идет в презентацию», «Обратить внимание», «Комментарий» (служебный, не в презентацию), «Вложения» (отображаемая колонка; сами файлы в `b2b_product_status_attachment`, в `cells` не хранятся), «Приоритет» (одно число из диапазона проекта в `b2b_product_status_project_priority`; без справочника — свободное число; сортировка по числу), «Неактуальное» (да/нет; голубая подсветка строки). Легаси-ключи «Зачем и для чего делаем полное описание» / «…для презентации» при чтении сливаются в «Зачем и для чего делаем» (миграция `016_b2b_product_status_merge_why_columns.sql`).
+
+## b2b_product_status_attachment — вложения строки статуса продукта
+
+Файлы, прикреплённые к строке офиса. Бинарные данные в приватном MinIO bucket `product-status` (`MINIO_ATTACHMENTS_BUCKET`); при недоступности MinIO — локальный каталог `PRODUCT_STATUS_UPLOADS_DIR`. Миграция `070_b2b_product_status_attachments.sql`.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `row_id` | bigint | FK → `b2b_product_status_row` (CASCADE) |
+| `filename` | varchar(512) | Оригинальное имя файла |
+| `storage_key` | text | Ключ объекта MinIO или относительный путь fallback |
+| `content_type` | varchar(128) | MIME-тип |
+| `size_bytes` | bigint | Размер |
+| `uploaded_by` | varchar(255) | Логин загрузившего |
+| `created_at` | timestamptz | Время загрузки |
+
+API: `POST /api/product-status/b2b/rows/{row_id}/attachments?gid=`, `GET /api/product-status/b2b/attachments/{id}/download`, `DELETE /api/product-status/b2b/attachments/{id}` — полный доступ к приложению; запись учитывает `editing_locked` офиса.
 
 ## b2b_product_status_project — проекты координации по офисам
 
@@ -1235,6 +1275,20 @@ Seed: миграция `013_b2b_product_status.sql` — SMS, VOICE, Перспе
 | `name` | text | Имя проекта |
 | `sort_order` | int | Порядок в списке |
 | `is_active` | boolean | Активен ли проект |
+
+## b2b_product_status_project_priority — диапазон приоритета проекта
+
+У каждого проекта координации внутри офиса — **один** числовой диапазон. В ячейке «Приоритет» хранится **одно число** из этого диапазона (1, 2, 3…). Пример: проект «SCEF и NIDD» → `1–49`; первая строка с этим проектом получает `1`, вторая — `2`. Диапазоны не пересекаются между проектами одного офиса (по `sort_order`: `1-49`, `50-70`, `71-85`, `86-95`, `96-100`, далее блоки по 20). Миграции: `071_…`, `072_…`, `073_b2b_product_status_one_range_per_project.sql`. API: `projectPriorityRanges: { [проект]: { rangeFrom, rangeTo } }`. При выборе проекта UI автоматически подставляет следующий свободный номер в диапазоне. Без справочника — свободный числовой ввод.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `project_id` | bigint | FK → `b2b_product_status_project` (CASCADE) |
+| `name` | text | Подпись диапазона (напр. `1-49`) |
+| `range_from` | int | Начало диапазона (включительно) |
+| `range_to` | int | Конец диапазона (включительно) |
+| `sort_order` | int | Порядок |
+| `is_active` | boolean | Активен ли запись |
 
 ---
 
