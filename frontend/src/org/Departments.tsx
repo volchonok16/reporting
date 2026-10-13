@@ -165,6 +165,7 @@ const EMPTY_EMPLOYEE = {
   allowedPageKeys: [] as string[],
   createUserAccount: true,
   userPassword: '12345678',
+  userMustChangePassword: true,
   userIsAdmin: false,
   userIsSuperAdmin: false,
   userVoiceOnly: false,
@@ -646,6 +647,7 @@ export default function Departments({
       allowedPageKeys: emp.allowedPageKeys ?? emp.user?.allowedPageKeys ?? [],
       createUserAccount: false,
       userPassword: '',
+      userMustChangePassword: Boolean(emp.user?.mustChangePassword),
       userIsAdmin: emp.user?.role === 'admin' || emp.user?.role === 'superadmin',
       userIsSuperAdmin: emp.user?.role === 'superadmin',
       userVoiceOnly: Boolean(emp.user?.voiceOnly),
@@ -716,6 +718,7 @@ export default function Departments({
             : [],
       createUserAccount: true,
       userPassword: '12345678',
+      userMustChangePassword: employeeForm.userMustChangePassword,
       userIsAdmin: employeeForm.userIsAdmin,
       userVoiceOnly: employeeForm.userVoiceOnly,
       userVoiceAdmin: employeeForm.userVoiceAdmin,
@@ -726,6 +729,7 @@ export default function Departments({
     try {
       let employeeId = editingEmployeeId
       if (editingEmployeeId) {
+        const resetPassword = employeeForm.userPassword.trim()
         await patchJson(`/api/org/employees/${employeeApiRefFromId(employeeById, editingEmployeeId)}`, {
           fullName: body.fullName,
           email: body.email,
@@ -740,7 +744,14 @@ export default function Departments({
           userVoiceOnly: body.userVoiceOnly,
           userVoiceAdmin: body.userVoiceAdmin,
           userPlanningAccess: body.userPlanningAccess,
-          userPassword: employeeForm.userPassword.trim() || undefined,
+          // Флаг обязательной смены — только вместе со сбросом пароля,
+          // иначе чужой/свой аккаунт мог получить must_change без смены пароля.
+          ...(resetPassword
+            ? {
+                userPassword: resetPassword,
+                userMustChangePassword: employeeForm.userMustChangePassword,
+              }
+            : {}),
           departmentIds: body.departmentIds,
         })
       } else {
@@ -1641,6 +1652,19 @@ export default function Departments({
                     <label className="org-checkbox">
                       <input
                         type="checkbox"
+                        checked={employeeForm.userMustChangePassword}
+                        onChange={(e) =>
+                          setEmployeeForm({
+                            ...employeeForm,
+                            userMustChangePassword: e.target.checked,
+                          })
+                        }
+                      />
+                      Обязательно сменить пароль при входе
+                    </label>
+                    <label className="org-checkbox">
+                      <input
+                        type="checkbox"
                         checked={employeeForm.userIsAdmin}
                         disabled={employeeForm.userIsSuperAdmin}
                         onChange={(e) =>
@@ -1760,19 +1784,53 @@ export default function Departments({
                             type="password"
                             placeholder="Необязательно"
                             value={employeeForm.userPassword}
-                            onChange={(e) =>
-                              setEmployeeForm({ ...employeeForm, userPassword: e.target.value })
-                            }
+                            onChange={(e) => {
+                              const next = e.target.value
+                              setEmployeeForm({
+                                ...employeeForm,
+                                userPassword: next,
+                                userMustChangePassword:
+                                  next.trim() === '12345678'
+                                    ? true
+                                    : employeeForm.userMustChangePassword,
+                              })
+                            }}
                           />
                           <button
                             type="button"
                             className="btn-ghost"
-                            onClick={() => setEmployeeForm({ ...employeeForm, userPassword: '12345678' })}
+                            onClick={() =>
+                              setEmployeeForm({
+                                ...employeeForm,
+                                userPassword: '12345678',
+                                userMustChangePassword: true,
+                              })
+                            }
                           >
                             Сбросить на 12345678
                           </button>
                         </div>
                       </label>
+                    <label className="org-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={employeeForm.userMustChangePassword}
+                        disabled={!employeeForm.userPassword.trim()}
+                        onChange={(e) =>
+                          setEmployeeForm({
+                            ...employeeForm,
+                            userMustChangePassword: e.target.checked,
+                          })
+                        }
+                      />
+                      Обязательно сменить пароль при следующем входе
+                    </label>
+                    {!employeeForm.userPassword.trim() ? (
+                      <p className="org-hint">
+                        Галочка применяется только вместе с новым паролем (сбросом). Окно смены пароля
+                        увидит этот пользователь после своего входа, не администратор.
+                      </p>
+                    ) : null}
                   </section>
                 ) : null}
               </div>

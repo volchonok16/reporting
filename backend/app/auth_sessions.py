@@ -205,7 +205,22 @@ def get_session_with_meta(session_id: str | None) -> tuple[TfsAuth | None, dict]
         except Exception:
             # Не блокируем запрос, если не удалось записать обновлённую сессию.
             pass
-    return _auth_from_payload(refreshed), _session_meta_from_payload(refreshed)
+    meta = _session_meta_from_payload(refreshed)
+    try:
+        from app.maintenance import get_maintenance_state, meta_allowed_during_maintenance
+
+        db = SessionLocal()
+        try:
+            state = get_maintenance_state(db)
+        finally:
+            db.close()
+        if not meta_allowed_during_maintenance(meta, state):
+            delete_session(session_id)
+            return None, _empty_session_meta()
+    except Exception:
+        # Таблица ещё не создана / временный сбой — не рвём обычную авторизацию.
+        pass
+    return _auth_from_payload(refreshed), meta
 
 
 def get_session_meta(session_id: str | None) -> dict:
@@ -227,3 +242,18 @@ def delete_session(session_id: str | None) -> None:
         db.commit()
     finally:
         db.close()
+
+
+def delete_all_sessions(*, keep_session_id: str | None = None) -> int:
+    """Удаляет все сессии. Если keep_session_id задан — оставляет эту сессию."""
+    db = SessionLocal()
+    try:
+        stmt = delete(AuthSession)
+        if keep_session_id:
+            stmt = stmt.where(AuthSession.id != keep_session_id)
+        result = db.execute(stmt)
+        db.commit()
+        return int(result.rowcount or 0)
+    finally:
+        db.close()
+

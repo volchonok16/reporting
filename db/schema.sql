@@ -89,6 +89,7 @@ CREATE TABLE zni_board (
     board_name                      VARCHAR(255) NOT NULL,
     area_path                       VARCHAR(500) NOT NULL,
     sync_tags                       TEXT         NOT NULL DEFAULT '',
+    sync_tags_match                 TEXT         NOT NULL DEFAULT 'any',
     other_tags                      TEXT         NOT NULL DEFAULT '',
     exclude_sync_tags               TEXT         NOT NULL DEFAULT '',
     exclude_sync_states             TEXT         NOT NULL DEFAULT '',
@@ -114,6 +115,7 @@ COMMENT ON COLUMN zni_board.alias IS 'Короткое имя в UI: Digital, CO
 COMMENT ON COLUMN zni_board.board_name IS 'Имя доски / task.source_team';
 COMMENT ON COLUMN zni_board.area_path IS 'System.AreaPath для WIQL';
 COMMENT ON COLUMN zni_board.sync_tags IS 'Теги синка ЗНИ через запятую';
+COMMENT ON COLUMN zni_board.sync_tags_match IS 'any — хотя бы один тег из sync_tags; all — все sync_tags обязательны';
 COMMENT ON COLUMN zni_board.other_tags IS 'Другие теги (алиасы тегов) через запятую';
 
 CREATE TABLE person (
@@ -383,9 +385,27 @@ CREATE TABLE org_user (
     status          SMALLINT     NOT NULL DEFAULT 10,
     voice_only      BOOLEAN      NOT NULL DEFAULT FALSE,
     voice_admin     BOOLEAN      NOT NULL DEFAULT FALSE,
+    must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
+
+-- Режим обслуживания (singleton): запрет входа не-админам + сообщение о работах
+CREATE TABLE app_maintenance (
+    id                      SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    enabled                 BOOLEAN NOT NULL DEFAULT FALSE,
+    message                 TEXT NOT NULL DEFAULT '',
+    allow_admin             BOOLEAN NOT NULL DEFAULT TRUE,
+    updated_by_org_user_id  BIGINT REFERENCES org_user(id) ON DELETE SET NULL,
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE app_maintenance IS
+    'Singleton: режим обслуживания (запрет входа не-админам) и текст сообщения пользователям';
+
+INSERT INTO app_maintenance (id, enabled, message, allow_admin)
+VALUES (1, FALSE, '', TRUE)
+ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE app_page (
     page_key        VARCHAR(64)  PRIMARY KEY,
@@ -1119,6 +1139,55 @@ COMMENT ON TABLE b2b_product_status_project IS 'Справочник проек�
 COMMENT ON COLUMN b2b_product_status_project.name IS 'Отображаемое имя проекта';
 COMMENT ON COLUMN b2b_product_status_project.sort_order IS 'Порядок в выпадающем списке';
 
+CREATE TABLE b2b_product_status_project_priority (
+    id              BIGSERIAL PRIMARY KEY,
+    project_id      BIGINT       NOT NULL REFERENCES b2b_product_status_project(id) ON DELETE CASCADE,
+    name            TEXT         NOT NULL,
+    range_from      INT          NOT NULL,
+    range_to        INT          NOT NULL,
+    sort_order      INT          NOT NULL DEFAULT 0,
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE (project_id, name),
+    CONSTRAINT b2b_product_status_project_priority_range_check
+        CHECK (range_from >= 1 AND range_to >= range_from)
+);
+
+CREATE INDEX idx_b2b_product_status_project_priority_project
+    ON b2b_product_status_project_priority (project_id, sort_order, id);
+
+COMMENT ON TABLE b2b_product_status_project_priority IS
+    'Один диапазон приоритета на проект офиса; в cells.«Приоритет» — одно число из диапазона';
+COMMENT ON COLUMN b2b_product_status_project_priority.name IS
+    'Подпись диапазона, например 1-49';
+COMMENT ON COLUMN b2b_product_status_project_priority.range_from IS
+    'Начало диапазона (включительно)';
+COMMENT ON COLUMN b2b_product_status_project_priority.range_to IS
+    'Конец диапазона (включительно)';
+COMMENT ON COLUMN b2b_product_status_project_priority.sort_order IS
+    'Порядок';
+
+CREATE TABLE b2b_product_status_attachment (
+    id              BIGSERIAL PRIMARY KEY,
+    row_id          BIGINT       NOT NULL REFERENCES b2b_product_status_row(id) ON DELETE CASCADE,
+    filename        VARCHAR(512) NOT NULL,
+    storage_key     TEXT         NOT NULL,
+    content_type    VARCHAR(128),
+    size_bytes      BIGINT       NOT NULL DEFAULT 0,
+    uploaded_by     VARCHAR(255),
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_b2b_product_status_attachment_row
+    ON b2b_product_status_attachment (row_id, id);
+
+COMMENT ON TABLE b2b_product_status_attachment IS
+    'Файлы, прикреплённые к строке статуса продукта B2B; бинарные данные в MinIO (storage_key)';
+COMMENT ON COLUMN b2b_product_status_attachment.storage_key IS
+    'Ключ объекта MinIO (bucket product-status) или относительный путь локального fallback';
+COMMENT ON COLUMN b2b_product_status_attachment.filename IS
+    'Оригинальное имя файла для отображения и скачивания';
+
 -- -----------------------------------------------------------------------------
 -- Новости и запуски B2B
 -- -----------------------------------------------------------------------------
@@ -1604,6 +1673,16 @@ AS $$
     SELECT value ~ '^[0-9]+$'
 $$;
 
+CREATE OR REPLACE FUNCTION master_is_short_aon(value TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT value IS NOT NULL
+       AND length(value) BETWEEN 1 AND 7
+       AND value ~ '^(\*|[0-9])[0-9*]*$'
+$$;
+
 -- SQLite GLOB → regex (для параметризованных GLOB ? в MasterService)
 CREATE OR REPLACE FUNCTION master_glob_to_regex(pattern TEXT)
 RETURNS TEXT
@@ -1666,8 +1745,10 @@ AS $$
 DECLARE
     prefix TEXT := COALESCE(source_prefix, '');
     first_b TEXT;
+    out_first TEXT;
     rest TEXT := '';
     elem TEXT;
+    out_elem TEXT;
     idx INT := 0;
     arr JSONB;
     first_marker TEXT := '4:4';
@@ -1677,11 +1758,13 @@ BEGIN
         RETURN prefix || a_number || '=';
     END IF;
     first_b := arr ->> 0;
-    IF jsonb_array_length(arr) = 1
-       AND first_b ~ '^[0-9]+$'
-       AND length(first_b) BETWEEN 3 AND 5 THEN
+    IF jsonb_array_length(arr) = 1 AND master_is_short_aon(first_b) THEN
         first_marker := '4:2';
     END IF;
+    out_first := CASE
+        WHEN master_is_short_aon(first_b) THEN 'b' || first_b
+        ELSE COALESCE(first_b, a_number)
+    END;
     rest := '';
     idx := 0;
     FOR elem IN SELECT jsonb_array_elements_text(arr)
@@ -1689,11 +1772,15 @@ BEGIN
         IF idx = 0 THEN
             NULL;
         ELSE
-            rest := rest || ';4,1,' || elem;
+            out_elem := CASE
+                WHEN master_is_short_aon(elem) THEN 'b' || elem
+                ELSE elem
+            END;
+            rest := rest || ';4,1,' || out_elem;
         END IF;
         idx := idx + 1;
     END LOOP;
-    RETURN prefix || a_number || '=' || first_marker || ',1,' || COALESCE(first_b, a_number) || rest;
+    RETURN prefix || a_number || '=' || first_marker || ',1,' || out_first || rest;
 END;
 $$;
 

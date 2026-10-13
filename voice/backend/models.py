@@ -21,11 +21,49 @@ LEGACY_PANI_REGION_PREFIX_PATTERN = re.compile(
 )
 
 
+def _looks_like_short_aon_body(value: str) -> bool:
+    """Short AON body: < 8 chars, starts with a digit or '*', then digits/'*'."""
+
+    if not value or len(value) >= 8:
+        return False
+    if value[0] not in "0123456789*":
+        return False
+    return all(char.isdigit() or char == "*" for char in value)
+
+
+def is_short_aon_value(value: str) -> bool:
+    """True for a short AON, including optional serialisation prefix `b`."""
+
+    text = str(value).removeprefix("+")
+    if text.startswith("b") and _looks_like_short_aon_body(text[1:]):
+        return True
+    return _looks_like_short_aon_body(text)
+
+
+def canonicalize_short_aon(value: str) -> str:
+    """Stored form without the CSV serialisation prefix `b`."""
+
+    text = str(value).removeprefix("+")
+    if text.startswith("b") and _looks_like_short_aon_body(text[1:]):
+        return text[1:]
+    return text
+
+
+def format_b_number_for_output(value: str) -> str:
+    """Serialize B: short AON becomes `b` + body (e.g. 9999 → b9999)."""
+
+    text = str(value)
+    if not is_short_aon_value(text):
+        return text
+    body = canonicalize_short_aon(text)
+    return f"b{body}"
+
+
 def resolved_first_b_marker(
     b_numbers: Sequence[str],
     configured_marker: str = "4:4",
 ) -> str:
-    """Use the short-number marker for a single 3–5 character AON."""
+    """Use the short-number marker for a single short AON (< 8 chars)."""
 
     if is_single_short_aon(b_numbers):
         return "4:2"
@@ -35,8 +73,11 @@ def resolved_first_b_marker(
 def is_single_short_aon(b_numbers: Sequence[str]) -> bool:
     if len(b_numbers) != 1:
         return False
-    value = str(b_numbers[0])
-    return value.isdigit() and 3 <= len(value) <= 5
+    return is_short_aon_value(str(b_numbers[0]))
+
+
+MASTER_BATCH_DELETE_FORM_LIMIT = 50
+MASTER_BATCH_DELETE_FORM_NUMBER_LENGTH = 11
 
 
 def canonicalize_pani_region_prefix(value: str) -> str:
@@ -404,13 +445,49 @@ class MasterRecordRequest(BaseModel):
 class MasterBatchDeleteARequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    aNumbers: list[str] = Field(min_length=1, max_length=10000)
+    aNumbers: list[str] = Field(default_factory=list, max_length=10000)
+    uploadId: str | None = None
+
+    @model_validator(mode="after")
+    def validate_batch_delete_a_source(self) -> "MasterBatchDeleteARequest":
+        if self.uploadId:
+            return self
+        if not self.aNumbers:
+            raise ValueError("aNumbers or uploadId is required")
+        if len(self.aNumbers) > MASTER_BATCH_DELETE_FORM_LIMIT:
+            raise ValueError(
+                f"через форму можно удалить не более "
+                f"{MASTER_BATCH_DELETE_FORM_LIMIT} номеров"
+            )
+        for number in self.aNumbers:
+            normalized = str(number).strip().removeprefix("+")
+            if len(normalized) != MASTER_BATCH_DELETE_FORM_NUMBER_LENGTH:
+                raise ValueError(
+                    "через форму каждый номер должен содержать "
+                    f"{MASTER_BATCH_DELETE_FORM_NUMBER_LENGTH} символов"
+                )
+        return self
 
 
 class MasterBatchDeleteBRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    bNumbers: list[str] = Field(min_length=1, max_length=10000)
+    bNumbers: list[str] = Field(default_factory=list, max_length=10000)
+    uploadId: str | None = None
+
+    @model_validator(mode="after")
+    def validate_batch_delete_b_source(self) -> "MasterBatchDeleteBRequest":
+        if self.uploadId:
+            return self
+        if not self.bNumbers:
+            raise ValueError("bNumbers or uploadId is required")
+        if len(self.bNumbers) > MASTER_BATCH_DELETE_FORM_LIMIT:
+            raise ValueError(
+                f"через форму можно удалить не более "
+                f"{MASTER_BATCH_DELETE_FORM_LIMIT} номеров"
+            )
+        # Удаляемый АОН может быть любой длины (в т.ч. короткий).
+        return self
 
 
 class MasterRecordFilterRequest(BaseModel):

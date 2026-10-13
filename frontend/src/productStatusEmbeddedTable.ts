@@ -153,15 +153,18 @@ export function preambleFromCellValue(value: string): string {
   return displayCellText(value)
 }
 
-function readTextareaByClass(host: HTMLElement, className: string): string {
+function readRichFieldByClass(host: HTMLElement, className: string): string {
   const el = host.querySelector(`.${className}`)
   if (el instanceof HTMLTextAreaElement) return el.value
+  if (el instanceof HTMLElement && el.isContentEditable) {
+    return serializeEditableCell(el, cellStyleFromElement(el))
+  }
   return el?.textContent ?? ''
 }
 
 export function readTableDocFromHost(host: HTMLElement, table: EmbeddedTable): EmbeddedTableDoc {
-  const text = readTextareaByClass(host, 'product-status-inline-table-preamble')
-  const afterText = readTextareaByClass(host, 'product-status-inline-table-postamble')
+  const text = readRichFieldByClass(host, 'product-status-inline-table-preamble')
+  const afterText = readRichFieldByClass(host, 'product-status-inline-table-postamble')
   const nextCells: string[][] = []
   host.querySelectorAll('.product-status-inline-table tbody tr').forEach((rowElement) => {
     const row: string[] = []

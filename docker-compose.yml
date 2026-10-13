@@ -90,8 +90,11 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
       MINIO_BUCKET: ${MINIO_BUCKET:-photos}
+      MINIO_ATTACHMENTS_BUCKET: ${MINIO_ATTACHMENTS_BUCKET:-product-status}
       MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-}
       MINIO_REGION: ${MINIO_REGION:-us-east-1}
+      PRODUCT_STATUS_UPLOADS_DIR: ${PRODUCT_STATUS_UPLOADS_DIR:-/data/product-status-attachments}
+      PRODUCT_STATUS_MAX_ATTACHMENT_BYTES: ${PRODUCT_STATUS_MAX_ATTACHMENT_BYTES:-52428800}
     depends_on:
       postgres:
         condition: service_healthy
@@ -119,12 +122,14 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
       MINIO_BUCKET: ${MINIO_BUCKET:-photos}
+      MINIO_ATTACHMENTS_BUCKET: ${MINIO_ATTACHMENTS_BUCKET:-product-status}
     entrypoint: >
       /bin/sh -c "
       sleep 5 &&
       mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
       mc mb local/$$MINIO_BUCKET --ignore-existing &&
-      mc anonymous set download local/$$MINIO_BUCKET
+      mc anonymous set download local/$$MINIO_BUCKET &&
+      mc mb local/$$MINIO_ATTACHMENTS_BUCKET --ignore-existing
       "
 
   frontend:

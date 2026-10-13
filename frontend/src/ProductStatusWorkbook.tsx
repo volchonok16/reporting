@@ -14,6 +14,12 @@ import { resolveBooleanColors } from './productStatusBoolean'
 import { displayCellText, type TextStyleSegment } from './productStatusRichTextUtils'
 import { formatProductStatusColumnHeader } from './productStatusColumns'
 import {
+  PRODUCT_STATUS_ATTACHMENTS_COLUMN,
+  PRODUCT_STATUS_ATTACHMENTS_JSON_KEY,
+  serializeProductStatusAttachments,
+  type ProductStatusAttachment,
+} from './productStatusAttachments'
+import {
   productStatusLiveHeaders,
   subscribeProductStatusLive,
 } from './productStatusLiveSync'
@@ -22,11 +28,14 @@ import ProductStatusColumnFilter, { rowMatchesColumnFilters } from './ProductSta
 import type { ChangeRequest, TaskLookupResponse } from './zniTypes'
 import ZniDetailModal from './ZniDetailModal'
 import {
-  applyPrioritySequence,
-  compareRowsByPriority,
   isCoordinationProjectColumn,
   isObsoleteColumn,
   isPriorityColumn,
+  nextPriorityInProjectRange,
+  priorityNeedsReassign,
+  settleProductStatusRows,
+  sheetHasFixedProjectPriorities,
+  type ProjectPriorityRangesMap,
 } from './productStatusCoordination'
 import {
   clampProductStatusColumnWidth,
@@ -45,6 +54,7 @@ type ProductStatusSheet = {
   rows: Record<string, string>[]
   totalShown: number
   projects?: string[]
+  projectPriorityRanges?: ProjectPriorityRangesMap
   editingLocked?: boolean
   readOnly?: boolean
 }
@@ -178,23 +188,26 @@ function cloneSheet(sheet: ProductStatusSheet): ProductStatusSheet {
     columns: [...sheet.columns],
     rows: sheet.rows.map((row) => ({ ...row })),
     projects: sheet.projects ? [...sheet.projects] : [],
+    projectPriorityRanges: sheet.projectPriorityRanges
+      ? Object.fromEntries(
+          Object.entries(sheet.projectPriorityRanges).map(([key, range]) => [
+            key,
+            { ...range },
+          ]),
+        )
+      : {},
   }
 }
 
 function cloneSheets(sheets: ProductStatusSheet[]): ProductStatusSheet[] {
-  return sheets.map((sheet) => ({
-    ...sheet,
-    columns: [...sheet.columns],
-    rows: sheet.rows.map((row) => ({ ...row })),
-    projects: sheet.projects ? [...sheet.projects] : [],
-  }))
+  return sheets.map((sheet) => cloneSheet(sheet))
 }
 
 function sortSheetRowsByPriority(sheet: ProductStatusSheet): ProductStatusSheet {
-  const priorityColumn = sheet.columns.find(isPriorityColumn)
-  if (!priorityColumn) return sheet
-  const rows = [...sheet.rows].sort((left, right) =>
-    compareRowsByPriority(left, right, priorityColumn),
+  const rows = settleProductStatusRows(
+    sheet.rows,
+    sheet.columns,
+    sheet.projectPriorityRanges,
   )
   return { ...sheet, rows, totalShown: rows.length }
 }
@@ -484,6 +497,7 @@ function resolveColumnClass(column: string): string | undefined {
   if (key.includes('полное описание') || key.includes('для презентации')) return 'col-description'
   if (key.includes('описание')) return 'col-description'
   if (key.includes('комментар')) return 'col-comment'
+  if (key === 'вложения') return 'col-attachments'
   if (isPriorityColumn(column)) return 'col-priority'
   if (isObsoleteColumn(column)) return 'col-presentation-flag'
   if (key.startsWith('влияние на') || key === 'результат') return 'col-numeric'
@@ -598,6 +612,7 @@ export default function ProductStatusWorkbook({
   const [sheetLoadingGid, setSheetLoadingGid] = useState<string | null>(null)
   const [columnFilters, setColumnFilters] = useState<Record<string, Set<string> | null>>({})
   const [columnWidths, setColumnWidths] = useState(loadProductStatusColumnWidths)
+  const [chromeCollapsed, setChromeCollapsed] = useState(false)
   const activeCellRef = useRef<ProductStatusCellHandle | null>(null)
   const blurTimerRef = useRef<number | null>(null)
   const tableScrollRef = useRef<HTMLDivElement | null>(null)
@@ -1164,10 +1179,11 @@ export default function ProductStatusWorkbook({
           const rows = [...sheet.rows]
           const [moved] = rows.splice(fromIndex, 1)
           rows.splice(toIndex, 0, moved)
-          const priorityColumn = sheet.columns.find(isPriorityColumn)
-          const nextRows = priorityColumn
-            ? applyPrioritySequence(rows, priorityColumn)
-            : rows
+          const nextRows = settleProductStatusRows(
+            rows,
+            sheet.columns,
+            sheet.projectPriorityRanges,
+          )
           return { ...sheet, rows: nextRows, totalShown: nextRows.length }
         }),
       )
@@ -1213,6 +1229,91 @@ export default function ProductStatusWorkbook({
     [canEditAdminColumns, isSheetReadOnly, sumColumn],
   )
 
+  const updateAttachments = useCallback(
+    (rowIndex: number, attachments: ProductStatusAttachment[]) => {
+      if (!activeGid) return
+      const serialized = serializeProductStatusAttachments(attachments)
+      const patchRow = (row: Record<string, string>) => ({
+        ...row,
+        [PRODUCT_STATUS_ATTACHMENTS_COLUMN]: serialized.text,
+        [PRODUCT_STATUS_ATTACHMENTS_JSON_KEY]: serialized.json,
+      })
+      setSheets((current) =>
+        current.map((sheet) => {
+          if (sheet.gid !== activeGid) return sheet
+          return {
+            ...sheet,
+            rows: sheet.rows.map((row, index) => (index === rowIndex ? patchRow(row) : row)),
+          }
+        }),
+      )
+      // Вложения сохраняются сразу через API — синхронизируем baseline, чтобы не было «грязного» save.
+      const baseline = baselineByGidRef.current.get(activeGid)
+      if (baseline) {
+        baselineByGidRef.current.set(activeGid, {
+          ...baseline,
+          rows: baseline.rows.map((row, index) => (index === rowIndex ? patchRow(row) : row)),
+        })
+      }
+    },
+    [activeGid],
+  )
+
+  const handleProjectChange = useCallback(
+    (rowIndex: number, nextProjects: string) => {
+      if (!activeGid) return
+      const sheet = sheetsRef.current.find((item) => item.gid === activeGid)
+      if (!sheet) return
+      if (sheet.editingLocked && !bypassOfficeEditLock) return
+      const projectColumn =
+        sheet.columns.find((column) => isCoordinationProjectColumn(column)) ?? 'Проект координация'
+      const priorityColumn = sheet.columns.find((column) => isPriorityColumn(column))
+      setDirty(true)
+      setSheets((current) =>
+        current.map((item) => {
+          if (item.gid !== activeGid) return item
+          const rows = item.rows.map((row, index) => {
+            if (index !== rowIndex) return row
+            const nextRow = { ...row, [projectColumn]: nextProjects }
+            if (!priorityColumn || !sheetHasFixedProjectPriorities(item.projectPriorityRanges)) {
+              return nextRow
+            }
+            if (
+              !priorityNeedsReassign(
+                nextRow[priorityColumn] ?? '',
+                nextProjects,
+                item.projectPriorityRanges,
+              )
+            ) {
+              return nextRow
+            }
+            const nextPriority = nextPriorityInProjectRange(
+              item.rows.map((candidate, candidateIndex) =>
+                candidateIndex === rowIndex ? nextRow : candidate,
+              ),
+              rowIndex,
+              nextProjects,
+              item.projectPriorityRanges,
+              priorityColumn,
+              projectColumn,
+            )
+            if (nextPriority == null) {
+              return { ...nextRow, [priorityColumn]: '' }
+            }
+            return { ...nextRow, [priorityColumn]: nextPriority }
+          })
+          const sorted = settleProductStatusRows(
+            rows,
+            item.columns,
+            item.projectPriorityRanges,
+          )
+          return { ...item, rows: sorted, totalShown: sorted.length }
+        }),
+      )
+    },
+    [activeGid, bypassOfficeEditLock],
+  )
+
   const updateCell = useCallback(
     (gid: string, rowIndex: number, column: string, value: string) => {
       if (sumColumn && column === sumColumn) return
@@ -1233,18 +1334,17 @@ export default function ProductStatusWorkbook({
             }
             return next
           })
-          if (isPriorityColumn(column)) {
-            const priorityColumn = sheet.columns.find(isPriorityColumn)
-            if (priorityColumn) {
-              rows = [...rows].sort((left, right) =>
-                compareRowsByPriority(left, right, priorityColumn),
+          if (isPriorityColumn(column) || isObsoleteColumn(column)) {
+            rows = settleProductStatusRows(
+              rows,
+              sheet.columns,
+              sheet.projectPriorityRanges,
+            )
+            if (rowId) {
+              const nextIndex = rows.findIndex(
+                (row) => row[PRODUCT_STATUS_ROW_ID_KEY] === rowId,
               )
-              if (rowId) {
-                const nextIndex = rows.findIndex(
-                  (row) => row[PRODUCT_STATUS_ROW_ID_KEY] === rowId,
-                )
-                if (nextIndex >= 0) nextActiveRowIndex = nextIndex
-              }
+              if (nextIndex >= 0) nextActiveRowIndex = nextIndex
             }
           }
           return { ...sheet, rows, totalShown: rows.length }
@@ -1725,6 +1825,20 @@ export default function ProductStatusWorkbook({
 
   const isSummarySheet = activeGid === PRODUCT_STATUS_SUMMARY_GID
 
+  useEffect(() => {
+    const scrollEl = tableScrollRef.current
+    if (!scrollEl || viewMode !== 'table') {
+      setChromeCollapsed(false)
+      return
+    }
+    const onScroll = () => {
+      setChromeCollapsed(scrollEl.scrollTop > 24)
+    }
+    onScroll()
+    scrollEl.addEventListener('scroll', onScroll, { passive: true })
+    return () => scrollEl.removeEventListener('scroll', onScroll)
+  }, [viewMode, activeGid, isSummarySheet])
+
   const summaryOfficeGroupClassByRowIndex = useMemo(() => {
     const byRowIndex = new Map<number, string>()
     if (!isSummarySheet) return byRowIndex
@@ -2057,44 +2171,79 @@ export default function ProductStatusWorkbook({
 
       {afterHeader}
 
-      {isSheetReadOnly && viewMode === 'table' && activeSheet ? (
-        <p className="product-status-editing-locked-banner" role="status">
-          {activeSheetReadOnly
-            ? 'Сводка собирается автоматически из строк с галочкой «Идет в презентацию» и сгруппирована по офисам — только просмотр.'
-            : `Редактирование офиса «${activeSheet.name}» заблокировано администратором — доступен только просмотр.`}
-        </p>
-      ) : null}
-      {!isSheetReadOnly && activeSheetEditingLocked && bypassOfficeEditLock && viewMode === 'table' && activeSheet ? (
-        <p className="product-status-editing-locked-banner" role="status">
-          Офис «{activeSheet.name}» заблокирован для внесения изменений.
-        </p>
+      {viewMode === 'table' ? (
+        <div
+          className={[
+            'product-status-scroll-chrome',
+            chromeCollapsed ? 'product-status-scroll-chrome--collapsed' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          aria-hidden={chromeCollapsed || undefined}
+        >
+          <div className="product-status-scroll-chrome-inner">
+            {isSheetReadOnly && activeSheet ? (
+              <p className="product-status-editing-locked-banner" role="status">
+                {activeSheetReadOnly
+                  ? 'Сводка собирается автоматически из строк с галочкой «Идет в презентацию» и сгруппирована по офисам — только просмотр.'
+                  : `Редактирование офиса «${activeSheet.name}» заблокировано администратором — доступен только просмотр.`}
+              </p>
+            ) : null}
+            {!isSheetReadOnly && activeSheetEditingLocked && bypassOfficeEditLock && activeSheet ? (
+              <p className="product-status-editing-locked-banner" role="status">
+                Офис «{activeSheet.name}» заблокирован для внесения изменений.
+              </p>
+            ) : null}
+
+            {!useTitleSheetNav && sheets.length > 1 ? (
+              <nav className="product-status-sheet-tabs" aria-label="Таблицы">
+                <div className="product-status-sheet-tabs-list">
+                  {sheets.map((sheet) => (
+                    <button
+                      key={sheet.gid}
+                      type="button"
+                      className={`product-status-sheet-tab${
+                        activeSheet?.gid === sheet.gid ? ' product-status-sheet-tab-active' : ''
+                      }${sheet.editingLocked && !sheet.readOnly ? ' product-status-sheet-tab-locked' : ''}`}
+                      onClick={() => selectSheet(sheet.gid)}
+                      aria-selected={activeSheet?.gid === sheet.gid}
+                      tabIndex={chromeCollapsed ? -1 : undefined}
+                      title={
+                        sheet.readOnly
+                          ? 'Сводка по офисам'
+                          : sheet.editingLocked
+                            ? 'Редактирование заблокировано'
+                            : undefined
+                      }
+                    >
+                      {sheet.name}
+                    </button>
+                  ))}
+                </div>
+              </nav>
+            ) : null}
+          </div>
+        </div>
       ) : null}
 
-      {!useTitleSheetNav && sheets.length > 1 && viewMode === 'table' ? (
-        <nav className="product-status-sheet-tabs" aria-label="Таблицы">
-          <div className="product-status-sheet-tabs-list">
-            {sheets.map((sheet) => (
-              <button
-                key={sheet.gid}
-                type="button"
-                className={`product-status-sheet-tab${
-                  activeSheet?.gid === sheet.gid ? ' product-status-sheet-tab-active' : ''
-                }${sheet.editingLocked && !sheet.readOnly ? ' product-status-sheet-tab-locked' : ''}`}
-                onClick={() => selectSheet(sheet.gid)}
-                aria-selected={activeSheet?.gid === sheet.gid}
-                title={
-                  sheet.readOnly
-                    ? 'Сводка по офисам'
-                    : sheet.editingLocked
-                      ? 'Редактирование заблокировано'
-                      : undefined
-                }
-              >
-                {sheet.name}
-              </button>
-            ))}
-          </div>
-        </nav>
+      {viewMode === 'table' && !isSummarySheet ? (
+        <div
+          className={[
+            'product-status-format-dock',
+            chromeCollapsed ? 'product-status-format-dock--pinned' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
+          <ProductStatusFormatToolbar
+            disabled={toolbarBusy || isSheetReadOnly}
+            hasActiveCell={activeCell !== null}
+            onTextStyle={applyTextStyle}
+            onClearFormatting={clearFormatting}
+            onInsertTable={insertConfluenceTable}
+            onPasteTable={pasteConfluenceTable}
+          />
+        </div>
       ) : null}
 
       {!useTitleSheetNav && viewMode === 'history' && enableHistory && sheets.length > 1 ? (
@@ -2119,17 +2268,6 @@ export default function ProductStatusWorkbook({
             ))}
           </div>
         </nav>
-      ) : null}
-
-      {viewMode === 'table' && !isSummarySheet ? (
-        <ProductStatusFormatToolbar
-          disabled={toolbarBusy || isSheetReadOnly}
-          hasActiveCell={activeCell !== null}
-          onTextStyle={applyTextStyle}
-          onClearFormatting={clearFormatting}
-          onInsertTable={insertConfluenceTable}
-          onPasteTable={pasteConfluenceTable}
-        />
       ) : null}
 
       {viewMode === 'history' && enableHistory ? (
@@ -2475,6 +2613,8 @@ export default function ProductStatusWorkbook({
                         isNumericColumn={isNumericColumn}
                         isReadOnlyColumn={isReadOnlyColumn}
                         projectOptions={activeSheet!.projects ?? []}
+                        projectPriorityRanges={activeSheet!.projectPriorityRanges}
+                        onProjectChange={handleProjectChange}
                         enableRowDelete={enableRowDelete && !isSheetReadOnly}
                         onDeleteRow={deleteRow}
                         enableRowReorder={enableRowReorder}
@@ -2491,6 +2631,8 @@ export default function ProductStatusWorkbook({
                               : rowIndex + 1
                             : undefined
                         }
+                        apiBase={apiBase}
+                        onAttachmentsChange={updateAttachments}
                       />
                     )
                   })}

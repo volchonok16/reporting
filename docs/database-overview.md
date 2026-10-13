@@ -107,7 +107,8 @@
 | `team` | Канонические команды (коды досок из `zni_board`, напр. `digital_streams_b2b`, `b2b_product_core`, `be_t2_team`) |
 | `zni_board` | Конфиг досок ЗНИ: alias, board_name, area_path, теги, TFS project/team, метрики |
 | `auth_session` | Сессии PAT для веб-приложения |
-| `org_user` | Учётные записи сотрудников (email/пароль; `voice_only` — только вкладка Voice) |
+| `app_maintenance` | Singleton: режим обслуживания (`enabled`, `message`, `allow_admin`) + массовый logout через очистку `auth_session` |
+| `org_user` | Учётные записи сотрудников (email/пароль; `voice_only` — только вкладка Voice; `must_change_password` — обязательная смена пароля при входе) |
 | `app_page` | Справочник вкладок reporting (`page_key` = `SheetId`) |
 | `org_user_page_access` | Разрешённые вкладки для «других пользователей» (`employee.hide_from_pyramid`) |
 | `job_position` | Справочник должностей |
@@ -151,7 +152,9 @@
 | `youjail_execution_log` | Лог stdout/stderr/system |
 | `b2b_product_status_office` | Продуктовые офисы B2B (вкладки статуса: SMS, VOICE, CORE, Аналитики: планирование / бизнес-анализа, Проекты и др.; плюс виртуальная «Сводка») |
 | `b2b_product_status_row` | Строки таблицы «Статус продукта B2B» (`cells` jsonb) |
+| `b2b_product_status_attachment` | Файлы строк статуса продукта (MinIO / локальный fallback) |
 | `b2b_product_status_project` | Справочник проектов координации по офисам |
+| `b2b_product_status_project_priority` | Фиксированные приоритеты проекта координации |
 | `b2b_product_status_history` | История изменений строк статуса продукта B2B |
 | `b2b_product_status_snapshot` | Снимки версий офиса для отката к сохранённому состоянию |
 | `b2b_news_section` | Вкладки «Новости» и «Запуски» |

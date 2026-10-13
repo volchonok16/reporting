@@ -3131,6 +3131,19 @@ textarea.is-invalid-number-whitespace,
   font-size: 8px;
   font-weight: 850;
 }
+.master-batch-file {
+  margin-top: 12px;
+  min-height: auto;
+  padding: 14px 16px;
+}
+
+.master-batch-template-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 0 0 12px;
+}
+
 .master-batch-body {
   display: flex;
   flex-direction: column;

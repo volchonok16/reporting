@@ -74,6 +74,27 @@ from app.org_schemas import (
 DEFAULT_NEW_EMPLOYEE_PASSWORD = "12345678"
 
 
+def _must_change_for_password(password: str, *, force: bool | None = None) -> bool:
+    """Обязать смену: явный флаг или временный пароль 12345678."""
+
+    if force is True:
+        return True
+    if force is False:
+        return password.strip() == DEFAULT_NEW_EMPLOYEE_PASSWORD
+    return password.strip() == DEFAULT_NEW_EMPLOYEE_PASSWORD
+
+
+def _reject_temporary_password(password: str) -> None:
+    if password.strip() == DEFAULT_NEW_EMPLOYEE_PASSWORD:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Нельзя оставить временный пароль 12345678. "
+                "Задайте другой пароль (не короче 8 символов)."
+            ),
+        )
+
+
 def _user_role_label(role: int) -> str:
     if role == ORG_USER_ROLE_SUPERADMIN:
         return "superadmin"
@@ -130,6 +151,7 @@ def _employee_out(db: Session, emp: Employee) -> EmployeeOut:
             voiceOnly=bool(emp.user.voice_only),
             voiceAdmin=bool(getattr(emp.user, "voice_admin", False)),
             planningAccess="planning" in allowed_page_keys,
+            mustChangePassword=bool(getattr(emp.user, "must_change_password", False)),
             allowedPageKeys=allowed_page_keys if (
                 is_other_user_employee(emp) or any(key != "planning" for key in allowed_page_keys)
             ) else (
@@ -311,6 +333,7 @@ def _create_org_user(
     is_admin: bool,
     voice_only: bool = False,
     voice_admin: bool = False,
+    must_change_password: bool | None = None,
 ) -> OrgUser:
     normalized = email.strip().casefold()
     if not normalized:
@@ -327,6 +350,9 @@ def _create_org_user(
         status=ORG_USER_STATUS_ACTIVE,
         voice_only=bool(voice_only),
         voice_admin=bool(voice_admin),
+        must_change_password=_must_change_for_password(
+            password, force=must_change_password
+        ),
     )
     db.add(user)
     db.flush()
@@ -519,6 +545,7 @@ def create_employee(
         is_admin=data.userIsAdmin,
         voice_only=data.userVoiceOnly,
         voice_admin=data.userVoiceAdmin,
+        must_change_password=bool(data.userMustChangePassword),
     )
     emp.user_id = user.id
     page_keys = list(data.allowedPageKeys) if (is_other_user_employee(emp) or allow_full_page_acl) else []
@@ -604,6 +631,10 @@ def update_employee(
         if len(data.userPassword) < 8:
             raise HTTPException(status_code=400, detail="Пароль должен быть не короче 8 символов.")
         emp.user.password_hash = hash_password(data.userPassword)
+        # Обязательная смена только при сбросе/задании пароля (не при обычном PATCH карточки).
+        emp.user.must_change_password = _must_change_for_password(
+            data.userPassword, force=data.userMustChangePassword
+        )
     elif data.userPassword and not emp.user:
         if not emp.email:
             raise HTTPException(
@@ -619,6 +650,7 @@ def update_employee(
             is_admin=bool(data.userIsAdmin),
             voice_only=bool(data.userVoiceOnly),
             voice_admin=bool(data.userVoiceAdmin),
+            must_change_password=data.userMustChangePassword,
         )
         emp.user_id = user.id
         if data.userPlanningAccess:
@@ -1082,10 +1114,13 @@ async def update_profile_photo(db: Session, org_user_id: int, file: UploadFile) 
 
 
 def change_password(db: Session, org_user_id: int | None, app_login: str | None, data: PasswordChangeIn) -> None:
+    if not (data.newPassword or "").strip():
+        raise HTTPException(status_code=400, detail="Задайте новый пароль.")
     if data.newPassword != data.newPasswordRepeat:
         raise HTTPException(status_code=400, detail="Новые пароли не совпадают.")
     if len(data.newPassword) < 8:
         raise HTTPException(status_code=400, detail="Новый пароль должен быть не короче 8 символов.")
+    _reject_temporary_password(data.newPassword)
 
     user: OrgUser | None = None
     if org_user_id:
@@ -1109,6 +1144,7 @@ def change_password(db: Session, org_user_id: int | None, app_login: str | None,
         raise HTTPException(status_code=400, detail="Текущий пароль неверен.")
 
     user.password_hash = hash_password(data.newPassword)
+    user.must_change_password = False
     db.commit()
 
 
@@ -1127,6 +1163,7 @@ def list_org_users(db: Session) -> list[OrgUserOut]:
                 status=_user_status_label(user.status),  # type: ignore[arg-type]
                 voiceOnly=bool(user.voice_only),
                 voiceAdmin=bool(getattr(user, "voice_admin", False)),
+                mustChangePassword=bool(getattr(user, "must_change_password", False)),
                 employeeId=emp.id if emp else None,
                 employeeName=emp.full_name if emp else None,
             )
@@ -1142,6 +1179,7 @@ def create_org_user_account(db: Session, data: OrgUserIn) -> OrgUserOut:
         is_admin=data.isAdmin,
         voice_only=data.voiceOnly,
         voice_admin=data.voiceAdmin,
+        must_change_password=bool(data.mustChangePassword),
     )
     status = ORG_USER_STATUS_ACTIVE if data.status == "active" else ORG_USER_STATUS_INACTIVE
     user.status = status
@@ -1153,6 +1191,7 @@ def create_org_user_account(db: Session, data: OrgUserIn) -> OrgUserOut:
         status=_user_status_label(user.status),  # type: ignore[arg-type]
         voiceOnly=bool(user.voice_only),
         voiceAdmin=bool(user.voice_admin),
+        mustChangePassword=bool(user.must_change_password),
     )
 
 
@@ -1173,6 +1212,11 @@ def update_org_user_account(db: Session, user_id: int, data: OrgUserUpdateIn) ->
         if len(data.password) < 8:
             raise HTTPException(status_code=400, detail="Пароль должен быть не короче 8 символов.")
         user.password_hash = hash_password(data.password)
+        user.must_change_password = _must_change_for_password(
+            data.password, force=data.mustChangePassword
+        )
+    elif data.mustChangePassword is not None:
+        user.must_change_password = bool(data.mustChangePassword)
     if data.isAdmin is not None:
         user.role = ORG_USER_ROLE_ADMIN if data.isAdmin else ORG_USER_ROLE_USER
     if data.voiceOnly is not None:
@@ -1194,6 +1238,7 @@ def update_org_user_account(db: Session, user_id: int, data: OrgUserUpdateIn) ->
         status=_user_status_label(user.status),  # type: ignore[arg-type]
         voiceOnly=bool(user.voice_only),
         voiceAdmin=bool(user.voice_admin),
+        mustChangePassword=bool(user.must_change_password),
         employeeId=emp.id if emp else None,
         employeeName=emp.full_name if emp else None,
     )

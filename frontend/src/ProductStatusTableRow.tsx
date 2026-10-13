@@ -1,10 +1,15 @@
 import { memo, useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import ProductStatusCell, { type ProductStatusCellHandle } from './ProductStatusCell'
 import ProductStatusProjectMultiSelect from './ProductStatusProjectMultiSelect'
+import ProductStatusPrioritySelect from './ProductStatusPrioritySelect'
 import { resolveBooleanColors, styledBooleanValue } from './productStatusBoolean'
 import {
+  expandPriorityRangeOptions,
+  formatPriorityRangeHint,
   isCoordinationProjectColumn,
   isPriorityColumn,
+  resolvePriorityRangeForRow,
+  type ProjectPriorityRangesMap,
 } from './productStatusCoordination'
 import {
   isZniColumn,
@@ -13,9 +18,16 @@ import {
   PRODUCT_STATUS_ROW_ID_KEY,
   ZNI_NUMBERS_PLACEHOLDER,
 } from './productStatusZni'
+import ProductStatusAttachmentsCell from './ProductStatusAttachmentsCell'
 import ProductStatusReadonlyCellValue from './ProductStatusReadonlyCellValue'
 import ProductStatusRichText from './ProductStatusRichText'
 import { parseEmbeddedTableDoc } from './productStatusEmbeddedTable'
+import {
+  isAttachmentsColumn,
+  parseProductStatusAttachments,
+  serializeProductStatusAttachments,
+  type ProductStatusAttachment,
+} from './productStatusAttachments'
 import { displayCellText } from './productStatusRichTextUtils'
 import type { ChangeRequest } from './zniTypes'
 
@@ -46,6 +58,8 @@ type ProductStatusTableRowProps = {
   isNumericColumn?: (column: string) => boolean
   isReadOnlyColumn?: (column: string) => boolean
   projectOptions?: string[]
+  projectPriorityRanges?: ProjectPriorityRangesMap
+  onProjectChange?: (rowIndex: number, nextProjects: string) => void
   enableRowDelete?: boolean
   onDeleteRow?: (rowIndex: number) => void
   enableRowReorder?: boolean
@@ -60,6 +74,8 @@ type ProductStatusTableRowProps = {
   ) => void
   showRowNumber?: boolean
   rowNumber?: number
+  apiBase?: string
+  onAttachmentsChange?: (rowIndex: number, attachments: ProductStatusAttachment[]) => void
 }
 
 function booleanCellValue(value: string): string {
@@ -124,6 +140,8 @@ function ProductStatusTableRow({
   isNumericColumn,
   isReadOnlyColumn,
   projectOptions = [],
+  projectPriorityRanges,
+  onProjectChange,
   enableRowDelete = false,
   onDeleteRow,
   enableRowReorder = false,
@@ -134,6 +152,8 @@ function ProductStatusTableRow({
   onRowPointerDragStart,
   showRowNumber = false,
   rowNumber,
+  apiBase = '',
+  onAttachmentsChange,
 }: ProductStatusTableRowProps) {
   const rowRef = useRef<HTMLTableRowElement>(null)
   const cellHandleRef = useRef<ProductStatusCellHandle | null>(null)
@@ -230,7 +250,10 @@ function ProductStatusTableRow({
           colClass,
           isBooleanColumn(column) ? 'product-status-bool-cell' : '',
           isNumericColumn?.(column) ? 'product-status-numeric-cell' : '',
-          !isBooleanColumn(column) && !isNumericColumn?.(column)
+          isAttachmentsColumn(column) ? 'product-status-attachments-td' : '',
+          !isBooleanColumn(column) &&
+          !isNumericColumn?.(column) &&
+          !isAttachmentsColumn(column)
             ? 'product-status-multiline'
             : '',
           readOnly ? 'product-status-cell-readonly' : '',
@@ -271,6 +294,32 @@ function ProductStatusTableRow({
           )
         }
 
+        if (isAttachmentsColumn(column) && apiBase) {
+          const rawRowId = row[PRODUCT_STATUS_ROW_ID_KEY]
+          const parsedRowId = rawRowId && /^\d+$/.test(rawRowId) ? Number(rawRowId) : null
+          return (
+            <td
+              key={column}
+              data-product-status-column={column}
+              className={cellClassName}
+              onMouseDownCapture={(event) => {
+                if (isInteractiveCellTarget(event.target)) return
+                commitActiveCellOnLeave(activeCellRef, rowActive)
+              }}
+            >
+              <ProductStatusAttachmentsCell
+                apiBase={apiBase}
+                sheetGid={sheetGid}
+                rowId={parsedRowId}
+                attachments={parseProductStatusAttachments(row)}
+                readOnly={readOnly}
+                disabled={cellBusy}
+                onChange={(next) => onAttachmentsChange?.(rowIndex, next)}
+              />
+            </td>
+          )
+        }
+
         if (
           isCoordinationProjectColumn(column) &&
           projectOptions.length > 0 &&
@@ -291,13 +340,29 @@ function ProductStatusTableRow({
                 options={projectOptions}
                 disabled={cellBusy}
                 ariaLabel={column}
-                onChange={(next) => onUpdateCell(sheetGid, rowIndex, column, next)}
+                onChange={(next) => {
+                  if (onProjectChange) {
+                    onProjectChange(rowIndex, next)
+                    return
+                  }
+                  onUpdateCell(sheetGid, rowIndex, column, next)
+                }}
               />
             </td>
           )
         }
 
         if (isPriorityColumn(column) && !readOnly) {
+          const projectColumn =
+            columns.find((item) => isCoordinationProjectColumn(item)) ?? 'Проект координация'
+          const priorityRange = resolvePriorityRangeForRow(
+            row[projectColumn] ?? '',
+            projectPriorityRanges,
+          )
+          const priorityOptions = expandPriorityRangeOptions(priorityRange)
+          const useFixedPriorities = Boolean(
+            projectPriorityRanges && Object.keys(projectPriorityRanges).length > 0,
+          )
           return (
             <td
               key={column}
@@ -315,20 +380,33 @@ function ProductStatusTableRow({
                 )
               }}
             >
-              <input
-                type="number"
-                min={1}
-                step={1}
-                className="product-status-priority-input"
-                value={displayCellText(row[column] ?? '')}
-                aria-label={column}
-                disabled={cellBusy}
-                onFocus={() => onActiveCellFocus({ rowIndex, column })}
-                onBlur={() => onActiveCellBlur({ rowIndex, column })}
-                onChange={(event) => {
-                  onUpdateCell(sheetGid, rowIndex, column, event.target.value)
-                }}
-              />
+              {useFixedPriorities ? (
+                <ProductStatusPrioritySelect
+                  value={displayCellText(row[column] ?? '')}
+                  options={priorityOptions}
+                  rangeHint={formatPriorityRangeHint(priorityRange)}
+                  disabled={cellBusy}
+                  ariaLabel={column}
+                  onFocus={() => onActiveCellFocus({ rowIndex, column })}
+                  onBlur={() => onActiveCellBlur({ rowIndex, column })}
+                  onChange={(next) => onUpdateCell(sheetGid, rowIndex, column, next)}
+                />
+              ) : (
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  className="product-status-priority-input"
+                  value={displayCellText(row[column] ?? '')}
+                  aria-label={column}
+                  disabled={cellBusy}
+                  onFocus={() => onActiveCellFocus({ rowIndex, column })}
+                  onBlur={() => onActiveCellBlur({ rowIndex, column })}
+                  onChange={(event) => {
+                    onUpdateCell(sheetGid, rowIndex, column, event.target.value)
+                  }}
+                />
+              )}
             </td>
           )
         }

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { apiFetch, getSessionId } from './api'
+import { apiFetch, clearSessionId, getSessionId } from './api'
 import AppToaster from './AppToaster'
+import ForcedPasswordChange from './ForcedPasswordChange'
 import Login from './Login'
+import MaintenanceBanner from './MaintenanceBanner'
 import WorkbookApp from './WorkbookApp'
 
 export type AppRole = 'full' | 'roadmap'
@@ -22,13 +24,11 @@ export default function App() {
   const [orgEmployeeName, setOrgEmployeeName] = useState<string | null>(null)
   const [orgEmployeePhotoUrl, setOrgEmployeePhotoUrl] = useState<string | null>(null)
   const [username, setUsername] = useState<string | null>(null)
+  const [mustChangePassword, setMustChangePassword] = useState(false)
+  const [maintenanceEnabled, setMaintenanceEnabled] = useState(false)
+  const [maintenanceMessage, setMaintenanceMessage] = useState('')
 
   const loadAuthStatus = useCallback(async () => {
-    const sessionId = getSessionId()
-    if (!sessionId) {
-      setAuthenticated(false)
-      return
-    }
     try {
       const response = await apiFetch('/api/auth/status')
       const data = (await response.json()) as {
@@ -47,8 +47,16 @@ export default function App() {
         orgEmployeeName?: string | null
         orgEmployeePhotoUrl?: string | null
         username?: string | null
+        mustChangePassword?: boolean
+        maintenanceEnabled?: boolean
+        maintenanceMessage?: string
+        maintenanceBlocked?: boolean
       }
-      setAuthenticated(Boolean(data.authenticated))
+      const isAuth = Boolean(data.authenticated)
+      if (!isAuth && getSessionId()) {
+        clearSessionId()
+      }
+      setAuthenticated(isAuth)
       setAppRole(data.appRole === 'roadmap' ? 'roadmap' : 'full')
       setCanSyncTfs(Boolean(data.canSyncTfs))
       setCanManageOrg(Boolean(data.canManageOrg))
@@ -65,8 +73,12 @@ export default function App() {
         typeof data.orgEmployeePhotoUrl === 'string' ? data.orgEmployeePhotoUrl : null,
       )
       setUsername(typeof data.username === 'string' ? data.username : null)
+      setMustChangePassword(Boolean(data.mustChangePassword))
+      setMaintenanceEnabled(Boolean(data.maintenanceEnabled))
+      setMaintenanceMessage(data.maintenanceMessage ?? '')
     } catch {
       setAuthenticated(false)
+      setMustChangePassword(false)
     }
   }, [])
 
@@ -79,8 +91,14 @@ export default function App() {
     const onFocus = () => {
       void loadAuthStatus()
     }
+    const timer = window.setInterval(() => {
+      void loadAuthStatus()
+    }, 30000)
     window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      window.clearInterval(timer)
+    }
   }, [authenticated, loadAuthStatus])
 
   if (authenticated === null) {
@@ -96,7 +114,11 @@ export default function App() {
     return (
       <>
         <AppToaster />
-        <Login onSuccess={() => void loadAuthStatus()} />
+        <Login
+          onSuccess={() => void loadAuthStatus()}
+          maintenanceEnabled={maintenanceEnabled}
+          maintenanceMessage={maintenanceMessage}
+        />
       </>
     )
   }
@@ -104,23 +126,30 @@ export default function App() {
   return (
     <>
       <AppToaster />
-      <WorkbookApp
-      appRole={appRole}
-      canSyncTfs={canSyncTfs}
-      canManageOrg={canManageOrg}
-      isSuperAdmin={isSuperAdmin}
-      voiceOnly={voiceOnly}
-      planningAccess={planningAccess}
-      otherUser={otherUser}
-      pageAccessRestricted={pageAccessRestricted}
-      allowedPageKeys={allowedPageKeys}
-      orgUserId={orgUserId}
-      orgEmployeeId={orgEmployeeId}
-      orgEmployeePhotoUrl={orgEmployeePhotoUrl}
-      accountLabel={orgEmployeeName ?? username}
-      onAuthRefresh={() => void loadAuthStatus()}
-      onLogout={() => setAuthenticated(false)}
-    />
+      {maintenanceEnabled && canManageOrg ? (
+        <MaintenanceBanner message={maintenanceMessage || 'Режим обслуживания включён.'} compact />
+      ) : null}
+      {mustChangePassword ? (
+        <ForcedPasswordChange onCompleted={() => void loadAuthStatus()} />
+      ) : (
+        <WorkbookApp
+          appRole={appRole}
+          canSyncTfs={canSyncTfs}
+          canManageOrg={canManageOrg}
+          isSuperAdmin={isSuperAdmin}
+          voiceOnly={voiceOnly}
+          planningAccess={planningAccess}
+          otherUser={otherUser}
+          pageAccessRestricted={pageAccessRestricted}
+          allowedPageKeys={allowedPageKeys}
+          orgUserId={orgUserId}
+          orgEmployeeId={orgEmployeeId}
+          orgEmployeePhotoUrl={orgEmployeePhotoUrl}
+          accountLabel={orgEmployeeName ?? username}
+          onAuthRefresh={() => void loadAuthStatus()}
+          onLogout={() => setAuthenticated(false)}
+        />
+      )}
     </>
   )
 }

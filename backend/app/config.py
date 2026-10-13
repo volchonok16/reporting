@@ -276,6 +276,21 @@ class Settings(BaseSettings):
         alias="MINIO_REGION",
         description="Регион S3-клиента (для MinIO обычно us-east-1).",
     )
+    minio_attachments_bucket: str = Field(
+        default="product-status",
+        alias="MINIO_ATTACHMENTS_BUCKET",
+        description="Приватный bucket MinIO для вложений статуса продукта (без anonymous download).",
+    )
+    product_status_uploads_dir: str = Field(
+        default="/data/product-status-attachments",
+        alias="PRODUCT_STATUS_UPLOADS_DIR",
+        description="Локальный fallback для вложений статуса продукта, если MinIO недоступен.",
+    )
+    product_status_max_attachment_bytes: int = Field(
+        default=50 * 1024 * 1024,
+        alias="PRODUCT_STATUS_MAX_ATTACHMENT_BYTES",
+        description="Максимальный размер одного вложения статуса продукта (байты).",
+    )
 
     @computed_field
     @property

@@ -4,20 +4,29 @@ import { notifyProblem, notifyWarning } from './toast'
 import PasswordInput from './org/PasswordInput'
 import ThemeToggle from './ThemeToggle'
 import BrandLogo from './BrandLogo'
+import MaintenanceBanner from './MaintenanceBanner'
 
 type AuthDefaults = {
   baseUrl: string
   project: string
   projectId?: string | null
+  maintenanceEnabled?: boolean
+  maintenanceMessage?: string
 }
 
 type LoginMode = 'account' | 'pat'
 
 type LoginProps = {
   onSuccess: () => void
+  maintenanceEnabled?: boolean
+  maintenanceMessage?: string
 }
 
-export default function Login({ onSuccess }: LoginProps) {
+export default function Login({
+  onSuccess,
+  maintenanceEnabled: maintenanceEnabledProp,
+  maintenanceMessage: maintenanceMessageProp,
+}: LoginProps) {
   const [mode, setMode] = useState<LoginMode>('account')
   const [baseUrl, setBaseUrl] = useState('https://tfs.t2.ru/tfs/Main')
   const [project, setProject] = useState('Tele2')
@@ -26,6 +35,8 @@ export default function Login({ onSuccess }: LoginProps) {
   const [password, setPassword] = useState('')
   const [pat, setPat] = useState('')
   const [loading, setLoading] = useState(false)
+  const [maintenanceEnabled, setMaintenanceEnabled] = useState(Boolean(maintenanceEnabledProp))
+  const [maintenanceMessage, setMaintenanceMessage] = useState(maintenanceMessageProp ?? '')
 
   useEffect(() => {
     void getJson<AuthDefaults>('/api/auth/defaults')
@@ -33,9 +44,20 @@ export default function Login({ onSuccess }: LoginProps) {
         setBaseUrl(payload.baseUrl)
         setProject(payload.project)
         setProjectId(payload.projectId ?? '')
+        if (maintenanceEnabledProp == null) {
+          setMaintenanceEnabled(Boolean(payload.maintenanceEnabled))
+          setMaintenanceMessage(payload.maintenanceMessage ?? '')
+        }
       })
       .catch(() => undefined)
-  }, [])
+  }, [maintenanceEnabledProp])
+
+  useEffect(() => {
+    if (maintenanceEnabledProp != null) {
+      setMaintenanceEnabled(Boolean(maintenanceEnabledProp))
+      setMaintenanceMessage(maintenanceMessageProp ?? '')
+    }
+  }, [maintenanceEnabledProp, maintenanceMessageProp])
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -94,6 +116,8 @@ export default function Login({ onSuccess }: LoginProps) {
         </div>
         <h1 className="login-app-title">Reporting</h1>
         <p className="login-subtitle">Вход в отчётность по ЗНИ</p>
+
+        {maintenanceEnabled ? <MaintenanceBanner message={maintenanceMessage} /> : null}
 
         <div className="login-tabs">
           <button

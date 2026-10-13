@@ -1648,6 +1648,22 @@
   gap: 8px;
 }
 
+.forced-password-backdrop {
+  z-index: 12000;
+  pointer-events: auto;
+}
+
+.forced-password-modal {
+  max-width: 420px;
+  width: min(420px, calc(100vw - 32px));
+}
+
+.org-form-error {
+  margin: 0;
+  color: var(--error, #c62828);
+  font-size: 13px;
+}
+
 @media (max-width: 640px) {
   .org-inline-form {
     grid-template-columns: 1fr;

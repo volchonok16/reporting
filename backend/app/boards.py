@@ -27,6 +27,7 @@ class BoardConfig:
     team_id: str
     area_path: str
     sync_tags: tuple[str, ...] = ()
+    sync_tags_match: str = "any"
     other_tags: tuple[str, ...] = ()
     error_sync_tags: tuple[str, ...] = ()
     exclude_sync_tags: tuple[str, ...] = ()
@@ -54,6 +55,11 @@ def parse_csv_tags(value: str | None) -> tuple[str, ...]:
     return tuple(part.strip() for part in str(value).split(",") if part.strip())
 
 
+def normalize_sync_tags_match(value: str | None) -> str:
+    mode = (value or "any").strip().casefold()
+    return "all" if mode == "all" else "any"
+
+
 def normalize_board_code(value: str | None) -> str:
     return (value or "").strip().lower()
 
@@ -74,6 +80,7 @@ def board_config_from_row(row: ZniBoard) -> BoardConfig:
         team_id=(row.team_id or "").strip(),
         area_path=normalize_tfs_path(row.area_path),
         sync_tags=parse_csv_tags(row.sync_tags),
+        sync_tags_match=normalize_sync_tags_match(getattr(row, "sync_tags_match", None)),
         other_tags=parse_csv_tags(row.other_tags),
         error_sync_tags=parse_csv_tags(row.error_sync_tags),
         exclude_sync_tags=parse_csv_tags(row.exclude_sync_tags),

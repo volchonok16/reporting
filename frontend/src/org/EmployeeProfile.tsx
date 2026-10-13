@@ -75,6 +75,19 @@ export default function EmployeeProfile({ onClose }: EmployeeProfileProps) {
 
   const handlePasswordSave = async (event: React.FormEvent) => {
     event.preventDefault()
+    const next = newPassword.trim()
+    if (!next) {
+      notifyError('Задайте новый пароль.')
+      return
+    }
+    if (next === '12345678') {
+      notifyError('Нельзя оставить временный пароль 12345678. Задайте другой пароль.')
+      return
+    }
+    if (newPassword !== newPasswordRepeat) {
+      notifyError('Новые пароли не совпадают.')
+      return
+    }
     try {
       await postJson('/api/profile/password', {
         currentPassword,

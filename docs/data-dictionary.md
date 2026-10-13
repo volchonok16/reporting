@@ -34,6 +34,7 @@
 | board_name | varchar | Имя доски / `task.source_team` |
 | area_path | varchar | AreaPath TFS для WIQL |
 | sync_tags | text | Теги синка через запятую |
+| sync_tags_match | text | `any` / `all` — ИЛИ / И для sync_tags |
 | other_tags | text | Другие теги (алиасы) через запятую |
 | exclude_sync_tags / exclude_sync_states / error_sync_tags | text | Фильтры через запятую |
 | project / project_id / team_id | varchar | TFS project и GUID команды |
@@ -151,6 +152,28 @@
 | pilot_transitions | TFS updates | Переходы в «Пилот»: `[{at, status}]` |
 | ect_resource_reservation | WIQL WorkItemLinks (Related) | `true` / `false`: у ЗНИ есть Related на элемент «Бронь ресурсов» (колонка «Бронь ресурса ЕЦТ», `ДА` / `НЕТ`) |
 
+## app_maintenance — режим обслуживания
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| enabled | boolean | Запрет входа не-админам |
+| message | text | Сообщение о работах |
+| allow_admin | boolean | Админы/PAT могут входить |
+| updated_by_org_user_id | bigint | Кто включил |
+
+Миграция `076`. Массовый logout — `DELETE` из `auth_session`.
+
+## org_user — учётные записи
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| email | varchar | Логин |
+| password_hash | text | PBKDF2-SHA256 |
+| role | smallint | 10 user / 100 admin / 1000 superadmin |
+| voice_only | boolean | Только вкладка Voice |
+| voice_admin | boolean | Админ Voice (очистка) |
+| must_change_password | boolean | Блокирующая смена пароля при входе (`075`) |
+
 ## auth_session — сессия веб-приложения
 
 | Колонка | Тип | Описание |
@@ -261,7 +284,9 @@
 |---------|---------------|------------|
 | `b2b_product_status_office` | `gid`, `name`, `sort_order`, `editing_locked` | Вкладки офисов (SMS, VOICE, CORE, Аналитики: планирование / бизнес-анализа, Проекты…) |
 | `b2b_product_status_row` | `office_id`, `sort_order`, `cells` | Строки таблицы; `cells` — jsonb с колонками и rich-text |
+| `b2b_product_status_attachment` | `row_id`, `filename`, `storage_key`, `size_bytes` | Вложения строки; файлы в MinIO bucket `product-status` |
 | `b2b_product_status_project` | `office_id`, `name`, `sort_order` | Справочник проектов координации (мультиселект) |
+| `b2b_product_status_project_priority` | `project_id`, `name`, `range_from`, `range_to` | Один диапазон на проект; в ячейке — число из диапазона |
 | `b2b_product_status_history` | `office_id`, `row_id`, `action`, `field_name` | Журнал create/update/delete/restore |
 | `b2b_product_status_snapshot` | `office_id`, `rows`, `changed_by` | Снимок всех строк офиса после сохранения |
 

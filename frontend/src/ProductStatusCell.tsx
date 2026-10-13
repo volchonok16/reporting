@@ -134,6 +134,8 @@ type InlineTableCellProps = {
   value: string
   placeholder?: string
   className?: string
+  autoFocus?: boolean
+  stopKeyPropagation?: boolean
   onCommit: (value: string) => void
   onFocus?: () => void
 }
@@ -152,6 +154,8 @@ function InlineTableCell({
   value,
   placeholder,
   className = 'product-status-inline-table-cell',
+  autoFocus,
+  stopKeyPropagation,
   onCommit,
   onFocus,
 }: InlineTableCellProps) {
@@ -173,6 +177,20 @@ function InlineTableCell({
     renderSegments(inner, element)
     lastSynced.current = value
   }, [value])
+
+  useLayoutEffect(() => {
+    if (!autoFocus) return
+    const el = elementRef.current
+    if (!el) return
+    el.focus()
+    const selection = window.getSelection()
+    if (!selection) return
+    const range = document.createRange()
+    range.selectNodeContents(el)
+    range.collapse(false)
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }, [autoFocus])
 
   useEffect(() => {
     const rememberSelection = () => {
@@ -201,6 +219,7 @@ function InlineTableCell({
   }
 
   const handleFormattingShortcut = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (stopKeyPropagation) event.stopPropagation()
     const isPrimary = event.ctrlKey || event.metaKey
     if (!isPrimary || event.altKey) return
     const key = event.key.toLowerCase()
@@ -248,39 +267,13 @@ function InlineTableCell({
   )
 }
 
-type PreambleEditorProps = {
-  value: string
-  className?: string
-  onChange: (value: string) => void
-  onFocus?: () => void
-  autoFocus?: boolean
-}
+const EMBEDDED_TEXT_EDITOR_CLASSES = [
+  'product-status-inline-table-preamble',
+  'product-status-inline-table-postamble',
+  'product-status-inline-table-cell',
+] as const
 
-function PreambleEditor({ value, className, onChange, onFocus, autoFocus }: PreambleEditorProps) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-
-  useLayoutEffect(() => {
-    if (!autoFocus) return
-    const el = textareaRef.current
-    if (!el) return
-    el.focus()
-    const end = el.value.length
-    el.setSelectionRange(end, end)
-  }, [autoFocus])
-
-  return (
-    <textarea
-      ref={textareaRef}
-      className={className}
-      value={value}
-      rows={Math.min(8, Math.max(2, value.split('\n').length + 1))}
-      onMouseDown={(event) => event.stopPropagation()}
-      onFocus={onFocus}
-      onChange={(event) => onChange(event.target.value)}
-      onKeyDown={(event) => event.stopPropagation()}
-    />
-  )
-}
+type EmbeddedTextFocus = 'preamble' | 'postamble' | 'cell'
 
 const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatusCellProps>(
   function ProductStatusCell(
@@ -294,6 +287,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
     const shouldFocusPreambleRef = useRef(false)
     const savedOffsetsRef = useRef<TextRangeOffsets | null>(null)
     const embeddedFocusRef = useRef({ row: 0, col: 0 })
+    const embeddedTextFocusRef = useRef<EmbeddedTextFocus>('cell')
 
     const tableDoc = parseEmbeddedTableDoc(value)
     const focusPreamble = shouldFocusPreambleRef.current && Boolean(tableDoc)
@@ -397,8 +391,8 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
           const active = document.activeElement
           if (
             active instanceof HTMLElement &&
-            active.classList.contains('product-status-inline-table-cell') &&
             host.contains(active) &&
+            EMBEDDED_TEXT_EDITOR_CLASSES.some((cls) => active.classList.contains(cls)) &&
             (ancestor === active || active.contains(ancestor))
           ) {
             root = active
@@ -419,16 +413,23 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       return () => document.removeEventListener('selectionchange', rememberSelection)
     }, [tableDoc])
 
-    const getFocusedInlineTableCell = (): HTMLElement | null => {
+    const getFormattingRoot = (): HTMLElement | null => {
       const host = tableHostRef.current
       if (!host) return null
       const active = document.activeElement
-      if (
-        active instanceof HTMLElement &&
-        active.classList.contains('product-status-inline-table-cell') &&
-        host.contains(active)
-      ) {
-        return active
+      if (active instanceof HTMLElement && host.contains(active)) {
+        for (const cls of EMBEDDED_TEXT_EDITOR_CLASSES) {
+          if (active.classList.contains(cls)) return active
+        }
+      }
+      const textFocus = embeddedTextFocusRef.current
+      if (textFocus === 'preamble') {
+        const el = host.querySelector('.product-status-inline-table-preamble')
+        return el instanceof HTMLElement ? el : null
+      }
+      if (textFocus === 'postamble') {
+        const el = host.querySelector('.product-status-inline-table-postamble')
+        return el instanceof HTMLElement ? el : null
       }
       const { row, col } = embeddedFocusRef.current
       const rowEl = host.querySelectorAll('.product-status-inline-table tbody tr')[row]
@@ -467,9 +468,9 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
     useImperativeHandle(ref, () => ({
       applyTextStyle(patch) {
         if (tableDoc) {
-          const cell = getFocusedInlineTableCell()
-          if (!cell) return false
-          return applyStyleInRoot(cell, patch)
+          const root = getFormattingRoot()
+          if (!root) return false
+          return applyStyleInRoot(root, patch)
         }
         const element = elementRef.current
         if (!element) return false
@@ -477,16 +478,16 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       },
       applyCellStyle(patch) {
         if (tableDoc) {
-          const cell = getFocusedInlineTableCell()
-          if (!cell) return false
-          const current = serializeEditableCell(cell, {
-            bg: cell.dataset.cellBg?.toUpperCase() ?? null,
-            border: cell.dataset.cellBorder?.toUpperCase() ?? null,
+          const root = getFormattingRoot()
+          if (!root) return false
+          const current = serializeEditableCell(root, {
+            bg: root.dataset.cellBg?.toUpperCase() ?? null,
+            border: root.dataset.cellBorder?.toUpperCase() ?? null,
           })
           const next = applyCellStylePatch(current, patch)
           const { cellStyle, inner } = splitCellWrapper(next)
-          applyCellStyle(cell, cellStyle)
-          renderSegments(inner, cell)
+          applyCellStyle(root, cellStyle)
+          renderSegments(inner, root)
           commitTableFromHostRef.current()
           return true
         }
@@ -502,9 +503,9 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       },
       clearFormatting() {
         if (tableDoc) {
-          const cell = getFocusedInlineTableCell()
-          if (!cell) return false
-          const applied = clearFormattingInCell(cell)
+          const root = getFormattingRoot()
+          if (!root) return false
+          const applied = clearFormattingInCell(root)
           if (!applied) return false
           commitTableFromHostRef.current()
           return true
@@ -518,9 +519,9 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
       },
       insertText(text) {
         if (tableDoc) {
-          const cell = getFocusedInlineTableCell()
-          if (!cell) return false
-          const inserted = insertTextAtSelection(cell, text)
+          const root = getFormattingRoot()
+          if (!root) return false
+          const inserted = insertTextAtSelection(root, text)
           if (!inserted) return false
           commitTableFromHostRef.current()
           return true
@@ -841,12 +842,16 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
           }}
         >
           <div className="product-status-inline-table-text-block">
-            <PreambleEditor
+            <InlineTableCell
               value={tableDoc.text}
               className="product-status-inline-table-preamble"
-              onFocus={onFocus}
-              onChange={updateFreeText}
               autoFocus={focusPreamble}
+              stopKeyPropagation
+              onFocus={() => {
+                embeddedTextFocusRef.current = 'preamble'
+                onFocus?.()
+              }}
+              onCommit={updateFreeText}
             />
           </div>
           <div className="product-status-inline-table-block">
@@ -958,6 +963,7 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
                         <InlineTableCell
                           value={cell}
                           onFocus={() => {
+                            embeddedTextFocusRef.current = 'cell'
                             focusedCellRef.current = { row: rowIndex, col: colIndex }
                             onFocus?.()
                           }}
@@ -980,11 +986,15 @@ const ProductStatusCellInner = forwardRef<ProductStatusCellHandle, ProductStatus
             </table>
           </div>
           <div className="product-status-inline-table-after-block">
-            <PreambleEditor
+            <InlineTableCell
               value={tableDoc.afterText ?? ''}
               className="product-status-inline-table-postamble"
-              onFocus={onFocus}
-              onChange={updateAfterText}
+              stopKeyPropagation
+              onFocus={() => {
+                embeddedTextFocusRef.current = 'postamble'
+                onFocus?.()
+              }}
+              onCommit={updateAfterText}
             />
           </div>
         </div>

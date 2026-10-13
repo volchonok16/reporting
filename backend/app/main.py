@@ -2,7 +2,7 @@ import logging
 from datetime import date
 import asyncio
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
@@ -10,7 +10,13 @@ from sqlalchemy.orm import Session
 from app.app_access import can_manage_org, has_planning_access, is_roadmap_role, is_superadmin_user, is_voice_only, sync_board_denied_reason
 from app.app_page_service import get_user_allowed_page_keys, is_other_user_employee, sync_app_pages
 from app.auth_service import login_with_app_user, login_with_pat
-from app.auth_sessions import delete_session, get_session, get_session_with_meta
+from app.auth_sessions import (
+    delete_all_sessions,
+    delete_session,
+    get_session,
+    get_session_with_meta,
+)
+from app.maintenance import get_maintenance_state, set_maintenance_state
 from app.boards import (
     ALL_BOARDS_CODE,
     boards_for_sync,
@@ -25,7 +31,7 @@ from app.db import close_db_session, ensure_startup_schema, get_db, purge_stale_
 from app.org_models import OrgUser
 from app.org_photo_service import photo_public_url
 from app.org_service import get_employee_for_org_user
-from app.models import SyncRun
+from app.models import AuthSession, SyncRun
 from app.b2b_news_service import (
     delete_b2b_news_row,
     load_b2b_news,
@@ -49,6 +55,11 @@ from app.gov_initiatives_service import (
     load_gov_initiatives_snapshots,
     restore_gov_initiative_snapshot,
     save_gov_initiatives_to_db,
+)
+from app.b2b_product_status_attachments import (
+    delete_product_status_attachment,
+    load_product_status_attachment_bytes,
+    save_product_status_attachment,
 )
 from app.b2b_product_status_db import (
     delete_b2b_product_status_row,
@@ -91,13 +102,17 @@ from app.schemas import (
     ZniExternalDataUpdateIn,
     ChangeRequestOut,
     DashboardOut,
+    MaintenanceOut,
+    MaintenanceUpdateIn,
     ProductsOut,
+    ProductStatusAttachmentOut,
     ProductStatusB2BOut,
     ProductStatusHistoryOut,
     ProductStatusOfficeEditingLockIn,
     ProductStatusSaveIn,
     ProductStatusSheetOut,
     ProductStatusSnapshotsOut,
+    RevokeSessionsOut,
     SyncRunOut,
     TaskLookupIn,
     TaskLookupOut,
@@ -255,22 +270,45 @@ def voice_sso_token(
     return VoiceSsoTokenOut(token=token, expiresIn=120)
 
 
+def _maintenance_public_fields(db: Session) -> dict:
+    state = get_maintenance_state(db)
+    return {
+        "maintenanceEnabled": state.enabled,
+        "maintenanceMessage": state.public_message if state.enabled else (state.message or ""),
+    }
+
+
 @app.get("/api/auth/defaults", response_model=AuthDefaultsOut)
 def auth_defaults(db: Session = Depends(get_db)) -> AuthDefaultsOut:
     boards = ensure_boards_loaded(db, refresh=True)
     board = default_board(boards)
+    maint = _maintenance_public_fields(db)
     return AuthDefaultsOut(
         baseUrl=settings.tfs_base_url,
         project=board.project,
         projectId=board.project_id,
+        maintenanceEnabled=maint["maintenanceEnabled"],
+        maintenanceMessage=maint["maintenanceMessage"],
     )
 
 
 @app.get("/api/auth/status", response_model=TfsAuthStatusOut)
 def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session-Id")) -> TfsAuthStatusOut:
+    db_maint = next(get_db())
+    try:
+        maint = _maintenance_public_fields(db_maint)
+        state = get_maintenance_state(db_maint)
+    finally:
+        close_db_session(db_maint)
+
     auth, meta = get_session_with_meta(x_session_id)
     if auth is None:
-        return TfsAuthStatusOut(authenticated=False)
+        return TfsAuthStatusOut(
+            authenticated=False,
+            maintenanceEnabled=maint["maintenanceEnabled"],
+            maintenanceMessage=maint["maintenanceMessage"],
+            maintenanceBlocked=bool(state.enabled),
+        )
     app_role = meta.get("app_role") or "full"
     auth_mode = meta.get("auth_mode")
     voice_only_flag = is_voice_only(meta)
@@ -281,6 +319,7 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
     org_employee_id: int | None = None
     org_employee_name: str | None = None
     org_employee_photo_url: str | None = None
+    must_change_password_flag = False
     other_user_flag = False
     page_access_restricted = False
     planning_access_flag = False
@@ -291,6 +330,9 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
             org_user = db.get(OrgUser, org_user_id)
             if org_user is not None:
                 voice_only_flag = bool(org_user.voice_only) and not superadmin_flag
+                must_change_password_flag = bool(
+                    getattr(org_user, "must_change_password", False)
+                )
                 if voice_only_flag and not superadmin_flag:
                     can_sync_tfs = False
                     can_manage_org_flag = False
@@ -334,6 +376,10 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
         orgEmployeeId=org_employee_id,
         orgEmployeeName=org_employee_name,
         orgEmployeePhotoUrl=org_employee_photo_url,
+        mustChangePassword=must_change_password_flag,
+        maintenanceEnabled=maint["maintenanceEnabled"],
+        maintenanceMessage=maint["maintenanceMessage"],
+        maintenanceBlocked=False,
     )
 
 
@@ -368,6 +414,63 @@ async def auth_login(payload: TfsAuthIn) -> AuthLoginOut:
 def auth_logout(x_session_id: str | None = Header(default=None, alias="X-Session-Id")) -> dict[str, bool]:
     delete_session(x_session_id)
     return {"ok": True}
+
+
+@app.get("/api/admin/maintenance", response_model=MaintenanceOut)
+def get_admin_maintenance(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_org_manage_access),
+) -> MaintenanceOut:
+    state = get_maintenance_state(db)
+    session_count = db.query(AuthSession).count()
+    return MaintenanceOut(
+        enabled=state.enabled,
+        message=state.message,
+        allowAdmin=state.allow_admin,
+        updatedAt=state.updated_at,
+        updatedByOrgUserId=state.updated_by_org_user_id,
+        sessionCount=session_count,
+    )
+
+
+@app.patch("/api/admin/maintenance", response_model=MaintenanceOut)
+def patch_admin_maintenance(
+    payload: MaintenanceUpdateIn,
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_org_manage_access),
+) -> MaintenanceOut:
+    _, meta = get_session_with_meta(x_session_id)
+    org_user_id = int(meta["org_user_id"]) if meta.get("org_user_id") else None
+    state = set_maintenance_state(
+        db,
+        enabled=payload.enabled,
+        message=payload.message,
+        allow_admin=payload.allowAdmin,
+        updated_by_org_user_id=org_user_id,
+    )
+    if payload.revokeOtherSessions:
+        delete_all_sessions(keep_session_id=x_session_id)
+    session_count = db.query(AuthSession).count()
+    return MaintenanceOut(
+        enabled=state.enabled,
+        message=state.message,
+        allowAdmin=state.allow_admin,
+        updatedAt=state.updated_at,
+        updatedByOrgUserId=state.updated_by_org_user_id,
+        sessionCount=session_count,
+    )
+
+
+@app.post("/api/admin/sessions/revoke-all", response_model=RevokeSessionsOut)
+def revoke_all_sessions(
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_org_manage_access),
+    keepCurrent: bool = Query(default=True, description="Оставить сессию вызывающего администратора"),
+) -> RevokeSessionsOut:
+    keep_id = x_session_id if keepCurrent else None
+    revoked = delete_all_sessions(keep_session_id=keep_id)
+    return RevokeSessionsOut(revoked=revoked, keptCurrent=bool(keep_id))
 
 
 @app.get("/api/boards", response_model=list[BoardOut])
@@ -742,6 +845,80 @@ def product_status_b2b_delete_row(
     notify_product_status_saved(
         workbook=WORKBOOK_B2B,
         gids=[gid],
+        changed_by=_live_changed_by(meta),
+        origin_connection_id=x_live_connection_id,
+    )
+    return {"status": "ok"}
+
+
+@app.post(
+    "/api/product-status/b2b/rows/{row_id}/attachments",
+    response_model=ProductStatusAttachmentOut,
+)
+async def product_status_b2b_upload_attachment(
+    row_id: int,
+    gid: str = Query(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
+    _: None = Depends(require_full_app_access),
+) -> ProductStatusAttachmentOut:
+    _, meta = get_session_with_meta(x_session_id)
+    payload = await save_product_status_attachment(
+        db,
+        row_id=row_id,
+        gid=gid,
+        file=file,
+        meta=meta,
+    )
+    notify_product_status_saved(
+        workbook=WORKBOOK_B2B,
+        gids=[gid, "summary"],
+        changed_by=_live_changed_by(meta),
+        origin_connection_id=x_live_connection_id,
+    )
+    return ProductStatusAttachmentOut(**payload)
+
+
+@app.get("/api/product-status/b2b/attachments/{attachment_id}/download")
+def product_status_b2b_download_attachment(
+    attachment_id: int,
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_full_app_access),
+) -> Response:
+    from urllib.parse import quote
+
+    _, meta = get_session_with_meta(x_session_id)
+    body, filename, content_type = load_product_status_attachment_bytes(
+        db,
+        attachment_id=attachment_id,
+        meta=meta,
+    )
+    ascii_name = filename.encode("ascii", "ignore").decode("ascii") or "file"
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="{ascii_name}"; '
+            f"filename*=UTF-8''{quote(filename)}"
+        ),
+    }
+    return Response(content=body, media_type=content_type, headers=headers)
+
+
+@app.delete("/api/product-status/b2b/attachments/{attachment_id}")
+def product_status_b2b_delete_attachment(
+    attachment_id: int,
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
+    _: None = Depends(require_full_app_access),
+) -> dict[str, str]:
+    _, meta = get_session_with_meta(x_session_id)
+    result = delete_product_status_attachment(db, attachment_id=attachment_id, meta=meta)
+    notify_product_status_saved(
+        workbook=WORKBOOK_B2B,
+        gids=[str(result["gid"]), "summary"],
         changed_by=_live_changed_by(meta),
         origin_connection_id=x_live_connection_id,
     )

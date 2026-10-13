@@ -16,6 +16,19 @@ class AuthSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class AppMaintenance(Base):
+    """Singleton (id=1): режим обслуживания и сообщение пользователям."""
+
+    __tablename__ = "app_maintenance"
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, default=1)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    allow_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    updated_by_org_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class SourceSystem(Base):
     __tablename__ = "source_system"
 
@@ -41,6 +54,7 @@ class ZniBoard(Base):
     board_name: Mapped[str] = mapped_column(String(255), nullable=False)
     area_path: Mapped[str] = mapped_column(String(500), nullable=False)
     sync_tags: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    sync_tags_match: Mapped[str] = mapped_column(Text, nullable=False, default="any")
     other_tags: Mapped[str] = mapped_column(Text, nullable=False, default="")
     exclude_sync_tags: Mapped[str] = mapped_column(Text, nullable=False, default="")
     exclude_sync_states: Mapped[str] = mapped_column(Text, nullable=False, default="")

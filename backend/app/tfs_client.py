@@ -102,14 +102,20 @@ def wiql_quote(value: str) -> str:
     return f"'{wiql_escape(value)}'"
 
 
-def wiql_tags_clause(tags: Iterable[str] | None, *, field: str = "[System.Tags]") -> str:
+def wiql_tags_clause(
+    tags: Iterable[str] | None,
+    *,
+    field: str = "[System.Tags]",
+    match: str = "any",
+) -> str:
     values = [tag.strip() for tag in (tags or []) if tag and tag.strip()]
     if not values:
         return ""
     parts = [f"{field} CONTAINS {wiql_quote(tag)}" for tag in values]
     if len(parts) == 1:
         return f" AND {parts[0]}"
-    return " AND (" + " OR ".join(parts) + ")"
+    joiner = " AND " if (match or "any").strip().casefold() == "all" else " OR "
+    return " AND (" + joiner.join(parts) + ")"
 
 
 def wiql_exclude_tags_clause(
@@ -261,6 +267,7 @@ class TfsClient:
         *,
         area_path: str | None = None,
         tags: Iterable[str] | None = None,
+        tags_match: str = "any",
         exclude_tags: Iterable[str] | None = None,
         exclude_states: Iterable[str] | None = None,
         exclude_title_patterns: Iterable[str] | None = ZNI_TITLE_EXCLUDE_PATTERNS,
@@ -276,7 +283,7 @@ class TfsClient:
         area_clause = ""
         if area_path:
             area_clause = f" AND [System.AreaPath] UNDER {wiql_quote(area_path)}"
-        tags_clause = wiql_tags_clause(tags)
+        tags_clause = wiql_tags_clause(tags, match=tags_match)
         exclude_tags_clause = wiql_exclude_tags_clause(exclude_tags)
         exclude_states_clause = wiql_exclude_states_clause(exclude_states)
         exclude_title_clause = wiql_exclude_title_patterns_clause(exclude_title_patterns)
@@ -415,6 +422,7 @@ class TfsClient:
         area_path: str,
         *,
         zni_tags: Iterable[str] | None = None,
+        zni_tags_match: str = "any",
         exclude_zni_states: Iterable[str] | None = None,
         exclude_zni_tags: Iterable[str] | None = None,
         exclude_error_tags: Iterable[str] | None = None,
@@ -424,7 +432,11 @@ class TfsClient:
         error_types = ", ".join(wiql_quote(item) for item in settings.error_type_list)
         project = wiql_quote(self.project)
         area = wiql_quote(area_path)
-        zni_tags_clause = wiql_tags_clause(zni_tags, field="[Source].[System.Tags]")
+        zni_tags_clause = wiql_tags_clause(
+            zni_tags,
+            field="[Source].[System.Tags]",
+            match=zni_tags_match,
+        )
         exclude_zni_states_clause = wiql_exclude_states_clause(
             exclude_zni_states,
             field="[Source].[System.State]",
@@ -576,13 +588,18 @@ class TfsClient:
         side: str,
         area_path: str,
         zni_tags: Iterable[str] | None,
+        zni_tags_match: str = "any",
         exclude_zni_states: Iterable[str] | None,
         exclude_zni_tags: Iterable[str] | None,
     ) -> str:
         types = ", ".join(wiql_quote(item) for item in settings.change_type_list)
         project = wiql_quote(self.project)
         area = wiql_quote(area_path)
-        tags_clause = wiql_tags_clause(zni_tags, field=f"[{side}].[System.Tags]")
+        tags_clause = wiql_tags_clause(
+            zni_tags,
+            field=f"[{side}].[System.Tags]",
+            match=zni_tags_match,
+        )
         exclude_states_clause = wiql_exclude_states_clause(
             exclude_zni_states,
             field=f"[{side}].[System.State]",
@@ -603,6 +620,7 @@ class TfsClient:
         area_path: str,
         *,
         zni_tags: Iterable[str] | None = None,
+        zni_tags_match: str = "any",
         exclude_zni_states: Iterable[str] | None = None,
         exclude_zni_tags: Iterable[str] | None = None,
     ) -> set[int]:
@@ -616,6 +634,7 @@ class TfsClient:
             side="Source",
             area_path=area_path,
             zni_tags=zni_tags,
+            zni_tags_match=zni_tags_match,
             exclude_zni_states=exclude_zni_states,
             exclude_zni_tags=exclude_zni_tags,
         )
@@ -623,6 +642,7 @@ class TfsClient:
             side="Target",
             area_path=area_path,
             zni_tags=zni_tags,
+            zni_tags_match=zni_tags_match,
             exclude_zni_states=exclude_zni_states,
             exclude_zni_tags=exclude_zni_tags,
         )
@@ -655,6 +675,7 @@ class TfsClient:
         area_path: str,
         *,
         zni_tags: Iterable[str] | None = None,
+        zni_tags_match: str = "any",
         exclude_zni_states: Iterable[str] | None = None,
         exclude_zni_tags: Iterable[str] | None = None,
     ) -> set[int]:
@@ -668,6 +689,7 @@ class TfsClient:
             side="Source",
             area_path=area_path,
             zni_tags=zni_tags,
+            zni_tags_match=zni_tags_match,
             exclude_zni_states=exclude_zni_states,
             exclude_zni_tags=exclude_zni_tags,
         )
@@ -675,6 +697,7 @@ class TfsClient:
             side="Target",
             area_path=area_path,
             zni_tags=zni_tags,
+            zni_tags_match=zni_tags_match,
             exclude_zni_states=exclude_zni_states,
             exclude_zni_tags=exclude_zni_tags,
         )

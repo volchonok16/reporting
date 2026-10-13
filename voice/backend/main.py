@@ -1,18 +1,21 @@
 from __future__ import annotations
 
+import csv
+import io
 import math
 import shutil
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, File, Header, Query, Request, UploadFile
 from starlette.background import BackgroundTask
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
+from openpyxl import Workbook
 
 from .auth import AuthService, AuthUser
 from .config import settings
@@ -477,6 +480,65 @@ def create_master_record(
     return master_service.create_record(body, session_id, actor=user.email)
 
 
+def _batch_delete_template_response(
+    kind: Literal["a", "b"],
+    file_format: Literal["csv", "xlsx"],
+) -> Response:
+    header = "номер"
+    example = "79000000001" if kind == "a" else "79100000001"
+    filename_base = (
+        "voice-batch-delete-a-template"
+        if kind == "a"
+        else "voice-batch-delete-b-template"
+    )
+    if file_format == "csv":
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, lineterminator="\r\n")
+        writer.writerow([header])
+        writer.writerow([example])
+        payload = buffer.getvalue().encode("utf-8-sig")
+        filename = f"{filename_base}.csv"
+        media_type = "text/csv; charset=utf-8"
+    else:
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Удаление"
+        sheet.append([header])
+        sheet.append([example])
+        output = io.BytesIO()
+        workbook.save(output)
+        payload = output.getvalue()
+        filename = f"{filename_base}.xlsx"
+        media_type = (
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    return Response(
+        content=payload,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename*=UTF-8''{quote(filename)}"
+            )
+        },
+    )
+
+
+@app.get("/api/master/templates/batch-delete-a")
+def download_batch_delete_a_template(
+    _session_id: MasterSessionId,
+    format: Literal["csv", "xlsx"] = Query("xlsx"),
+) -> Response:
+    return _batch_delete_template_response("a", format)
+
+
+@app.get("/api/master/templates/batch-delete-b")
+def download_batch_delete_b_template(
+    _session_id: MasterSessionId,
+    format: Literal["csv", "xlsx"] = Query("xlsx"),
+) -> Response:
+    return _batch_delete_template_response("b", format)
+
+
 @app.post("/api/master/records/batch-delete-a")
 def batch_delete_master_records(
     body: MasterBatchDeleteARequest,
@@ -484,7 +546,10 @@ def batch_delete_master_records(
     user: CurrentUser,
 ) -> dict[str, Any]:
     return master_service.delete_records_by_a(
-        body.aNumbers, session_id, actor=user.email
+        body.aNumbers,
+        session_id,
+        actor=user.email,
+        upload_id=body.uploadId,
     )
 
 
@@ -495,7 +560,10 @@ def batch_delete_master_aons(
     user: CurrentUser,
 ) -> dict[str, Any]:
     return master_service.delete_b_numbers(
-        body.bNumbers, session_id, actor=user.email
+        body.bNumbers,
+        session_id,
+        actor=user.email,
+        upload_id=body.uploadId,
     )
 
 

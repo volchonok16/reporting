@@ -23,10 +23,19 @@ from app.schemas import (
     ProductStatusCellUpdate,
     ProductStatusHistoryEntryOut,
     ProductStatusHistoryOut,
+    ProductStatusPriorityRangeOut,
     ProductStatusSaveIn,
     ProductStatusSheetOut,
     ProductStatusSnapshotOut,
     ProductStatusSnapshotsOut,
+)
+
+from app.b2b_product_status_attachments import (
+    ATTACHMENTS_COLUMN,
+    ATTACHMENTS_JSON_KEY,
+    delete_storage_objects,
+    list_storage_keys_for_rows,
+    load_attachments_by_row_ids,
 )
 
 ROW_ID_KEY = "__rowId"
@@ -40,6 +49,7 @@ SUMMARY_COLUMNS: tuple[str, ...] = (
     SUMMARY_OFFICE_COLUMN,
     SUMMARY_STATUS_COLUMN,
     "Зачем и для чего делаем",
+    ATTACHMENTS_COLUMN,
 )
 _COORDINATION_COLUMN = "Проект координация"
 _FULL_STATUS_COLUMN = "Полное Описание проекта и статус"
@@ -56,6 +66,7 @@ B2B_PRODUCT_STATUS_COLUMNS: tuple[str, ...] = (
     "Идет в презентацию",
     "Обратить внимание",
     "Комментарий",
+    ATTACHMENTS_COLUMN,
     "Приоритет",
     "Неактуальное",
 )
@@ -94,12 +105,31 @@ def _normalize_cells(raw: dict[str, Any] | None) -> dict[str, str]:
     source = raw or {}
     cells = _empty_cells()
     for column in B2B_PRODUCT_STATUS_COLUMNS:
+        if column == ATTACHMENTS_COLUMN:
+            # Файлы живут в b2b_product_status_attachment, не в cells.
+            cells[column] = ""
+            continue
         if column == WHY_COLUMN:
             cells[column] = _merge_why_cell_value(source)
             continue
         value = source.get(column, "")
         cells[column] = "" if value is None else str(value)
     return cells
+
+
+def _attach_files_to_row_payload(
+    payload: dict[str, str],
+    attachments: list[dict[str, Any]],
+) -> dict[str, str]:
+    if attachments:
+        payload[ATTACHMENTS_COLUMN] = ", ".join(
+            str(item.get("filename") or "") for item in attachments if item.get("filename")
+        )
+        payload[ATTACHMENTS_JSON_KEY] = json.dumps(attachments, ensure_ascii=False)
+    else:
+        payload[ATTACHMENTS_COLUMN] = ""
+        payload[ATTACHMENTS_JSON_KEY] = "[]"
+    return payload
 
 
 def _cells_json(cells: dict[str, str]) -> str:
@@ -168,13 +198,18 @@ def _sheet_from_rows(
     name: str,
     rows: list[dict[str, Any]],
     projects: list[str] | None = None,
+    project_priority_ranges: dict[str, ProductStatusPriorityRangeOut] | None = None,
     editing_locked: bool = False,
+    attachments_by_row: dict[int, list[dict[str, Any]]] | None = None,
 ) -> ProductStatusSheetOut:
+    files_by_row = attachments_by_row or {}
     sheet_rows: list[dict[str, str]] = []
     for row in rows:
         cells = _normalize_cells(row.get("cells"))
         payload = dict(cells)
         payload[ROW_ID_KEY] = str(row["id"])
+        row_id = int(row["id"])
+        _attach_files_to_row_payload(payload, files_by_row.get(row_id, []))
         sheet_rows.append(payload)
     return ProductStatusSheetOut(
         gid=gid,
@@ -183,6 +218,7 @@ def _sheet_from_rows(
         rows=sheet_rows,
         totalShown=len(sheet_rows),
         projects=list(projects or []),
+        projectPriorityRanges=dict(project_priority_ranges or {}),
         editingLocked=bool(editing_locked),
     )
 
@@ -211,8 +247,13 @@ def _copy_cell_preserving_table(primary: str, fallback: str = "") -> str:
     return primary
 
 
-def build_summary_rows(offices_with_rows: list[tuple[dict[str, Any], list[dict[str, Any]]]]) -> list[dict[str, str]]:
+def build_summary_rows(
+    offices_with_rows: list[tuple[dict[str, Any], list[dict[str, Any]]]],
+    *,
+    attachments_by_row: dict[int, list[dict[str, Any]]] | None = None,
+) -> list[dict[str, str]]:
     """Строки сводки: офисы в их порядке, внутри — порядок строк офиса."""
+    files_by_row = attachments_by_row or {}
     rows: list[dict[str, str]] = []
     for office, office_rows in offices_with_rows:
         office_gid = str(office["gid"])
@@ -221,18 +262,19 @@ def build_summary_rows(offices_with_rows: list[tuple[dict[str, Any], list[dict[s
             cells = _normalize_cells(row.get("cells"))
             if not _is_presentation_flag_yes(cells.get(_PRESENTATION_FLAG_COLUMN, "")):
                 continue
-            rows.append(
-                {
-                    SUMMARY_OFFICE_COLUMN: _office_summary_label(office_name),
-                    SUMMARY_STATUS_COLUMN: _copy_cell_preserving_table(
-                        cells.get(_PRESENTATION_STATUS_COLUMN, ""),
-                        cells.get(_FULL_STATUS_COLUMN, ""),
-                    ),
-                    WHY_COLUMN: _copy_cell_preserving_table(cells.get(WHY_COLUMN, "")),
-                    SUMMARY_PROJECT_TITLE_KEY: cells.get(_COORDINATION_COLUMN, ""),
-                    ROW_ID_KEY: f"{SUMMARY_GID}-{office_gid}-{row.get('id')}",
-                }
-            )
+            source_row_id = int(row["id"])
+            payload = {
+                SUMMARY_OFFICE_COLUMN: _office_summary_label(office_name),
+                SUMMARY_STATUS_COLUMN: _copy_cell_preserving_table(
+                    cells.get(_PRESENTATION_STATUS_COLUMN, ""),
+                    cells.get(_FULL_STATUS_COLUMN, ""),
+                ),
+                WHY_COLUMN: _copy_cell_preserving_table(cells.get(WHY_COLUMN, "")),
+                SUMMARY_PROJECT_TITLE_KEY: cells.get(_COORDINATION_COLUMN, ""),
+                ROW_ID_KEY: f"{SUMMARY_GID}-{office_gid}-{source_row_id}",
+            }
+            _attach_files_to_row_payload(payload, files_by_row.get(source_row_id, []))
+            rows.append(payload)
     return rows
 
 
@@ -245,6 +287,7 @@ def _summary_sheet(rows: list[dict[str, str]] | None = None) -> ProductStatusShe
         rows=sheet_rows,
         totalShown=len(sheet_rows),
         projects=[],
+        projectPriorityRanges={},
         editingLocked=True,
         readOnly=True,
     )
@@ -257,7 +300,9 @@ def _load_summary_sheet(db: Session, *, offices: list[dict[str, Any]], meta_only
         (office, _load_office_rows(db, office_id=int(office["id"])))
         for office in offices
     ]
-    return _summary_sheet(build_summary_rows(packed))
+    row_ids = [int(row["id"]) for _, office_rows in packed for row in office_rows]
+    attachments_by_row = load_attachments_by_row_ids(db, row_ids)
+    return _summary_sheet(build_summary_rows(packed, attachments_by_row=attachments_by_row))
 
 
 def _load_offices(db: Session) -> list[dict[str, Any]]:
@@ -293,6 +338,53 @@ def _load_office_projects(db: Session, *, office_ids: list[int]) -> dict[int, li
     for row in result:
         office_id = int(row._mapping["office_id"])
         by_office.setdefault(office_id, []).append(str(row._mapping["name"]))
+    return by_office
+
+
+def _load_office_project_priority_ranges(
+    db: Session,
+    *,
+    office_ids: list[int],
+) -> dict[int, dict[str, ProductStatusPriorityRangeOut]]:
+    """office_id → { project_name: {rangeFrom, rangeTo} } — один диапазон на проект."""
+    if not office_ids:
+        return {}
+    result = db.execute(
+        text(
+            """
+            SELECT DISTINCT ON (p.office_id, p.id)
+                   p.office_id,
+                   p.name AS project_name,
+                   pr.range_from,
+                   pr.range_to
+            FROM b2b_product_status_project AS p
+            JOIN b2b_product_status_project_priority AS pr
+              ON pr.project_id = p.id
+             AND pr.is_active = TRUE
+            WHERE p.is_active = TRUE
+              AND p.office_id = ANY(:office_ids)
+            ORDER BY p.office_id, p.id, pr.sort_order, pr.range_from, pr.id
+            """
+        ),
+        {"office_ids": office_ids},
+    )
+    by_office: dict[int, dict[str, ProductStatusPriorityRangeOut]] = {}
+    for row in result:
+        mapping = row._mapping
+        range_from = mapping.get("range_from")
+        range_to = mapping.get("range_to")
+        if range_from is None or range_to is None:
+            continue
+        from_value = int(range_from)
+        to_value = int(range_to)
+        if from_value < 1 or to_value < from_value:
+            continue
+        office_id = int(mapping["office_id"])
+        project_name = str(mapping["project_name"])
+        by_office.setdefault(office_id, {})[project_name] = ProductStatusPriorityRangeOut(
+            rangeFrom=from_value,
+            rangeTo=to_value,
+        )
     return by_office
 
 
@@ -365,12 +457,13 @@ def load_b2b_product_status_from_db(
     if gid is None:
         sheets.append(_load_summary_sheet(db, offices=all_offices, meta_only=meta_only))
 
-    projects_by_office = _load_office_projects(
-        db,
-        office_ids=[int(office["id"]) for office in offices],
-    )
+    office_ids = [int(office["id"]) for office in offices]
+    projects_by_office = _load_office_projects(db, office_ids=office_ids)
+    ranges_by_office = _load_office_project_priority_ranges(db, office_ids=office_ids)
     for office in offices:
-        office_projects = projects_by_office.get(int(office["id"]), [])
+        office_id = int(office["id"])
+        office_projects = projects_by_office.get(office_id, [])
+        office_ranges = ranges_by_office.get(office_id, {})
         if meta_only:
             sheets.append(
                 ProductStatusSheetOut(
@@ -380,18 +473,25 @@ def load_b2b_product_status_from_db(
                     rows=[],
                     totalShown=0,
                     projects=office_projects,
+                    projectPriorityRanges=office_ranges,
                     editingLocked=bool(office.get("editing_locked")),
                 )
             )
             continue
-        rows = _load_office_rows(db, office_id=int(office["id"]))
+        rows = _load_office_rows(db, office_id=office_id)
+        attachments_by_row = load_attachments_by_row_ids(
+            db,
+            [int(row["id"]) for row in rows],
+        )
         sheets.append(
             _sheet_from_rows(
                 gid=office["gid"],
                 name=office["name"],
                 rows=rows,
                 projects=office_projects,
+                project_priority_ranges=office_ranges,
                 editing_locked=bool(office.get("editing_locked")),
+                attachments_by_row=attachments_by_row,
             )
         )
 
@@ -490,14 +590,22 @@ def set_b2b_product_status_office_editing_locked(
     )
     db.commit()
     office["editing_locked"] = locked
-    projects = _load_office_projects(db, office_ids=[int(office["id"])])
-    rows = _load_office_rows(db, office_id=int(office["id"]))
+    office_id = int(office["id"])
+    projects = _load_office_projects(db, office_ids=[office_id])
+    ranges = _load_office_project_priority_ranges(db, office_ids=[office_id])
+    rows = _load_office_rows(db, office_id=office_id)
+    attachments_by_row = load_attachments_by_row_ids(
+        db,
+        [int(row["id"]) for row in rows],
+    )
     return _sheet_from_rows(
         gid=office["gid"],
         name=office["name"],
         rows=rows,
-        projects=projects.get(int(office["id"]), []),
+        projects=projects.get(office_id, []),
+        project_priority_ranges=ranges.get(office_id, {}),
         editing_locked=locked,
+        attachments_by_row=attachments_by_row,
     )
 
 
@@ -544,6 +652,8 @@ def save_b2b_product_status_to_db(
                 if update.columnIndex < len(B2B_PRODUCT_STATUS_COLUMNS)
                 else None
             )
+            if column == ATTACHMENTS_COLUMN:
+                continue
             if column in ADMIN_ONLY_COLUMNS and not can_edit_admin:
                 raise HTTPException(
                     status_code=403,
@@ -555,6 +665,7 @@ def save_b2b_product_status_to_db(
         db_rows = _load_office_rows(db, office_id=office_id)
         row_by_id = {int(row["id"]): row for row in db_rows}
         deleted_ids = deleted_by_gid.get(gid, set())
+        orphan_keys = list_storage_keys_for_rows(db, sorted(deleted_ids))
 
         for row_id in deleted_ids:
             row = row_by_id.get(row_id)
@@ -577,6 +688,8 @@ def save_b2b_product_status_to_db(
                 {"row_id": row_id, "office_id": office_id},
             )
             row_by_id.pop(row_id, None)
+        if orphan_keys:
+            delete_storage_objects(orphan_keys)
 
         db_rows = [row for row in db_rows if int(row["id"]) not in deleted_ids]
 
@@ -637,7 +750,7 @@ def save_b2b_product_status_to_db(
                 if update.columnIndex < len(B2B_PRODUCT_STATUS_COLUMNS)
                 else None
             )
-            if column is None:
+            if column is None or column == ATTACHMENTS_COLUMN:
                 continue
             if column in ADMIN_ONLY_COLUMNS and not can_edit_admin:
                 raise HTTPException(
@@ -776,6 +889,7 @@ def delete_b2b_product_status_row(
         raise HTTPException(status_code=404, detail="Строка не найдена.")
 
     cells = _normalize_cells(row.get("cells"))
+    orphan_keys = list_storage_keys_for_rows(db, [row_id])
     _append_history(
         db,
         row_id=row_id,
@@ -791,6 +905,8 @@ def delete_b2b_product_status_row(
         text("DELETE FROM b2b_product_status_row WHERE id = :row_id AND office_id = :office_id"),
         {"row_id": row_id, "office_id": office_id},
     )
+    if orphan_keys:
+        delete_storage_objects(orphan_keys)
     db.commit()
 
 

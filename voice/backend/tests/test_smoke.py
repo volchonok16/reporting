@@ -63,6 +63,31 @@ def test_serializer_parser_golden_round_trip() -> None:
     assert list(parsed.b_numbers) == mapping.bNumbers
 
 
+def test_serializer_short_aon_uses_marker_and_b_prefix() -> None:
+    mapping = Mapping(
+        aNumber="79999999999",
+        bNumbers=["9999"],
+        firstSeenOrder=1,
+    )
+    row = MappingSerializer().logical_row(mapping)
+    assert row == "null/$ & null/$ & null/$ &79999999999=4:2,1,b9999"
+    parsed = MappingParser(auto_detect=True).parse(row, source_row=2)
+    assert parsed.a_number == "79999999999"
+    assert list(parsed.b_numbers) == ["9999"]
+
+
+def test_serializer_star_short_aon() -> None:
+    mapping = Mapping(
+        aNumber="79999999999",
+        bNumbers=["*123"],
+        firstSeenOrder=1,
+    )
+    row = MappingSerializer().logical_row(mapping)
+    assert row == "null/$ & null/$ & null/$ &79999999999=4:2,1,b*123"
+    parsed = MappingParser(auto_detect=True).parse(row, source_row=2)
+    assert list(parsed.b_numbers) == ["*123"]
+
+
 def test_csv_end_to_end() -> None:
     session = f"smoke-{uuid.uuid4()}"
     source = (
