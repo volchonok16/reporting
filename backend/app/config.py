@@ -123,6 +123,13 @@ class Settings(BaseSettings):
             "Доступ к вкладке Планы и синхронизации доски Digital Streams B2b."
         ),
     )
+    smtp_host: str = Field(default="", alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, alias="SMTP_PORT")
+    smtp_user: str = Field(default="", alias="SMTP_USER")
+    smtp_password: str = Field(default="", alias="SMTP_PASSWORD")
+    smtp_from: str = Field(default="", alias="SMTP_FROM")
+    smtp_use_ssl: bool = Field(default=False, alias="SMTP_USE_SSL")
+    smtp_starttls: bool = Field(default=True, alias="SMTP_STARTTLS")
     b2b_product_status_spreadsheet_id: str = Field(
         default="1zTxzUqa1p6wFUjmk-8_2czfsJaSm3eTrNGazN0oFKqI",
         alias="B2B_PRODUCT_STATUS_SPREADSHEET_ID",

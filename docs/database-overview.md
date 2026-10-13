@@ -81,7 +81,7 @@
 
 | Метод | Путь | Назначение |
 |-------|------|------------|
-| POST | `/api/auth/login` | Вход PAT или email/пароль → `sessionId` |
+| POST | `/api/auth/login` | Вход email/пароль → `sessionId` (свой PAT не принимается) |
 | GET | `/api/dashboard` | Метрики и список ЗНИ |
 | POST | `/api/sync` | Запуск синхронизации доски |
 | GET | `/api/export` | Excel: ЗНИ + ошибки, колонки «Заказчик», «Продукт» |
@@ -109,6 +109,7 @@
 | `auth_session` | Сессии PAT для веб-приложения |
 | `app_maintenance` | Singleton: режим обслуживания (`enabled`, `message`, `allow_admin`) + массовый logout через очистку `auth_session` |
 | `org_user` | Учётные записи сотрудников (email/пароль; `voice_only` — только вкладка Voice; `must_change_password` — обязательная смена пароля при входе) |
+| `org_password_reset` | Одноразовые коды самостоятельного сброса пароля (хеш, 15 минут) |
 | `app_page` | Справочник вкладок reporting (`page_key` = `SheetId`) |
 | `org_user_page_access` | Разрешённые вкладки для «других пользователей» (`employee.hide_from_pyramid`) |
 | `job_position` | Справочник должностей |

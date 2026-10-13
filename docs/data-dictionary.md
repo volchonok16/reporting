@@ -174,6 +174,15 @@
 | voice_admin | boolean | Админ Voice (очистка) |
 | must_change_password | boolean | Блокирующая смена пароля при входе (`075`) |
 
+### org_password_reset
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| org_user_id | bigint | Учётка |
+| code_hash | text | Хеш шестизначного кода |
+| expires_at | timestamptz | Срок действия |
+| consumed_at | timestamptz | Использование или отмена (`077`) |
+
 ## auth_session — сессия веб-приложения
 
 | Колонка | Тип | Описание |

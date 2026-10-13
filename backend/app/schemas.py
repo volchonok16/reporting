@@ -13,6 +13,27 @@ class TfsAuthIn(BaseModel):
     password: str | None = None
 
 
+class PasswordResetRequestIn(BaseModel):
+    email: str
+
+
+class PasswordResetVerifyIn(BaseModel):
+    email: str
+    code: str
+
+
+class PasswordResetConfirmIn(BaseModel):
+    email: str
+    code: str
+    newLogin: str
+    newPassword: str
+    newPasswordRepeat: str
+
+
+class PasswordResetOut(BaseModel):
+    message: str
+
+
 class AuthLoginOut(BaseModel):
     sessionId: str
     authMode: str | None = None

@@ -171,12 +171,45 @@ body {
   color: var(--text-secondary);
 }
 
+.login-reset-title {
+  margin: 0;
+  font-size: 18px;
+}
+
+.login-reset-back {
+  justify-self: start;
+  width: auto;
+}
+
+.login-code-field {
+  display: grid;
+  gap: var(--space-sm);
+  font-size: 14px;
+}
+
+.login-code-cells {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.login-panel input.login-code-cell {
+  width: 100%;
+  height: 48px;
+  padding: 0;
+  border-radius: 10px;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1;
+}
+
 .login-panel form {
   display: grid;
   gap: var(--space-lg);
 }
 
-.login-panel form button:not(.org-password-input-toggle) {
+.login-panel form button:not(.org-password-input-toggle):not(.btn-ghost) {
   width: 100%;
 }
 
@@ -196,7 +229,7 @@ body {
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-.login-panel button:not(.login-tab):not(.org-password-input-toggle),
+.login-panel button:not(.login-tab):not(.org-password-input-toggle):not(.btn-ghost),
 .btn-primary,
 .btn-secondary,
 .btn-ghost {
@@ -219,7 +252,7 @@ body {
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.login-panel button:not(.login-tab):not(.org-password-input-toggle),
+.login-panel button:not(.login-tab):not(.org-password-input-toggle):not(.btn-ghost),
 .btn-primary {
   background: var(--brand);
   color: var(--text-inverse);
@@ -227,7 +260,7 @@ body {
 }
 
 .btn-primary:hover:not(:disabled),
-.login-panel button:not(.login-tab):not(.org-password-input-toggle):hover:not(:disabled) {
+.login-panel button:not(.login-tab):not(.org-password-input-toggle):not(.btn-ghost):hover:not(:disabled) {
   background: var(--surface-1);
   color: var(--text-primary);
   border-color: var(--text-primary);
@@ -661,10 +694,10 @@ body {
 
 .workbook-tab-active,
 .workbook-tab-active:hover {
-  background: var(--t2-mint);
-  color: #000000;
-  border-color: var(--t2-mint);
-  box-shadow: none;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  border-color: var(--border);
+  box-shadow: inset 0 3px 0 var(--brand-pink);
 }
 
 .workbook-content {
@@ -4193,8 +4226,6 @@ body.product-status-row-drag-active {
 /* Выбранный пункт — как доска на ЗНИ: мятная заливка и чёрный текст, в том числе при наведении. */
 button:is(
   .login-tab.active,
-  .workbook-tab-active,
-  .theme-toggle-btn-active,
   .product-status-sheet-tab-active,
   .linked-env-filter-btn-active,
   .diagram-kind-tab-active,
@@ -4208,8 +4239,6 @@ button:is(
 ),
 button:is(
   .login-tab.active,
-  .workbook-tab-active,
-  .theme-toggle-btn-active,
   .product-status-sheet-tab-active,
   .linked-env-filter-btn-active,
   .diagram-kind-tab-active,

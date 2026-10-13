@@ -711,7 +711,7 @@
 | certbot | `scripts/production.sh` | Let's Encrypt (`CERTBOT_DOMAINS`) |
 | FineBI | JDBC → Postgres | Views `v_*` |
 
-Аутентификация: `POST /api/auth/login` — **PAT** (свой токен) или **логин/пароль** приложения (`APP_AUTH_USERS`, выгрузка через `TFS_SYNC_PAT`) → `auth_session` → `X-Session-Id`. Секреты TFS не отдаются клиенту.
+Аутентификация: `POST /api/auth/login` — логин и пароль (`org_user` или `APP_AUTH_USERS`). Выгрузка из TFS идёт серверным `TFS_SYNC_PAT`, свой PAT на вход не принимается. Сессия — `auth_session`, заголовок `X-Session-Id`. Секреты TFS не отдаются клиенту.
 
 ### Метрики дашборда
 
@@ -747,7 +747,7 @@
 
 | Endpoint | Описание |
 |----------|----------|
-| `POST /api/auth/login` | `{ pat, base_url?, project? }` → `{ sessionId }` |
+| `POST /api/auth/login` | `{ username, password, baseUrl?, project? }` → `{ sessionId }`. Поле `pat` отклоняется |
 | `GET /api/dashboard?board=` | Метрики + список ЗНИ; фильтры: `status`, `quarter`, `customer` (повтор параметра — ИЛИ по ФИО; `__none__` — без заказчика), `ect_reservation`, `linked_environment`, `metric`, `tag_group`, даты, `search` |
 | `GET /api/products?hideClosed=` | Список продуктов TFS с дочерними ЗНИ (`parent_task_id`) |
 | `POST /api/sync` | Синхронизация; body `{ board }` |
@@ -794,6 +794,19 @@ API (только `canManageOrg`): `GET/PATCH /api/admin/maintenance`, `POST /ap
 Суперадминистратор (`role = 1000`, сессия `org_user_role=superadmin`): доступ ко всем вкладкам; правки в заблокированных офисах статуса продукта (`editing_locked`); управление `allowedPageKeys` для любого сотрудника в Staffing. Назначение: `UPDATE org_user SET role = 1000 WHERE email = '…';` — через UI выдать/снять нельзя. В `/api/auth/status` — `isSuperAdmin`, `pageAccessRestricted`.
 
 Связь: `employee.user_id` → `org_user.id`. Вход по email/паролю через `POST /api/auth/login` (режим app_user).
+
+Самостоятельный сброс (только `org_user`, не учётки из `APP_AUTH_USERS`): `POST /api/auth/password-reset/request` сначала проверяет, что активная учётка с таким логином есть (иначе 404), и только потом шлёт шестизначный код на её почту. `POST /api/auth/password-reset/verify` подтверждает код. `POST /api/auth/password-reset/confirm` задаёт новый логин и пароль и снимает `must_change_password`. Коды — таблица `org_password_reset` (хеш, 15 минут, один раз). Письмо уходит через SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`). Миграция: `077_org_password_reset.sql`.
+
+## org_password_reset — коды сброса пароля
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `org_user_id` | bigint | Учётка (`org_user`), каскадное удаление |
+| `code_hash` | text | PBKDF2-хеш шестизначного кода |
+| `expires_at` | timestamptz | Срок действия (15 минут с момента запроса) |
+| `consumed_at` | timestamptz | Когда код использован или отменён новым запросом; NULL — ещё действует |
+| `created_at` | timestamptz | Время запроса |
 
 Вкладка **Voice** (`SheetId = voice`) доступна всем авторизованным пользователям (same-origin `/voice/` → frontend-nginx → `voice-web` с `basePath=/voice`, `/voice-api/` → reporting **backend** mount `/voice-api`). Проверка маршрута: `GET /voice/reporting-voice.txt` должен вернуть `voice-ok` (не HTML reporting). Пользователи с `voice_only = true` (**Voice сервисы**) видят только эту вкладку; остальные вкладки для них скрыты. Тема iframe синхронизируется с reporting (`?theme=light|dark`).
 

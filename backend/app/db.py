@@ -223,6 +223,15 @@ def ensure_startup_schema() -> None:
         "066_planning_project_cancelled_frozen.sql",
         "067_gov_initiatives.sql",
         "068_org_user_superadmin.sql",
+        "069_zni_board_sync_tags_match.sql",
+        "070_b2b_product_status_attachments.sql",
+        "071_b2b_product_status_project_priorities.sql",
+        "072_b2b_product_status_priority_ranges.sql",
+        "073_b2b_product_status_one_range_per_project.sql",
+        "074_voice_short_aon_format.sql",
+        "075_org_user_must_change_password.sql",
+        "076_app_maintenance.sql",
+        "077_org_password_reset.sql",
     )
 
     auth_session_sql = """

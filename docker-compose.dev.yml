@@ -9,8 +9,11 @@ services:
   backend:
     ports:
       - "8000:8000"
+    entrypoint: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     volumes:
       - ./backend/app:/app/app:ro
+      - ./backend/assets:/app/assets:ro
+      - ./db/migrations:/app/migrations:ro
       - ./voice/backend:/app/carousel:ro
       - ./voice/data:/data
 

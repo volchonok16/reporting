@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.app_access import can_manage_org, has_planning_access, is_roadmap_role, is_superadmin_user, is_voice_only, sync_board_denied_reason
 from app.app_page_service import get_user_allowed_page_keys, is_other_user_employee, sync_app_pages
-from app.auth_service import login_with_app_user, login_with_pat
+from app.auth_service import login_with_app_user
 from app.auth_sessions import (
     delete_all_sessions,
     delete_session,
@@ -104,6 +104,10 @@ from app.schemas import (
     DashboardOut,
     MaintenanceOut,
     MaintenanceUpdateIn,
+    PasswordResetConfirmIn,
+    PasswordResetOut,
+    PasswordResetRequestIn,
+    PasswordResetVerifyIn,
     ProductsOut,
     ProductStatusAttachmentOut,
     ProductStatusB2BOut,
@@ -120,9 +124,15 @@ from app.schemas import (
     TfsAuthStatusOut,
     VoiceSsoTokenOut,
 )
+from app.password_reset import (
+    PasswordResetError,
+    confirm_password_reset,
+    request_password_reset,
+    verify_reset_code,
+)
 from app.voice_sso import issue_voice_sso_token
 from app.sync_service import run_sync
-from app.tfs_auth import TfsAuth, build_tfs_auth
+from app.tfs_auth import TfsAuth
 from app.org_routes import profile_router, router as org_router, users_router
 from app.notification_routes import router as notification_router
 from app.youjail_routes import router as youjail_router
@@ -385,18 +395,11 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
 
 @app.post("/api/auth/login", response_model=AuthLoginOut)
 async def auth_login(payload: TfsAuthIn) -> AuthLoginOut:
-    pat = (payload.pat or "").strip()
+    if (payload.pat or "").strip():
+        raise HTTPException(status_code=400, detail="Вход по PAT-токену отключён. Используйте логин и пароль.")
+
     username = (payload.username or "").strip()
     password = payload.password or ""
-
-    if pat:
-        auth = build_tfs_auth(
-            base_url=payload.baseUrl,
-            project=payload.project,
-            project_id=payload.projectId,
-            pat=pat,
-        )
-        return await login_with_pat(auth)
 
     if username and password:
         return await login_with_app_user(
@@ -407,7 +410,41 @@ async def auth_login(payload: TfsAuthIn) -> AuthLoginOut:
             project_id=payload.projectId,
         )
 
-    raise HTTPException(status_code=400, detail="Укажите PAT-токен или логин и пароль.")
+    raise HTTPException(status_code=400, detail="Укажите логин и пароль.")
+
+
+@app.post("/api/auth/password-reset/request", response_model=PasswordResetOut)
+def auth_password_reset_request(payload: PasswordResetRequestIn, db: Session = Depends(get_db)) -> PasswordResetOut:
+    try:
+        message = request_password_reset(db, payload.email)
+    except PasswordResetError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    return PasswordResetOut(message=message)
+
+
+@app.post("/api/auth/password-reset/verify", response_model=PasswordResetOut)
+def auth_password_reset_verify(payload: PasswordResetVerifyIn, db: Session = Depends(get_db)) -> PasswordResetOut:
+    try:
+        verify_reset_code(db, email=payload.email, code=payload.code)
+    except PasswordResetError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    return PasswordResetOut(message="Код подтверждён.")
+
+
+@app.post("/api/auth/password-reset/confirm", response_model=PasswordResetOut)
+def auth_password_reset_confirm(payload: PasswordResetConfirmIn, db: Session = Depends(get_db)) -> PasswordResetOut:
+    try:
+        login = confirm_password_reset(
+            db,
+            email=payload.email,
+            code=payload.code,
+            new_login=payload.newLogin,
+            new_password=payload.newPassword,
+            new_password_repeat=payload.newPasswordRepeat,
+        )
+    except PasswordResetError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    return PasswordResetOut(message=f"Логин и пароль сохранены. Войдите как {login}.")
 
 
 @app.post("/api/auth/logout")
