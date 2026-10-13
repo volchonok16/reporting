@@ -34,6 +34,7 @@ import {
   nextPriorityInProjectRange,
   priorityNeedsReassign,
   settleProductStatusRows,
+  sortProductStatusRows,
   sheetHasFixedProjectPriorities,
   type ProjectPriorityRangesMap,
 } from './productStatusCoordination'
@@ -204,11 +205,7 @@ function cloneSheets(sheets: ProductStatusSheet[]): ProductStatusSheet[] {
 }
 
 function sortSheetRowsByPriority(sheet: ProductStatusSheet): ProductStatusSheet {
-  const rows = settleProductStatusRows(
-    sheet.rows,
-    sheet.columns,
-    sheet.projectPriorityRanges,
-  )
+  const rows = sortProductStatusRows(sheet.rows, sheet.columns)
   return { ...sheet, rows, totalShown: rows.length }
 }
 
@@ -1268,6 +1265,7 @@ export default function ProductStatusWorkbook({
       const projectColumn =
         sheet.columns.find((column) => isCoordinationProjectColumn(column)) ?? 'Проект координация'
       const priorityColumn = sheet.columns.find((column) => isPriorityColumn(column))
+      const obsoleteColumn = sheet.columns.find((column) => isObsoleteColumn(column))
       setDirty(true)
       setSheets((current) =>
         current.map((item) => {
@@ -1296,17 +1294,14 @@ export default function ProductStatusWorkbook({
               item.projectPriorityRanges,
               priorityColumn,
               projectColumn,
+              obsoleteColumn,
             )
             if (nextPriority == null) {
               return { ...nextRow, [priorityColumn]: '' }
             }
             return { ...nextRow, [priorityColumn]: nextPriority }
           })
-          const sorted = settleProductStatusRows(
-            rows,
-            item.columns,
-            item.projectPriorityRanges,
-          )
+          const sorted = sortProductStatusRows(rows, item.columns)
           return { ...item, rows: sorted, totalShown: sorted.length }
         }),
       )
@@ -1335,11 +1330,7 @@ export default function ProductStatusWorkbook({
             return next
           })
           if (isPriorityColumn(column) || isObsoleteColumn(column)) {
-            rows = settleProductStatusRows(
-              rows,
-              sheet.columns,
-              sheet.projectPriorityRanges,
-            )
+            rows = sortProductStatusRows(rows, sheet.columns)
             if (rowId) {
               const nextIndex = rows.findIndex(
                 (row) => row[PRODUCT_STATUS_ROW_ID_KEY] === rowId,

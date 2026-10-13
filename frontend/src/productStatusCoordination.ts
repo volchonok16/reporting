@@ -104,7 +104,7 @@ export function applyProjectPrioritySequence(
   const nextCounter = new Map<string, number>()
   return rows.map((row) => {
     if (obsoleteColumn && isObsoleteYes(row[obsoleteColumn] ?? '')) {
-      return row
+      return { ...row, [priorityColumn]: '' }
     }
     const selected = splitCoordinationProjects(row[projectColumn] ?? '')
     const projectName = selected[0]
@@ -122,7 +122,34 @@ export function applyProjectPrioritySequence(
   })
 }
 
-/** Сортировка: актуальные по приоритету, «Неактуальное» в конце; при необходимости перенумерация. */
+/**
+ * Сортировка по числу в «Приоритет»: актуальные сверху, «Неактуальное» в конце.
+ * Выбранный номер сохраняется. У неактуальной строки приоритет очищается.
+ */
+export function sortProductStatusRows(
+  rows: Record<string, string>[],
+  columns: string[],
+): Record<string, string>[] {
+  const priorityColumn = columns.find(isPriorityColumn)
+  const obsoleteColumn = columns.find(isObsoleteColumn)
+  let next = [...rows]
+  if (priorityColumn || obsoleteColumn) {
+    next.sort((left, right) =>
+      compareRowsByPriority(left, right, priorityColumn ?? '', obsoleteColumn),
+    )
+  }
+  if (priorityColumn && obsoleteColumn) {
+    next = next.map((row) =>
+      isObsoleteYes(row[obsoleteColumn] ?? '') ? { ...row, [priorityColumn]: '' } : row,
+    )
+  }
+  return next
+}
+
+/**
+ * После перетаскивания строки: заново выдать приоритеты rangeFrom, rangeFrom+1…
+ * в текущем порядке строк. Ручная смена числа сюда не попадает.
+ */
 export function settleProductStatusRows(
   rows: Record<string, string>[],
   columns: string[],
@@ -131,26 +158,20 @@ export function settleProductStatusRows(
   const priorityColumn = columns.find(isPriorityColumn)
   const projectColumn = columns.find(isCoordinationProjectColumn)
   const obsoleteColumn = columns.find(isObsoleteColumn)
-  let next = [...rows]
-  if (priorityColumn || obsoleteColumn) {
-    next.sort((left, right) =>
-      compareRowsByPriority(left, right, priorityColumn ?? '', obsoleteColumn),
-    )
-  }
   if (
     priorityColumn &&
     projectColumn &&
     sheetHasFixedProjectPriorities(projectPriorityRanges)
   ) {
-    next = applyProjectPrioritySequence(
-      next,
+    return applyProjectPrioritySequence(
+      rows,
       priorityColumn,
       projectColumn,
       projectPriorityRanges,
       obsoleteColumn,
     )
   }
-  return next
+  return sortProductStatusRows(rows, columns)
 }
 
 export function sheetHasFixedProjectPriorities(
@@ -206,6 +227,7 @@ export function nextPriorityInProjectRange(
   projectPriorityRanges: ProjectPriorityRangesMap | undefined,
   priorityColumn: string,
   projectColumn: string,
+  obsoleteColumn?: string,
 ): string | null {
   const selected = splitCoordinationProjects(projectCellValue)
   if (selected.length === 0) return null
@@ -216,6 +238,7 @@ export function nextPriorityInProjectRange(
   const used = new Set<number>()
   rows.forEach((row, index) => {
     if (index === rowIndex) return
+    if (obsoleteColumn && isObsoleteYes(row[obsoleteColumn] ?? '')) return
     const rowProjects = splitCoordinationProjects(row[projectColumn] ?? '')
     if (!rowProjects.includes(projectName)) return
     const priority = parsePriorityValue(row[priorityColumn] ?? '')
