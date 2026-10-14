@@ -192,6 +192,7 @@ erDiagram
     b2b_product_status_office ||--o{ b2b_product_status_row : rows
     b2b_product_status_office ||--o{ b2b_product_status_project : projects
     b2b_product_status_office ||--o{ b2b_product_status_office_member : members
+    b2b_product_status_office ||--o{ b2b_product_status_office_schedule : auto_lock
     employee ||--o{ b2b_product_status_office_member : assigned
     b2b_product_status_schedule {
         text job_key PK

@@ -908,6 +908,8 @@ def _office_access_out(payload: dict) -> ProductStatusOfficeAccessOut:
         gid=str(payload["gid"]),
         name=str(payload["name"]),
         autoLockEnabled=bool(payload["autoLockEnabled"]),
+        lock=_schedule_slot(int(payload["lock"]["weekday"]), int(payload["lock"]["minutes"])),
+        unlock=_schedule_slot(int(payload["unlock"]["weekday"]), int(payload["unlock"]["minutes"])),
         members=[
             ProductStatusOfficeMemberOut(
                 employeeId=int(item["employee_id"]),
@@ -950,12 +952,24 @@ def product_status_b2b_office_access_save(
     _, meta = get_session_with_meta(x_session_id)
     if not is_superadmin_user(meta):
         raise HTTPException(status_code=403, detail="Состав офиса меняет только суперадминистратор.")
-    saved = set_b2b_product_status_office_access(
-        db,
-        gid=gid,
-        auto_lock_enabled=payload.autoLockEnabled,
-        employee_ids=payload.employeeIds,
-    )
+    try:
+        lock_minutes = _schedule_minutes(payload.lock)
+        unlock_minutes = _schedule_minutes(payload.unlock)
+    except HTTPException:
+        raise
+    try:
+        saved = set_b2b_product_status_office_access(
+            db,
+            gid=gid,
+            auto_lock_enabled=payload.autoLockEnabled,
+            employee_ids=payload.employeeIds,
+            lock_weekday=payload.lock.weekday,
+            lock_minutes=lock_minutes,
+            unlock_weekday=payload.unlock.weekday,
+            unlock_minutes=unlock_minutes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if saved.get("unlockedNow"):
         from app.status_office_schedule import send_office_lock_notice_by_gid
 
@@ -975,33 +989,29 @@ def _schedule_slot(weekday: int, minutes: int) -> ProductStatusScheduleSlotOut:
     return ProductStatusScheduleSlotOut(weekday=weekday, time=format_schedule_time(minutes))
 
 
+def _schedule_minutes(slot: ProductStatusScheduleSlotOut) -> int:
+    from app.status_office_schedule import parse_schedule_time
+
+    if slot.weekday < 0 or slot.weekday > 6:
+        raise HTTPException(status_code=400, detail="День недели должен быть от понедельника до воскресенья.")
+    try:
+        return parse_schedule_time(slot.time)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 def _schedule_out(slots: dict) -> ProductStatusScheduleOut:
-    from app.status_office_schedule import JOB_LOCK, JOB_REMINDER, JOB_UNLOCK
+    from app.status_office_schedule import JOB_REMINDER
 
     return ProductStatusScheduleOut(
         reminder=_schedule_slot(slots[JOB_REMINDER].weekday, slots[JOB_REMINDER].minutes),
-        lock=_schedule_slot(slots[JOB_LOCK].weekday, slots[JOB_LOCK].minutes),
-        unlock=_schedule_slot(slots[JOB_UNLOCK].weekday, slots[JOB_UNLOCK].minutes),
     )
 
 
 def _schedule_from_payload(payload: ProductStatusScheduleOut) -> dict:
-    from app.status_office_schedule import JOB_LOCK, JOB_REMINDER, JOB_UNLOCK, ScheduleSlot, parse_schedule_time
+    from app.status_office_schedule import JOB_REMINDER, ScheduleSlot
 
-    parsed: dict = {}
-    for key, slot in (
-        (JOB_REMINDER, payload.reminder),
-        (JOB_LOCK, payload.lock),
-        (JOB_UNLOCK, payload.unlock),
-    ):
-        if slot.weekday < 0 or slot.weekday > 6:
-            raise HTTPException(status_code=400, detail="День недели должен быть от понедельника до воскресенья.")
-        try:
-            minutes = parse_schedule_time(slot.time)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        parsed[key] = ScheduleSlot(slot.weekday, minutes)
-    return parsed
+    return {JOB_REMINDER: ScheduleSlot(payload.reminder.weekday, _schedule_minutes(payload.reminder))}
 
 
 @app.get(

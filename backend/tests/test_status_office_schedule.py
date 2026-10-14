@@ -42,6 +42,21 @@ def test_custom_schedule_moves_reminder_and_lock() -> None:
     assert jobs_due(_at(2026, 10, 16, 15, 0), custom) == [JOB_UNLOCK]
 
 
+def test_two_offices_keep_separate_lock_times() -> None:
+    from app.status_office_schedule import ScheduleSlot, office_jobs_due
+
+    sms_lock = ScheduleSlot(3, 9 * 60 + 30)
+    sms_unlock = ScheduleSlot(3, 18 * 60)
+    core_lock = ScheduleSlot(1, 11 * 60)
+    core_unlock = ScheduleSlot(1, 16 * 60)
+    thursday = _at(2026, 10, 15, 9, 30)
+    tuesday = _at(2026, 10, 13, 11, 0)
+    assert office_jobs_due(thursday, sms_lock, sms_unlock) == [JOB_LOCK]
+    assert office_jobs_due(thursday, core_lock, core_unlock) == []
+    assert office_jobs_due(tuesday, core_lock, core_unlock) == [JOB_LOCK]
+    assert office_jobs_due(tuesday, sms_lock, sms_unlock) == []
+
+
 def test_same_day_lock_must_precede_unlock() -> None:
     from app.status_office_schedule import ScheduleSlot, save_product_status_schedule
     import pytest

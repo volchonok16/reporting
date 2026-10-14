@@ -581,7 +581,12 @@ def _assert_office_editable(office: dict[str, Any], meta: dict[str, Any] | None 
         )
 
 
-def set_auto_lock_offices_editing_locked(db: Session, *, locked: bool) -> list[dict[str, Any]]:
+def set_auto_lock_offices_editing_locked(
+    db: Session,
+    *,
+    locked: bool,
+    office_ids: list[int] | None = None,
+) -> list[dict[str, Any]]:
     """Меняет editing_locked только у офисов с автоблокировкой. Возвращает те, у которых флаг реально сменился."""
     rows = db.execute(
         text(
@@ -599,10 +604,11 @@ def set_auto_lock_offices_editing_locked(db: Session, *, locked: bool) -> list[d
             WHERE is_active = TRUE
               AND auto_lock_enabled = TRUE
               AND editing_locked IS DISTINCT FROM :locked
+              AND (:office_ids IS NULL OR id = ANY(:office_ids))
             RETURNING id, gid, name
             """
         ),
-        {"locked": locked},
+        {"locked": locked, "office_ids": office_ids},
     ).mappings()
     changed = [dict(row) for row in rows]
     db.commit()
@@ -637,10 +643,15 @@ def get_b2b_product_status_office_access(db: Session, *, gid: str) -> dict[str, 
         ),
         {"office_id": int(office["id"])},
     ).mappings()
+    from app.status_office_schedule import load_office_lock_slots
+
+    lock, unlock = load_office_lock_slots(db, int(office["id"]))
     return {
         "gid": office["gid"],
         "name": office["name"],
         "autoLockEnabled": bool(flag),
+        "lock": {"weekday": lock.weekday, "minutes": lock.minutes},
+        "unlock": {"weekday": unlock.weekday, "minutes": unlock.minutes},
         "members": [dict(row) for row in members],
     }
 
@@ -651,6 +662,10 @@ def set_b2b_product_status_office_access(
     gid: str,
     auto_lock_enabled: bool,
     employee_ids: list[int],
+    lock_weekday: int,
+    lock_minutes: int,
+    unlock_weekday: int,
+    unlock_minutes: int,
 ) -> dict[str, Any]:
     """Сохраняет автоблокировку и состав офиса. Если автоблокировку выключили у уже заблокированного офиса — снимает блокировку."""
     office = _load_office(db, gid=gid)
@@ -677,6 +692,14 @@ def set_b2b_product_status_office_access(
                 detail="Некоторые сотрудники не найдены или неактивны.",
             )
     office_id = int(office["id"])
+    from app.status_office_schedule import ScheduleSlot, save_office_lock_slots
+
+    save_office_lock_slots(
+        db,
+        office_id,
+        ScheduleSlot(lock_weekday, lock_minutes),
+        ScheduleSlot(unlock_weekday, unlock_minutes),
+    )
     db.execute(
         text("DELETE FROM b2b_product_status_office_member WHERE office_id = :office_id"),
         {"office_id": office_id},

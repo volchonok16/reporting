@@ -11,14 +11,10 @@ type ScheduleSlot = {
 
 type Schedule = {
   reminder: ScheduleSlot
-  lock: ScheduleSlot
-  unlock: ScheduleSlot
 }
 
 const EMPTY: Schedule = {
   reminder: { weekday: 2, time: '10:00' },
-  lock: { weekday: 3, time: '09:30' },
-  unlock: { weekday: 3, time: '18:00' },
 }
 
 export default function ProductStatusSchedule({ apiBase }: { apiBase: string }) {
@@ -81,14 +77,12 @@ export default function ProductStatusSchedule({ apiBase }: { apiBase: string }) 
         <div className="product-status-office-access-panel">
           <p className="product-status-office-access-note">
             Время московское. Напоминание уходит лидам и администраторам. Блокировка и
-            разблокировка действуют на офисы с включённой автоблокировкой.
+            разблокировка задаются отдельно у каждого офиса.
           </p>
           {loading ? <p className="product-status-office-access-note">Загрузка…</p> : null}
           {(
             [
               ['reminder', 'Напоминание'],
-              ['lock', 'Блокировка'],
-              ['unlock', 'Разблокировка'],
             ] as const
           ).map(([key, label]) => (
             <label key={key} className="product-status-schedule-row">

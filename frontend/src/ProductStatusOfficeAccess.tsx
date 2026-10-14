@@ -13,10 +13,21 @@ type OfficeMember = {
   email?: string | null
 }
 
+type ScheduleSlot = {
+  weekday: number
+  time: string
+}
+
 type OfficeAccess = {
   autoLockEnabled: boolean
+  lock: ScheduleSlot
+  unlock: ScheduleSlot
   members: OfficeMember[]
 }
+
+const WEEKDAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье']
+const DEFAULT_LOCK: ScheduleSlot = { weekday: 3, time: '09:30' }
+const DEFAULT_UNLOCK: ScheduleSlot = { weekday: 3, time: '18:00' }
 
 type ProductStatusOfficeAccessProps = {
   apiBase: string
@@ -33,6 +44,8 @@ export default function ProductStatusOfficeAccess({
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [autoLockEnabled, setAutoLockEnabled] = useState(true)
+  const [lock, setLock] = useState<ScheduleSlot>(DEFAULT_LOCK)
+  const [unlock, setUnlock] = useState<ScheduleSlot>(DEFAULT_UNLOCK)
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
   const [query, setQuery] = useState('')
@@ -54,6 +67,8 @@ export default function ProductStatusOfficeAccess({
         ])
         if (cancelled) return
         setAutoLockEnabled(Boolean(access.autoLockEnabled))
+        setLock(access.lock ?? DEFAULT_LOCK)
+        setUnlock(access.unlock ?? DEFAULT_UNLOCK)
         setSelectedIds(access.members.map((member) => member.employeeId))
         setEmployees(options)
       } catch (err) {
@@ -95,11 +110,15 @@ export default function ProductStatusOfficeAccess({
         body: JSON.stringify({
           autoLockEnabled,
           employeeIds: selectedIds,
+          lock,
+          unlock,
         }),
       })
       if (!response.ok) throw new Error(await readApiError(response))
       const saved = (await response.json()) as OfficeAccess
       setAutoLockEnabled(Boolean(saved.autoLockEnabled))
+      setLock(saved.lock ?? DEFAULT_LOCK)
+      setUnlock(saved.unlock ?? DEFAULT_UNLOCK)
       setSelectedIds(saved.members.map((member) => member.employeeId))
       notifySuccess('Состав офиса сохранён')
     } catch (err) {
@@ -121,9 +140,44 @@ export default function ProductStatusOfficeAccess({
       {open ? (
         <div className="product-status-office-access-panel">
           <p className="product-status-office-access-note">
-            {officeName}. Офис с автоблокировкой закрывается и открывается по расписанию. Письмо
-            уходит только закреплённым сотрудникам.
+            {officeName}. Время московское. Письмо уходит только закреплённым сотрудникам.
           </p>
+          <label className="product-status-schedule-row">
+            <span>Блокировка</span>
+            <select
+              value={lock.weekday}
+              onChange={(event) => setLock((current) => ({ ...current, weekday: Number(event.target.value) }))}
+            >
+              {WEEKDAYS.map((name, index) => (
+                <option key={name} value={index}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            <input
+              type="time"
+              value={lock.time}
+              onChange={(event) => setLock((current) => ({ ...current, time: event.target.value }))}
+            />
+          </label>
+          <label className="product-status-schedule-row">
+            <span>Разблокировка</span>
+            <select
+              value={unlock.weekday}
+              onChange={(event) => setUnlock((current) => ({ ...current, weekday: Number(event.target.value) }))}
+            >
+              {WEEKDAYS.map((name, index) => (
+                <option key={name} value={index}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            <input
+              type="time"
+              value={unlock.time}
+              onChange={(event) => setUnlock((current) => ({ ...current, time: event.target.value }))}
+            />
+          </label>
           <button
             type="button"
             className={`btn-secondary product-status-toolbar-btn${

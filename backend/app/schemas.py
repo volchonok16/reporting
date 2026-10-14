@@ -284,27 +284,29 @@ class ProductStatusOfficeMemberOut(BaseModel):
     email: str | None = None
 
 
+class ProductStatusScheduleSlotOut(BaseModel):
+    weekday: int
+    time: str
+
+
 class ProductStatusOfficeAccessOut(BaseModel):
     gid: str
     name: str
     autoLockEnabled: bool
+    lock: ProductStatusScheduleSlotOut
+    unlock: ProductStatusScheduleSlotOut
     members: list[ProductStatusOfficeMemberOut] = Field(default_factory=list)
 
 
 class ProductStatusOfficeAccessIn(BaseModel):
     autoLockEnabled: bool
     employeeIds: list[int] = Field(default_factory=list)
-
-
-class ProductStatusScheduleSlotOut(BaseModel):
-    weekday: int
-    time: str
+    lock: ProductStatusScheduleSlotOut
+    unlock: ProductStatusScheduleSlotOut
 
 
 class ProductStatusScheduleOut(BaseModel):
     reminder: ProductStatusScheduleSlotOut
-    lock: ProductStatusScheduleSlotOut
-    unlock: ProductStatusScheduleSlotOut
 
 
 class ProductStatusB2BOut(BaseModel):

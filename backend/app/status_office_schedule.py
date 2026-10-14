@@ -1,8 +1,8 @@
 """Расписание статуса продукта B2B по Москве.
 
-День и время трёх заданий читаются из b2b_product_status_schedule.
-По умолчанию: среда с 10:00 — напоминание, четверг с 09:30 — блокировка,
-четверг с 18:00 — разблокировка. Меняет только суперадминистратор.
+Напоминание общее: b2b_product_status_schedule, по умолчанию среда с 10:00.
+Автоблокировка у каждого офиса своя: b2b_product_status_office_schedule,
+по умолчанию четверг 09:30 и 18:00. Меняет только суперадминистратор.
 Повторный запуск в тот же день не дублирует действие.
 """
 
@@ -93,12 +93,147 @@ def load_product_status_schedule(db: Session) -> dict[str, ScheduleSlot]:
     return slots
 
 
-def save_product_status_schedule(db: Session, slots: dict[str, ScheduleSlot]) -> dict[str, ScheduleSlot]:
-    lock = slots[JOB_LOCK]
-    unlock = slots[JOB_UNLOCK]
+def assert_lock_before_unlock(lock: ScheduleSlot, unlock: ScheduleSlot) -> None:
     if lock.weekday == unlock.weekday and lock.minutes >= unlock.minutes:
         raise ValueError("В один день блокировка должна быть раньше разблокировки.")
+
+
+def office_jobs_due(local: datetime, lock: ScheduleSlot, unlock: ScheduleSlot) -> list[str]:
+    """Блокировка и разблокировка одного офиса в эту минуту."""
+    weekday = local.weekday()
+    minutes = local.hour * 60 + local.minute
+    due: list[str] = []
+    if weekday == lock.weekday and minutes >= lock.minutes:
+        if lock.weekday != unlock.weekday or minutes < unlock.minutes:
+            due.append(JOB_LOCK)
+    if weekday == unlock.weekday and minutes >= unlock.minutes:
+        due.append(JOB_UNLOCK)
+    return due
+
+
+def load_office_lock_slots(db: Session, office_id: int) -> tuple[ScheduleSlot, ScheduleSlot]:
+    rows = db.execute(
+        text(
+            """
+            SELECT job_key, weekday, minutes
+            FROM b2b_product_status_office_schedule
+            WHERE office_id = :office_id
+            """
+        ),
+        {"office_id": office_id},
+    ).mappings()
+    slots = {
+        JOB_LOCK: DEFAULT_SCHEDULE[JOB_LOCK],
+        JOB_UNLOCK: DEFAULT_SCHEDULE[JOB_UNLOCK],
+    }
+    found: set[str] = set()
+    for row in rows:
+        key = str(row["job_key"])
+        if key not in slots:
+            continue
+        slots[key] = ScheduleSlot(int(row["weekday"]), int(row["minutes"]))
+        found.add(key)
+    if found != {JOB_LOCK, JOB_UNLOCK}:
+        for key in (JOB_LOCK, JOB_UNLOCK):
+            if key in found:
+                continue
+            slot = slots[key]
+            db.execute(
+                text(
+                    """
+                    INSERT INTO b2b_product_status_office_schedule
+                        (office_id, job_key, weekday, minutes)
+                    VALUES (:office_id, :job_key, :weekday, :minutes)
+                    ON CONFLICT (office_id, job_key) DO NOTHING
+                    """
+                ),
+                {
+                    "office_id": office_id,
+                    "job_key": key,
+                    "weekday": slot.weekday,
+                    "minutes": slot.minutes,
+                },
+            )
+        db.commit()
+    return slots[JOB_LOCK], slots[JOB_UNLOCK]
+
+
+def save_office_lock_slots(
+    db: Session,
+    office_id: int,
+    lock: ScheduleSlot,
+    unlock: ScheduleSlot,
+) -> tuple[ScheduleSlot, ScheduleSlot]:
+    assert_lock_before_unlock(lock, unlock)
+    for key, slot in ((JOB_LOCK, lock), (JOB_UNLOCK, unlock)):
+        db.execute(
+            text(
+                """
+                INSERT INTO b2b_product_status_office_schedule
+                    (office_id, job_key, weekday, minutes)
+                VALUES (:office_id, :job_key, :weekday, :minutes)
+                ON CONFLICT (office_id, job_key) DO UPDATE
+                    SET weekday = EXCLUDED.weekday,
+                        minutes = EXCLUDED.minutes
+                """
+            ),
+            {
+                "office_id": office_id,
+                "job_key": key,
+                "weekday": slot.weekday,
+                "minutes": slot.minutes,
+            },
+        )
+    return lock, unlock
+
+
+def offices_due(db: Session, local: datetime) -> list[dict[str, object]]:
+    rows = db.execute(
+        text(
+            """
+            SELECT o.id, o.gid, o.name, s.job_key, s.weekday, s.minutes
+            FROM b2b_product_status_office AS o
+            JOIN b2b_product_status_office_schedule AS s ON s.office_id = o.id
+            WHERE o.is_active = TRUE
+              AND o.auto_lock_enabled = TRUE
+              AND s.job_key IN ('b2b_status_lock', 'b2b_status_unlock')
+            """
+        )
+    ).mappings()
+    grouped: dict[int, dict[str, object]] = {}
+    for row in rows:
+        office_id = int(row["id"])
+        item = grouped.setdefault(
+            office_id,
+            {"id": office_id, "gid": str(row["gid"]), "name": str(row["name"]), "slots": {}},
+        )
+        slots = item["slots"]
+        assert isinstance(slots, dict)
+        slots[str(row["job_key"])] = ScheduleSlot(int(row["weekday"]), int(row["minutes"]))
+    due: list[dict[str, object]] = []
+    for item in grouped.values():
+        slots = item["slots"]
+        assert isinstance(slots, dict)
+        lock = slots.get(JOB_LOCK, DEFAULT_SCHEDULE[JOB_LOCK])
+        unlock = slots.get(JOB_UNLOCK, DEFAULT_SCHEDULE[JOB_UNLOCK])
+        for job_key in office_jobs_due(local, lock, unlock):
+            due.append(
+                {
+                    "id": item["id"],
+                    "gid": item["gid"],
+                    "name": item["name"],
+                    "job_key": job_key,
+                }
+            )
+    return due
+
+
+def save_product_status_schedule(db: Session, slots: dict[str, ScheduleSlot]) -> dict[str, ScheduleSlot]:
+    if JOB_LOCK in slots and JOB_UNLOCK in slots:
+        assert_lock_before_unlock(slots[JOB_LOCK], slots[JOB_UNLOCK])
     for key in (JOB_REMINDER, JOB_LOCK, JOB_UNLOCK):
+        if key not in slots:
+            continue
         slot = slots[key]
         db.execute(
             text(
@@ -316,37 +451,42 @@ def run_due_jobs(now: datetime | None = None) -> list[str]:
     db = next(get_db())
     ran: list[str] = []
     try:
-        due = jobs_due(local, load_product_status_schedule(db))
-        if not due:
-            return []
-        for job_key in due:
-            if not claim_job(db, job_key, local.date()):
-                continue
-            if job_key == JOB_REMINDER:
+        if JOB_REMINDER in jobs_due(local, load_product_status_schedule(db)):
+            if claim_job(db, JOB_REMINDER, local.date()):
                 _send_notice(
                     db,
                     subject="Напоминание: внесите статус продукта до конца дня",
                     html=status_reminder_email_html(today=local.date()),
                     text=status_reminder_email_text(today=local.date()),
                 )
-            elif job_key in {JOB_LOCK, JOB_UNLOCK}:
-                locked = job_key == JOB_LOCK
-                offices = set_auto_lock_offices_editing_locked(db, locked=locked)
-                if offices:
-                    notify_product_status_saved(
-                        workbook=WORKBOOK_B2B,
-                        gids=[str(office["gid"]) for office in offices],
-                        changed_by="schedule",
-                    )
-                for office in offices:
-                    send_office_lock_notice(
-                        db,
-                        office_id=int(office["id"]),
-                        office_name=str(office["name"]),
-                        locked=locked,
-                    )
-            ran.append(job_key)
-            logger.info("Выполнено задание %s на %s", job_key, local.date().isoformat())
+                ran.append(JOB_REMINDER)
+                logger.info("Выполнено задание %s на %s", JOB_REMINDER, local.date().isoformat())
+        for item in offices_due(db, local):
+            job_key = str(item["job_key"])
+            claim_key = f"{job_key}:{item['id']}"
+            if not claim_job(db, claim_key, local.date()):
+                continue
+            locked = job_key == JOB_LOCK
+            offices = set_auto_lock_offices_editing_locked(
+                db,
+                locked=locked,
+                office_ids=[int(item["id"])],
+            )
+            if offices:
+                notify_product_status_saved(
+                    workbook=WORKBOOK_B2B,
+                    gids=[str(office["gid"]) for office in offices],
+                    changed_by="schedule",
+                )
+            for office in offices:
+                send_office_lock_notice(
+                    db,
+                    office_id=int(office["id"]),
+                    office_name=str(office["name"]),
+                    locked=locked,
+                )
+            ran.append(claim_key)
+            logger.info("Выполнено задание %s на %s", claim_key, local.date().isoformat())
     finally:
         close_db_session(db)
     return ran

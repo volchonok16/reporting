@@ -335,6 +335,13 @@ package "Статус продукта B2B" #E0F0FF {
     employee_id : FK
   }
 
+  class b2b_product_status_office_schedule <<table>> {
+    office_id : FK
+    job_key : text
+    weekday : smallint
+    minutes : smallint
+  }
+
   class b2b_product_status_schedule <<table>> {
     +job_key : text PK
     weekday : smallint
@@ -440,6 +447,7 @@ task "1" -- "0..*" youjail_card_zni
 b2b_product_status_office "1" -- "0..*" b2b_product_status_row
 b2b_product_status_office "1" -- "0..*" b2b_product_status_project
 b2b_product_status_office "1" -- "0..*" b2b_product_status_office_member
+b2b_product_status_office "1" -- "0..*" b2b_product_status_office_schedule
 employee "1" -- "0..*" b2b_product_status_office_member
 b2b_news_section "1" -- "0..*" b2b_news_row
 revenue_activity_section "1" -- "0..*" revenue_activity_row

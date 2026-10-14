@@ -1248,9 +1248,9 @@ Seed: миграция `013_b2b_product_status.sql` — SMS, VOICE, Перспе
 | `editing_locked` | boolean | Блокировка редактирования для всех, кроме суперадминистратора (`org_user.role = 1000`). По расписанию ставится офисам с `auto_lock_enabled` и снимается в день разблокировки. Вручную включает только суперадминистратор; снять могут он и руководитель (глава отдела, роль «Руководитель», должность с «лид») |
 | `editing_locked_at` | timestamptz | Когда этот офис последний раз заблокировали. Своё время у каждого офиса |
 | `editing_unlocked_at` | timestamptz | Когда этот офис последний раз разблокировали |
-| `auto_lock_enabled` | boolean | Офис участвует в автоблокировке по расписанию. По умолчанию `true`. `false` — расписание этот офис не блокирует и не разблокирует. Если выключить у уже заблокированного офиса, блокировка снимается сразу |
+| `auto_lock_enabled` | boolean | Офис участвует в своей автоблокировке. По умолчанию `true`. `false` — расписание этого офиса не блокирует и не разблокирует его. Если выключить у уже заблокированного офиса, блокировка снимается сразу |
 
-День и время заданий лежат в `b2b_product_status_schedule`. По умолчанию: среда 10:00 — напоминание, четверг 09:30 — блокировка, четверг 18:00 — разблокировка. Меняет только суперадминистратор (`org_user.role = 1000`). Напоминание уходит лидам и администраторам и не зависит от `auto_lock_enabled`. Блокировка и разблокировка действуют на офисы с `auto_lock_enabled` и шлют письмо их сотрудникам. Повтор за тот же день не выполняется: `app_scheduled_job_run` отмечает сам запуск. Момент блокировки и разблокировки конкретного офиса пишется в `editing_locked_at` и `editing_unlocked_at`. Миграции: `078_app_scheduled_job_run.sql`, `080_b2b_product_status_office_members.sql`, `081_b2b_product_status_office_lock_times.sql`, `082_b2b_product_status_schedule.sql`.
+Напоминание общее и лежит в `b2b_product_status_schedule` (по умолчанию среда 10:00). Оно уходит лидам и администраторам и не зависит от `auto_lock_enabled`. День и время блокировки и разблокировки у каждого офиса свои: `b2b_product_status_office_schedule` (по умолчанию четверг 09:30 и 18:00). Меняет только суперадминистратор (`org_user.role = 1000`). Письмо уходит сотрудникам этого офиса. Повтор за тот же день не выполняется: `app_scheduled_job_run`, для офиса ключ `b2b_status_lock:{office_id}` и `b2b_status_unlock:{office_id}`. Момент блокировки и разблокировки конкретного офиса пишется в `editing_locked_at` и `editing_unlocked_at`. Миграции: `078_app_scheduled_job_run.sql`, `080_b2b_product_status_office_members.sql`, `081_b2b_product_status_office_lock_times.sql`, `082_b2b_product_status_schedule.sql`, `083_b2b_product_status_office_schedule.sql`.
 
 Сотрудники офиса задаёт суперадминистратор (`PUT /api/product-status/b2b/offices/{gid}/access`). Письмо «офис заблокирован / разблокирован» уходит только им: и по расписанию, и при ручной блокировке или снятии.
 
@@ -1258,11 +1258,22 @@ Seed: миграция `013_b2b_product_status.sql` — SMS, VOICE, Перспе
 
 | Поле | Тип | Описание |
 |------|-----|----------|
-| `job_key` | text | PK. `b2b_status_reminder`, `b2b_status_lock`, `b2b_status_unlock` |
+| `job_key` | text | PK. `b2b_status_reminder` |
 | `weekday` | smallint | День недели Python: 0 понедельник … 6 воскресенье |
 | `minutes` | smallint | Минуты от полуночи Europe/Moscow, 0…1439 |
 
-Читает и меняет только суперадминистратор (`GET`/`PUT /api/product-status/b2b/schedule`). В один день блокировка должна быть раньше разблокировки. Сид: напоминание среда 10:00, блокировка четверг 09:30, разблокировка четверг 18:00.
+Читает и меняет только суперадминистратор (`GET`/`PUT /api/product-status/b2b/schedule`). Сид: среда 10:00. Блокировка офиса сюда не входит.
+
+## b2b_product_status_office_schedule — расписание автоблокировки офиса
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `office_id` | bigint | FK → `b2b_product_status_office`, часть PK |
+| `job_key` | text | Часть PK. `b2b_status_lock` или `b2b_status_unlock` |
+| `weekday` | smallint | День недели Python: 0 понедельник … 6 воскресенье |
+| `minutes` | smallint | Минуты от полуночи Europe/Moscow, 0…1439 |
+
+Две строки на офис. Меняет суперадминистратор вместе с составом офиса (`PUT /api/product-status/b2b/offices/{gid}/access`). В один день блокировка должна быть раньше разблокировки. Сид копирует прежнее общее время: четверг 09:30 и четверг 18:00.
 
 ## b2b_product_status_office_member — сотрудники офиса статуса
 
@@ -1276,7 +1287,7 @@ Seed: миграция `013_b2b_product_status.sql` — SMS, VOICE, Перспе
 
 | Поле | Тип | Описание |
 |------|-----|----------|
-| `job_key` | text | PK. `b2b_status_reminder`, `b2b_status_lock`, `b2b_status_unlock` |
+| `job_key` | text | PK. `b2b_status_reminder` либо `b2b_status_lock:{office_id}` и `b2b_status_unlock:{office_id}` |
 | `ran_on` | date | День Europe/Moscow, за который задание уже выполнено |
 | `ran_at` | timestamptz | Момент записи |
 
