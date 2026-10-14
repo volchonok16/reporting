@@ -564,29 +564,133 @@ def _assert_office_editable(office: dict[str, Any], meta: dict[str, Any] | None 
         )
 
 
-def set_all_b2b_product_status_offices_editing_locked(db: Session, *, locked: bool) -> list[str]:
-    """Ставит editing_locked всем активным офисам. Возвращает их gid."""
-    offices = _load_offices(db)
-    db.execute(
+def set_auto_lock_offices_editing_locked(db: Session, *, locked: bool) -> list[dict[str, Any]]:
+    """Меняет editing_locked только у офисов с автоблокировкой. Возвращает те, у которых флаг реально сменился."""
+    rows = db.execute(
         text(
             """
             UPDATE b2b_product_status_office
             SET editing_locked = :locked
             WHERE is_active = TRUE
+              AND auto_lock_enabled = TRUE
+              AND editing_locked IS DISTINCT FROM :locked
+            RETURNING id, gid, name
             """
         ),
         {"locked": locked},
+    ).mappings()
+    changed = [dict(row) for row in rows]
+    db.commit()
+    return changed
+
+
+def get_b2b_product_status_office_access(db: Session, *, gid: str) -> dict[str, Any]:
+    office = _load_office(db, gid=gid)
+    if office is None:
+        raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
+    flag = db.execute(
+        text(
+            """
+            SELECT auto_lock_enabled
+            FROM b2b_product_status_office
+            WHERE id = :office_id
+            """
+        ),
+        {"office_id": int(office["id"])},
+    ).scalar()
+    members = db.execute(
+        text(
+            """
+            SELECT e.id AS employee_id, e.full_name,
+                   COALESCE(NULLIF(btrim(e.email), ''), NULLIF(btrim(u.email), '')) AS email
+            FROM b2b_product_status_office_member AS m
+            JOIN employee AS e ON e.id = m.employee_id
+            LEFT JOIN org_user AS u ON u.id = e.user_id
+            WHERE m.office_id = :office_id
+            ORDER BY e.full_name, e.id
+            """
+        ),
+        {"office_id": int(office["id"])},
+    ).mappings()
+    return {
+        "gid": office["gid"],
+        "name": office["name"],
+        "autoLockEnabled": bool(flag),
+        "members": [dict(row) for row in members],
+    }
+
+
+def set_b2b_product_status_office_access(
+    db: Session,
+    *,
+    gid: str,
+    auto_lock_enabled: bool,
+    employee_ids: list[int],
+) -> dict[str, Any]:
+    """Сохраняет автоблокировку и состав офиса. Если автоблокировку выключили у уже заблокированного офиса — снимает блокировку."""
+    office = _load_office(db, gid=gid)
+    if office is None:
+        raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
+    unique_ids = sorted({int(item) for item in employee_ids})
+    if unique_ids:
+        found = db.execute(
+            text(
+                """
+                SELECT id
+                FROM employee
+                WHERE is_active = TRUE
+                  AND id = ANY(:ids)
+                """
+            ),
+            {"ids": unique_ids},
+        ).scalars()
+        found_ids = {int(item) for item in found}
+        missing = [item for item in unique_ids if item not in found_ids]
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail="Некоторые сотрудники не найдены или неактивны.",
+            )
+    office_id = int(office["id"])
+    db.execute(
+        text("DELETE FROM b2b_product_status_office_member WHERE office_id = :office_id"),
+        {"office_id": office_id},
+    )
+    if unique_ids:
+        db.execute(
+            text(
+                """
+                INSERT INTO b2b_product_status_office_member (office_id, employee_id)
+                SELECT :office_id, id
+                FROM employee
+                WHERE id = ANY(:ids)
+                """
+            ),
+            {"office_id": office_id, "ids": unique_ids},
+        )
+    unlocked_now = bool(office.get("editing_locked")) and not auto_lock_enabled
+    db.execute(
+        text(
+            """
+            UPDATE b2b_product_status_office
+            SET auto_lock_enabled = :auto_lock_enabled,
+                editing_locked = CASE
+                    WHEN :unlocked_now THEN FALSE
+                    ELSE editing_locked
+                END
+            WHERE id = :office_id
+            """
+        ),
+        {
+            "auto_lock_enabled": auto_lock_enabled,
+            "unlocked_now": unlocked_now,
+            "office_id": office_id,
+        },
     )
     db.commit()
-    return [str(office["gid"]) for office in offices]
-
-
-def lock_all_b2b_product_status_offices(db: Session) -> list[str]:
-    return set_all_b2b_product_status_offices_editing_locked(db, locked=True)
-
-
-def unlock_all_b2b_product_status_offices(db: Session) -> list[str]:
-    return set_all_b2b_product_status_offices_editing_locked(db, locked=False)
+    access = get_b2b_product_status_office_access(db, gid=gid)
+    access["unlockedNow"] = unlocked_now
+    return access
 
 
 def set_b2b_product_status_office_editing_locked(

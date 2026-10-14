@@ -276,6 +276,24 @@ class ProductStatusOfficeEditingLockIn(BaseModel):
     locked: bool
 
 
+class ProductStatusOfficeMemberOut(BaseModel):
+    employeeId: int
+    fullName: str
+    email: str | None = None
+
+
+class ProductStatusOfficeAccessOut(BaseModel):
+    gid: str
+    name: str
+    autoLockEnabled: bool
+    members: list[ProductStatusOfficeMemberOut] = Field(default_factory=list)
+
+
+class ProductStatusOfficeAccessIn(BaseModel):
+    autoLockEnabled: bool
+    employeeIds: list[int] = Field(default_factory=list)
+
+
 class ProductStatusB2BOut(BaseModel):
     title: str
     sourceUrl: str | None = None

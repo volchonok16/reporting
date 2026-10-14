@@ -330,9 +330,9 @@ package "Статус продукта B2B" #E0F0FF {
     name : varchar
   }
 
-  class b2b_product_status_settings <<table>> {
-    +id : smallint PK
-    auto_lock_enabled : boolean
+  class b2b_product_status_office_member <<table>> {
+    office_id : FK
+    employee_id : FK
   }
 
   class b2b_product_status_row <<table>> {
@@ -433,6 +433,8 @@ task "1" -- "0..*" youjail_card_zni
 
 b2b_product_status_office "1" -- "0..*" b2b_product_status_row
 b2b_product_status_office "1" -- "0..*" b2b_product_status_project
+b2b_product_status_office "1" -- "0..*" b2b_product_status_office_member
+employee "1" -- "0..*" b2b_product_status_office_member
 b2b_news_section "1" -- "0..*" b2b_news_row
 revenue_activity_section "1" -- "0..*" revenue_activity_row
 

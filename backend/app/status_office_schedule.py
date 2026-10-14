@@ -28,22 +28,6 @@ _stop = threading.Event()
 _thread: threading.Thread | None = None
 
 
-def scheduled_jobs_to_run(due: list[str], *, auto_lock: bool) -> list[str]:
-    """Напоминание идёт всегда. Блокировка и разблокировка — только если автоблокировка включена."""
-    if auto_lock:
-        return list(due)
-    return [job for job in due if job not in {JOB_LOCK, JOB_UNLOCK}]
-
-
-def product_status_auto_lock_enabled(db: Session) -> bool:
-    row = db.execute(
-        text("SELECT auto_lock_enabled FROM b2b_product_status_settings WHERE id = 1")
-    ).first()
-    if row is None:
-        return True
-    return bool(row[0])
-
-
 def jobs_due(local: datetime) -> list[str]:
     """Какие задания пора выполнить в эту минуту московского времени."""
     weekday = local.weekday()
@@ -162,6 +146,75 @@ def status_notice_recipients(db: Session) -> list[str]:
     return sorted({item.strip() for item in rows if item and item.strip()})
 
 
+def office_member_emails(db: Session, office_id: int) -> list[str]:
+    rows = db.execute(
+        text(
+            """
+            SELECT DISTINCT lower(email) AS email
+            FROM (
+                SELECT COALESCE(NULLIF(btrim(e.email), ''), NULLIF(btrim(u.email), '')) AS email
+                FROM b2b_product_status_office_member AS m
+                JOIN employee AS e ON e.id = m.employee_id AND e.is_active = TRUE
+                LEFT JOIN org_user AS u ON u.id = e.user_id AND u.status = 10
+                WHERE m.office_id = :office_id
+            ) AS recipients
+            WHERE email IS NOT NULL
+              AND position('@' IN btrim(email)) > 0
+            """
+        ),
+        {"office_id": office_id},
+    ).scalars()
+    return sorted({item.strip() for item in rows if item and item.strip()})
+
+
+def send_office_lock_notice(db: Session, *, office_id: int, office_name: str, locked: bool) -> None:
+    from app.password_reset_mail import (
+        MailNotConfigured,
+        MailSendError,
+        send_html_mail,
+        status_office_lock_state_email_html,
+        status_office_lock_state_email_text,
+    )
+
+    recipients = office_member_emails(db, office_id)
+    subject = (
+        f"Офис «{office_name}» заблокирован для внесения статуса"
+        if locked
+        else f"Офис «{office_name}» разблокирован для внесения статуса"
+    )
+    if not recipients:
+        logger.warning("Письмо «%s»: у офиса нет закреплённых сотрудников с почтой", subject)
+        return
+    html = status_office_lock_state_email_html(office_name=office_name, locked=locked)
+    text_body = status_office_lock_state_email_text(office_name=office_name, locked=locked)
+    for email in recipients:
+        try:
+            send_html_mail(to_email=email, subject=subject, html=html, text=text_body)
+        except (MailNotConfigured, MailSendError):
+            logger.exception("Не удалось отправить «%s» на %s", subject, email)
+
+
+def send_office_lock_notice_by_gid(db: Session, *, gid: str, locked: bool) -> None:
+    row = db.execute(
+        text(
+            """
+            SELECT id, name
+            FROM b2b_product_status_office
+            WHERE gid = :gid AND is_active = TRUE
+            """
+        ),
+        {"gid": gid},
+    ).first()
+    if row is None:
+        return
+    send_office_lock_notice(
+        db,
+        office_id=int(row[0]),
+        office_name=str(row[1]),
+        locked=locked,
+    )
+
+
 def _send_notice(db: Session, *, subject: str, html: str, text: str) -> None:
     from app.password_reset_mail import MailNotConfigured, MailSendError, send_html_mail
 
@@ -181,14 +234,9 @@ def run_due_jobs(now: datetime | None = None) -> list[str]:
     due = jobs_due(local)
     if not due:
         return []
-    from app.b2b_product_status_db import (
-        lock_all_b2b_product_status_offices,
-        unlock_all_b2b_product_status_offices,
-    )
+    from app.b2b_product_status_db import set_auto_lock_offices_editing_locked
     from app.db import close_db_session, get_db
     from app.password_reset_mail import (
-        status_locked_email_html,
-        status_locked_email_text,
         status_reminder_email_html,
         status_reminder_email_text,
     )
@@ -197,7 +245,6 @@ def run_due_jobs(now: datetime | None = None) -> list[str]:
     db = next(get_db())
     ran: list[str] = []
     try:
-        due = scheduled_jobs_to_run(due, auto_lock=product_status_auto_lock_enabled(db))
         for job_key in due:
             if not claim_job(db, job_key, local.date()):
                 continue
@@ -208,26 +255,22 @@ def run_due_jobs(now: datetime | None = None) -> list[str]:
                     html=status_reminder_email_html(today=local.date()),
                     text=status_reminder_email_text(today=local.date()),
                 )
-            elif job_key == JOB_LOCK:
-                gids = lock_all_b2b_product_status_offices(db)
-                notify_product_status_saved(
-                    workbook=WORKBOOK_B2B,
-                    gids=gids,
-                    changed_by="schedule",
-                )
-                _send_notice(
-                    db,
-                    subject="Внесение статуса заблокировано",
-                    html=status_locked_email_html(),
-                    text=status_locked_email_text(),
-                )
-            elif job_key == JOB_UNLOCK:
-                gids = unlock_all_b2b_product_status_offices(db)
-                notify_product_status_saved(
-                    workbook=WORKBOOK_B2B,
-                    gids=gids,
-                    changed_by="schedule",
-                )
+            elif job_key in {JOB_LOCK, JOB_UNLOCK}:
+                locked = job_key == JOB_LOCK
+                offices = set_auto_lock_offices_editing_locked(db, locked=locked)
+                if offices:
+                    notify_product_status_saved(
+                        workbook=WORKBOOK_B2B,
+                        gids=[str(office["gid"]) for office in offices],
+                        changed_by="schedule",
+                    )
+                for office in offices:
+                    send_office_lock_notice(
+                        db,
+                        office_id=int(office["id"]),
+                        office_name=str(office["name"]),
+                        locked=locked,
+                    )
             ran.append(job_key)
             logger.info("Выполнено задание %s на %s", job_key, local.date().isoformat())
     finally:

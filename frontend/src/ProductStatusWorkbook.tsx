@@ -25,6 +25,7 @@ import {
 } from './productStatusLiveSync'
 import { computeRevenueColumnTotals, withRevenueResult } from './revenueActivitiesColumns'
 import ProductStatusColumnFilter, { rowMatchesColumnFilters } from './ProductStatusColumnFilter'
+import ProductStatusOfficeAccess from './ProductStatusOfficeAccess'
 import type { ChangeRequest, TaskLookupResponse } from './zniTypes'
 import ZniDetailModal from './ZniDetailModal'
 import {
@@ -2179,6 +2180,10 @@ export default function ProductStatusWorkbook({
       </header>
 
       {afterHeader}
+
+      {enableOfficeEditLock && activeGid && activeSheet && !activeSheet.readOnly && viewMode === 'table' ? (
+        <ProductStatusOfficeAccess apiBase={apiBase} gid={activeGid} officeName={activeSheet.name} />
+      ) : null}
 
       {viewMode === 'table' ? (
         <div

@@ -153,7 +153,7 @@
 | `youjail_execution_log` | Лог stdout/stderr/system |
 | `b2b_product_status_office` | Продуктовые офисы B2B (вкладки статуса: SMS, VOICE, CORE, Аналитики: планирование / бизнес-анализа, Проекты и др.; плюс виртуальная «Сводка») |
 | `app_scheduled_job_run` | День последнего запуска напоминания и блокировки статуса продукта |
-| `b2b_product_status_settings` | Выключатель автоматической блокировки офисов (`auto_lock_enabled`) |
+| `b2b_product_status_office_member` | Сотрудники, закреплённые за офисом статуса (`office_id`, `employee_id`) |
 | `b2b_product_status_row` | Строки таблицы «Статус продукта B2B» (`cells` jsonb) |
 | `b2b_product_status_attachment` | Файлы строк статуса продукта (MinIO / локальный fallback) |
 | `b2b_product_status_project` | Справочник проектов координации по офисам |

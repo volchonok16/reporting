@@ -2298,6 +2298,61 @@ input.zni-field-overdue.zni-field-derived {
   padding-left: 2px;
 }
 
+.product-status-office-access {
+  margin: 0 0 12px;
+}
+
+.product-status-office-access-panel {
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--border-strong, #000);
+  background: var(--surface-1, #fff);
+  max-width: 420px;
+}
+
+.product-status-office-access-note,
+.product-status-office-access-selected {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.btn-secondary.product-status-office-access-toggle-on,
+.btn-secondary.product-status-office-access-toggle-on:hover {
+  background: #16d5df;
+  color: #000;
+  border-color: #16d5df;
+}
+
+.product-status-office-access-search {
+  display: block;
+  width: 100%;
+  height: 32px;
+  margin: 8px 0;
+  padding: 0 12px;
+  border: 2px solid var(--text-primary, #000);
+  border-radius: 999px;
+  background: var(--surface-1, #fff);
+  color: var(--text-primary, #000);
+  font-size: 13px;
+}
+
+.product-status-office-access-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.product-status-office-access-list label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
 .product-status-toolbar-btn {
   height: var(--btn-height);
   min-height: var(--btn-height);

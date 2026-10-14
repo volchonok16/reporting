@@ -67,6 +67,8 @@ from app.b2b_product_status_db import (
     load_b2b_product_status_snapshots,
     restore_b2b_product_status_snapshot,
     save_b2b_product_status_to_db,
+    get_b2b_product_status_office_access,
+    set_b2b_product_status_office_access,
     set_b2b_product_status_office_editing_locked,
 )
 from app.product_status_service import load_b2b_product_status
@@ -112,7 +114,10 @@ from app.schemas import (
     ProductStatusAttachmentOut,
     ProductStatusB2BOut,
     ProductStatusHistoryOut,
+    ProductStatusOfficeAccessIn,
+    ProductStatusOfficeAccessOut,
     ProductStatusOfficeEditingLockIn,
+    ProductStatusOfficeMemberOut,
     ProductStatusSaveIn,
     ProductStatusSheetOut,
     ProductStatusSnapshotsOut,
@@ -884,6 +889,9 @@ def product_status_b2b_office_editing_lock(
         gid=gid,
         locked=payload.locked,
     )
+    from app.status_office_schedule import send_office_lock_notice_by_gid
+
+    send_office_lock_notice_by_gid(db, gid=gid, locked=payload.locked)
     notify_product_status_saved(
         workbook=WORKBOOK_B2B,
         gids=[gid],
@@ -891,6 +899,72 @@ def product_status_b2b_office_editing_lock(
         origin_connection_id=x_live_connection_id,
     )
     return sheet
+
+
+def _office_access_out(payload: dict) -> ProductStatusOfficeAccessOut:
+    return ProductStatusOfficeAccessOut(
+        gid=str(payload["gid"]),
+        name=str(payload["name"]),
+        autoLockEnabled=bool(payload["autoLockEnabled"]),
+        members=[
+            ProductStatusOfficeMemberOut(
+                employeeId=int(item["employee_id"]),
+                fullName=str(item["full_name"]),
+                email=item.get("email"),
+            )
+            for item in payload.get("members") or []
+        ],
+    )
+
+
+@app.get(
+    "/api/product-status/b2b/offices/{gid}/access",
+    response_model=ProductStatusOfficeAccessOut,
+)
+def product_status_b2b_office_access(
+    gid: str,
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_full_app_access),
+) -> ProductStatusOfficeAccessOut:
+    _, meta = get_session_with_meta(x_session_id)
+    if not is_superadmin_user(meta):
+        raise HTTPException(status_code=403, detail="Состав офиса меняет только суперадминистратор.")
+    return _office_access_out(get_b2b_product_status_office_access(db, gid=gid))
+
+
+@app.put(
+    "/api/product-status/b2b/offices/{gid}/access",
+    response_model=ProductStatusOfficeAccessOut,
+)
+def product_status_b2b_office_access_save(
+    gid: str,
+    payload: ProductStatusOfficeAccessIn,
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
+    _: None = Depends(require_full_app_access),
+) -> ProductStatusOfficeAccessOut:
+    _, meta = get_session_with_meta(x_session_id)
+    if not is_superadmin_user(meta):
+        raise HTTPException(status_code=403, detail="Состав офиса меняет только суперадминистратор.")
+    saved = set_b2b_product_status_office_access(
+        db,
+        gid=gid,
+        auto_lock_enabled=payload.autoLockEnabled,
+        employee_ids=payload.employeeIds,
+    )
+    if saved.get("unlockedNow"):
+        from app.status_office_schedule import send_office_lock_notice_by_gid
+
+        send_office_lock_notice_by_gid(db, gid=gid, locked=False)
+        notify_product_status_saved(
+            workbook=WORKBOOK_B2B,
+            gids=[gid],
+            changed_by=_live_changed_by(meta),
+            origin_connection_id=x_live_connection_id,
+        )
+    return _office_access_out(saved)
 
 
 @app.delete("/api/product-status/b2b/rows/{row_id}")
