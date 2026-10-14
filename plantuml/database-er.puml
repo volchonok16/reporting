@@ -330,6 +330,11 @@ package "Статус продукта B2B" #E0F0FF {
     name : varchar
   }
 
+  class b2b_product_status_settings <<table>> {
+    +id : smallint PK
+    auto_lock_enabled : boolean
+  }
+
   class b2b_product_status_row <<table>> {
     +id : bigserial PK
     office_id : FK

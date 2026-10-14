@@ -11,6 +11,7 @@ from app.config import settings
 
 LOGO_PATH = Path(__file__).resolve().parents[1] / "assets" / "t2-b2b-logo-black.png"
 LOGO_CID = "t2-b2b-logo"
+STATUS_PAGE_URL = "http://t2product.ru/?sheet=product-status-b2b"
 
 _RU_MONTHS = (
     "января",
@@ -59,6 +60,18 @@ def _logo_html(src: str, *, height: int = 36) -> str:
         '<span style="font-family:Arial,Helvetica,sans-serif;font-size:22px;'
         'font-weight:700;letter-spacing:0.04em;color:#000000;">t2</span>'
     )
+
+
+def _status_button_html() -> str:
+    return f"""
+          <tr>
+            <td align="center" style="padding:0 28px 28px;text-align:center;">
+              <a href="{STATUS_PAGE_URL}"
+                 style="display:inline-block;padding:16px 40px;background-color:#E6F5FB;color:#000000;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;text-decoration:none;border:2px solid #000000;border-radius:999px;">
+                Перейти к статусу
+              </a>
+            </td>
+          </tr>"""
 
 
 def _email_shell(*, title: str, body: str, logo_src: str = "") -> str:
@@ -166,6 +179,7 @@ def status_locked_email_html(*, logo_src: str = "") -> str:
               Для разблокировки обратитесь к Склярову Ивану или Тараскину Александру.
             </td>
           </tr>
+          {_status_button_html()}
           {_signature_html(logo_src)}"""
     return _email_shell(title="Внесение статуса заблокировано", body=body, logo_src=logo_src)
 
@@ -175,7 +189,8 @@ def status_locked_email_text() -> str:
         "Внесение статуса заблокировано\n\n"
         "Добрый день.\n\n"
         "Коллеги, внесение статуса заблокировано. "
-        "Для разблокировки обратитесь к Склярову Ивану или Тараскину Александру.\n\n"
+        "Для разблокировки обратитесь к Склярову Ивану или Тараскину Александру.\n"
+        f"Перейти к статусу: {STATUS_PAGE_URL}\n\n"
         "t2 продукт\n"
         "Менеджеры проектного офиса\n"
         "ООО «Т2 Мобайл», г. Москва\n"
@@ -200,6 +215,7 @@ def status_reminder_email_html(*, today: date | None = None, logo_src: str = "")
               С начала следующего дня, {lock_label}, внесение будет заблокировано.
             </td>
           </tr>
+          {_status_button_html()}
           {_signature_html(logo_src)}"""
     return _email_shell(title="Напоминание", body=body, logo_src=logo_src)
 
@@ -211,7 +227,8 @@ def status_reminder_email_text(*, today: date | None = None) -> str:
         "Напоминание: внесите статус продукта\n\n"
         "Добрый день.\n\n"
         f"Напоминаем: сегодня, {format_ru_day_month(current)}, до конца дня нужно внести статус продукта. "
-        f"С начала следующего дня, {format_ru_day_month(lock_day)}, внесение будет заблокировано.\n\n"
+        f"С начала следующего дня, {format_ru_day_month(lock_day)}, внесение будет заблокировано.\n"
+        f"Перейти к статусу: {STATUS_PAGE_URL}\n\n"
         "t2 продукт\n"
         "Менеджеры проектного офиса\n"
         "ООО «Т2 Мобайл», г. Москва\n"

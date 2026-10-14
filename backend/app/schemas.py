@@ -64,6 +64,7 @@ class TfsAuthStatusOut(BaseModel):
     canSyncTfs: bool = False
     canManageOrg: bool = False
     isSuperAdmin: bool = False
+    canUnlockProductStatus: bool = False
     voiceOnly: bool = False
     otherUser: bool = False
     pageAccessRestricted: bool = False

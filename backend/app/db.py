@@ -233,6 +233,7 @@ def ensure_startup_schema() -> None:
         "076_app_maintenance.sql",
         "077_org_password_reset.sql",
         "078_app_scheduled_job_run.sql",
+        "079_b2b_product_status_auto_lock.sql",
     )
 
     auth_session_sql = """

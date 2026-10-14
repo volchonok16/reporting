@@ -17,7 +17,7 @@ import NotificationBell from './NotificationBell'
 import BrandLogo from './BrandLogo'
 import MaintenancePanel from './MaintenancePanel'
 import type { AppRole } from './App'
-import { loadActiveSheet, saveActiveSheet, saveDashboardSearch, type SheetId } from './uiState'
+import { loadActiveSheet, saveActiveSheet, saveB2bPanel, saveDashboardSearch, type SheetId } from './uiState'
 import { setBoardDisplayLabels } from './zniDisplay'
 
 type SheetTab = {
@@ -43,6 +43,7 @@ type WorkbookAppProps = {
   canSyncTfs: boolean
   canManageOrg: boolean
   isSuperAdmin: boolean
+  canUnlockProductStatus: boolean
   voiceOnly: boolean
   planningAccess: boolean
   otherUser: boolean
@@ -61,6 +62,7 @@ export default function WorkbookApp({
   canSyncTfs,
   canManageOrg,
   isSuperAdmin,
+  canUnlockProductStatus,
   voiceOnly,
   planningAccess,
   otherUser,
@@ -116,6 +118,11 @@ export default function WorkbookApp({
   ])
   const visibleSheetIds = useMemo(() => new Set(visibleSheets.map((sheet) => sheet.id)), [visibleSheets])
   const [activeSheet, setActiveSheet] = useState<SheetId>(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get('sheet')
+    if (fromUrl === 'product-status-b2b' && !voiceOnly) {
+      saveB2bPanel('status')
+      return 'product-status-b2b'
+    }
     const saved = loadActiveSheet()
     let candidate: SheetId
     if (voiceOnly) {
@@ -144,6 +151,14 @@ export default function WorkbookApp({
   useEffect(() => {
     saveActiveSheet(activeSheet)
   }, [activeSheet])
+
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    if (url.searchParams.get('sheet') !== 'product-status-b2b') return
+    url.searchParams.delete('sheet')
+    const next = `${url.pathname}${url.search}${url.hash}`
+    window.history.replaceState({}, '', next)
+  }, [])
 
   useEffect(() => {
     if (voiceOnly) return
@@ -286,7 +301,11 @@ export default function WorkbookApp({
           <Voice />
         ) : (
           <div className="app">
-            <ProductStatusB2B canManageOrg={canManageOrg} isSuperAdmin={isSuperAdmin} />
+            <ProductStatusB2B
+              canManageOrg={canManageOrg}
+              isSuperAdmin={isSuperAdmin}
+              canUnlockOffice={canUnlockProductStatus}
+            />
           </div>
         )}
       </div>

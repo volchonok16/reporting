@@ -791,7 +791,7 @@ API (только `canManageOrg`): `GET/PATCH /api/admin/maintenance`, `POST /ap
 | `must_change_password` | boolean | Если true — при входе показывается блокирующее окно смены пароля; закрыть и продолжить работу нельзя, пока не задан новый пароль (не пустой и не временный `12345678`). Ставится при создании/сбросе пароля (галочка в карточке сотрудника) или автоматически, если пароль = `12345678`. Сбрасывается после успешной смены через `POST /api/profile/password`. В `/api/auth/status` — `mustChangePassword`. Миграция: `075_org_user_must_change_password.sql` |
 | `created_at`, `updated_at` | timestamptz | Метки времени |
 
-Суперадминистратор (`role = 1000`, сессия `org_user_role=superadmin`): доступ ко всем вкладкам; правки в заблокированных офисах статуса продукта (`editing_locked`); ручная блокировка и разблокировка офиса (`PATCH /api/product-status/b2b/offices/{gid}/editing-lock`); управление `allowedPageKeys` для любого сотрудника в Staffing. Назначение: `UPDATE org_user SET role = 1000 WHERE email = '…';` — через UI выдать/снять нельзя. В `/api/auth/status` — `isSuperAdmin`, `pageAccessRestricted`.
+Суперадминистратор (`role = 1000`, сессия `org_user_role=superadmin`): доступ ко всем вкладкам; правки в заблокированных офисах статуса продукта (`editing_locked`); ручная блокировка и разблокировка офиса (`PATCH /api/product-status/b2b/offices/{gid}/editing-lock`); управление `allowedPageKeys` для любого сотрудника в Staffing. Назначение: `UPDATE org_user SET role = 1000 WHERE email = '…';` — через UI выдать/снять нельзя. В `/api/auth/status` — `isSuperAdmin`, `pageAccessRestricted`. Снять блокировку офиса может также руководитель: глава отдела, роль «Руководитель» или должность с «лид» (`canUnlockProductStatus`). Включить блокировку вручную может только суперадминистратор.
 
 Связь: `employee.user_id` → `org_user.id`. Вход по email/паролю через `POST /api/auth/login` (режим app_user).
 
@@ -1245,9 +1245,23 @@ Seed: миграция `013_b2b_product_status.sql` — SMS, VOICE, Перспе
 | `name` | varchar(255) | Подпись вкладки, напр. «Офис: SMS» |
 | `sort_order` | int | Порядок вкладок |
 | `is_active` | boolean | Скрыть офис без удаления |
-| `editing_locked` | boolean | Блокировка редактирования для всех, кроме суперадминистратора (`org_user.role = 1000`). В четверг в 09:30 МСК ставится всем активным офисам, в 18:00 МСК снимается. Руками переключает только суперадминистратор |
+| `editing_locked` | boolean | Блокировка редактирования для всех, кроме суперадминистратора (`org_user.role = 1000`). В четверг в 09:30 МСК ставится всем активным офисам, в 18:00 МСК снимается. Вручную включает только суперадминистратор; снять могут он и руководитель (глава отдела, роль «Руководитель», должность с «лид») |
 
 По расписанию Europe/Moscow backend шлёт письма лидам и администраторам (активные `org_user` с `role` 100 и 1000, руководители отделов, роль «Руководитель» и должности с «лид») и меняет `editing_locked` у всех активных офисов. Среда с 10:00 — напоминание внести статус до конца дня. Четверг с 09:30 — блокировка и письмо «внесение заблокировано». Четверг с 18:00 — разблокировка. Повтор за тот же день не выполняется: таблица `app_scheduled_job_run`. Миграция: `078_app_scheduled_job_run.sql`.
+
+Автоматическую блокировку и ответную разблокировку в четверг включает поле `b2b_product_status_settings.auto_lock_enabled` (одна строка, `id = 1`). `true` — как в расписании. `false` — четверг офисы не блокирует и не разблокирует, письмо о блокировке не шлёт. Напоминание в среду от этого флага не зависит. Миграция: `079_b2b_product_status_auto_lock.sql`.
+
+```sql
+UPDATE b2b_product_status_settings SET auto_lock_enabled = FALSE WHERE id = 1;
+UPDATE b2b_product_status_settings SET auto_lock_enabled = TRUE WHERE id = 1;
+```
+
+## b2b_product_status_settings — выключатель автоматической блокировки
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | smallint | Всегда `1`, одна строка |
+| `auto_lock_enabled` | boolean | `true` — четверг блокирует и в 18:00 снимает блокировку. `false` — эти шаги пропускаются, напоминание остаётся |
 
 ## app_scheduled_job_run — отметка планового задания
 

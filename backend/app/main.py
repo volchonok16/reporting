@@ -329,6 +329,7 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
     auth_mode = meta.get("auth_mode")
     voice_only_flag = is_voice_only(meta)
     superadmin_flag = is_superadmin_user(meta)
+    can_unlock_product_status = superadmin_flag
     can_sync_tfs = False if (voice_only_flag and not superadmin_flag) else _can_sync_tfs(auth, meta)
     can_manage_org_flag = False if (voice_only_flag and not superadmin_flag) else can_manage_org(meta)
     org_user_id = int(meta["org_user_id"]) if meta.get("org_user_id") else None
@@ -369,6 +370,10 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
                 if superadmin_flag
                 else (False if voice_only_flag else has_planning_access(db, meta))
             )
+            if not can_unlock_product_status:
+                from app.status_office_schedule import is_status_office_lead
+
+                can_unlock_product_status = is_status_office_lead(db, meta)
         finally:
             close_db_session(db)
     else:
@@ -383,6 +388,7 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
         canSyncTfs=can_sync_tfs,
         canManageOrg=can_manage_org_flag,
         isSuperAdmin=superadmin_flag,
+        canUnlockProductStatus=can_unlock_product_status,
         voiceOnly=voice_only_flag and not superadmin_flag,
         otherUser=other_user_flag,
         pageAccessRestricted=page_access_restricted,
@@ -860,10 +866,18 @@ def product_status_b2b_office_editing_lock(
     _: None = Depends(require_full_app_access),
 ) -> ProductStatusSheetOut:
     _, meta = get_session_with_meta(x_session_id)
-    if not is_superadmin_user(meta):
+    from app.status_office_schedule import is_status_office_lead
+
+    if payload.locked:
+        if not is_superadmin_user(meta):
+            raise HTTPException(
+                status_code=403,
+                detail="Блокировать офис может только суперадминистратор.",
+            )
+    elif not is_superadmin_user(meta) and not is_status_office_lead(db, meta):
         raise HTTPException(
             status_code=403,
-            detail="Блокировать и разблокировать офис может только суперадминистратор.",
+            detail="Снять блокировку может суперадминистратор или руководитель.",
         )
     sheet = set_b2b_product_status_office_editing_locked(
         db,

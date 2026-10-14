@@ -14,6 +14,7 @@ export default function App() {
   const [canSyncTfs, setCanSyncTfs] = useState(false)
   const [canManageOrg, setCanManageOrg] = useState(false)
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+  const [canUnlockProductStatus, setCanUnlockProductStatus] = useState(false)
   const [voiceOnly, setVoiceOnly] = useState(false)
   const [planningAccess, setPlanningAccess] = useState(false)
   const [otherUser, setOtherUser] = useState(false)
@@ -37,6 +38,7 @@ export default function App() {
         canSyncTfs?: boolean
         canManageOrg?: boolean
         isSuperAdmin?: boolean
+        canUnlockProductStatus?: boolean
         voiceOnly?: boolean
         planningAccess?: boolean
         otherUser?: boolean
@@ -61,6 +63,7 @@ export default function App() {
       setCanSyncTfs(Boolean(data.canSyncTfs))
       setCanManageOrg(Boolean(data.canManageOrg))
       setIsSuperAdmin(Boolean(data.isSuperAdmin))
+      setCanUnlockProductStatus(Boolean(data.canUnlockProductStatus))
       setVoiceOnly(Boolean(data.voiceOnly))
       setPlanningAccess(Boolean(data.planningAccess))
       setOtherUser(Boolean(data.otherUser))
@@ -137,6 +140,7 @@ export default function App() {
           canSyncTfs={canSyncTfs}
           canManageOrg={canManageOrg}
           isSuperAdmin={isSuperAdmin}
+          canUnlockProductStatus={canUnlockProductStatus}
           voiceOnly={voiceOnly}
           planningAccess={planningAccess}
           otherUser={otherUser}

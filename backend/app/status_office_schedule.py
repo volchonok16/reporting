@@ -28,6 +28,22 @@ _stop = threading.Event()
 _thread: threading.Thread | None = None
 
 
+def scheduled_jobs_to_run(due: list[str], *, auto_lock: bool) -> list[str]:
+    """Напоминание идёт всегда. Блокировка и разблокировка — только если автоблокировка включена."""
+    if auto_lock:
+        return list(due)
+    return [job for job in due if job not in {JOB_LOCK, JOB_UNLOCK}]
+
+
+def product_status_auto_lock_enabled(db: Session) -> bool:
+    row = db.execute(
+        text("SELECT auto_lock_enabled FROM b2b_product_status_settings WHERE id = 1")
+    ).first()
+    if row is None:
+        return True
+    return bool(row[0])
+
+
 def jobs_due(local: datetime) -> list[str]:
     """Какие задания пора выполнить в эту минуту московского времени."""
     weekday = local.weekday()
@@ -59,6 +75,51 @@ def claim_job(db: Session, job_key: str, ran_on) -> bool:
     ).first()
     db.commit()
     return inserted is not None
+
+
+def is_status_office_lead(db: Session, meta: dict | None) -> bool:
+    """Руководитель офиса: глава отдела, роль «Руководитель» или должность с «лид»."""
+    org_user_id = (meta or {}).get("org_user_id")
+    if not org_user_id:
+        return False
+    row = db.execute(
+        text(
+            """
+            SELECT 1
+            FROM org_user AS u
+            WHERE u.id = :org_user_id
+              AND u.status = 10
+              AND (
+                EXISTS (
+                    SELECT 1
+                    FROM employee AS e
+                    JOIN department AS d
+                      ON d.head_employee_id = e.id
+                     AND d.is_active = TRUE
+                    WHERE e.user_id = u.id
+                      AND e.is_active = TRUE
+                )
+                OR EXISTS (
+                    SELECT 1
+                    FROM employee AS e
+                    JOIN department_member AS dm ON dm.employee_id = e.id
+                    LEFT JOIN team_role AS tr ON tr.id = dm.team_role_id
+                    LEFT JOIN job_position AS jp ON jp.id = e.position_id
+                    WHERE e.user_id = u.id
+                      AND e.is_active = TRUE
+                      AND (
+                        tr.name = 'Руководитель'
+                        OR lower(coalesce(dm.position, '')) LIKE '%лид%'
+                        OR lower(coalesce(e.position, '')) LIKE '%лид%'
+                        OR lower(coalesce(jp.name, '')) LIKE '%лид%'
+                      )
+                )
+              )
+            """
+        ),
+        {"org_user_id": int(org_user_id)},
+    ).first()
+    return row is not None
 
 
 def status_notice_recipients(db: Session) -> list[str]:
@@ -136,6 +197,7 @@ def run_due_jobs(now: datetime | None = None) -> list[str]:
     db = next(get_db())
     ran: list[str] = []
     try:
+        due = scheduled_jobs_to_run(due, auto_lock=product_status_auto_lock_enabled(db))
         for job_key in due:
             if not claim_job(db, job_key, local.date()):
                 continue

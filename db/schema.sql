@@ -1087,7 +1087,7 @@ CREATE TABLE b2b_product_status_office (
 
 COMMENT ON TABLE b2b_product_status_office IS 'Продуктовые офисы B2B (вкладки «Офис: SMS», «Офис: CORE» и т.д.)';
 COMMENT ON COLUMN b2b_product_status_office.gid IS 'Идентификатор вкладки (стабильный ключ для API и UI)';
-COMMENT ON COLUMN b2b_product_status_office.editing_locked IS 'Блокировка редактирования таблицы офиса для всех, кроме суперадминистратора (org_user.role = 1000)';
+COMMENT ON COLUMN b2b_product_status_office.editing_locked IS 'Блокировка редактирования таблицы офиса. Править при блокировке и включать её вручную может суперадминистратор (org_user.role = 1000); снять могут он и руководитель';
 
 CREATE TABLE app_scheduled_job_run (
     job_key   TEXT        PRIMARY KEY,
@@ -1101,6 +1101,16 @@ COMMENT ON COLUMN app_scheduled_job_run.job_key IS
     'Ключ задания: b2b_status_reminder, b2b_status_lock, b2b_status_unlock';
 COMMENT ON COLUMN app_scheduled_job_run.ran_on IS
     'Календарный день Europe/Moscow, за который задание уже выполнено';
+
+CREATE TABLE b2b_product_status_settings (
+    id                SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    auto_lock_enabled BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+COMMENT ON TABLE b2b_product_status_settings IS
+    'Одна строка: включена ли автоматическая блокировка офисов статуса продукта';
+COMMENT ON COLUMN b2b_product_status_settings.auto_lock_enabled IS
+    'true — четверг 09:30 МСК блокирует офисы и шлёт письмо, 18:00 снимает блокировку. false — эти два шага пропускаются, напоминание в среду остаётся';
 
 CREATE TABLE b2b_product_status_row (
     id              BIGSERIAL PRIMARY KEY,
