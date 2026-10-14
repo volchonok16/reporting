@@ -2354,6 +2354,10 @@ input.zni-field-overdue.zni-field-derived {
   font-size: 13px;
 }
 
+.product-status-schedule-row--wide {
+  grid-template-columns: 8.5rem 1fr;
+}
+
 .product-status-schedule-row select,
 .product-status-schedule-row input {
   height: 32px;

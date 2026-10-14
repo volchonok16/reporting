@@ -296,6 +296,7 @@
 | `app_scheduled_job_run` | `job_key`, `ran_on`, `ran_at` | Один запуск напоминания или блокировки статуса за календарный день |
 | `b2b_product_status_schedule` | `job_key`, `weekday`, `minutes` | Общее напоминание о статусе, Europe/Moscow |
 | `b2b_product_status_office_schedule` | `office_id`, `job_key`, `weekday`, `minutes` | День и время блокировки и разблокировки одного офиса |
+| `b2b_product_status_office.skip_lock_until` | timestamptz | До этого момента офис не блокируется по расписанию |
 | `b2b_product_status_row` | `office_id`, `sort_order`, `cells` | Строки таблицы; `cells` — jsonb с колонками и rich-text |
 | `b2b_product_status_attachment` | `row_id`, `filename`, `storage_key`, `size_bytes` | Вложения строки; файлы в MinIO bucket `product-status` |
 | `b2b_product_status_project` | `office_id`, `name`, `sort_order` | Справочник проектов координации (мультиселект) |

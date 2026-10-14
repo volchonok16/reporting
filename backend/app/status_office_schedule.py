@@ -98,6 +98,27 @@ def assert_lock_before_unlock(lock: ScheduleSlot, unlock: ScheduleSlot) -> None:
         raise ValueError("В один день блокировка должна быть раньше разблокировки.")
 
 
+def lock_is_skipped(skip_until: datetime | None, local: datetime) -> bool:
+    """Офис не блокируется по расписанию, пока не наступит skip_until."""
+    if skip_until is None:
+        return False
+    moment = skip_until if skip_until.tzinfo else skip_until.replace(tzinfo=MOSCOW)
+    return moment.astimezone(MOSCOW) > local.astimezone(MOSCOW)
+
+
+def parse_skip_lock_until(value: str | None) -> datetime | None:
+    if value is None or not value.strip():
+        return None
+    raw = value.strip()
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError as exc:
+        raise ValueError("Укажите дату и время, до которых офис не блокировать.") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=MOSCOW)
+    return parsed.astimezone(MOSCOW)
+
+
 def office_jobs_due(local: datetime, lock: ScheduleSlot, unlock: ScheduleSlot) -> list[str]:
     """Блокировка и разблокировка одного офиса в эту минуту."""
     weekday = local.weekday()
@@ -191,7 +212,7 @@ def offices_due(db: Session, local: datetime) -> list[dict[str, object]]:
     rows = db.execute(
         text(
             """
-            SELECT o.id, o.gid, o.name, s.job_key, s.weekday, s.minutes
+            SELECT o.id, o.gid, o.name, o.skip_lock_until, s.job_key, s.weekday, s.minutes
             FROM b2b_product_status_office AS o
             JOIN b2b_product_status_office_schedule AS s ON s.office_id = o.id
             WHERE o.is_active = TRUE
@@ -205,7 +226,13 @@ def offices_due(db: Session, local: datetime) -> list[dict[str, object]]:
         office_id = int(row["id"])
         item = grouped.setdefault(
             office_id,
-            {"id": office_id, "gid": str(row["gid"]), "name": str(row["name"]), "slots": {}},
+            {
+                "id": office_id,
+                "gid": str(row["gid"]),
+                "name": str(row["name"]),
+                "skip_lock_until": row["skip_lock_until"],
+                "slots": {},
+            },
         )
         slots = item["slots"]
         assert isinstance(slots, dict)
@@ -217,6 +244,8 @@ def offices_due(db: Session, local: datetime) -> list[dict[str, object]]:
         lock = slots.get(JOB_LOCK, DEFAULT_SCHEDULE[JOB_LOCK])
         unlock = slots.get(JOB_UNLOCK, DEFAULT_SCHEDULE[JOB_UNLOCK])
         for job_key in office_jobs_due(local, lock, unlock):
+            if job_key == JOB_LOCK and lock_is_skipped(item.get("skip_lock_until"), local):  # type: ignore[arg-type]
+                continue
             due.append(
                 {
                     "id": item["id"],

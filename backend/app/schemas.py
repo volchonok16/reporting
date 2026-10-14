@@ -276,6 +276,7 @@ class ProductStatusAttachmentOut(BaseModel):
 
 class ProductStatusOfficeEditingLockIn(BaseModel):
     locked: bool
+    notify: bool = True
 
 
 class ProductStatusOfficeMemberOut(BaseModel):
@@ -295,6 +296,7 @@ class ProductStatusOfficeAccessOut(BaseModel):
     autoLockEnabled: bool
     lock: ProductStatusScheduleSlotOut
     unlock: ProductStatusScheduleSlotOut
+    skipLockUntil: str | None = None
     members: list[ProductStatusOfficeMemberOut] = Field(default_factory=list)
 
 
@@ -303,6 +305,7 @@ class ProductStatusOfficeAccessIn(BaseModel):
     employeeIds: list[int] = Field(default_factory=list)
     lock: ProductStatusScheduleSlotOut
     unlock: ProductStatusScheduleSlotOut
+    skipLockUntil: str | None = None
 
 
 class ProductStatusScheduleOut(BaseModel):

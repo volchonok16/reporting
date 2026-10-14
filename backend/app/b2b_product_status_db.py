@@ -619,16 +619,16 @@ def get_b2b_product_status_office_access(db: Session, *, gid: str) -> dict[str, 
     office = _load_office(db, gid=gid)
     if office is None:
         raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
-    flag = db.execute(
+    flag_row = db.execute(
         text(
             """
-            SELECT auto_lock_enabled
+            SELECT auto_lock_enabled, skip_lock_until
             FROM b2b_product_status_office
             WHERE id = :office_id
             """
         ),
         {"office_id": int(office["id"])},
-    ).scalar()
+    ).mappings().first()
     members = db.execute(
         text(
             """
@@ -649,7 +649,8 @@ def get_b2b_product_status_office_access(db: Session, *, gid: str) -> dict[str, 
     return {
         "gid": office["gid"],
         "name": office["name"],
-        "autoLockEnabled": bool(flag),
+        "autoLockEnabled": bool(flag_row["auto_lock_enabled"]) if flag_row else False,
+        "skipLockUntil": _iso_timestamp(flag_row["skip_lock_until"]) if flag_row else None,
         "lock": {"weekday": lock.weekday, "minutes": lock.minutes},
         "unlock": {"weekday": unlock.weekday, "minutes": unlock.minutes},
         "members": [dict(row) for row in members],
@@ -666,6 +667,7 @@ def set_b2b_product_status_office_access(
     lock_minutes: int,
     unlock_weekday: int,
     unlock_minutes: int,
+    skip_lock_until: Any = None,
 ) -> dict[str, Any]:
     """Сохраняет автоблокировку и состав офиса. Если автоблокировку выключили у уже заблокированного офиса — снимает блокировку."""
     office = _load_office(db, gid=gid)
@@ -722,6 +724,7 @@ def set_b2b_product_status_office_access(
             """
             UPDATE b2b_product_status_office
             SET auto_lock_enabled = :auto_lock_enabled,
+                skip_lock_until = :skip_lock_until,
                 editing_locked = CASE
                     WHEN :unlocked_now THEN FALSE
                     ELSE editing_locked
@@ -735,6 +738,7 @@ def set_b2b_product_status_office_access(
         ),
         {
             "auto_lock_enabled": auto_lock_enabled,
+            "skip_lock_until": skip_lock_until,
             "unlocked_now": unlocked_now,
             "office_id": office_id,
         },

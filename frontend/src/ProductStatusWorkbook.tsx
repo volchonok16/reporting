@@ -1040,16 +1040,19 @@ export default function ProductStatusWorkbook({
   const isSheetReadOnly =
     (activeSheetEditingLocked && !bypassOfficeEditLock) || activeSheetReadOnly
 
-  const toggleOfficeEditingLock = useCallback(async () => {
+  const toggleOfficeEditingLock = useCallback(async (notify = true) => {
     if (!activeGid) return
     const sheet = sheets.find((item) => item.gid === activeGid)
     if (!sheet) return
-    const nextLocked = !sheet.editingLocked
+    const nextLocked = notify ? !sheet.editingLocked : false
     if (nextLocked && !enableOfficeEditLock) return
     if (!nextLocked && !enableOfficeEditLock && !canUnlockOffice) return
+    if (!notify && !enableOfficeEditLock) return
     const message = nextLocked
       ? `Заблокировать редактирование офиса «${sheet.name}» для всех пользователей?`
-      : `Разблокировать редактирование офиса «${sheet.name}»?`
+      : notify
+        ? `Разблокировать редактирование офиса «${sheet.name}»?`
+        : `Разблокировать офис «${sheet.name}» без письма сотрудникам?`
     if (!window.confirm(message)) return
 
     setTogglingOfficeLock(true)
@@ -1064,7 +1067,7 @@ export default function ProductStatusWorkbook({
           'Content-Type': 'application/json',
           ...productStatusLiveHeaders(apiBase),
         },
-        body: JSON.stringify({ locked: nextLocked }),
+        body: JSON.stringify({ locked: nextLocked, notify }),
       })
       if (!updated.ok) {
         throw new Error(await readApiError(updated))
@@ -2163,6 +2166,17 @@ export default function ProductStatusWorkbook({
               >
                 {activeSheetEditingLocked ? 'Разблокировать офис' : 'Заблокировать офис'}
               </button>
+              {enableOfficeEditLock && activeSheetEditingLocked ? (
+                <button
+                  type="button"
+                  className="btn-secondary product-status-toolbar-btn"
+                  onClick={() => void toggleOfficeEditingLock(false)}
+                  disabled={toolbarBusy || !activeSheetReady}
+                  title="Снять блокировку и не отправлять письмо закреплённым сотрудникам"
+                >
+                  Разблокировать без уведомления
+                </button>
+              ) : null}
             </div>
           ) : null}
           <div className="product-status-toolbar-actions-group product-status-toolbar-actions-group--main">

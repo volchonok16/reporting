@@ -42,6 +42,15 @@ def test_custom_schedule_moves_reminder_and_lock() -> None:
     assert jobs_due(_at(2026, 10, 16, 15, 0), custom) == [JOB_UNLOCK]
 
 
+def test_skip_lock_until_holds_the_office_open() -> None:
+    from app.status_office_schedule import lock_is_skipped
+
+    local = _at(2026, 10, 15, 9, 30)
+    assert lock_is_skipped(None, local) is False
+    assert lock_is_skipped(_at(2026, 10, 15, 12, 0), local) is True
+    assert lock_is_skipped(_at(2026, 10, 15, 9, 30), local) is False
+
+
 def test_two_offices_keep_separate_lock_times() -> None:
     from app.status_office_schedule import ScheduleSlot, office_jobs_due
 

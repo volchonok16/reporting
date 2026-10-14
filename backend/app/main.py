@@ -886,14 +886,20 @@ def product_status_b2b_office_editing_lock(
             status_code=403,
             detail="Снять блокировку может суперадминистратор или руководитель.",
         )
+    if not payload.notify and not is_superadmin_user(meta):
+        raise HTTPException(
+            status_code=403,
+            detail="Без уведомления блокировку снимает только суперадминистратор.",
+        )
     sheet = set_b2b_product_status_office_editing_locked(
         db,
         gid=gid,
         locked=payload.locked,
     )
-    from app.status_office_schedule import send_office_lock_notice_by_gid
+    if payload.notify or payload.locked:
+        from app.status_office_schedule import send_office_lock_notice_by_gid
 
-    send_office_lock_notice_by_gid(db, gid=gid, locked=payload.locked)
+        send_office_lock_notice_by_gid(db, gid=gid, locked=payload.locked)
     notify_product_status_saved(
         workbook=WORKBOOK_B2B,
         gids=[gid],
@@ -910,6 +916,7 @@ def _office_access_out(payload: dict) -> ProductStatusOfficeAccessOut:
         autoLockEnabled=bool(payload["autoLockEnabled"]),
         lock=_schedule_slot(int(payload["lock"]["weekday"]), int(payload["lock"]["minutes"])),
         unlock=_schedule_slot(int(payload["unlock"]["weekday"]), int(payload["unlock"]["minutes"])),
+        skipLockUntil=payload.get("skipLockUntil"),
         members=[
             ProductStatusOfficeMemberOut(
                 employeeId=int(item["employee_id"]),
@@ -955,8 +962,13 @@ def product_status_b2b_office_access_save(
     try:
         lock_minutes = _schedule_minutes(payload.lock)
         unlock_minutes = _schedule_minutes(payload.unlock)
+        from app.status_office_schedule import parse_skip_lock_until
+
+        skip_lock_until = parse_skip_lock_until(payload.skipLockUntil)
     except HTTPException:
         raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
         saved = set_b2b_product_status_office_access(
             db,
@@ -967,6 +979,7 @@ def product_status_b2b_office_access_save(
             lock_minutes=lock_minutes,
             unlock_weekday=payload.unlock.weekday,
             unlock_minutes=unlock_minutes,
+            skip_lock_until=skip_lock_until,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
