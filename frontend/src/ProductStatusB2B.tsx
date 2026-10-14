@@ -88,7 +88,7 @@ export default function ProductStatusB2B({
           enableColumnFilters
           enableHistory={canManageOrg}
           canEditAdminColumns={canManageOrg}
-          enableOfficeEditLock={canManageOrg}
+          enableOfficeEditLock={isSuperAdmin}
           bypassOfficeEditLock={isSuperAdmin}
           commitOnRefresh
         />

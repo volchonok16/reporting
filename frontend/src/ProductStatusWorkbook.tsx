@@ -33,6 +33,7 @@ import {
   isPriorityColumn,
   nextPriorityInProjectRange,
   priorityNeedsReassign,
+  resolveDuplicatePriority,
   settleProductStatusRows,
   sortProductStatusRows,
   sheetHasFixedProjectPriorities,
@@ -1329,7 +1330,15 @@ export default function ProductStatusWorkbook({
             }
             return next
           })
-          if (isPriorityColumn(column) || isObsoleteColumn(column)) {
+          if (isPriorityColumn(column)) {
+            rows = resolveDuplicatePriority(
+              rows,
+              rowIndex,
+              sheet.columns,
+              sheet.projectPriorityRanges,
+            )
+            rows = sortProductStatusRows(rows, sheet.columns)
+          } else if (isObsoleteColumn(column)) {
             rows = sortProductStatusRows(rows, sheet.columns)
             if (rowId) {
               const nextIndex = rows.findIndex(
@@ -2177,7 +2186,7 @@ export default function ProductStatusWorkbook({
               <p className="product-status-editing-locked-banner" role="status">
                 {activeSheetReadOnly
                   ? 'Сводка собирается автоматически из строк с галочкой «Идет в презентацию» и сгруппирована по офисам — только просмотр.'
-                  : `Редактирование офиса «${activeSheet.name}» заблокировано администратором — доступен только просмотр.`}
+                  : `Редактирование офиса «${activeSheet.name}» заблокировано. Для разблокировки обратитесь к Склярову Ивану или Тараскину Александру.`}
               </p>
             ) : null}
             {!isSheetReadOnly && activeSheetEditingLocked && bypassOfficeEditLock && activeSheet ? (

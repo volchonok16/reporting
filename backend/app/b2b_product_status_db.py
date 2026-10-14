@@ -558,9 +558,35 @@ def _assert_office_editable(office: dict[str, Any], meta: dict[str, Any] | None 
         raise HTTPException(
             status_code=403,
             detail=(
-                f"Редактирование офиса «{office['name']}» заблокировано администратором."
+                f"Редактирование офиса «{office['name']}» заблокировано. "
+                "Для разблокировки обратитесь к Склярову Ивану или Тараскину Александру."
             ),
         )
+
+
+def set_all_b2b_product_status_offices_editing_locked(db: Session, *, locked: bool) -> list[str]:
+    """Ставит editing_locked всем активным офисам. Возвращает их gid."""
+    offices = _load_offices(db)
+    db.execute(
+        text(
+            """
+            UPDATE b2b_product_status_office
+            SET editing_locked = :locked
+            WHERE is_active = TRUE
+            """
+        ),
+        {"locked": locked},
+    )
+    db.commit()
+    return [str(office["gid"]) for office in offices]
+
+
+def lock_all_b2b_product_status_offices(db: Session) -> list[str]:
+    return set_all_b2b_product_status_offices_editing_locked(db, locked=True)
+
+
+def unlock_all_b2b_product_status_offices(db: Session) -> list[str]:
+    return set_all_b2b_product_status_offices_editing_locked(db, locked=False)
 
 
 def set_b2b_product_status_office_editing_locked(

@@ -170,11 +170,17 @@ async def startup() -> None:
         close_db_session(db)
     purge_stale_b2b_audit_records()
     start_voice_jobs()
+    from app.status_office_schedule import start_status_office_schedule
+
+    start_status_office_schedule()
 
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
     stop_voice_jobs()
+    from app.status_office_schedule import stop_status_office_schedule
+
+    stop_status_office_schedule()
 
 
 app.include_router(org_router)
@@ -851,9 +857,14 @@ def product_status_b2b_office_editing_lock(
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
     x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
-    _: None = Depends(require_org_manage_access),
+    _: None = Depends(require_full_app_access),
 ) -> ProductStatusSheetOut:
     _, meta = get_session_with_meta(x_session_id)
+    if not is_superadmin_user(meta):
+        raise HTTPException(
+            status_code=403,
+            detail="Блокировать и разблокировать офис может только суперадминистратор.",
+        )
     sheet = set_b2b_product_status_office_editing_locked(
         db,
         gid=gid,

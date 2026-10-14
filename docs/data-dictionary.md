@@ -292,6 +292,7 @@
 | Таблица | Ключевые поля | Назначение |
 |---------|---------------|------------|
 | `b2b_product_status_office` | `gid`, `name`, `sort_order`, `editing_locked` | Вкладки офисов (SMS, VOICE, CORE, Аналитики: планирование / бизнес-анализа, Проекты…) |
+| `app_scheduled_job_run` | `job_key`, `ran_on`, `ran_at` | Один запуск напоминания или блокировки статуса за календарный день |
 | `b2b_product_status_row` | `office_id`, `sort_order`, `cells` | Строки таблицы; `cells` — jsonb с колонками и rich-text |
 | `b2b_product_status_attachment` | `row_id`, `filename`, `storage_key`, `size_bytes` | Вложения строки; файлы в MinIO bucket `product-status` |
 | `b2b_product_status_project` | `office_id`, `name`, `sort_order` | Справочник проектов координации (мультиселект) |

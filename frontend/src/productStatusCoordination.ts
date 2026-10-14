@@ -251,6 +251,65 @@ export function nextPriorityInProjectRange(
   return String(range.rangeTo)
 }
 
+/**
+ * Один номер в проекте — один раз.
+ * Если выбранный приоритет уже занят, эта строка его забирает,
+ * а непрерывный хвост (53, 54, 55… до первой дырки) сдвигается на +1.
+ * Свободный следующий номер забирает только предыдущего владельца.
+ */
+export function resolveDuplicatePriority(
+  rows: Record<string, string>[],
+  rowIndex: number,
+  columns: string[],
+  projectPriorityRanges?: ProjectPriorityRangesMap,
+): Record<string, string>[] {
+  const priorityColumn = columns.find(isPriorityColumn)
+  if (!priorityColumn || rowIndex < 0 || rowIndex >= rows.length) return rows
+
+  const chosen = parsePriorityValue(rows[rowIndex][priorityColumn] ?? '')
+  if (chosen == null) return rows
+
+  const projectColumn = columns.find(isCoordinationProjectColumn)
+  const obsoleteColumn = columns.find(isObsoleteColumn)
+  const projectName = projectColumn
+    ? (splitCoordinationProjects(rows[rowIndex][projectColumn] ?? '')[0] ?? '')
+    : ''
+  const range = projectName ? projectPriorityRanges?.[projectName] : undefined
+  const rangeTo =
+    range && range.rangeTo >= range.rangeFrom ? Math.floor(range.rangeTo) : null
+
+  const sameGroup = (row: Record<string, string>) => {
+    if (obsoleteColumn && isObsoleteYes(row[obsoleteColumn] ?? '')) return false
+    if (!projectColumn) return true
+    const otherProject = splitCoordinationProjects(row[projectColumn] ?? '')[0] ?? ''
+    return otherProject === projectName
+  }
+
+  const others = rows
+    .map((row, index) => ({
+      index,
+      priority: parsePriorityValue(row[priorityColumn] ?? ''),
+    }))
+    .filter(
+      (item): item is { index: number; priority: number } =>
+        item.index !== rowIndex && item.priority != null && sameGroup(rows[item.index]),
+    )
+    .sort((left, right) => left.priority - right.priority || left.index - right.index)
+
+  if (!others.some((item) => item.priority === chosen)) return rows
+
+  const next = rows.map((row) => ({ ...row }))
+  let slot = chosen + 1
+  for (const item of others) {
+    if (item.priority < chosen) continue
+    if (item.priority > slot) break
+    const assigned = rangeTo != null ? Math.min(slot, rangeTo) : slot
+    next[item.index] = { ...next[item.index], [priorityColumn]: String(assigned) }
+    if (rangeTo == null || slot < rangeTo) slot += 1
+  }
+  return next
+}
+
 export function priorityNeedsReassign(
   currentPriority: string,
   projectCellValue: string,

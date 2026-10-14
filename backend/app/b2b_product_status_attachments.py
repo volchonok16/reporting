@@ -39,7 +39,8 @@ def _assert_office_editable(office: dict[str, Any], meta: dict[str, Any] | None 
         raise HTTPException(
             status_code=403,
             detail=(
-                f"Редактирование офиса «{office['name']}» заблокировано администратором."
+                f"Редактирование офиса «{office['name']}» заблокировано. "
+                "Для разблокировки обратитесь к Склярову Ивану или Тараскину Александру."
             ),
         )
 
