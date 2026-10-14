@@ -1081,14 +1081,18 @@ CREATE TABLE b2b_product_status_office (
     name            VARCHAR(255) NOT NULL,
     sort_order      INT          NOT NULL DEFAULT 0,
     is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
-    editing_locked    BOOLEAN      NOT NULL DEFAULT FALSE,
-    auto_lock_enabled BOOLEAN      NOT NULL DEFAULT TRUE,
+    editing_locked      BOOLEAN      NOT NULL DEFAULT FALSE,
+    editing_locked_at   TIMESTAMPTZ,
+    editing_unlocked_at TIMESTAMPTZ,
+    auto_lock_enabled   BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE b2b_product_status_office IS 'Продуктовые офисы B2B (вкладки «Офис: SMS», «Офис: CORE» и т.д.)';
 COMMENT ON COLUMN b2b_product_status_office.gid IS 'Идентификатор вкладки (стабильный ключ для API и UI)';
 COMMENT ON COLUMN b2b_product_status_office.editing_locked IS 'Блокировка редактирования таблицы офиса. Править при блокировке и включать её вручную может суперадминистратор (org_user.role = 1000); снять могут он и руководитель';
+COMMENT ON COLUMN b2b_product_status_office.editing_locked_at IS 'Момент последней блокировки этого офиса';
+COMMENT ON COLUMN b2b_product_status_office.editing_unlocked_at IS 'Момент последней разблокировки этого офиса';
 COMMENT ON COLUMN b2b_product_status_office.auto_lock_enabled IS 'Участвует ли офис в четверговой автоблокировке. Письмо уходит сотрудникам из b2b_product_status_office_member';
 
 CREATE TABLE b2b_product_status_office_member (
@@ -1113,6 +1117,19 @@ COMMENT ON COLUMN app_scheduled_job_run.job_key IS
     'Ключ задания: b2b_status_reminder, b2b_status_lock, b2b_status_unlock';
 COMMENT ON COLUMN app_scheduled_job_run.ran_on IS
     'Календарный день Europe/Moscow, за который задание уже выполнено';
+
+CREATE TABLE b2b_product_status_schedule (
+    job_key  TEXT PRIMARY KEY,
+    weekday  SMALLINT NOT NULL CHECK (weekday BETWEEN 0 AND 6),
+    minutes  SMALLINT NOT NULL CHECK (minutes BETWEEN 0 AND 1439)
+);
+
+COMMENT ON TABLE b2b_product_status_schedule IS
+    'День и время заданий статуса продукта по Москве. weekday: 0 понедельник … 6 воскресенье. Меняет суперадминистратор';
+COMMENT ON COLUMN b2b_product_status_schedule.job_key IS
+    'b2b_status_reminder, b2b_status_lock, b2b_status_unlock';
+COMMENT ON COLUMN b2b_product_status_schedule.minutes IS
+    'Минуты от полуночи Europe/Moscow';
 
 CREATE TABLE b2b_product_status_row (
     id              BIGSERIAL PRIMARY KEY,

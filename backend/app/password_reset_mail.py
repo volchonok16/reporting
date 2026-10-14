@@ -177,12 +177,12 @@ def status_office_lock_state_email_html(
     if locked:
         title = "Офис заблокирован"
         message = (
-            f"Офис «{safe_name}» заблокирован для внесения статуса. "
+            f"«{safe_name}» заблокирован для внесения статуса. "
             "Для разблокировки обратитесь к Склярову Ивану или Тараскину Александру."
         )
     else:
         title = "Офис разблокирован"
-        message = f"Офис «{safe_name}» разблокирован для внесения статуса."
+        message = f"«{safe_name}» разблокирован для внесения статуса."
     body = f"""
           <tr>
             <td style="padding:8px 28px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#000000;">
@@ -203,12 +203,12 @@ def status_office_lock_state_email_text(*, office_name: str, locked: bool) -> st
     if locked:
         title = "Офис заблокирован"
         message = (
-            f"Офис «{office_name}» заблокирован для внесения статуса. "
+            f"«{office_name}» заблокирован для внесения статуса. "
             "Для разблокировки обратитесь к Склярову Ивану или Тараскину Александру."
         )
     else:
         title = "Офис разблокирован"
-        message = f"Офис «{office_name}» разблокирован для внесения статуса."
+        message = f"«{office_name}» разблокирован для внесения статуса."
     return (
         f"{title}\n\n"
         "Добрый день.\n\n"

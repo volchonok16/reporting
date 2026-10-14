@@ -121,8 +121,8 @@ export default function ProductStatusOfficeAccess({
       {open ? (
         <div className="product-status-office-access-panel">
           <p className="product-status-office-access-note">
-            {officeName}. В четверг с 09:30 офис с автоблокировкой закрывается для статуса, в 18:00
-            открывается. Письмо уходит только закреплённым сотрудникам.
+            {officeName}. Офис с автоблокировкой закрывается и открывается по расписанию. Письмо
+            уходит только закреплённым сотрудникам.
           </p>
           <button
             type="button"

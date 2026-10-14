@@ -192,6 +192,15 @@ def _replace_office_rows_from_snapshot(
         )
 
 
+def _iso_timestamp(value: Any) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    text_value = str(value).strip()
+    return text_value or None
+
+
 def _sheet_from_rows(
     *,
     gid: str,
@@ -200,6 +209,8 @@ def _sheet_from_rows(
     projects: list[str] | None = None,
     project_priority_ranges: dict[str, ProductStatusPriorityRangeOut] | None = None,
     editing_locked: bool = False,
+    editing_locked_at: Any = None,
+    editing_unlocked_at: Any = None,
     attachments_by_row: dict[int, list[dict[str, Any]]] | None = None,
 ) -> ProductStatusSheetOut:
     files_by_row = attachments_by_row or {}
@@ -220,6 +231,8 @@ def _sheet_from_rows(
         projects=list(projects or []),
         projectPriorityRanges=dict(project_priority_ranges or {}),
         editingLocked=bool(editing_locked),
+        editingLockedAt=_iso_timestamp(editing_locked_at),
+        editingUnlockedAt=_iso_timestamp(editing_unlocked_at),
     )
 
 
@@ -309,7 +322,7 @@ def _load_offices(db: Session) -> list[dict[str, Any]]:
     result = db.execute(
         text(
             """
-            SELECT id, gid, name, editing_locked
+            SELECT id, gid, name, editing_locked, editing_locked_at, editing_unlocked_at
             FROM b2b_product_status_office
             WHERE is_active = TRUE
             ORDER BY sort_order, id
@@ -392,7 +405,7 @@ def _load_office(db: Session, *, gid: str) -> dict[str, Any] | None:
     result = db.execute(
         text(
             """
-            SELECT id, gid, name, editing_locked
+            SELECT id, gid, name, editing_locked, editing_locked_at, editing_unlocked_at
             FROM b2b_product_status_office
             WHERE gid = :gid AND is_active = TRUE
             """
@@ -475,6 +488,8 @@ def load_b2b_product_status_from_db(
                     projects=office_projects,
                     projectPriorityRanges=office_ranges,
                     editingLocked=bool(office.get("editing_locked")),
+                    editingLockedAt=_iso_timestamp(office.get("editing_locked_at")),
+                    editingUnlockedAt=_iso_timestamp(office.get("editing_unlocked_at")),
                 )
             )
             continue
@@ -491,6 +506,8 @@ def load_b2b_product_status_from_db(
                 projects=office_projects,
                 project_priority_ranges=office_ranges,
                 editing_locked=bool(office.get("editing_locked")),
+                editing_locked_at=office.get("editing_locked_at"),
+                editing_unlocked_at=office.get("editing_unlocked_at"),
                 attachments_by_row=attachments_by_row,
             )
         )
@@ -558,7 +575,7 @@ def _assert_office_editable(office: dict[str, Any], meta: dict[str, Any] | None 
         raise HTTPException(
             status_code=403,
             detail=(
-                f"Редактирование офиса «{office['name']}» заблокировано. "
+                f"«{office['name']}» заблокирован для внесения изменений. "
                 "Для разблокировки обратитесь к Склярову Ивану или Тараскину Александру."
             ),
         )
@@ -570,7 +587,15 @@ def set_auto_lock_offices_editing_locked(db: Session, *, locked: bool) -> list[d
         text(
             """
             UPDATE b2b_product_status_office
-            SET editing_locked = :locked
+            SET editing_locked = :locked,
+                editing_locked_at = CASE
+                    WHEN editing_locked IS DISTINCT FROM :locked AND :locked IS TRUE THEN NOW()
+                    ELSE editing_locked_at
+                END,
+                editing_unlocked_at = CASE
+                    WHEN editing_locked IS DISTINCT FROM :locked AND :locked IS FALSE THEN NOW()
+                    ELSE editing_unlocked_at
+                END
             WHERE is_active = TRUE
               AND auto_lock_enabled = TRUE
               AND editing_locked IS DISTINCT FROM :locked
@@ -677,6 +702,10 @@ def set_b2b_product_status_office_access(
                 editing_locked = CASE
                     WHEN :unlocked_now THEN FALSE
                     ELSE editing_locked
+                END,
+                editing_unlocked_at = CASE
+                    WHEN :unlocked_now THEN NOW()
+                    ELSE editing_unlocked_at
                 END
             WHERE id = :office_id
             """
@@ -708,18 +737,30 @@ def set_b2b_product_status_office_editing_locked(
             )
         raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
 
-    db.execute(
+    stamped = db.execute(
         text(
             """
             UPDATE b2b_product_status_office
-            SET editing_locked = :locked
+            SET editing_locked = :locked,
+                editing_locked_at = CASE
+                    WHEN editing_locked IS DISTINCT FROM :locked AND :locked IS TRUE THEN NOW()
+                    ELSE editing_locked_at
+                END,
+                editing_unlocked_at = CASE
+                    WHEN editing_locked IS DISTINCT FROM :locked AND :locked IS FALSE THEN NOW()
+                    ELSE editing_unlocked_at
+                END
             WHERE id = :office_id
+            RETURNING editing_locked_at, editing_unlocked_at
             """
         ),
         {"locked": locked, "office_id": int(office["id"])},
-    )
+    ).mappings().first()
     db.commit()
     office["editing_locked"] = locked
+    if stamped is not None:
+        office["editing_locked_at"] = stamped["editing_locked_at"]
+        office["editing_unlocked_at"] = stamped["editing_unlocked_at"]
     office_id = int(office["id"])
     projects = _load_office_projects(db, office_ids=[office_id])
     ranges = _load_office_project_priority_ranges(db, office_ids=[office_id])
@@ -735,6 +776,8 @@ def set_b2b_product_status_office_editing_locked(
         projects=projects.get(office_id, []),
         project_priority_ranges=ranges.get(office_id, {}),
         editing_locked=locked,
+        editing_locked_at=office.get("editing_locked_at"),
+        editing_unlocked_at=office.get("editing_unlocked_at"),
         attachments_by_row=attachments_by_row,
     )
 

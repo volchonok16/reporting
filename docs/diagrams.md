@@ -193,6 +193,11 @@ erDiagram
     b2b_product_status_office ||--o{ b2b_product_status_project : projects
     b2b_product_status_office ||--o{ b2b_product_status_office_member : members
     employee ||--o{ b2b_product_status_office_member : assigned
+    b2b_product_status_schedule {
+        text job_key PK
+        smallint weekday
+        smallint minutes
+    }
     b2b_news_section ||--o{ b2b_news_row : rows
     revenue_activity_section ||--o{ revenue_activity_row : rows
 

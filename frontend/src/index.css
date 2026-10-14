@@ -2345,6 +2345,26 @@ input.zni-field-overdue.zni-field-derived {
   overflow: auto;
 }
 
+.product-status-schedule-row {
+  display: grid;
+  grid-template-columns: 8.5rem 1fr 6.5rem;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.product-status-schedule-row select,
+.product-status-schedule-row input {
+  height: 32px;
+  padding: 0 8px;
+  border: 2px solid var(--text-primary, #000);
+  border-radius: 999px;
+  background: var(--surface-1, #fff);
+  color: var(--text-primary, #000);
+  font-size: 13px;
+}
+
 .product-status-office-access-list label {
   display: flex;
   gap: 8px;

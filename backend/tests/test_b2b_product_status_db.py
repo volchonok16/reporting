@@ -454,7 +454,7 @@ def test_save_rejects_when_office_editing_locked() -> None:
         )
 
     assert exc_info.value.status_code == 403
-    assert "заблокировано" in exc_info.value.detail.lower()
+    assert "заблокирован" in exc_info.value.detail.lower()
     db.commit.assert_not_called()
 
 
@@ -468,6 +468,11 @@ def test_set_office_editing_locked_updates_flag() -> None:
             "editing_locked": False,
         }
     )
+    update_result = MagicMock()
+    update_result.mappings.return_value.first.return_value = {
+        "editing_locked_at": None,
+        "editing_unlocked_at": None,
+    }
     projects_result = MagicMock()
     projects_result.__iter__.return_value = iter([])
     rows_result = MagicMock()
@@ -476,7 +481,7 @@ def test_set_office_editing_locked_updates_flag() -> None:
     db = MagicMock()
     db.execute.side_effect = [
         office_result,
-        MagicMock(),
+        update_result,
         projects_result,
         rows_result,
     ]

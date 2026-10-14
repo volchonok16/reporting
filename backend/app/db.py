@@ -235,6 +235,8 @@ def ensure_startup_schema() -> None:
         "078_app_scheduled_job_run.sql",
         "079_b2b_product_status_auto_lock.sql",
         "080_b2b_product_status_office_members.sql",
+        "081_b2b_product_status_office_lock_times.sql",
+        "082_b2b_product_status_schedule.sql",
     )
 
     auth_session_sql = """

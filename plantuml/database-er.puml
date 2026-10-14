@@ -335,6 +335,12 @@ package "Статус продукта B2B" #E0F0FF {
     employee_id : FK
   }
 
+  class b2b_product_status_schedule <<table>> {
+    +job_key : text PK
+    weekday : smallint
+    minutes : smallint
+  }
+
   class b2b_product_status_row <<table>> {
     +id : bigserial PK
     office_id : FK

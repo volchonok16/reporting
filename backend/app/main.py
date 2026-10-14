@@ -118,6 +118,8 @@ from app.schemas import (
     ProductStatusOfficeAccessOut,
     ProductStatusOfficeEditingLockIn,
     ProductStatusOfficeMemberOut,
+    ProductStatusScheduleOut,
+    ProductStatusScheduleSlotOut,
     ProductStatusSaveIn,
     ProductStatusSheetOut,
     ProductStatusSnapshotsOut,
@@ -965,6 +967,80 @@ def product_status_b2b_office_access_save(
             origin_connection_id=x_live_connection_id,
         )
     return _office_access_out(saved)
+
+
+def _schedule_slot(weekday: int, minutes: int) -> ProductStatusScheduleSlotOut:
+    from app.status_office_schedule import format_schedule_time
+
+    return ProductStatusScheduleSlotOut(weekday=weekday, time=format_schedule_time(minutes))
+
+
+def _schedule_out(slots: dict) -> ProductStatusScheduleOut:
+    from app.status_office_schedule import JOB_LOCK, JOB_REMINDER, JOB_UNLOCK
+
+    return ProductStatusScheduleOut(
+        reminder=_schedule_slot(slots[JOB_REMINDER].weekday, slots[JOB_REMINDER].minutes),
+        lock=_schedule_slot(slots[JOB_LOCK].weekday, slots[JOB_LOCK].minutes),
+        unlock=_schedule_slot(slots[JOB_UNLOCK].weekday, slots[JOB_UNLOCK].minutes),
+    )
+
+
+def _schedule_from_payload(payload: ProductStatusScheduleOut) -> dict:
+    from app.status_office_schedule import JOB_LOCK, JOB_REMINDER, JOB_UNLOCK, ScheduleSlot, parse_schedule_time
+
+    parsed: dict = {}
+    for key, slot in (
+        (JOB_REMINDER, payload.reminder),
+        (JOB_LOCK, payload.lock),
+        (JOB_UNLOCK, payload.unlock),
+    ):
+        if slot.weekday < 0 or slot.weekday > 6:
+            raise HTTPException(status_code=400, detail="День недели должен быть от понедельника до воскресенья.")
+        try:
+            minutes = parse_schedule_time(slot.time)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        parsed[key] = ScheduleSlot(slot.weekday, minutes)
+    return parsed
+
+
+@app.get(
+    "/api/product-status/b2b/schedule",
+    response_model=ProductStatusScheduleOut,
+)
+def product_status_b2b_schedule(
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_full_app_access),
+) -> ProductStatusScheduleOut:
+    _, meta = get_session_with_meta(x_session_id)
+    if not is_superadmin_user(meta):
+        raise HTTPException(status_code=403, detail="Расписание меняет только суперадминистратор.")
+    from app.status_office_schedule import load_product_status_schedule
+
+    return _schedule_out(load_product_status_schedule(db))
+
+
+@app.put(
+    "/api/product-status/b2b/schedule",
+    response_model=ProductStatusScheduleOut,
+)
+def product_status_b2b_schedule_save(
+    payload: ProductStatusScheduleOut,
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_full_app_access),
+) -> ProductStatusScheduleOut:
+    _, meta = get_session_with_meta(x_session_id)
+    if not is_superadmin_user(meta):
+        raise HTTPException(status_code=403, detail="Расписание меняет только суперадминистратор.")
+    from app.status_office_schedule import save_product_status_schedule
+
+    try:
+        saved = save_product_status_schedule(db, _schedule_from_payload(payload))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _schedule_out(saved)
 
 
 @app.delete("/api/product-status/b2b/rows/{row_id}")

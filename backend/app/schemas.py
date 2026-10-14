@@ -259,6 +259,8 @@ class ProductStatusSheetOut(BaseModel):
         description="Проект координации → допустимый диапазон чисел для «Приоритет»",
     )
     editingLocked: bool = False
+    editingLockedAt: str | None = None
+    editingUnlockedAt: str | None = None
     readOnly: bool = False
 
 
@@ -292,6 +294,17 @@ class ProductStatusOfficeAccessOut(BaseModel):
 class ProductStatusOfficeAccessIn(BaseModel):
     autoLockEnabled: bool
     employeeIds: list[int] = Field(default_factory=list)
+
+
+class ProductStatusScheduleSlotOut(BaseModel):
+    weekday: int
+    time: str
+
+
+class ProductStatusScheduleOut(BaseModel):
+    reminder: ProductStatusScheduleSlotOut
+    lock: ProductStatusScheduleSlotOut
+    unlock: ProductStatusScheduleSlotOut
 
 
 class ProductStatusB2BOut(BaseModel):

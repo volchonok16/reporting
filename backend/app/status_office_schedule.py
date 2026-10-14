@@ -1,8 +1,8 @@
 """Расписание статуса продукта B2B по Москве.
 
-Среда, с 10:00 — напоминание лидам и администраторам.
-Четверг, с 09:30 — блокировка всех офисов и письмо о блокировке.
-Четверг, с 18:00 — разблокировка всех офисов.
+День и время трёх заданий читаются из b2b_product_status_schedule.
+По умолчанию: среда с 10:00 — напоминание, четверг с 09:30 — блокировка,
+четверг с 18:00 — разблокировка. Меняет только суперадминистратор.
 Повторный запуск в тот же день не дублирует действие.
 """
 
@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import threading
 from datetime import datetime
+from dataclasses import dataclass
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
@@ -24,22 +25,95 @@ JOB_REMINDER = "b2b_status_reminder"
 JOB_LOCK = "b2b_status_lock"
 JOB_UNLOCK = "b2b_status_unlock"
 
+@dataclass(frozen=True)
+class ScheduleSlot:
+    weekday: int
+    minutes: int
+
+
+DEFAULT_SCHEDULE: dict[str, ScheduleSlot] = {
+    JOB_REMINDER: ScheduleSlot(2, 10 * 60),
+    JOB_LOCK: ScheduleSlot(3, 9 * 60 + 30),
+    JOB_UNLOCK: ScheduleSlot(3, 18 * 60),
+}
+
 _stop = threading.Event()
 _thread: threading.Thread | None = None
 
 
-def jobs_due(local: datetime) -> list[str]:
+def jobs_due(local: datetime, schedule: dict[str, ScheduleSlot] | None = None) -> list[str]:
     """Какие задания пора выполнить в эту минуту московского времени."""
+    slots = schedule or DEFAULT_SCHEDULE
     weekday = local.weekday()
     minutes = local.hour * 60 + local.minute
     due: list[str] = []
-    if weekday == 2 and minutes >= 10 * 60:
+    reminder = slots[JOB_REMINDER]
+    lock = slots[JOB_LOCK]
+    unlock = slots[JOB_UNLOCK]
+    if weekday == reminder.weekday and minutes >= reminder.minutes:
         due.append(JOB_REMINDER)
-    if weekday == 3 and 9 * 60 + 30 <= minutes < 18 * 60:
-        due.append(JOB_LOCK)
-    if weekday == 3 and minutes >= 18 * 60:
+    if weekday == lock.weekday and minutes >= lock.minutes:
+        if lock.weekday != unlock.weekday or minutes < unlock.minutes:
+            due.append(JOB_LOCK)
+    if weekday == unlock.weekday and minutes >= unlock.minutes:
         due.append(JOB_UNLOCK)
     return due
+
+
+def format_schedule_time(minutes: int) -> str:
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+
+def parse_schedule_time(value: str) -> int:
+    parts = value.strip().split(":")
+    if len(parts) != 2:
+        raise ValueError("Укажите время в формате ЧЧ:ММ.")
+    hour = int(parts[0])
+    minute = int(parts[1])
+    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+        raise ValueError("Укажите время в формате ЧЧ:ММ.")
+    return hour * 60 + minute
+
+
+def load_product_status_schedule(db: Session) -> dict[str, ScheduleSlot]:
+    slots = dict(DEFAULT_SCHEDULE)
+    rows = db.execute(
+        text(
+            """
+            SELECT job_key, weekday, minutes
+            FROM b2b_product_status_schedule
+            """
+        )
+    ).mappings()
+    for row in rows:
+        key = str(row["job_key"])
+        if key not in slots:
+            continue
+        slots[key] = ScheduleSlot(int(row["weekday"]), int(row["minutes"]))
+    return slots
+
+
+def save_product_status_schedule(db: Session, slots: dict[str, ScheduleSlot]) -> dict[str, ScheduleSlot]:
+    lock = slots[JOB_LOCK]
+    unlock = slots[JOB_UNLOCK]
+    if lock.weekday == unlock.weekday and lock.minutes >= unlock.minutes:
+        raise ValueError("В один день блокировка должна быть раньше разблокировки.")
+    for key in (JOB_REMINDER, JOB_LOCK, JOB_UNLOCK):
+        slot = slots[key]
+        db.execute(
+            text(
+                """
+                INSERT INTO b2b_product_status_schedule (job_key, weekday, minutes)
+                VALUES (:job_key, :weekday, :minutes)
+                ON CONFLICT (job_key) DO UPDATE
+                    SET weekday = EXCLUDED.weekday,
+                        minutes = EXCLUDED.minutes
+                """
+            ),
+            {"job_key": key, "weekday": slot.weekday, "minutes": slot.minutes},
+        )
+    db.commit()
+    return load_product_status_schedule(db)
 
 
 def claim_job(db: Session, job_key: str, ran_on) -> bool:
@@ -178,9 +252,9 @@ def send_office_lock_notice(db: Session, *, office_id: int, office_name: str, lo
 
     recipients = office_member_emails(db, office_id)
     subject = (
-        f"Офис «{office_name}» заблокирован для внесения статуса"
+        f"«{office_name}» заблокирован для внесения статуса"
         if locked
-        else f"Офис «{office_name}» разблокирован для внесения статуса"
+        else f"«{office_name}» разблокирован для внесения статуса"
     )
     if not recipients:
         logger.warning("Письмо «%s»: у офиса нет закреплённых сотрудников с почтой", subject)
@@ -231,9 +305,6 @@ def _send_notice(db: Session, *, subject: str, html: str, text: str) -> None:
 
 def run_due_jobs(now: datetime | None = None) -> list[str]:
     local = (now or datetime.now(MOSCOW)).astimezone(MOSCOW)
-    due = jobs_due(local)
-    if not due:
-        return []
     from app.b2b_product_status_db import set_auto_lock_offices_editing_locked
     from app.db import close_db_session, get_db
     from app.password_reset_mail import (
@@ -245,6 +316,9 @@ def run_due_jobs(now: datetime | None = None) -> list[str]:
     db = next(get_db())
     ran: list[str] = []
     try:
+        due = jobs_due(local, load_product_status_schedule(db))
+        if not due:
+            return []
         for job_key in due:
             if not claim_job(db, job_key, local.date()):
                 continue

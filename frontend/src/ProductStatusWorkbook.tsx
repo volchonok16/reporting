@@ -26,6 +26,7 @@ import {
 import { computeRevenueColumnTotals, withRevenueResult } from './revenueActivitiesColumns'
 import ProductStatusColumnFilter, { rowMatchesColumnFilters } from './ProductStatusColumnFilter'
 import ProductStatusOfficeAccess from './ProductStatusOfficeAccess'
+import ProductStatusSchedule from './ProductStatusSchedule'
 import type { ChangeRequest, TaskLookupResponse } from './zniTypes'
 import ZniDetailModal from './ZniDetailModal'
 import {
@@ -50,6 +51,25 @@ import {
 
 const PRODUCT_STATUS_SUMMARY_GID = 'summary'
 
+function formatOfficeLockMoment(value?: string | null): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat('ru-RU', {
+    timeZone: 'Europe/Moscow',
+    day: 'numeric',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
+}
+
+function officeLockNotice(name: string, lockedAt?: string | null, tail = ''): string {
+  const moment = formatOfficeLockMoment(lockedAt)
+  const when = moment ? ` с ${moment}` : ''
+  return `«${name}» заблокирован для внесения изменений${when}.${tail}`
+}
+
 type ProductStatusSheet = {
   gid: string
   name: string
@@ -59,6 +79,8 @@ type ProductStatusSheet = {
   projects?: string[]
   projectPriorityRanges?: ProjectPriorityRangesMap
   editingLocked?: boolean
+  editingLockedAt?: string | null
+  editingUnlockedAt?: string | null
   readOnly?: boolean
 }
 
@@ -916,7 +938,7 @@ export default function ProductStatusWorkbook({
     if (lockedSheetNames.length > 0 && !bypassOfficeEditLock) {
       notifyWarning(
         lockedSheetNames.length === 1
-          ? `Редактирование офиса «${lockedSheetNames[0]}» заблокировано администратором`
+          ? `«${lockedSheetNames[0]}» заблокирован для внесения изменений`
           : 'Редактирование одного или нескольких офисов заблокировано администратором',
       )
       return false
@@ -1054,6 +1076,8 @@ export default function ProductStatusWorkbook({
             ? {
                 ...item,
                 editingLocked: Boolean(payload.editingLocked),
+                editingLockedAt: payload.editingLockedAt ?? null,
+                editingUnlockedAt: payload.editingUnlockedAt ?? null,
               }
             : item,
         ),
@@ -2181,6 +2205,9 @@ export default function ProductStatusWorkbook({
 
       {afterHeader}
 
+      {enableOfficeEditLock && viewMode === 'table' ? (
+        <ProductStatusSchedule apiBase={apiBase} />
+      ) : null}
       {enableOfficeEditLock && activeGid && activeSheet && !activeSheet.readOnly && viewMode === 'table' ? (
         <ProductStatusOfficeAccess apiBase={apiBase} gid={activeGid} officeName={activeSheet.name} />
       ) : null}
@@ -2201,13 +2228,17 @@ export default function ProductStatusWorkbook({
                 {activeSheetReadOnly
                   ? 'Сводка собирается автоматически из строк с галочкой «Идет в презентацию» и сгруппирована по офисам — только просмотр.'
                   : canUnlockOffice
-                    ? `Редактирование офиса «${activeSheet.name}» заблокировано.`
-                    : `Редактирование офиса «${activeSheet.name}» заблокировано. Для разблокировки обратитесь к Склярову Ивану или Тараскину Александру.`}
+                    ? officeLockNotice(activeSheet.name, activeSheet.editingLockedAt)
+                    : officeLockNotice(
+                        activeSheet.name,
+                        activeSheet.editingLockedAt,
+                        ' Для разблокировки обратитесь к Склярову Ивану или Тараскину Александру.',
+                      )}
               </p>
             ) : null}
             {!isSheetReadOnly && activeSheetEditingLocked && bypassOfficeEditLock && activeSheet ? (
               <p className="product-status-editing-locked-banner" role="status">
-                Офис «{activeSheet.name}» заблокирован для внесения изменений.
+                {officeLockNotice(activeSheet.name, activeSheet.editingLockedAt)}
               </p>
             ) : null}
 
