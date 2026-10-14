@@ -26,7 +26,7 @@
 
 ## Архитектура
 
-Workbench: **ЗНИ**, **Статус продукта B2B** (+ PPTX), **Планы Digital**, **Доска YouJail**, **Staffing**, **Диаграммы**.  
+Workbench: **ЗНИ**, **Статус продукта B2B** (+ PPTX), **Доска YouJail**, **Staffing**, **Диаграммы**. Вкладка «Планы Digital» скрыта.  
 Инфраструктура Compose: **PostgreSQL**, **MinIO** (фото), диск **YOUJAIL_WORKSPACE_DIR**, шаблон **Status.pptx**.
 
 ```mermaid

@@ -30,7 +30,6 @@ const SHEETS: SheetTab[] = [
   { id: 'products', label: 'Продукты' },
   { id: 'product-status-b2b', label: 'Статус продукта B2B' },
   { id: 'gov-initiatives', label: 'Госинициативы' },
-  { id: 'roadmap', label: 'Планы Digital' },
   { id: 'youjail-board', label: 'Доска' },
   { id: 'departments', label: 'Staffing' },
   { id: 'diagrams', label: 'Диаграммы' },
@@ -88,15 +87,11 @@ export default function WorkbookApp({
       appRole === 'roadmap'
         ? SHEETS.filter(
             (sheet) =>
-              sheet.id === 'roadmap' ||
               sheet.id === 'youjail-board' ||
               sheet.id === 'departments' ||
               sheet.id === 'voice',
           )
         : SHEETS
-    if (!canSyncTfs) {
-      sheets = sheets.filter((sheet) => sheet.id !== 'roadmap')
-    }
     // Планирование — только при явном доступе к вкладке (или админ).
     if (!planningAccess) {
       sheets = sheets.filter((sheet) => sheet.id !== 'planning')
@@ -108,7 +103,6 @@ export default function WorkbookApp({
     return sheets
   }, [
     appRole,
-    canSyncTfs,
     voiceOnly,
     planningAccess,
     otherUser,
@@ -129,12 +123,9 @@ export default function WorkbookApp({
       candidate = 'voice'
     } else if (appRole === 'roadmap') {
       candidate =
-        saved === 'departments' || saved === 'youjail-board' || saved === 'voice' ? saved : 'roadmap'
+        saved === 'departments' || saved === 'youjail-board' || saved === 'voice' ? saved : 'youjail-board'
     } else {
-      candidate = saved
-    }
-    if (candidate === 'roadmap' && !canSyncTfs) {
-      candidate = appRole === 'roadmap' ? 'departments' : 'zni'
+      candidate = saved === 'roadmap' ? 'zni' : saved
     }
     return candidate
   })

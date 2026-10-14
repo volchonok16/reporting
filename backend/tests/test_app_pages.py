@@ -16,7 +16,6 @@ def test_app_pages_registry_matches_workbook() -> None:
         "products",
         "product-status-b2b",
         "gov-initiatives",
-        "roadmap",
         "youjail-board",
         "departments",
         "diagrams",

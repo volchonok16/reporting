@@ -889,14 +889,14 @@ def product_status_b2b_office_editing_lock(
     if not payload.notify and not is_superadmin_user(meta):
         raise HTTPException(
             status_code=403,
-            detail="Без уведомления блокировку снимает только суперадминистратор.",
+            detail="Без уведомления блокировку меняет только суперадминистратор.",
         )
     sheet = set_b2b_product_status_office_editing_locked(
         db,
         gid=gid,
         locked=payload.locked,
     )
-    if payload.notify or payload.locked:
+    if payload.notify:
         from app.status_office_schedule import send_office_lock_notice_by_gid
 
         send_office_lock_notice_by_gid(db, gid=gid, locked=payload.locked)

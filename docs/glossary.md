@@ -695,7 +695,7 @@
 
 Дашборд-workbook: FastAPI + Vite; production — nginx + HTTPS (хосты в `.env` / `CERTBOT_DOMAINS`, см. [deploy/DEPLOY.md](../deploy/DEPLOY.md)).
 
-**Вкладки UI:** ЗНИ · Статус продукта B2B · Планы Digital · Доска (YouJail) · Staffing · Диаграммы (+ личный кабинет).
+**Вкладки UI:** ЗНИ · Статус продукта B2B · Доска (YouJail) · Staffing · Диаграммы (+ личный кабинет). Вкладка «Планы Digital» скрыта.
 
 | Компонент | Путь / URL | Назначение |
 |-----------|------------|------------|
@@ -1253,7 +1253,7 @@ Seed: миграция `013_b2b_product_status.sql` — SMS, VOICE, Перспе
 
 Напоминание общее и лежит в `b2b_product_status_schedule` (по умолчанию среда 10:00). Оно уходит лидам и администраторам и не зависит от `auto_lock_enabled`. День и время блокировки и разблокировки у каждого офиса свои: `b2b_product_status_office_schedule` (по умолчанию четверг 09:30 и 18:00). Меняет только суперадминистратор (`org_user.role = 1000`). Письмо уходит сотрудникам этого офиса. Повтор за тот же день не выполняется: `app_scheduled_job_run`, для офиса ключ `b2b_status_lock:{office_id}` и `b2b_status_unlock:{office_id}`. Момент блокировки и разблокировки конкретного офиса пишется в `editing_locked_at` и `editing_unlocked_at`. Миграции: `078_app_scheduled_job_run.sql`, `080_b2b_product_status_office_members.sql`, `081_b2b_product_status_office_lock_times.sql`, `082_b2b_product_status_schedule.sql`, `083_b2b_product_status_office_schedule.sql`.
 
-Сотрудники офиса, расписание автоблокировки и `skip_lock_until` задаёт суперадминистратор (`PUT /api/product-status/b2b/offices/{gid}/access`). Письмо «офис заблокирован / разблокирован» уходит только им: и по расписанию, и при ручной блокировке или снятии. Снятие кнопкой «Разблокировать без уведомления» (`PATCH` с `notify=false`) письмо не отправляет; так может только `org_user.role = 1000`. Миграция `084_b2b_product_status_office_skip_lock.sql`.
+Сотрудники офиса, расписание автоблокировки и `skip_lock_until` задаёт суперадминистратор (`PUT /api/product-status/b2b/offices/{gid}/access`). Письмо «офис заблокирован / разблокирован» уходит только им: и по расписанию, и при ручной блокировке или снятии. Кнопки «Заблокировать без уведомления» и «Разблокировать без уведомления» (`PATCH` с `notify=false`) письмо не отправляют; так может только `org_user.role = 1000`. Миграция `084_b2b_product_status_office_skip_lock.sql`.
 
 ## b2b_product_status_schedule — расписание статуса
 
