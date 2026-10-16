@@ -2271,7 +2271,7 @@ input.zni-field-overdue.zni-field-derived {
 }
 
 .product-status-toolbar-actions {
-  display: inline-flex;
+  display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
@@ -2286,13 +2286,20 @@ input.zni-field-overdue.zni-field-derived {
   box-shadow: none;
 }
 
-@media (min-width: 1400px) {
-  .product-status-toolbar-actions {
-    position: sticky;
-    top: calc(var(--workbook-header-offset, 56px) + 8px);
-    align-self: flex-start;
-    z-index: 25;
-  }
+.product-status-toolbar-actions > .product-status-office-access {
+  position: relative;
+  margin: 0;
+}
+
+.product-status-toolbar-actions > .product-status-office-access-panel,
+.product-status-toolbar-actions .product-status-office-access-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  left: auto;
+  z-index: 30;
+  width: min(420px, calc(100vw - 32px));
+  max-width: min(420px, calc(100vw - 32px));
 }
 
 .product-status-toolbar-actions-group {
@@ -2467,11 +2474,38 @@ input.zni-field-overdue.zni-field-derived {
   color: var(--text-muted);
 }
 
-.product-status-chrome-collapsed > .product-status-toolbar,
 .product-status-chrome-collapsed > .product-status-office-access,
 .product-status-chrome-collapsed > .product-status-scroll-chrome,
 .product-status-chrome-collapsed > .product-status-format-dock {
   display: none;
+}
+
+.product-status-chrome-collapsed > .product-status-toolbar {
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.product-status-chrome-collapsed > .product-status-toolbar .product-status-toolbar-left {
+  display: none;
+}
+
+.product-status-chrome-collapsed .product-status-toolbar-actions {
+  flex: 1 1 auto;
+  width: 100%;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.product-status-chrome-collapsed .product-status-toolbar-actions::-webkit-scrollbar {
+  display: none;
+}
+
+.product-status-chrome-collapsed .product-status-toolbar-actions-group,
+.product-status-chrome-collapsed .product-status-toolbar-actions > .product-status-office-access {
+  flex-shrink: 0;
 }
 
 .product-status-chrome-reveal {

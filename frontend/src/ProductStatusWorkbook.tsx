@@ -2164,6 +2164,12 @@ export default function ProductStatusWorkbook({
           </p>
         </div>
         <div className="product-status-toolbar-actions" role="toolbar" aria-label="Действия">
+          {enableOfficeEditLock && viewMode === 'table' ? (
+            <ProductStatusSchedule apiBase={apiBase} />
+          ) : null}
+          {enableOfficeEditLock && activeGid && activeSheet && !activeSheet.readOnly && viewMode === 'table' ? (
+            <ProductStatusOfficeAccess apiBase={apiBase} gid={activeGid} officeName={activeSheet.name} />
+          ) : null}
           {(enableExcelExport || enablePresentationExport) ? (
             <div className="product-status-toolbar-actions-group">
               {enableExcelExport ? (
@@ -2274,13 +2280,6 @@ export default function ProductStatusWorkbook({
       </header>
 
       {afterHeader}
-
-      {enableOfficeEditLock && viewMode === 'table' ? (
-        <ProductStatusSchedule apiBase={apiBase} />
-      ) : null}
-      {enableOfficeEditLock && activeGid && activeSheet && !activeSheet.readOnly && viewMode === 'table' ? (
-        <ProductStatusOfficeAccess apiBase={apiBase} gid={activeGid} officeName={activeSheet.name} />
-      ) : null}
 
       {viewMode === 'table' ? (
         <div

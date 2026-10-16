@@ -432,8 +432,22 @@
   }
 
   .product-status-toolbar-actions .product-status-toolbar-btn {
-    flex: 1 1 0;
+    flex: 1 1 auto;
     min-width: 0;
+  }
+
+  .product-status-toolbar-actions > .product-status-office-access {
+    width: 100%;
+  }
+
+  .product-status-toolbar-actions > .product-status-office-access > .product-status-toolbar-btn {
+    width: 100%;
+  }
+
+  .product-status-toolbar-actions .product-status-office-access-panel {
+    position: static;
+    width: 100%;
+    max-width: none;
   }
 
   .product-status-sheet-tabs {
