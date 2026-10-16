@@ -1,4 +1,9 @@
-from app.product_status_save_helpers import apply_row_order, resolve_row
+from app.product_status_save_helpers import (
+    apply_row_order,
+    priority_token,
+    resolve_row,
+    same_priority_value,
+)
 from app.schemas import ProductStatusCellUpdate
 
 
@@ -72,3 +77,19 @@ def test_resolve_row_without_new_map_falls_back_to_legacy_index() -> None:
         row_by_id={10: existing},
     )
     assert row is existing
+
+
+def test_priority_token_ignores_formatting():
+    assert priority_token("31") == "31"
+    assert priority_token(" 31 ") == "31"
+    assert priority_token("[[bold::31]]") == "31"
+    assert priority_token("<<cell:bg:FFFF00>>31<<>>") == "31"
+    assert priority_token("") == ""
+    assert priority_token("нет номера") == ""
+
+
+def test_same_priority_value_treats_formatted_number_as_equal():
+    assert same_priority_value("31", "[[bold::31]]")
+    assert same_priority_value("", "   ")
+    assert not same_priority_value("", "31")
+    assert not same_priority_value("31", "32")

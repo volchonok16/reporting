@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -7,7 +8,10 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.product_status_rich_text import display_cell_text
 from app.schemas import ProductStatusCellUpdate
+
+_PRIORITY_NUMBER = re.compile(r"-?\d+")
 
 
 def resolve_row(
@@ -53,6 +57,26 @@ def apply_row_order(
 def read_row_cell(row: dict[str, Any], column: str, *, normalize_cells) -> str:
     cells = normalize_cells(row.get("cells"))
     return cells.get(column, "")
+
+
+def is_priority_column(column: str) -> bool:
+    return column.strip().lower() == "приоритет"
+
+
+def priority_token(value: str | None) -> str:
+    """Число приоритета без оформления. Пустая строка — номера нет."""
+    plain = display_cell_text(value or "").strip()
+    match = _PRIORITY_NUMBER.search(plain)
+    if match is None:
+        return ""
+    try:
+        return str(int(match.group(0)))
+    except ValueError:
+        return ""
+
+
+def same_priority_value(left: str | None, right: str | None) -> bool:
+    return priority_token(left) == priority_token(right)
 
 
 _ALLOWED_CELL_TABLES = frozenset(

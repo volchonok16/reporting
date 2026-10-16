@@ -14,8 +14,10 @@ from app.product_status_rich_text import display_cell_text, parse_embedded_table
 from app.product_status_save_helpers import (
     apply_row_order,
     fetch_row_cell,
+    is_priority_column,
     raise_save_conflicts,
     resolve_row,
+    same_priority_value,
     update_row_cell_if_expected,
 )
 from app.schemas import (
@@ -961,7 +963,9 @@ def save_b2b_product_status_to_db(
             cells = _normalize_cells(row.get("cells"))
             current_value = cells.get(column, "")
             new_value = update.value
-            if current_value == new_value:
+            if current_value == new_value or (
+                is_priority_column(column) and same_priority_value(current_value, new_value)
+            ):
                 continue
 
             expected_value = (
@@ -969,6 +973,9 @@ def save_b2b_product_status_to_db(
                 if update.expectedValue is not None
                 else current_value
             )
+            # «31», «31 » и [[bold::31]] — один приоритет. В SQL уходит текст из базы.
+            if is_priority_column(column) and same_priority_value(expected_value, current_value):
+                expected_value = current_value
             if update.rowId is not None:
                 updated = update_row_cell_if_expected(
                     db,
@@ -988,7 +995,10 @@ def save_b2b_product_status_to_db(
                         column=column,
                         normalize_cells=_normalize_cells,
                     )
-                    if fresh_value == new_value:
+                    if fresh_value == new_value or (
+                        is_priority_column(column)
+                        and same_priority_value(fresh_value, new_value)
+                    ):
                         cells[column] = new_value
                         row["cells"] = cells
                         continue

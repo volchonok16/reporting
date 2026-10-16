@@ -235,6 +235,32 @@ function sortSheetRowsByPriority(sheet: ProductStatusSheet): ProductStatusSheet 
   return { ...sheet, rows, totalShown: rows.length }
 }
 
+/**
+ * База для оптимистичной блокировки — то, что лежит в БД.
+ * Сортировка на экране очищает приоритет у «Неактуальное», но expectedValue
+ * должен остаться сохранённым номером, иначе сохранение получает 409.
+ */
+function baselineSheetFromServer(sheet: ProductStatusSheet): ProductStatusSheet {
+  const priorityColumn = sheet.columns.find((column) => isPriorityColumn(column))
+  const sorted = sortSheetRowsByPriority(sheet)
+  if (!priorityColumn) return sorted
+  const storedById = new Map<string, string>()
+  for (const row of sheet.rows) {
+    const rowId = row[PRODUCT_STATUS_ROW_ID_KEY]
+    if (rowId) storedById.set(rowId, row[priorityColumn] ?? '')
+  }
+  return {
+    ...sorted,
+    rows: sorted.rows.map((row) => {
+      const rowId = row[PRODUCT_STATUS_ROW_ID_KEY]
+      if (!rowId || !storedById.has(rowId)) return row
+      const stored = storedById.get(rowId) ?? ''
+      if ((row[priorityColumn] ?? '') === stored) return row
+      return { ...row, [priorityColumn]: stored }
+    }),
+  }
+}
+
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -695,7 +721,7 @@ export default function ProductStatusWorkbook({
           const merged = sortSheetRowsByPriority(
             rebaseLocalSheetOnRemote(local, oldBaseline, sheet),
           )
-          rememberBaseline(sortSheetRowsByPriority(sheet))
+          rememberBaseline(baselineSheetFromServer(sheet))
           setSheets((current) =>
             current.map((item) => (item.gid === gid ? cloneSheet(merged) : item)),
           )
@@ -712,7 +738,7 @@ export default function ProductStatusWorkbook({
       }
 
       const sortedSheet = sortSheetRowsByPriority(sheet)
-      rememberBaseline(sortedSheet)
+      rememberBaseline(baselineSheetFromServer(sheet))
       if (options?.baselineOnly) {
         return
       }
@@ -846,7 +872,7 @@ export default function ProductStatusWorkbook({
         resetBaselines()
         for (const sheet of payload.sheets) {
           if (sheet.columns.length > 0) {
-            rememberBaseline(sortSheetRowsByPriority(sheet))
+            rememberBaseline(baselineSheetFromServer(sheet))
           }
         }
         setDirty(false)
@@ -1021,7 +1047,7 @@ export default function ProductStatusWorkbook({
         if (!baseline || !loadedGids.has(sheet.gid)) {
           return sheet
         }
-        return cloneSheet(baseline)
+        return sortSheetRowsByPriority(cloneSheet(baseline))
       }),
     )
     setDirty(false)
