@@ -41,6 +41,7 @@
 | launching_soon_states / launched_states / in_progress_states | text | Статусы метрик через запятую |
 | sort_order | int | Порядок в селекте |
 | is_active | boolean | Участвует в синке и UI |
+| include_in_all_boards | boolean | `true` — ЗНИ доски входят во вкладку «Все доски». Своя вкладка и синк не зависят от флага |
 
 ## task — основная сущность
 
@@ -293,7 +294,7 @@
 |---------|---------------|------------|
 | `b2b_product_status_office` | `gid`, `name`, `sort_order`, `editing_locked`, `editing_locked_at`, `editing_unlocked_at`, `auto_lock_enabled` | Вкладки офисов. Время блокировки и разблокировки хранится отдельно по каждому офису |
 | `b2b_product_status_office_member` | `office_id`, `employee_id` | Сотрудники офиса: им уходит письмо о блокировке и разблокировке |
-| `app_scheduled_job_run` | `job_key`, `ran_on`, `ran_at` | Один запуск напоминания или блокировки статуса за календарный день |
+| `app_scheduled_job_run` | `job_key`, `ran_on`, `ran_at` | Один запуск напоминания, предупреждения за 30 минут, блокировки или разблокировки статуса за календарный день |
 | `b2b_product_status_schedule` | `job_key`, `weekday`, `minutes` | Общее напоминание о статусе, Europe/Moscow |
 | `b2b_product_status_office_schedule` | `office_id`, `job_key`, `weekday`, `minutes` | День и время блокировки и разблокировки одного офиса |
 | `b2b_product_status_office.skip_lock_until` | timestamptz | До этого момента офис не блокируется по расписанию |

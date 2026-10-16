@@ -164,6 +164,7 @@
 | `incident_error_sync_tags` | text | Теги инцидентов через запятую |
 | `sort_order` | int | Порядок в селекте досок |
 | `is_active` | boolean | Участвует в синке и UI |
+| `include_in_all_boards` | boolean | Вкладка «Все доски». `true` по умолчанию. `false` — ЗНИ этой строки не попадают в «Все доски», своя вкладка и синк остаются. Миграция `085_zni_board_include_in_all.sql` |
 
 ---
 
@@ -531,7 +532,7 @@
 
 **Планируемая дата** — из листа `System.IterationPath`: `2026.08.11.0-R` → `2026-08-11`, также `Dec.26` → `2026-12-01`; если в пути есть **TBD** — в UI выводится `TBD`; если дата из итерации не определена — подставляется **Целевая дата** (`Microsoft.VSTS.Scheduling.TargetDate`, поле `task.release_date`, напр. ЗНИ 1071033 → `03.12.2025`). **План квартала** — из даты, из квартального листа (`Q2'26`, `2026_Q3_DoC` → `Q2 2026` / `Q3 2026`) или `TBD`; фильтр `quarter` в API (`TBD`, `2026-Q3`, …). В выпадающем списке фильтра — только кварталы **текущего года** плюс отдельные пункты TBD и «Без квартала». **Плановый релиз** — из `Logrocon.FoundinRelease` или `Logrocon.Release`, если поле проставлено или релиз привязан; колонка «План. релиз» в дашборде и CSV. **Бронь ресурса ЕЦТ** — `ДА` / `НЕТ`: прямая Related-связь ЗНИ с элементом «Бронь ресурсов» (`TFS_RESOURCE_RESERVATION_TYPE_VALUES`, по умолчанию `Бронь ресурсов`).
 
-**Доски приложения** хранятся в таблице `zni_board` (не в коде): Digital (`Tele2\Digital\Streams\B2b`); Продукты (`Tele2\Продукты`, ЗНИ с `b2b_product`); Reports (`Tele2\Reports\Team A`, `b2b_product`); CORE / КАТС / Голосовые продукты / М2М / IoT / SMS / Solar / Umnico (area `Tele2\B2B Product…`, exclude `EFO`/`not_product`, метрики UAT/Pilot); Bercut (`BE-T2\BE Analytics`, `b2b_product`); ESB (`BE-T2\ESB\ESB Analytics`). Поля: `alias` (UI), `board_name`, `area_path`, `sync_tags`, `sync_tags_match` (`any`/`all`), `other_tags` («другие теги»), exclude/error-теги, GUID проекта/команды, статусы метрик. Seed — `db/migrations/043_zni_boards.sql`; режим мульти-тегов — `069_zni_board_sync_tags_match.sql`. Для досок с обязательными несколькими тегами: `UPDATE zni_board SET sync_tags = 'b2b_product,УКП_приоритет', sync_tags_match = 'all' WHERE code = '…';` — остальные доски оставляют `sync_tags_match = 'any'`.
+**Доски приложения** хранятся в таблице `zni_board` (не в коде): Digital (`Tele2\Digital\Streams\B2b`); Продукты (`Tele2\Продукты`, ЗНИ с `b2b_product`); Reports (`Tele2\Reports\Team A`, `b2b_product`); CORE / КАТС / Голосовые продукты / М2М / IoT / SMS / Solar / Umnico (area `Tele2\B2B Product…`, exclude `EFO`/`not_product`, метрики UAT/Pilot); Bercut (`BE-T2\BE Analytics`, `b2b_product`); ESB (`BE-T2\ESB\ESB Analytics`). Поля: `alias` (UI), `board_name`, `area_path`, `sync_tags`, `sync_tags_match` (`any`/`all`), `other_tags` («другие теги»), exclude/error-теги, GUID проекта/команды, статусы метрик. Seed — `db/migrations/043_zni_boards.sql`; режим мульти-тегов — `069_zni_board_sync_tags_match.sql`. Вкладка «Все доски» берёт только строки с `include_in_all_boards = true` (`085_zni_board_include_in_all.sql`). Убрать доску из общей вкладки: `UPDATE zni_board SET include_in_all_boards = false WHERE code = '…';` — если у alias несколько строк, флаг ставится на каждую. Для досок с обязательными несколькими тегами: `UPDATE zni_board SET sync_tags = 'b2b_product,УКП_приоритет', sync_tags_match = 'all' WHERE code = '…';` — остальные доски оставляют `sync_tags_match = 'any'`.
 
 **Одинаковый alias** (2, 3 и больше строк, например CRM: `Tele2\CRM\Prometheus` и `Tele2\CRM\CRM Team DoC`) — специально для склейки стримов: в селекте одна вкладка, синк идёт по каждому `area_path`, задачи сливаются. `prune_stale` чистит только свой `extra_json.board_code`, чтобы соседние area не затирали друг друга.
 
@@ -752,7 +753,7 @@
 | `GET /api/products?hideClosed=` | Список продуктов TFS с дочерними ЗНИ (`parent_task_id`) |
 | `POST /api/sync` | Синхронизация; body `{ board }` |
 | `GET /api/sync/status` | Статус и прогресс |
-| `GET /api/export?board=` | Excel: ЗНИ + ошибки, колонки «Заказчик» и «Продукт» (`parent_task_id`) |
+| `GET /api/export` | Excel тех же строк, что таблица ЗНИ: те же `board`, `search`, `sort`, даты, `status`, `quarter`, `customer`, `ect_reservation`, `linked_environment`, `metric`, `tag_group`. Колонки «Ссылка» (URL ЗНИ, гиперссылка и у номера) и «Продукт» (`parent_task_id`) |
 | `PATCH /api/tasks/{id}/external-data` | Внешние поля ЗНИ (приоритет, коммерческий эффект, даты); не в TFS. Любой авторизованный пользователь; **`actualPeriod`** — только администратор и только в статусах `ZNI_ACTUAL_PERIOD_EDITABLE_STATES` (по умолчанию `UAT,Pilot,Closed`) |
 | `GET/POST /api/notifications` | Inbox (по умолчанию только непрочитанные) и отправка уведомлений; получатели — все активные `org_user` при audience=`all`, независимо от ролей и доступа к вкладкам; звук при новых; тип `delivery=popup` — модальное окно по центру (опрос ~3 с). **Отправка только для администратора** |
 
@@ -1251,7 +1252,7 @@ Seed: миграция `013_b2b_product_status.sql` — SMS, VOICE, Перспе
 | `auto_lock_enabled` | boolean | Офис участвует в своей автоблокировке. По умолчанию `true`. `false` — расписание этого офиса не блокирует и не разблокирует его. Если выключить у уже заблокированного офиса, блокировка снимается сразу |
 | `skip_lock_until` | timestamptz | До этого момента офис не блокируется по расписанию. Пусто — блокировка идёт по `b2b_product_status_office_schedule`. Задаёт суперадминистратор |
 
-Напоминание общее и лежит в `b2b_product_status_schedule` (по умолчанию среда 10:00). Оно уходит лидам и администраторам и не зависит от `auto_lock_enabled`. День и время блокировки и разблокировки у каждого офиса свои: `b2b_product_status_office_schedule` (по умолчанию четверг 09:30 и 18:00). Меняет только суперадминистратор (`org_user.role = 1000`). Письмо уходит сотрудникам этого офиса. Повтор за тот же день не выполняется: `app_scheduled_job_run`, для офиса ключ `b2b_status_lock:{office_id}` и `b2b_status_unlock:{office_id}`. Момент блокировки и разблокировки конкретного офиса пишется в `editing_locked_at` и `editing_unlocked_at`. Миграции: `078_app_scheduled_job_run.sql`, `080_b2b_product_status_office_members.sql`, `081_b2b_product_status_office_lock_times.sql`, `082_b2b_product_status_schedule.sql`, `083_b2b_product_status_office_schedule.sql`.
+Напоминание общее и лежит в `b2b_product_status_schedule` (по умолчанию среда 10:00). Оно уходит лидам и администраторам и не зависит от `auto_lock_enabled`. День и время блокировки и разблокировки у каждого офиса свои: `b2b_product_status_office_schedule` (по умолчанию четверг 09:30 и 18:00). За 30 минут до блокировки этого офиса его сотрудникам уходит отдельное письмо «заблокируется через 30 минут». Если стоит `skip_lock_until`, предупреждение в этот срок не отправляется. Меняет только суперадминистратор (`org_user.role = 1000`). Письмо уходит сотрудникам этого офиса. Повтор за тот же день не выполняется: `app_scheduled_job_run`, для офиса ключ `b2b_status_lock_soon:{office_id}`, `b2b_status_lock:{office_id}` и `b2b_status_unlock:{office_id}`. Момент блокировки и разблокировки конкретного офиса пишется в `editing_locked_at` и `editing_unlocked_at`. Миграции: `078_app_scheduled_job_run.sql`, `080_b2b_product_status_office_members.sql`, `081_b2b_product_status_office_lock_times.sql`, `082_b2b_product_status_schedule.sql`, `083_b2b_product_status_office_schedule.sql`.
 
 Сотрудники офиса, расписание автоблокировки и `skip_lock_until` задаёт суперадминистратор (`PUT /api/product-status/b2b/offices/{gid}/access`). Письмо «офис заблокирован / разблокирован» уходит только им: и по расписанию, и при ручной блокировке или снятии. Кнопки «Заблокировать без уведомления» и «Разблокировать без уведомления» (`PATCH` с `notify=false`) письмо не отправляют; так может только `org_user.role = 1000`. Миграция `084_b2b_product_status_office_skip_lock.sql`.
 
@@ -1288,7 +1289,7 @@ Seed: миграция `013_b2b_product_status.sql` — SMS, VOICE, Перспе
 
 | Поле | Тип | Описание |
 |------|-----|----------|
-| `job_key` | text | PK. `b2b_status_reminder` либо `b2b_status_lock:{office_id}` и `b2b_status_unlock:{office_id}` |
+| `job_key` | text | PK. `b2b_status_reminder` либо `b2b_status_lock_soon:{office_id}`, `b2b_status_lock:{office_id}` и `b2b_status_unlock:{office_id}` |
 | `ran_on` | date | День Europe/Moscow, за который задание уже выполнено |
 | `ran_at` | timestamptz | Момент записи |
 

@@ -167,6 +167,37 @@ def _signature_html(logo_src: str) -> str:
           </tr>"""
 
 
+def status_office_lock_soon_email_html(*, office_name: str, logo_src: str = "") -> str:
+    safe_name = escape(office_name)
+    body = f"""
+          <tr>
+            <td style="padding:8px 28px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#000000;">
+              Добрый день.
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 28px 28px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#000000;">
+              «{safe_name}» заблокируется для внесения статуса через 30 минут.
+            </td>
+          </tr>
+          {_status_button_html()}
+          {_signature_html(logo_src)}"""
+    return _email_shell(title="Офис заблокируется через 30 минут", body=body, logo_src=logo_src)
+
+
+def status_office_lock_soon_email_text(*, office_name: str) -> str:
+    return (
+        "Офис заблокируется через 30 минут\n\n"
+        "Добрый день.\n\n"
+        f"«{office_name}» заблокируется для внесения статуса через 30 минут.\n"
+        f"Перейти к статусу: {STATUS_PAGE_URL}\n\n"
+        "t2 продукт\n"
+        "Менеджеры проектного офиса\n"
+        "ООО «Т2 Мобайл», г. Москва\n"
+        "Киевское шоссе, 22-й км., д.6, стр.1\n"
+    )
+
+
 def status_office_lock_state_email_html(
     *,
     office_name: str,

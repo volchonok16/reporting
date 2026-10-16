@@ -6,6 +6,7 @@ from app.boards import (
     boards_sharing_alias,
     ensure_boards_loaded,
     get_boards,
+    boards_included_in_all,
     grouped_boards_for_ui,
     is_all_boards,
     load_boards,
@@ -24,6 +25,35 @@ def test_is_all_boards() -> None:
     assert is_all_boards("all")
     assert is_all_boards(" ALL ")
     assert not is_all_boards("digital_streams_b2b")
+
+
+def test_boards_included_in_all_respects_flag() -> None:
+    included = BoardConfig(
+        code="core",
+        name="CORE",
+        display_name="CORE",
+        project="Tele2",
+        project_id="pid",
+        team_id="tid",
+        area_path=r"Tele2\B2B Product",
+        include_in_all_boards=True,
+    )
+    skipped = BoardConfig(
+        code="reports",
+        name="Reports",
+        display_name="Reports",
+        project="Tele2",
+        project_id="pid",
+        team_id="tid",
+        area_path=r"Tele2\Reports\Team A",
+        include_in_all_boards=False,
+    )
+    selected = boards_included_in_all([included, skipped])
+    assert [board.code for board in selected] == ["core"]
+    assert {board.code for board in boards_for_sync(ALL_BOARDS_CODE, [included, skipped])} == {
+        "core",
+        "reports",
+    }
 
 
 def test_boards_for_sync_all() -> None:

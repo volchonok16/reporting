@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.boards import (
     BoardConfig,
     boards_for_sync,
+    boards_included_in_all,
     boards_sharing_alias,
     ensure_boards_loaded,
     get_boards,
@@ -54,6 +55,7 @@ from app.schemas import (
     TagFilterGroupOut,
 )
 from app.zni_linked_environments import has_linked_environment, linked_environment_records_from_extra
+from app.zni_title_filters import is_excluded_zni_title
 from app.tag_filters import (
     DIGITAL_BOARD_CODE,
     normalize_tag_group_keys,
@@ -61,8 +63,6 @@ from app.tag_filters import (
     tag_filter_supported_for_board,
     task_matches_tag_groups,
 )
-from app.zni_title_filters import is_excluded_zni_title
-
 BERCUT_BOARD_CODE = "be_t2_team"
 INCIDENT_ERROR_ROW_TYPE = "error"
 
@@ -825,7 +825,7 @@ def load_change_requests(
     )
 
     if all_boards:
-        scope = _boards_task_clause(boards)
+        scope = _boards_task_clause(boards_included_in_all(boards))
     elif board is None:
         return DashboardOut(
             board=None,
@@ -973,6 +973,7 @@ def _boards_for_export(
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 _EXPORT_HEADERS = [
     "Номер ЗНИ",
+    "Ссылка",
     "ЗНИ",
     "Заказчик",
     "Продукт",
@@ -997,6 +998,8 @@ _EXPORT_HEADER_FILL = PatternFill(fill_type="solid", fgColor="CCCCCC")
 _EXPORT_HEADER_FONT = Font(bold=True)
 _EXPORT_LINK_FONT = Font(color="0563C1", underline="single")
 _EXPORT_TEXT_ALIGNMENT = Alignment(wrap_text=True, vertical="top")
+_EXPORT_NUMBER_COLUMN = _EXPORT_HEADERS.index("Номер ЗНИ") + 1
+_EXPORT_LINK_COLUMN = _EXPORT_HEADERS.index("Ссылка") + 1
 _EXPORT_PRODUCT_COLUMN = _EXPORT_HEADERS.index("Продукт") + 1
 _MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 
@@ -1015,6 +1018,7 @@ def _export_row_values(item: ChangeRequestOut) -> list[object]:
     errors_text = "; ".join(f"{e.id}: {e.title}" for e in item.errors)
     return [
         item.number,
+        item.url or "",
         item.title,
         item.customerName or "",
         _product_export_label(item),
@@ -1037,24 +1041,39 @@ def _export_row_values(item: ChangeRequestOut) -> list[object]:
     ]
 
 
-def _iter_export_items(
+def export_xlsx(
     db: Session,
-    board_code: str | None,
-    boards: list[BoardConfig],
-) -> list[ChangeRequestOut]:
-    items: list[ChangeRequestOut] = []
-    for board in _boards_for_export(board_code, boards):
-        single = load_change_requests(db, board_code=board.code)
-        for item in single.items:
-            if is_excluded_zni_title(item.title):
-                continue
-            items.append(item)
-    return items
-
-
-def export_xlsx(db: Session, *, board_code: str | None = None) -> tuple[bytes, str]:
-    boards = ensure_boards_loaded(db, refresh=True)
-    items = _iter_export_items(db, board_code, boards)
+    *,
+    board_code: str | None = None,
+    search: str | None = None,
+    sort: str = "planned_date_upcoming",
+    date_from: date | None = None,
+    date_to: date | None = None,
+    status: str | None = None,
+    quarter: str | None = None,
+    ect_reservation: str | None = None,
+    linked_environment: str | None = None,
+    metric: str | None = None,
+    tag_groups: list[str] | None = None,
+    customer: list[str] | str | None = None,
+) -> tuple[bytes, str]:
+    """Те же строки, что таблица ЗНИ при тех же фильтрах и сортировке."""
+    loaded = load_change_requests(
+        db,
+        board_code=board_code,
+        search=search,
+        sort=sort,
+        date_from=date_from,
+        date_to=date_to,
+        status=status,
+        quarter=quarter,
+        ect_reservation=ect_reservation,
+        linked_environment=linked_environment,
+        metric=metric,
+        tag_groups=tag_groups,
+        customer=customer,
+    )
+    items = [item for item in loaded.items if not is_excluded_zni_title(item.title)]
 
     workbook = Workbook()
     sheet = workbook.active
@@ -1069,6 +1088,11 @@ def export_xlsx(db: Session, *, board_code: str | None = None) -> tuple[bytes, s
         for col_index, value in enumerate(_export_row_values(item), start=1):
             cell = sheet.cell(row=row_index, column=col_index, value=value)
             cell.alignment = _EXPORT_TEXT_ALIGNMENT
+        if item.url:
+            for column in (_EXPORT_NUMBER_COLUMN, _EXPORT_LINK_COLUMN):
+                link_cell = sheet.cell(row=row_index, column=column)
+                link_cell.hyperlink = item.url
+                link_cell.font = _EXPORT_LINK_FONT
         if item.product and item.product.url:
             product_cell = sheet.cell(row=row_index, column=_EXPORT_PRODUCT_COLUMN)
             product_cell.hyperlink = item.product.url

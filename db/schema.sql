@@ -105,6 +105,7 @@ CREATE TABLE zni_board (
     incident_error_sync_tags        TEXT         NOT NULL DEFAULT '',
     sort_order                      INT          NOT NULL DEFAULT 0,
     is_active                       BOOLEAN      NOT NULL DEFAULT TRUE,
+    include_in_all_boards           BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at                      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at                      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
@@ -117,6 +118,7 @@ COMMENT ON COLUMN zni_board.area_path IS 'System.AreaPath для WIQL';
 COMMENT ON COLUMN zni_board.sync_tags IS 'Теги синка ЗНИ через запятую';
 COMMENT ON COLUMN zni_board.sync_tags_match IS 'any — хотя бы один тег из sync_tags; all — все sync_tags обязательны';
 COMMENT ON COLUMN zni_board.other_tags IS 'Другие теги (алиасы тегов) через запятую';
+COMMENT ON COLUMN zni_board.include_in_all_boards IS 'true — доска входит во вкладку «Все доски»; своя вкладка и синк не зависят от флага';
 
 CREATE TABLE person (
     id              BIGSERIAL PRIMARY KEY,

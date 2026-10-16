@@ -25,13 +25,13 @@ const CANVAS_PINCH_SENSITIVITY = 0.0046
 const CANVAS_FIT_MARGIN = 28
 const CANVAS_BASE_SCALE = 1.55
 const THEME_OPTIONS: Array<{ id: DiagramTheme; label: string }> = [
-  { id: 'default', label: 'Default' },
-  { id: 'forest', label: 'Forest' },
-  { id: 'dark', label: 'Dark' },
-  { id: 'neutral', label: 'Neutral' },
-  { id: 'neon', label: 'Neon' },
-  { id: 'ocean', label: 'Ocean' },
-  { id: 'pastel', label: 'Pastel' },
+  { id: 'default', label: 'Светлая' },
+  { id: 'forest', label: 'Лес' },
+  { id: 'dark', label: 'Тёмная' },
+  { id: 'neutral', label: 'Нейтральная' },
+  { id: 'neon', label: 'Неон' },
+  { id: 'ocean', label: 'Океан' },
+  { id: 'pastel', label: 'Пастель' },
 ]
 
 // ТЕМА/ПАЛИТРА 1-в-1 по mindmap-generator/js/themes.js
@@ -267,7 +267,7 @@ function DiagramPreviewCanvas({ content, contentKey }: DiagramPreviewCanvasProps
             {Math.round((scale / CANVAS_BASE_SCALE) * 100)}%
           </button>
         <button type="button" className="btn-ghost diagram-canvas-btn" onClick={() => zoomBy(CANVAS_ZOOM_STEP)}>+</button>
-        <button type="button" className="btn-ghost diagram-canvas-reset" onClick={fitToView}>Вписать</button>
+        <button type="button" className="btn-secondary diagram-canvas-reset" onClick={fitToView}>Вписать</button>
       </div>
       <div
         ref={sheetRef}
@@ -486,12 +486,12 @@ function renderFlowchartSvg(input: string, theme: DiagramTheme): string | null {
       const x2 = cx
       const y2 = cy + child.height / 2
       const mx = (x1 + x2) / 2
-      const stroke = node.color ?? '#5f7ea0'
+      const stroke = node.color ?? '#000000'
       const strokeWidth = Math.max(3.5, 18 - child.level * 4.5).toFixed(1)
       lines.push(`<polyline points="${x1},${y1} ${mx},${y1} ${mx},${y2} ${x2},${y2}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}"/>`)
       walk(child)
     }
-    const fill = node.color ?? '#3f6488'
+    const fill = node.color ?? '#000000'
     nodes.push(`<rect x="${x}" y="${y}" width="${node.width}" height="${node.height}" rx="8" fill="${fill}" stroke="${fill}"/>`)
     nodes.push(`<text x="${x + node.width / 2}" y="${y + node.height / 2 + 5}" text-anchor="middle" font-size="${node.level === 0 ? 14 : 13}" font-weight="600" fill="${getContrastColor(fill)}">${escapeXml(node.text)}</text>`)
   }
@@ -541,29 +541,29 @@ function renderSequenceSvg(input: string, theme: DiagramTheme): string | null {
   if (!data || data.participants.length === 0) return null
   const palette = getThemePalette(theme)
   const isDark = theme === 'dark'
-  const primaryTextColor = isDark ? '#e0e0e0' : '#1f2937'
+  const primaryTextColor = isDark ? '#ffffff' : '#000000'
   const participantTextColor = isDark ? '#ffffff' : '#000000'
   const colorByParticipant = new Map<string, string>()
   data.participants.forEach((p, i) => colorByParticipant.set(p, palette[i % palette.length]))
 
   const groupColors: Record<string, { stroke: string; dasharray: string; badgeFill: string; badgeText: string }> = {
     'ветка': {
-      stroke: isDark ? '#9ca3af' : '#6b7280',
+      stroke: isDark ? '#ffffff' : '#000000',
       dasharray: '6,3',
-      badgeFill: isDark ? '#374151' : '#f3f4f6',
-      badgeText: isDark ? '#e5e7eb' : '#1f2937',
+      badgeFill: isDark ? '#000000' : '#ffffff',
+      badgeText: isDark ? '#ffffff' : '#000000',
     },
     'цикл': {
-      stroke: isDark ? '#60a5fa' : '#2563eb',
+      stroke: '#16D5DF',
       dasharray: 'none',
-      badgeFill: isDark ? '#1e3a5f' : '#dbeafe',
-      badgeText: isDark ? '#bfdbfe' : '#1e3a8a',
+      badgeFill: '#16D5DF',
+      badgeText: '#000000',
     },
     'параллельные действия': {
-      stroke: isDark ? '#f59e0b' : '#d97706',
+      stroke: '#FF3495',
       dasharray: '8,4,2,4',
-      badgeFill: isDark ? '#78350f' : '#fef3c7',
-      badgeText: isDark ? '#fde68a' : '#92400e',
+      badgeFill: '#FF3495',
+      badgeText: '#000000',
     },
   }
   const startX = 120
@@ -642,11 +642,11 @@ function renderBpmnSvg(input: string, theme: DiagramTheme): string | null {
   if (!data || data.elements.length === 0) return null
   const palette = getThemePalette(theme)
   const isDark = theme === 'dark'
-  const primaryColor = palette[0] ?? '#3b82f6'
-  const textColor = isDark ? '#e0e0e0' : '#1f2937'
-  const laneFill = isDark ? '#1e293b' : '#f8fafc'
-  const laneStroke = isDark ? '#475569' : '#cbd5e1'
-  const elementFill = isDark ? '#334155' : '#ffffff'
+  const primaryColor = palette[0] ?? '#000000'
+  const textColor = isDark ? '#ffffff' : '#000000'
+  const laneFill = isDark ? '#000000' : '#ffffff'
+  const laneStroke = isDark ? '#ffffff' : '#000000'
+  const elementFill = isDark ? '#000000' : '#ffffff'
   const elementStroke = primaryColor
   const flowColor = primaryColor
   const laneHeight = 150
@@ -721,7 +721,7 @@ function renderWaveSvg(input: string, theme: DiagramTheme): string | null {
   const data = parseWaveData(input)
   if (!data) return null
   const palette = getThemePalette(theme)
-  const defaultColor = palette[0] ?? '#3b82f6'
+  const defaultColor = palette[0] ?? '#000000'
   const layers = new Map<string, number>()
   const incoming = new Set(data.links.map((l) => l.target))
   const queue = data.nodes.filter((n) => !incoming.has(n))
@@ -808,16 +808,13 @@ function highlightSyntax(text: string, kind: DiagramKind): string {
 }
 
 function mermaidThemeDirective(theme: DiagramTheme): string {
-  if (theme === 'default' || theme === 'forest' || theme === 'dark' || theme === 'neutral') {
-    return `%%{init: {"theme":"${theme}"}}%%`
-  }
-  if (theme === 'neon') {
-    return '%%{init: {"theme":"base","themeVariables":{"primaryColor":"#16D5DF","primaryTextColor":"#000000","primaryBorderColor":"#FF3495","lineColor":"#3c7480","fontFamily":"T2 Rooftop"}}}%%'
-  }
-  if (theme === 'ocean') {
-    return '%%{init: {"theme":"base","themeVariables":{"primaryColor":"#6fbed0","primaryTextColor":"#000000","primaryBorderColor":"#0fb8c2","lineColor":"#3c7480","fontFamily":"T2 Rooftop"}}}%%'
-  }
-  return '%%{init: {"theme":"base","themeVariables":{"primaryColor":"#e8f9ff","primaryTextColor":"#000000","primaryBorderColor":"#FF3495","lineColor":"#3c7480","fontFamily":"T2 Rooftop"}}}%%'
+  const dark = theme === 'dark'
+  const background = dark ? '#000000' : '#FFFFFF'
+  const text = dark ? '#FFFFFF' : '#000000'
+  const primary = theme === 'neon' ? '#16D5DF' : background
+  const border = theme === 'pastel' || theme === 'neon' ? '#FF3495' : text
+  const line = theme === 'neon' ? '#FF3495' : text
+  return `%%{init: {"theme":"base","themeVariables":{"darkMode":${dark ? 'true' : 'false'},"background":"${background}","mainBkg":"${primary}","primaryColor":"${primary}","primaryTextColor":"${text}","primaryBorderColor":"${border}","secondaryColor":"#16D5DF","secondaryTextColor":"#000000","tertiaryColor":"${background}","lineColor":"${line}","textColor":"${text}","nodeBorder":"${border}","clusterBkg":"${background}","clusterBorder":"${border}","fontFamily":"T2 Rooftop"}}}%%`
 }
 
 function normalizeMindmapSource(input: string): string {
@@ -1294,7 +1291,14 @@ let renderCounter = 0
 mermaid.initialize({
   startOnLoad: false,
   securityLevel: 'loose',
-  theme: 'default',
+  theme: 'base',
+  themeVariables: {
+    primaryColor: '#FFFFFF',
+    primaryTextColor: '#000000',
+    primaryBorderColor: '#000000',
+    lineColor: '#000000',
+    fontFamily: 'T2 Rooftop',
+  },
 })
 
 export default function DiagramBuilder() {
@@ -1315,13 +1319,13 @@ export default function DiagramBuilder() {
   const highlightedHtml = useMemo(() => highlightSyntax(source, kind), [source, kind])
 
   const themePalette = useMemo(() => getThemePalette(theme), [theme])
-  const themePrimary = themePalette[0] ?? '#3b82f6'
+  const themePrimary = themePalette[0] ?? '#000000'
   const isBoardDark = theme === 'dark'
-  const boardColumnFill = isBoardDark ? '#1e293b' : '#f8fafc'
-  const boardColumnStroke = isBoardDark ? '#475569' : '#cbd5e1'
-  const boardTextColor = isBoardDark ? '#e0e0e0' : '#1f2937'
-  const boardMutedTextColor = isBoardDark ? '#94a3b8' : '#4b5563'
-  const boardFooterColor = isBoardDark ? '#cbd5e1' : '#64748b'
+  const boardColumnFill = isBoardDark ? '#000000' : '#ffffff'
+  const boardColumnStroke = isBoardDark ? '#ffffff' : '#000000'
+  const boardTextColor = isBoardDark ? '#ffffff' : '#000000'
+  const boardMutedTextColor = isBoardDark ? '#ffffff' : '#000000'
+  const boardFooterColor = isBoardDark ? '#ffffff' : '#000000'
 
   const syncHighlightScroll = () => {
     if (!textareaRef.current || !highlightRef.current) return
@@ -1487,7 +1491,7 @@ export default function DiagramBuilder() {
                             <article
                               key={`${task.name}-${taskIdx}`}
                               className="board-card"
-                              style={{ background: isBoardDark ? '#334155' : '#ffffff', borderColor: boardColumnStroke }}
+                              style={{ background: isBoardDark ? '#000000' : '#ffffff', borderColor: boardColumnStroke }}
                             >
                               <div className="board-card-title-row">
                                 <h4 className="board-card-title" style={{ color: boardTextColor }}>

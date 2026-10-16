@@ -38,6 +38,7 @@ class BoardConfig:
     in_progress_states: tuple[str, ...] = ("Development",)
     incident_error_area_path: str | None = None
     incident_error_sync_tags: tuple[str, ...] = ()
+    include_in_all_boards: bool = True
     base_url: str = settings.tfs_base_url
 
     def to_tfs_auth(self, pat: str) -> TfsAuth:
@@ -91,6 +92,7 @@ def board_config_from_row(row: ZniBoard) -> BoardConfig:
         in_progress_states=in_progress or ("Development",),
         incident_error_area_path=normalize_tfs_path(row.incident_error_area_path) or None,
         incident_error_sync_tags=parse_csv_tags(row.incident_error_sync_tags),
+        include_in_all_boards=bool(getattr(row, "include_in_all_boards", True)),
     )
 
 
@@ -194,6 +196,12 @@ def grouped_boards_for_ui(boards: list[BoardConfig] | None = None) -> list[Board
             seen.add(key)
         result.append(board)
     return result
+
+
+def boards_included_in_all(boards: list[BoardConfig] | None = None) -> list[BoardConfig]:
+    """Доски, чьи ЗНИ попадают во вкладку «Все доски». Своя вкладка и синк не фильтруются."""
+    source = boards if boards is not None else get_boards()
+    return [board for board in source if board.include_in_all_boards]
 
 
 def boards_for_sync(

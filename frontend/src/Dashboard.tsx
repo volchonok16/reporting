@@ -270,13 +270,40 @@ function ColumnHeader({
   const sortActive = Boolean(sortOptions?.some((option) => option.value === sort))
   const filterActive = Boolean(filterValue)
   const isActive = sortActive || filterActive
+  const sortMark = sortActive
+    ? sort?.endsWith('_asc')
+      ? '↑'
+      : '↓'
+    : null
+
+  const cycleSort = () => {
+    if (!sortOptions?.length || !onSortChange) return
+    const index = sortOptions.findIndex((option) => option.value === sort)
+    const next = sortOptions[(index + 1) % sortOptions.length]
+    onSortChange(next.value)
+  }
 
   useDismissOnOutsideClick(menuRef, menuOpen, () => setMenuOpen(false))
 
   return (
-    <th className={isActive ? 'th-active' : undefined}>
+    <th
+      className={isActive ? 'th-active' : undefined}
+      aria-sort={sortMark === '↑' ? 'ascending' : sortMark === '↓' ? 'descending' : undefined}
+    >
       <div className="th-header">
-        <span>{label}</span>
+        {sortOptions?.length ? (
+          <button
+            type="button"
+            className="th-sort-label"
+            title={`${label}: сортировка`}
+            onClick={cycleSort}
+          >
+            {label}
+            {sortMark ? <span className="th-sort-mark">{sortMark}</span> : null}
+          </button>
+        ) : (
+          <span>{label}</span>
+        )}
         {hasMenu ? (
           <div ref={menuRef} className={`th-menu${menuOpen ? ' is-open' : ''}`}>
             <button
@@ -957,9 +984,7 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
     },
     [columnWidths],
   )
-  const loadDashboard = useCallback(async () => {
-    if (!boardCode) return
-    setLoading(true)
+  const dashboardParams = useCallback(() => {
     const params = new URLSearchParams({ board: boardCode, sort })
     if (search.trim()) params.set('search', search.trim())
     if (dateFrom) params.set('date_from', dateFrom)
@@ -981,6 +1006,26 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
       }
     }
     if (metricFilter) params.set('metric', metricFilter)
+    return params
+  }, [
+    boardCode,
+    search,
+    sort,
+    dateFrom,
+    dateTo,
+    statusFilter,
+    customerFilter,
+    quarterFilter,
+    ectReservationFilter,
+    linkedEnvironmentFilter,
+    tagGroupFilter,
+    metricFilter,
+  ])
+
+  const loadDashboard = useCallback(async () => {
+    if (!boardCode) return
+    setLoading(true)
+    const params = dashboardParams()
     try {
       const payload = await getJson<DashboardData>(`/api/dashboard?${params}`)
       setData(payload)
@@ -1002,6 +1047,7 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
     linkedEnvironmentFilter,
     tagGroupFilter,
     metricFilter,
+    dashboardParams,
   ])
 
   const toggleTagGroupFilter = (key: string) => {
@@ -1087,9 +1133,8 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
     }
   }, [])
 
-  const downloadExport = useCallback(async (targetBoard: string, fallbackName: string) => {
-    const params = `?board=${encodeURIComponent(targetBoard)}`
-    const response = await apiFetch(`/api/export${params}`)
+  const downloadExport = useCallback(async (fallbackName: string) => {
+    const response = await apiFetch(`/api/export?${dashboardParams()}`)
     if (!response.ok) {
       throw new Error(await readApiError(response))
     }
@@ -1106,7 +1151,7 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
     link.download = filename
     link.click()
     URL.revokeObjectURL(url)
-  }, [])
+  }, [dashboardParams])
 
   const handleSync = async () => {
     if (!canSyncTfs) return
@@ -1130,7 +1175,7 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
       const fallbackName =
         boardCode === ALL_BOARDS ? 'zni-report-all.xlsx' : 'zni-report.xlsx'
       updateLoading('Формирование Excel…', toastId)
-      await downloadExport(boardCode, fallbackName)
+      await downloadExport(fallbackName)
       notifySuccess('Отчёт выгружен', toastId)
     } catch (err) {
       notifyError(err, 'Ошибка выгрузки', toastId)

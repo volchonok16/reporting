@@ -1541,10 +1541,35 @@ def gov_initiatives_restore_snapshot(
 def export_report(
     db: Session = Depends(get_db),
     board: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    sort: str = Query(default="planned_date_upcoming"),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    status: str | None = Query(default=None),
+    quarter: str | None = Query(default=None),
+    customer: list[str] = Query(default=[]),
+    ect_reservation: str | None = Query(default=None),
+    linked_environment: str | None = Query(default=None),
+    metric: str | None = Query(default=None),
+    tag_group: list[str] = Query(default=[]),
     _: str = Depends(require_pat),
     __: None = Depends(require_full_app_access),
 ) -> Response:
-    content, filename = export_xlsx(db, board_code=board)
+    content, filename = export_xlsx(
+        db,
+        board_code=board,
+        search=search,
+        sort=sort,
+        date_from=date_from,
+        date_to=date_to,
+        status=status,
+        quarter=quarter,
+        customer=customer,
+        ect_reservation=ect_reservation,
+        linked_environment=linked_environment,
+        metric=metric,
+        tag_groups=tag_group,
+    )
     return Response(
         content=content,
         media_type=XLSX_MEDIA_TYPE,

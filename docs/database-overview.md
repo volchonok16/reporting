@@ -64,7 +64,7 @@
 | `be_t2_team` | `BE-T2\BE Analytics` | `b2b_product` | `FE B2B`, `microservice` | Bercut |
 | `esb_analytics` | `BE-T2\ESB\ESB Analytics` | `b2b_product` | `FE B2B`, `microservice` | ESB |
 
-Фильтр «Все доски» — объединение всех активных досок из `zni_board`.
+Фильтр «Все доски» — объединение активных досок из `zni_board`, у которых `include_in_all_boards = true` (миграция `085_zni_board_include_in_all.sql`). Своя вкладка доски и синк от этого флага не зависят.
 
 Одинаковый **alias** у нескольких строк — одна вкладка в UI; синк и дашборд объединяют все `area_path` (склейка стримов, без дублирования вкладок).
 

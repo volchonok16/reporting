@@ -239,6 +239,7 @@ def ensure_startup_schema() -> None:
         "082_b2b_product_status_schedule.sql",
         "083_b2b_product_status_office_schedule.sql",
         "084_b2b_product_status_office_skip_lock.sql",
+        "085_zni_board_include_in_all.sql",
     )
 
     auth_session_sql = """

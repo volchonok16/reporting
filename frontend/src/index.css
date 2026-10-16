@@ -1407,6 +1407,28 @@ input.zni-field-overdue.zni-field-derived {
   min-height: 2.5em;
 }
 
+.th-sort-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  text-align: left;
+  white-space: normal;
+  cursor: pointer;
+}
+
+.th-sort-mark {
+  margin-left: 4px;
+  font-size: 12px;
+  line-height: 1;
+}
+
 .th-menu {
   position: relative;
   flex: 0 0 auto;
@@ -1543,6 +1565,10 @@ input.zni-field-overdue.zni-field-derived {
 
 .cell-business-value:has(.zni-comment-input) {
   vertical-align: top;
+}
+
+.zni-table thead th:has(.th-menu.is-open) {
+  z-index: 6;
 }
 
 .zni-table thead th {
@@ -1780,37 +1806,47 @@ input.zni-field-overdue.zni-field-derived {
 }
 
 .diagram-kind-tabs {
-  display: inline-flex;
+  display: flex;
   flex-wrap: wrap;
-  gap: var(--space-xs);
+  gap: 8px;
   margin-bottom: var(--space-lg);
-  padding: var(--space-xs);
-  background: var(--bg-muted);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
 }
 
-.diagram-kind-tab {
-  padding: var(--space-sm) var(--space-md);
-  border: 2px solid transparent;
+.diagram-kind-tab,
+.diagram-theme-btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--btn-height);
+  min-height: var(--btn-height);
+  padding: 0 var(--btn-pad-x);
+  border: 2px solid var(--text-primary);
   border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--text-muted);
-  font: inherit;
-  font-size: 13px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-family: 'T2 Rooftop', system-ui, sans-serif;
+  font-size: var(--btn-font-size);
   font-weight: var(--btn-font-weight);
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   cursor: pointer;
 }
 
-.diagram-kind-tab:hover:not(.diagram-kind-tab-active) {
-  color: var(--text-primary);
+.diagram-kind-tab:hover:not(.diagram-kind-tab-active),
+.diagram-theme-btn:hover:not(.is-active) {
+  background: var(--brand);
+  color: var(--text-inverse);
 }
 
 .diagram-kind-tab-active,
-.diagram-kind-tab-active:hover {
+.diagram-kind-tab-active:hover,
+.diagram-theme-btn.is-active,
+.diagram-theme-btn.is-active:hover {
   background: var(--t2-mint);
+  border-color: var(--t2-mint);
   color: #000000;
-  box-shadow: none;
 }
 
 .diagram-workspace {
@@ -1828,7 +1864,7 @@ input.zni-field-overdue.zni-field-derived {
 .diagram-editor {
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--border);
+  border-right: 2px solid var(--text-primary);
 }
 
 .diagram-editor h2,
@@ -1846,8 +1882,8 @@ input.zni-field-overdue.zni-field-derived {
   height: 100%;
   resize: vertical;
   padding: 8px 10px;
-  border: 1px solid var(--input-border);
-  border-radius: 10px;
+  border: 2px solid var(--text-primary);
+  border-radius: 0;
   background: transparent;
   color: transparent;
   caret-color: var(--text-primary);
@@ -1856,8 +1892,7 @@ input.zni-field-overdue.zni-field-derived {
 
 .diagram-source:focus {
   outline: none;
-  border-color: var(--accent-blue);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-blue) 18%, transparent);
+  border-color: var(--text-primary);
 }
 
 .diagram-textarea-wrapper {
@@ -1873,8 +1908,8 @@ input.zni-field-overdue.zni-field-derived {
   z-index: 1;
   overflow: auto;
   padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  border: 2px solid var(--text-primary);
+  border-radius: 0;
   background: var(--surface-1);
   color: var(--text-primary);
   font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -1884,12 +1919,12 @@ input.zni-field-overdue.zni-field-derived {
 }
 
 .diagram-hl-keyword {
-  color: #db2777;
+  color: #ff3495;
   font-weight: 600;
 }
 
 .diagram-hl-arrow {
-  color: #e11d48;
+  color: #ff3495;
   font-weight: 600;
 }
 
@@ -1910,8 +1945,8 @@ input.zni-field-overdue.zni-field-derived {
 .diagram-canvas {
   position: relative;
   min-height: min(72vh, 760px);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  border: 2px solid var(--text-primary);
+  border-radius: 0;
   overflow: hidden;
   background: var(--surface-1);
   cursor: grab;
@@ -1938,27 +1973,9 @@ input.zni-field-overdue.zni-field-derived {
 }
 
 .diagram-theme-buttons {
-  display: inline-flex;
-  gap: 6px;
+  display: flex;
+  gap: 8px;
   flex-wrap: wrap;
-}
-
-.diagram-theme-btn {
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg-muted);
-  color: var(--text-primary);
-  font-size: 12px;
-  line-height: 1;
-  padding: 6px 10px;
-  cursor: pointer;
-}
-
-.diagram-theme-btn.is-active,
-.diagram-theme-btn.is-active:hover {
-  background: var(--t2-mint);
-  color: #000000;
-  border-color: var(--t2-mint);
 }
 
 .diagram-canvas-dragging {
@@ -1972,27 +1989,20 @@ input.zni-field-overdue.zni-field-derived {
   z-index: 2;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface-1) 90%, transparent);
-}
-
-.diagram-canvas-btn,
-.diagram-canvas-reset,
-.diagram-canvas-zoom {
-  border-radius: 999px;
-  padding: 4px 10px;
-  min-width: 34px;
-  min-height: 30px;
+  gap: 8px;
+  padding: 0;
+  background: transparent;
 }
 
 .diagram-canvas-zoom {
-  border: none;
-  background: var(--surface-1);
+  min-width: 3.2rem;
+  border: 0;
+  background: transparent;
   color: var(--text-primary);
-  font-weight: 600;
+  font-family: 'T2 Rooftop', system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
 }
 
 .diagram-canvas-sheet {
@@ -2013,9 +2023,9 @@ input.zni-field-overdue.zni-field-derived {
 
 .board-column {
   width: 232px;
-  border: 2px solid var(--border-strong);
-  border-radius: 12px;
-  background: var(--surface-2);
+  border: 2px solid var(--text-primary);
+  border-radius: 0;
+  background: var(--surface-1);
   overflow: hidden;
 }
 
@@ -2037,8 +2047,8 @@ input.zni-field-overdue.zni-field-derived {
 
 .board-card {
   background: var(--surface-1);
-  border: 1.5px solid var(--border-strong);
-  border-radius: 8px;
+  border: 2px solid var(--text-primary);
+  border-radius: 0;
   padding: 10px;
 }
 
@@ -2053,7 +2063,7 @@ input.zni-field-overdue.zni-field-derived {
   margin: 0;
   font-size: 13px;
   line-height: 1.3;
-  color: #1f2937;
+  color: var(--text-primary);
 }
 
 .board-priority {
@@ -2077,7 +2087,7 @@ input.zni-field-overdue.zni-field-derived {
 }
 
 .board-tag {
-  border-radius: 4px;
+  border-radius: var(--radius-full);
   color: #fff;
   font-size: 10px;
   font-weight: 600;
@@ -2087,7 +2097,7 @@ input.zni-field-overdue.zni-field-derived {
 
 .board-description {
   margin: 8px 0 0;
-  color: #4b5563;
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.35;
   white-space: pre-wrap;
@@ -2455,6 +2465,17 @@ input.zni-field-overdue.zni-field-derived {
   letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+.product-status-chrome-collapsed > .product-status-toolbar,
+.product-status-chrome-collapsed > .product-status-office-access,
+.product-status-chrome-collapsed > .product-status-scroll-chrome,
+.product-status-chrome-collapsed > .product-status-format-dock {
+  display: none;
+}
+
+.product-status-chrome-reveal {
+  flex-shrink: 0;
 }
 
 .product-status-scroll-chrome {

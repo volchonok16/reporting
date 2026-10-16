@@ -2,7 +2,8 @@
 
 Напоминание общее: b2b_product_status_schedule, по умолчанию среда с 10:00.
 Автоблокировка у каждого офиса своя: b2b_product_status_office_schedule,
-по умолчанию четверг 09:30 и 18:00. Меняет только суперадминистратор.
+по умолчанию четверг 09:30 и 18:00. За 30 минут до неё сотрудникам офиса
+уходит предупреждение. Меняет только суперадминистратор.
 Повторный запуск в тот же день не дублирует действие.
 """
 
@@ -23,7 +24,9 @@ MOSCOW = ZoneInfo("Europe/Moscow")
 
 JOB_REMINDER = "b2b_status_reminder"
 JOB_LOCK = "b2b_status_lock"
+JOB_LOCK_SOON = "b2b_status_lock_soon"
 JOB_UNLOCK = "b2b_status_unlock"
+LOCK_WARNING_LEAD_MINUTES = 30
 
 @dataclass(frozen=True)
 class ScheduleSlot:
@@ -117,6 +120,19 @@ def parse_skip_lock_until(value: str | None) -> datetime | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=MOSCOW)
     return parsed.astimezone(MOSCOW)
+
+
+def lock_warning_due(local: datetime, lock: ScheduleSlot) -> bool:
+    """Окно за 30 минут до блокировки этого офиса, пока блокировка ещё не наступила."""
+    weekday = local.weekday()
+    minutes = local.hour * 60 + local.minute
+    start = lock.minutes - LOCK_WARNING_LEAD_MINUTES
+    if start >= 0:
+        return weekday == lock.weekday and start <= minutes < lock.minutes
+    previous = (lock.weekday - 1) % 7
+    if weekday == previous and minutes >= 24 * 60 + start:
+        return True
+    return weekday == lock.weekday and minutes < lock.minutes
 
 
 def office_jobs_due(local: datetime, lock: ScheduleSlot, unlock: ScheduleSlot) -> list[str]:
@@ -243,8 +259,18 @@ def offices_due(db: Session, local: datetime) -> list[dict[str, object]]:
         assert isinstance(slots, dict)
         lock = slots.get(JOB_LOCK, DEFAULT_SCHEDULE[JOB_LOCK])
         unlock = slots.get(JOB_UNLOCK, DEFAULT_SCHEDULE[JOB_UNLOCK])
+        skipped = lock_is_skipped(item.get("skip_lock_until"), local)  # type: ignore[arg-type]
+        if lock_warning_due(local, lock) and not skipped:
+            due.append(
+                {
+                    "id": item["id"],
+                    "gid": item["gid"],
+                    "name": item["name"],
+                    "job_key": JOB_LOCK_SOON,
+                }
+            )
         for job_key in office_jobs_due(local, lock, unlock):
-            if job_key == JOB_LOCK and lock_is_skipped(item.get("skip_lock_until"), local):  # type: ignore[arg-type]
+            if job_key == JOB_LOCK and skipped:
                 continue
             due.append(
                 {
@@ -405,6 +431,29 @@ def office_member_emails(db: Session, office_id: int) -> list[str]:
     return sorted({item.strip() for item in rows if item and item.strip()})
 
 
+def send_office_lock_warning(db: Session, *, office_id: int, office_name: str) -> None:
+    from app.password_reset_mail import (
+        MailNotConfigured,
+        MailSendError,
+        send_html_mail,
+        status_office_lock_soon_email_html,
+        status_office_lock_soon_email_text,
+    )
+
+    recipients = office_member_emails(db, office_id)
+    subject = f"«{office_name}» заблокируется через 30 минут"
+    if not recipients:
+        logger.warning("Письмо «%s»: у офиса нет закреплённых сотрудников с почтой", subject)
+        return
+    html = status_office_lock_soon_email_html(office_name=office_name)
+    text_body = status_office_lock_soon_email_text(office_name=office_name)
+    for email in recipients:
+        try:
+            send_html_mail(to_email=email, subject=subject, html=html, text=text_body)
+        except (MailNotConfigured, MailSendError):
+            logger.exception("Не удалось отправить «%s» на %s", subject, email)
+
+
 def send_office_lock_notice(db: Session, *, office_id: int, office_name: str, locked: bool) -> None:
     from app.password_reset_mail import (
         MailNotConfigured,
@@ -494,6 +543,15 @@ def run_due_jobs(now: datetime | None = None) -> list[str]:
             job_key = str(item["job_key"])
             claim_key = f"{job_key}:{item['id']}"
             if not claim_job(db, claim_key, local.date()):
+                continue
+            if job_key == JOB_LOCK_SOON:
+                send_office_lock_warning(
+                    db,
+                    office_id=int(item["id"]),
+                    office_name=str(item["name"]),
+                )
+                ran.append(claim_key)
+                logger.info("Выполнено задание %s на %s", claim_key, local.date().isoformat())
                 continue
             locked = job_key == JOB_LOCK
             offices = set_auto_lock_offices_editing_locked(

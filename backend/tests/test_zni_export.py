@@ -24,7 +24,10 @@ def test_export_xlsx_is_real_excel_file(monkeypatch) -> None:
         lambda db, refresh=False: get_boards(),
     )
 
-    def fake_load(_db, *, board_code=None, **_kwargs):
+    captured: dict = {}
+
+    def fake_load(_db, *, board_code=None, **kwargs):
+        captured.update(board_code=board_code, **kwargs)
         items: list[ChangeRequestOut] = []
         if board_code == "b2b_product_core":
             items = [
@@ -32,6 +35,7 @@ def test_export_xlsx_is_real_excel_file(monkeypatch) -> None:
                     id="1",
                     number="123456",
                     title="Тест ЗНИ",
+                    url="https://tfs.example/123456",
                     customerName="Иванов Иван",
                     product=LinkedProductOut(
                         id="100",
@@ -54,7 +58,17 @@ def test_export_xlsx_is_real_excel_file(monkeypatch) -> None:
 
     monkeypatch.setattr("app.report_service.load_change_requests", fake_load)
 
-    content, filename = export_xlsx(object(), board_code="b2b_product_core")
+    content, filename = export_xlsx(
+        object(),
+        board_code="b2b_product_core",
+        search="тест",
+        customer=["Иванов Иван"],
+        sort="business_value_desc",
+    )
+    assert captured["board_code"] == "b2b_product_core"
+    assert captured["search"] == "тест"
+    assert captured["customer"] == ["Иванов Иван"]
+    assert captured["sort"] == "business_value_desc"
     assert filename.startswith("zni-report-b2b_product_core-")
     assert filename.endswith(".xlsx")
     assert content[:2] == b"PK"
@@ -62,14 +76,18 @@ def test_export_xlsx_is_real_excel_file(monkeypatch) -> None:
     workbook = load_workbook(io.BytesIO(content))
     rows = list(workbook.active.iter_rows(values_only=True))
     assert rows[0][0] == "Номер ЗНИ"
-    assert rows[0][2] == "Заказчик"
-    assert rows[0][3] == "Продукт"
+    assert rows[0][1] == "Ссылка"
+    assert rows[0][3] == "Заказчик"
+    assert rows[0][4] == "Продукт"
     assert rows[1][0] == "123456"
-    assert rows[1][1] == "Тест ЗНИ"
-    assert rows[1][2] == "Иванов Иван"
-    assert rows[1][3] == "100: Продукт A"
-    assert rows[1][13] == "9: ошибка"
-    assert workbook.active.cell(row=2, column=4).hyperlink.target == "https://tfs.example/100"
+    assert rows[1][1] == "https://tfs.example/123456"
+    assert rows[1][2] == "Тест ЗНИ"
+    assert rows[1][3] == "Иванов Иван"
+    assert rows[1][4] == "100: Продукт A"
+    assert rows[1][14] == "9: ошибка"
+    assert workbook.active.cell(row=2, column=1).hyperlink.target == "https://tfs.example/123456"
+    assert workbook.active.cell(row=2, column=2).hyperlink.target == "https://tfs.example/123456"
+    assert workbook.active.cell(row=2, column=5).hyperlink.target == "https://tfs.example/100"
     assert all(row[0] != "222" for row in rows[1:])
 
 

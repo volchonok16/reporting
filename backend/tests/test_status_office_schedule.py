@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 from app.password_reset_mail import (
     reset_code_email_html,
     status_locked_email_html,
+    status_office_lock_soon_email_html,
     status_office_lock_state_email_html,
 )
 from app.status_office_schedule import JOB_LOCK, JOB_REMINDER, JOB_UNLOCK, MOSCOW, jobs_due
@@ -77,6 +78,28 @@ def test_same_day_lock_must_precede_unlock() -> None:
     }
     with pytest.raises(ValueError, match="раньше разблокировки"):
         save_product_status_schedule(object(), slots)  # type: ignore[arg-type]
+
+
+def test_lock_warning_is_thirty_minutes_before_office_lock() -> None:
+    from app.status_office_schedule import ScheduleSlot, lock_warning_due
+
+    thursday_lock = ScheduleSlot(3, 9 * 60 + 30)
+    assert lock_warning_due(_at(2026, 10, 15, 8, 59), thursday_lock) is False
+    assert lock_warning_due(_at(2026, 10, 15, 9, 0), thursday_lock) is True
+    assert lock_warning_due(_at(2026, 10, 15, 9, 29), thursday_lock) is True
+    assert lock_warning_due(_at(2026, 10, 15, 9, 30), thursday_lock) is False
+    midnight_lock = ScheduleSlot(3, 10)
+    assert lock_warning_due(_at(2026, 10, 14, 23, 39), midnight_lock) is False
+    assert lock_warning_due(_at(2026, 10, 14, 23, 40), midnight_lock) is True
+    assert lock_warning_due(_at(2026, 10, 15, 0, 9), midnight_lock) is True
+    assert lock_warning_due(_at(2026, 10, 15, 0, 10), midnight_lock) is False
+
+
+def test_lock_soon_email_names_the_office() -> None:
+    html = status_office_lock_soon_email_html(office_name="Офис: SMS")
+    assert "«Офис: SMS» заблокируется для внесения статуса через 30 минут." in html
+    assert "Офис «Офис: SMS»" not in html
+    assert "Перейти к статусу" in html
 
 
 def test_office_lock_email_names_the_office() -> None:
