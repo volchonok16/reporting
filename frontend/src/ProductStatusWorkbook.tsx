@@ -668,6 +668,7 @@ export default function ProductStatusWorkbook({
   const tableScrollRef = useRef<HTMLDivElement | null>(null)
   const chromeHoldOpenRef = useRef(false)
   const chromeScrollTopRef = useRef(0)
+  const chromeRevealLockRef = useRef(0)
   const baselineByGidRef = useRef<Map<string, ProductStatusSheet>>(new Map())
   const dirtyRef = useRef(dirty)
   dirtyRef.current = dirty
@@ -1898,10 +1899,14 @@ export default function ProductStatusWorkbook({
     }
     const onScroll = () => {
       const top = scrollEl.scrollTop
+      if (Date.now() < chromeRevealLockRef.current) {
+        chromeScrollTopRef.current = top
+        return
+      }
       if (top <= 8) {
         chromeHoldOpenRef.current = false
         setChromeCollapsed(false)
-      } else if (chromeHoldOpenRef.current && top > chromeScrollTopRef.current + 8) {
+      } else if (chromeHoldOpenRef.current && top > chromeScrollTopRef.current + 48) {
         chromeHoldOpenRef.current = false
         setChromeCollapsed(true)
       } else if (!chromeHoldOpenRef.current) {
@@ -2520,6 +2525,7 @@ export default function ProductStatusWorkbook({
               className="btn-secondary product-status-chrome-reveal"
               onClick={() => {
                 chromeHoldOpenRef.current = true
+                chromeRevealLockRef.current = Date.now() + 700
                 chromeScrollTopRef.current = tableScrollRef.current?.scrollTop ?? 0
                 setChromeCollapsed(false)
               }}

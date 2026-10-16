@@ -2287,19 +2287,16 @@ input.zni-field-overdue.zni-field-derived {
 }
 
 .product-status-toolbar-actions > .product-status-office-access {
-  position: relative;
-  margin: 0;
+  display: contents;
 }
 
-.product-status-toolbar-actions > .product-status-office-access-panel,
 .product-status-toolbar-actions .product-status-office-access-panel {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  left: auto;
-  z-index: 30;
-  width: min(420px, calc(100vw - 32px));
-  max-width: min(420px, calc(100vw - 32px));
+  order: 10;
+  position: relative;
+  flex: 1 0 100%;
+  width: min(420px, 100%);
+  max-width: min(420px, 100%);
+  margin: 4px 0 0;
 }
 
 .product-status-toolbar-actions-group {
@@ -2493,14 +2490,9 @@ input.zni-field-overdue.zni-field-derived {
   flex: 1 1 auto;
   width: 100%;
   flex-direction: row;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   justify-content: flex-start;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.product-status-chrome-collapsed .product-status-toolbar-actions::-webkit-scrollbar {
-  display: none;
+  overflow: visible;
 }
 
 .product-status-chrome-collapsed .product-status-toolbar-actions-group,

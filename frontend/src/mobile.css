@@ -445,7 +445,7 @@
   }
 
   .product-status-toolbar-actions .product-status-office-access-panel {
-    position: static;
+    position: relative;
     width: 100%;
     max-width: none;
   }
