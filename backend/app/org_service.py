@@ -186,6 +186,7 @@ def _employee_out(db: Session, emp: Employee) -> EmployeeOut:
         managerPublicId=manager_public_id,
         photoUrl=photo_public_url(emp.photo_path),
         dailyWorkHours=emp.daily_work_hours,
+        annualLeaveDays=int(getattr(emp, "annual_leave_days", 28) or 28),
         isActive=emp.is_active,
         isOrganizationHead=emp.is_organization_head,
         hideFromPyramid=bool(emp.hide_from_pyramid),
@@ -524,6 +525,7 @@ def create_employee(
         position_id=data.positionId,
         manager_id=data.managerId,
         daily_work_hours=data.dailyWorkHours,
+        annual_leave_days=max(1, min(366, int(data.annualLeaveDays or 28))),
         is_active=data.isActive,
         is_organization_head=data.isOrganizationHead,
         hide_from_pyramid=bool(data.hideFromPyramid),
@@ -581,6 +583,8 @@ def update_employee(
         emp.manager_id = data.managerId
     if data.dailyWorkHours is not None:
         emp.daily_work_hours = data.dailyWorkHours
+    if data.annualLeaveDays is not None:
+        emp.annual_leave_days = max(1, min(366, int(data.annualLeaveDays)))
     if data.isActive is not None:
         emp.is_active = data.isActive
     if data.isOrganizationHead is not None:

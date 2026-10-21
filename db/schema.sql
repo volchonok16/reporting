@@ -481,12 +481,26 @@ CREATE TABLE employee (
     manager_id              BIGINT       REFERENCES employee(id) ON DELETE SET NULL,
     photo_path              VARCHAR(512),
     daily_work_hours        NUMERIC(4, 2) NOT NULL DEFAULT 8,
+    annual_leave_days       INT          NOT NULL DEFAULT 28
+        CHECK (annual_leave_days >= 1 AND annual_leave_days <= 366),
     is_active               BOOLEAN      NOT NULL DEFAULT TRUE,
     is_organization_head    BOOLEAN      NOT NULL DEFAULT FALSE,
     hide_from_pyramid       BOOLEAN      NOT NULL DEFAULT FALSE,
     created_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
+
+COMMENT ON COLUMN employee.annual_leave_days IS
+    'Норма отпускных дней в календарном году (по умолчанию 28); праздники в период отпуска не расходуют норму';
+
+CREATE TABLE vacation_planning_unlock (
+    year                    INT PRIMARY KEY,
+    unlocked_by_org_user_id BIGINT REFERENCES org_user(id) ON DELETE SET NULL,
+    unlocked_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE vacation_planning_unlock IS
+    'Годы, для которых суперадмин открыл планирование отпусков';
 
 CREATE UNIQUE INDEX employee_public_id_uq ON employee (public_id);
 

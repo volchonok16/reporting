@@ -40,6 +40,8 @@ from app.org_schemas import (
     SelectOptionOut,
     TeamRoleIn,
     TeamRoleOut,
+    VacationPlanningUnlockIn,
+    VacationPlanningUnlockOut,
     VacationRangeIn,
     VacationRangeOut,
     VacationScheduleOut,
@@ -89,7 +91,11 @@ from app.org_service import (
 from app.org_service import update_profile_photo as update_profile_photo_service
 from app.org_staffing_excel import generate_staffing_excel
 
-from app.org_vacation_service import get_vacation_schedule, upsert_vacation_range
+from app.org_vacation_service import (
+    get_vacation_schedule,
+    set_vacation_planning_unlock,
+    upsert_vacation_range,
+)
 from app.org_workspace_service import (
     create_workspace_place,
     delete_workspace_place,
@@ -477,6 +483,15 @@ def api_vacation_range(
     meta: dict = Depends(_load_session_meta),
 ) -> VacationRangeOut:
     return upsert_vacation_range(db, data, meta)
+
+
+@router.post("/vacations/planning-unlock", response_model=VacationPlanningUnlockOut)
+def api_vacation_planning_unlock(
+    data: VacationPlanningUnlockIn,
+    db: Session = Depends(get_db),
+    meta: dict = Depends(_load_session_meta),
+) -> VacationPlanningUnlockOut:
+    return set_vacation_planning_unlock(db, data, meta)
 
 
 @router.get("/workspace/bookings", response_model=WorkspaceBookingScheduleOut)

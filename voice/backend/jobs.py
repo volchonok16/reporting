@@ -67,6 +67,12 @@ class JobService:
                 self._futures.clear()
             self._executor_shutdown = False
         self.registry.cleanup_expired()
+        try:
+            from .master_history_retention import purge_old_master_changes
+
+            purge_old_master_changes(force=True)
+        except Exception:
+            logger.exception("Voice master history retention failed on start")
         if self._cleanup_thread is not None and self._cleanup_thread.is_alive():
             return
         self._stopping.clear()
@@ -93,6 +99,13 @@ class JobService:
                 self.registry.cleanup_expired()
             except Exception:
                 logger.error("TTL cleanup failed")
+            try:
+                from .master_history_retention import purge_old_master_changes
+
+                # Не чаще раза в сутки (внутри purge_old_master_changes).
+                purge_old_master_changes()
+            except Exception:
+                logger.exception("Voice master history retention failed")
 
     def _new_job(
         self,

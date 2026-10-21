@@ -177,6 +177,7 @@ class EmployeeOut(BaseModel):
     managerPublicId: str | None = None
     photoUrl: str | None = None
     dailyWorkHours: Decimal
+    annualLeaveDays: int = 28
     isActive: bool
     isOrganizationHead: bool
     hideFromPyramid: bool = False
@@ -219,6 +220,7 @@ class EmployeeIn(BaseModel):
     positionId: int | None = None
     managerId: int | None = None
     dailyWorkHours: Decimal = Decimal("8")
+    annualLeaveDays: int = 28
     isActive: bool = True
     isOrganizationHead: bool = False
     hideFromPyramid: bool = False
@@ -239,6 +241,7 @@ class EmployeeUpdateIn(BaseModel):
     positionId: int | None = None
     managerId: int | None = None
     dailyWorkHours: Decimal | None = None
+    annualLeaveDays: int | None = None
     isActive: bool | None = None
     isOrganizationHead: bool | None = None
     hideFromPyramid: bool | None = None
@@ -379,6 +382,11 @@ class VacationEmployeeOut(BaseModel):
     photoUrl: str | None = None
     canEdit: bool
     isSelf: bool = False
+    annualLeaveDays: int = 28
+    usedLeaveDays: int = 0
+    remainingLeaveDays: int = 28
+    planningWarnings: list[str] = Field(default_factory=list)
+    planningErrors: list[str] = Field(default_factory=list)
 
 
 class VacationTimeOffDayOut(BaseModel):
@@ -396,6 +404,9 @@ class VacationScheduleOut(BaseModel):
     year: int
     departmentId: int | None = None
     actorEmployeeId: int | None = None
+    planningUnlocked: bool = False
+    nextYearEditable: bool = False
+    isSuperAdmin: bool = False
     employees: list[VacationEmployeeOut] = Field(default_factory=list)
     timeOffDays: list[VacationTimeOffDayOut] = Field(default_factory=list)
 
@@ -409,6 +420,23 @@ class VacationRangeIn(BaseModel):
 
 class VacationRangeOut(BaseModel):
     affectedDays: int
+    usedLeaveDays: int = 0
+    remainingLeaveDays: int = 0
+    annualLeaveDays: int = 28
+    chargeableDaysInRange: int = 0
+    planningWarnings: list[str] = Field(default_factory=list)
+    planningErrors: list[str] = Field(default_factory=list)
+
+
+class VacationPlanningUnlockIn(BaseModel):
+    year: int
+    unlocked: bool = True
+
+
+class VacationPlanningUnlockOut(BaseModel):
+    year: int
+    planningUnlocked: bool
+    unlockedAt: str | None = None
 
 
 class WorkspacePlaceOut(BaseModel):

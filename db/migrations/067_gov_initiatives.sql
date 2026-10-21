@@ -25,8 +25,8 @@ CREATE TABLE IF NOT EXISTS gov_initiative_row (
 CREATE INDEX IF NOT EXISTS idx_gov_initiative_row_section
     ON gov_initiative_row (section_id, sort_order);
 
-COMMENT ON TABLE gov_initiative_row IS 'Строка таблицы госинициатив; cells — Закон / Описание / Номер ЗнИ / Статус';
-COMMENT ON COLUMN gov_initiative_row.cells IS 'JSON: Закон, Описание, Номер ЗнИ, Статус → текст ячейки';
+COMMENT ON TABLE gov_initiative_row IS 'Строка таблицы госинициатив; cells — Закон / Описание / Дата запуска / Статус / Номер ЗнИ';
+COMMENT ON COLUMN gov_initiative_row.cells IS 'JSON: Закон, Описание, Дата запуска, Статус, Номер ЗнИ → текст ячейки';
 
 CREATE TABLE IF NOT EXISTS gov_initiative_history (
     id              BIGSERIAL PRIMARY KEY,

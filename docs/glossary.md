@@ -870,7 +870,7 @@ PK: (`org_user_id`, `page_key`). Для обычных сотрудников о
 
 **Пакетное удаление** в UI мастер-файла: форма ≤ 50 номеров; для опорных — по 11 символов, для АОН — любая длина; большие списки — загрузка CSV/XLSX (`uploadId` в `POST /api/master/records/batch-delete-a|b`), шаблоны `GET /api/master/templates/batch-delete-a|b`.
 
-Связанные таблицы: `master_state`, `master_schema_meta`, `master_a_counts`, `master_exact_counts` (PK `signature_hash` = md5 связки, без btree по длинному `b_numbers_json`), `master_changes` (`id`/`record_id` — bigint), `master_imports` (`id` — bigint identity), `master_import_items` (`id`/`import_id`/`existing_record_id` — bigint), `master_import_number_warnings` (`import_id`/`item_id` — bigint), `master_duplicate_findings` (`import_id` — bigint), `master_edit_lock` (`owner_session_expires_at` — срок bearer-сессии SSO). Индекс `master_records_a` — по `a_number` (TEXT); `master_records_signature` — по `master_b_signature(b_numbers_json, source_prefix)`; `master_records_active_prefix` — по `source_prefix` для активных строк (фильтры parameterGroup/region, `058`). Числовые PK — миграция `056_voice_master_numeric_ids.sql` (откат `a_number_key` — `057`).
+Связанные таблицы: `master_state`, `master_schema_meta`, `master_a_counts`, `master_exact_counts` (PK `signature_hash` = md5 связки, без btree по длинному `b_numbers_json`), `master_changes` (`id`/`record_id` — bigint; retention: удаление записей с `created_at` старше `VOICE_MASTER_HISTORY_RETENTION_DAYS`, по умолчанию 14 суток; текущая версия мастер-файла не трогается), `master_imports` (`id` — bigint identity), `master_import_items` (`id`/`import_id`/`existing_record_id` — bigint), `master_import_number_warnings` (`import_id`/`item_id` — bigint), `master_duplicate_findings` (`import_id` — bigint), `master_edit_lock` (`owner_session_expires_at` — срок bearer-сессии SSO). Индекс `master_records_a` — по `a_number` (TEXT); `master_records_signature` — по `master_b_signature(b_numbers_json, source_prefix)`; `master_records_active_prefix` — по `source_prefix` для активных строк (фильтры parameterGroup/region, `058`). Числовые PK — миграция `056_voice_master_numeric_ids.sql` (откат `a_number_key` — `057`).
 
 ---
 
@@ -918,6 +918,7 @@ PK: (`org_user_id`, `page_key`). Для обычных сотрудников о
 | `manager_id` | bigint | FK → `employee` (руководитель) |
 | `photo_path` | varchar(512) | Ключ объекта в MinIO (`employees/…`) или путь в `ORG_UPLOADS_DIR` |
 | `daily_work_hours` | numeric(4,2) | Рабочих часов в день (по умолчанию 8) |
+| `annual_leave_days` | int | Норма отпускных дней в календарном году (по умолчанию 28; может быть больше/меньше). Праздничные дни в период отпуска норму не расходуют. Миграция: `086_vacation_planning.sql` |
 | `is_active` | boolean | Активен |
 | `is_organization_head` | boolean | Директор организации (вершина пирамиды) |
 | `hide_from_pyramid` | boolean | Если true — флаг **«Другие пользователи»**: не показывать в пирамиде, составе, графике отпусков, брони мест и «Сотрудники в офисе»; в списке сотрудников — только «Другие сотрудники». Для учётной записи можно ограничить вкладки через `org_user_page_access` |
@@ -1169,9 +1170,23 @@ API: префикс `/api/youjail/*`. `DELETE /api/youjail/boards/{id}`, `POST /
 
 ---
 
+## vacation_planning_unlock — открытие планирования отпусков
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `year` | int | PK, календарный год |
+| `unlocked_by_org_user_id` | bigint | Кто открыл (`org_user`) |
+| `unlocked_at` | timestamptz | Когда открыто |
+
+Суперадмин кнопкой **Планирование отпуска** открывает/закрывает **только следующий** календарный год. Текущий год редактируется без unlock и без подсказок по норме. Без unlock следующий год — только просмотр (суперадмин может править и до unlock). API: `POST /api/org/vacations/planning-unlock`. Миграция: `086_vacation_planning.sql`.
+
+Правила планирования (подсказки и проверка нормы) действуют, когда открыто планирование следующего года: один непрерывный отпуск ≥14 календарных дней, ещё один ≥5; норма — `employee.annual_leave_days`; праздники в период отпуска в норму не входят. В ответе `GET/PUT` — `remainingLeaveDays`, `planningWarnings`, `planningErrors`.
+
+---
+
 ## employee_time_off_day — график отпусков
 
-Один день — одна запись. График всей компании видят все авторизованные пользователи; редактирование — только своей строки (админы — любой строки). Вкладка «График отпусков».
+Один день — одна запись. График всей компании видят все авторизованные пользователи; редактирование — только своей строки (админы — любой строки). Следующий год — после открытия планирования суперадмином. Вкладка «График отпусков».
 
 | Поле | Тип | Описание |
 |------|-----|----------|
@@ -1460,7 +1475,7 @@ Seed (миграция `036`): `base` → «Влияние по базе», `rev
 | `id` | bigserial | PK |
 | `section_id` | bigint | FK → `gov_initiative_section` |
 | `sort_order` | int | Порядок строки |
-| `cells` | jsonb | Колонки: «Закон», «Описание», «Номер ЗнИ», «Статус» |
+| `cells` | jsonb | Колонки: «Закон», «Описание», «Дата запуска», «Статус», «Номер ЗнИ» (порядок UI/Excel; миграция `087`) |
 
 API: `/api/gov-initiatives` (load/save/excel/history/snapshots), по образцу revenue-activities. История/снимки: `gov_initiative_history`, `gov_initiative_snapshot`.
 
@@ -1508,7 +1523,7 @@ API: `GET /api/revenue-activities`, `POST /api/revenue-activities/save`, `GET /a
 | Состав | `GET /api/org/departments/{id}/members` |
 | Пирамида | `GET /api/org/org-chart?department_id=` — данные сотрудников/отделов; `GET/PUT /api/org/org-chart-layout?scope=company&department_id=` — сохранённая ручная раскладка (PUT только админ); для одного отдела — дерево по составу |
 | Сотрудники | `GET/POST/PATCH /api/org/employees`; в пути и @упоминаниях — `public_id` (UUID), числовой `id` в API пока тоже принимается |
-| График отпусков | `GET /api/org/vacations?year=&department_id=`, `PUT /api/org/vacations/range` |
+| График отпусков | `GET /api/org/vacations?year=&department_id=`, `PUT /api/org/vacations/range`, `POST /api/org/vacations/planning-unlock` (суперадмин) |
 | Бронь мест | вкладка «Бронь мест»; `GET /api/org/workspace/bookings?year=&month=`, `PUT /api/org/workspace/bookings/toggle`; справочник: `GET/POST/PATCH/DELETE /api/org/workspace/places` (изменение — админ) |
 | Сотрудники в офисе | `GET /api/org/workspace/presence?year=&month=`; учитывает `workspace_booking`, `employee_office_day` и `employee_time_off_day` |
 | Личный кабинет | `GET/PATCH /api/profile`, `POST /api/profile/password` |
@@ -1531,7 +1546,7 @@ Seed: Низкая, Средняя, Высокая, Критическая. Ве
 
 ## production_calendar_day — производственный календарь
 
-Переопределения рабочих/нерабочих дней. Если записи нет — используются выходные (сб/вс) и праздники РФ (логика backend `planning_calendar.py`, как во вкладке отпусков).
+Переопределения рабочих/нерабочих дней. Если записи нет — используются выходные (сб/вс) и праздники РФ (логика backend `planning_calendar.py` / frontend `ruPublicHolidays.ts`, как во вкладке отпусков). Для 2027 засеяны переносы ПП РФ № 1187 (`02-22`, `05-03`, `05-10`, `06-14`, `11-05`, `12-31`) — миграция `086`.
 
 | Поле | Тип | Описание |
 |------|-----|----------|

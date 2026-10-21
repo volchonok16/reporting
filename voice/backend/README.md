@@ -27,6 +27,7 @@ Environment variables:
 - `CAROUSEL_JOB_WORKERS`: bounded worker-pool size;
 - `CAROUSEL_OBJECT_TTL_SECONDS`: upload/result lifetime;
 - `CAROUSEL_CLEANUP_INTERVAL_SECONDS`: TTL cleanup interval;
+- `VOICE_MASTER_HISTORY_RETENTION_DAYS`: purge `master_changes` older than N days (default 14); current master file is kept;
 - `CAROUSEL_PREVIEW_LIMIT`: maximum rows read per sheet during inspection.
 
 Run one API process when using the local SQLite registry and job workspaces.

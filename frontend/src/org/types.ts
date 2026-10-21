@@ -117,6 +117,7 @@ export type Employee = {
   managerPublicId?: string | null
   photoUrl?: string | null
   dailyWorkHours: number
+  annualLeaveDays?: number
   isActive: boolean
   isOrganizationHead: boolean
   hideFromPyramid?: boolean
@@ -231,6 +232,11 @@ export type VacationEmployee = {
   photoUrl?: string | null
   canEdit: boolean
   isSelf: boolean
+  annualLeaveDays?: number
+  usedLeaveDays?: number
+  remainingLeaveDays?: number
+  planningWarnings?: string[]
+  planningErrors?: string[]
 }
 
 export type VacationTimeOffDay = {
@@ -248,8 +254,21 @@ export type VacationScheduleData = {
   year: number
   departmentId?: number | null
   actorEmployeeId?: number | null
+  planningUnlocked?: boolean
+  nextYearEditable?: boolean
+  isSuperAdmin?: boolean
   employees: VacationEmployee[]
   timeOffDays: VacationTimeOffDay[]
+}
+
+export type VacationRangeResult = {
+  affectedDays: number
+  usedLeaveDays?: number
+  remainingLeaveDays?: number
+  annualLeaveDays?: number
+  chargeableDaysInRange?: number
+  planningWarnings?: string[]
+  planningErrors?: string[]
 }
 
 export type WorkspacePlace = {

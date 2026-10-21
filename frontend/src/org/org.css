@@ -2020,6 +2020,41 @@
   font-weight: 700;
 }
 
+.org-vacation-quota {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, #16D5DF 10%, var(--surface-1) 90%);
+}
+
+.org-vacation-quota strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+
+.org-vacation-quota-warn,
+.org-vacation-quota-error {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.org-vacation-quota-warn {
+  color: color-mix(in srgb, #b36b00 80%, var(--text-primary) 20%);
+}
+
+.org-vacation-quota-error {
+  color: var(--error, #c62828);
+}
+
+.org-vacation-quota-inline {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .org-vacation-row-self .org-vacation-name,
 .org-vacation-row-self .org-vacation-sticky-col.org-vacation-name {
   background: var(--surface-2);

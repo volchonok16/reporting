@@ -159,6 +159,7 @@ const EMPTY_EMPLOYEE = {
   positionId: '',
   managerId: '',
   dailyWorkHours: '8',
+  annualLeaveDays: '28',
   isActive: true,
   isOrganizationHead: false,
   hideFromPyramid: false,
@@ -641,6 +642,7 @@ export default function Departments({
       positionId: emp.positionId ? String(emp.positionId) : '',
       managerId: emp.managerId ? String(emp.managerId) : '',
       dailyWorkHours: String(emp.dailyWorkHours),
+      annualLeaveDays: String(emp.annualLeaveDays ?? 28),
       isActive: emp.isActive,
       isOrganizationHead: emp.isOrganizationHead,
       hideFromPyramid: Boolean(emp.hideFromPyramid),
@@ -705,6 +707,7 @@ export default function Departments({
       positionId: employeeForm.positionId ? Number(employeeForm.positionId) : null,
       managerId: employeeForm.managerId ? Number(employeeForm.managerId) : null,
       dailyWorkHours: Number(employeeForm.dailyWorkHours),
+      annualLeaveDays: Number(employeeForm.annualLeaveDays) || 28,
       isActive: employeeForm.isActive,
       isOrganizationHead: employeeForm.isOrganizationHead,
       hideFromPyramid: employeeForm.hideFromPyramid,
@@ -736,6 +739,7 @@ export default function Departments({
           positionId: body.positionId,
           managerId: body.managerId,
           dailyWorkHours: body.dailyWorkHours,
+          annualLeaveDays: body.annualLeaveDays,
           isActive: body.isActive,
           isOrganizationHead: body.isOrganizationHead,
           hideFromPyramid: body.hideFromPyramid,
@@ -1277,7 +1281,11 @@ export default function Departments({
       ) : null}
 
       {panel === 'vacations' ? (
-        <VacationSchedule orgEmployeeId={orgEmployeeId} canManage={canManage} />
+        <VacationSchedule
+          orgEmployeeId={orgEmployeeId}
+          canManage={canManage}
+          isSuperAdmin={isSuperAdmin}
+        />
       ) : null}
 
       {panel === 'workspace' ? <WorkspaceBooking orgEmployeeId={orgEmployeeId} /> : null}
@@ -1395,6 +1403,22 @@ export default function Departments({
                       />
                     </label>
                   </div>
+                  <label>
+                    Дней отпуска в год
+                    <input
+                      type="number"
+                      min="1"
+                      max="366"
+                      step="1"
+                      value={employeeForm.annualLeaveDays}
+                      onChange={(e) =>
+                        setEmployeeForm({ ...employeeForm, annualLeaveDays: e.target.value })
+                      }
+                    />
+                  </label>
+                  <p className="org-hint">
+                    По умолчанию 28 календарных дней. Праздничные дни в период отпуска норму не расходуют.
+                  </p>
                   <label>
                     Должность
                     <select

@@ -115,9 +115,10 @@
 | `job_position` | Справочник должностей |
 | `team_role` | Роли в составе отдела |
 | `expertise_direction` | Направления экспертизы |
-| `employee` | Сотрудники организации (`public_id` — UUID для публичных ссылок) |
+| `employee` | Сотрудники организации (`public_id` — UUID; `annual_leave_days` — норма отпуска) |
 | `employee_expertise` | Экспертиза сотрудника |
 | `employee_time_off_day` | График отпусков (день + тип) |
+| `vacation_planning_unlock` | Годы с открытым планированием отпусков (суперадмин) |
 | `workspace_place` | Справочник рабочих мест (номера 23–53 и 99–106; см. миграции `008`, `012`) |
 | `workspace_booking` | Бронь места на календарный день |
 | `employee_office_day` | Дни присутствия сотрудника в офисе без привязки к месту |
@@ -171,7 +172,7 @@
 | `revenue_activity_history` | История изменений активностей по выручкам |
 | `revenue_activity_snapshot` | Снимки версий для отката |
 | `gov_initiative_section` | Вкладка «Госинициативы» (`main`) |
-| `gov_initiative_row` | Строки: Закон / Описание / Номер ЗнИ / Статус |
+| `gov_initiative_row` | Строки: Закон / Описание / Дата запуска / Статус / Номер ЗнИ |
 | `gov_initiative_history` | История изменений госинициатив |
 | `gov_initiative_snapshot` | Снимки версий госинициатив |
 | `schema_migration` | Журнал применённых SQL-миграций (`ensure_startup_schema`) |

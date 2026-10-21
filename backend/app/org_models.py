@@ -130,6 +130,7 @@ class Employee(Base):
     manager_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("employee.id", ondelete="SET NULL"))
     photo_path: Mapped[str | None] = mapped_column(String(512))
     daily_work_hours: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=Decimal("8"), nullable=False)
+    annual_leave_days: Mapped[int] = mapped_column(Integer, default=28, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_organization_head: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     hide_from_pyramid: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -217,6 +218,16 @@ class EmployeeTimeOffDay(Base):
         back_populates="time_off_days",
         foreign_keys=[employee_id],
     )
+
+
+class VacationPlanningUnlock(Base):
+    __tablename__ = "vacation_planning_unlock"
+
+    year: Mapped[int] = mapped_column(Integer, primary_key=True)
+    unlocked_by_org_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("org_user.id", ondelete="SET NULL")
+    )
+    unlocked_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class EmployeeOfficeDay(Base):

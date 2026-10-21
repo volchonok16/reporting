@@ -1,16 +1,23 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { getJson, putJson } from '../api'
-import { notifyError, notifyProblem, notifyWarning } from '../toast'
+import { getJson, postJson, putJson } from '../api'
+import { notifyError, notifyProblem, notifySuccess, notifyWarning } from '../toast'
 import { loadOrgUiState, saveOrgUiState } from '../uiState'
 import OrgPhoto from './OrgPhoto'
-import { buildHolidayKeySet } from './ruPublicHolidays'
+import { buildHolidayKeySet, isRuPublicHoliday } from './ruPublicHolidays'
 import { getMonthGroups, getYearDays, isDayOff, MONTH_NAMES_FULL, toDayKey } from './scheduleUtils'
 import { employeeApiRefFromId } from './employeeMentions'
-import type { EditableTimeOffKind, TimeOffKind, VacationEmployee, VacationScheduleData } from './types'
+import type {
+  EditableTimeOffKind,
+  TimeOffKind,
+  VacationEmployee,
+  VacationRangeResult,
+  VacationScheduleData,
+} from './types'
 
 type VacationScheduleProps = {
   orgEmployeeId: number | null
   canManage: boolean
+  isSuperAdmin?: boolean
   year?: number
   onYearChange?: (year: number) => void
 }
@@ -145,7 +152,8 @@ function formatVacationCellTip(
   const dateLabel = `${day.getDate()} ${MONTH_NAMES_FULL[day.getMonth()].toLowerCase()} ${day.getFullYear()}`
   const base = `${employeeName} · ${dateLabel}`
   if (kind) {
-    return `${base} · ${KIND_META[kind].label}`
+    const holidayNote = kind === 'vacation' && isRuPublicHoliday(day) ? ' (праздник не в норме)' : ''
+    return `${base} · ${KIND_META[kind].label}${holidayNote}`
   }
   if (dayOff) {
     return `${base} · Выходной или праздник`
@@ -168,14 +176,25 @@ function buildRangeDays(fromDay: string, toDay: string): string[] {
   return days
 }
 
+function countChargeableVacationDays(dayKeys: string[]): number {
+  let count = 0
+  for (const key of dayKeys) {
+    const day = new Date(`${key}T12:00:00`)
+    if (!isRuPublicHoliday(day)) count += 1
+  }
+  return count
+}
+
 export default function VacationSchedule({
   orgEmployeeId,
   canManage,
+  isSuperAdmin = false,
   year: yearProp,
   onYearChange,
 }: VacationScheduleProps) {
   const currentDate = useMemo(() => new Date(), [])
   const currentYear = currentDate.getFullYear()
+  const nextYear = currentYear + 1
   const currentMonth = currentDate.getMonth()
   const currentDay = currentDate.getDate()
   const savedOrgUi = loadOrgUiState()
@@ -184,6 +203,7 @@ export default function VacationSchedule({
   const [data, setData] = useState<VacationScheduleData | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [unlocking, setUnlocking] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [brush, setBrush] = useState<EditableTimeOffKind>('vacation')
   const [rangeStart, setRangeStart] = useState<{ employeeId: number; day: string } | null>(null)
@@ -225,12 +245,12 @@ export default function VacationSchedule({
     setSelectedDayKey(toDayKey(fallbackDate))
   }, [year, selectedDayKey, currentMonth, currentDay])
 
-  const setYear = (nextYear: number) => {
+  const setYear = (next: number) => {
     if (onYearChange) {
-      onYearChange(nextYear)
+      onYearChange(next)
       return
     }
-    setInternalYear(nextYear)
+    setInternalYear(next)
   }
 
   const load = useCallback(async (options?: { silent?: boolean }) => {
@@ -269,15 +289,60 @@ export default function VacationSchedule({
     autoScrolledYearRef.current = year
   }, [year, data, currentMonth])
 
+  const togglePlanningUnlock = async () => {
+    if (!isSuperAdmin || unlocking) return
+    const unlocked = Boolean(data?.planningUnlocked)
+    const confirmText = unlocked
+      ? `Закрыть планирование отпусков на ${year} год? Редактирование станет недоступно обычным пользователям.`
+      : `Открыть планирование отпусков на ${year} год? Сотрудники смогут редактировать свой график.`
+    if (!window.confirm(confirmText)) return
+    setUnlocking(true)
+    try {
+      await postJson('/api/org/vacations/planning-unlock', {
+        year,
+        unlocked: !unlocked,
+      })
+      notifySuccess(unlocked ? `Планирование ${year} закрыто.` : `Планирование ${year} открыто.`)
+      await load({ silent: true })
+    } catch (err) {
+      notifyProblem(err, 'Не удалось изменить планирование')
+    } finally {
+      setUnlocking(false)
+    }
+  }
+
   const applyRange = async (employeeId: number, fromDay: string, toDay: string) => {
     setSaving(true)
     try {
-      await putJson<{ affectedDays: number }>('/api/org/vacations/range', {
+      const result = await putJson<VacationRangeResult>('/api/org/vacations/range', {
         employeeRef: employeeApiRefFromId(employeeById, employeeId),
         fromDay,
         toDay,
         kind: brush,
       })
+      const planningHints =
+        year === nextYear && Boolean(data?.planningUnlocked)
+      if (
+        planningHints &&
+        brush === 'vacation' &&
+        typeof result.chargeableDaysInRange === 'number' &&
+        result.chargeableDaysInRange > 0
+      ) {
+        const remaining =
+          typeof result.remainingLeaveDays === 'number'
+            ? result.remainingLeaveDays
+            : null
+        const tip =
+          remaining == null
+            ? `В норму зачтено ${result.chargeableDaysInRange} дн.`
+            : `В норму зачтено ${result.chargeableDaysInRange} дн. Осталось ${remaining} из ${result.annualLeaveDays ?? '—'}.`
+        notifySuccess(tip)
+      }
+      if (planningHints) {
+        for (const warning of result.planningWarnings ?? []) {
+          notifyWarning(warning)
+        }
+      }
       await load({ silent: true })
     } catch (err) {
       notifyProblem(err, 'Ошибка сохранения')
@@ -310,8 +375,21 @@ export default function VacationSchedule({
     return new Set(buildRangeDays(rangeStart.day, hoverDay))
   }, [rangeStart, hoverDay])
 
+  const previewChargeable = useMemo(() => {
+    if (brush !== 'vacation' || previewDays.size === 0) return 0
+    return countChargeableVacationDays([...previewDays])
+  }, [brush, previewDays])
+
   const hasEditableRows = (data?.employees ?? []).some((emp) => emp.canEdit)
   const employeeGroups = useMemo(() => groupEmployeesByDepartment(data?.employees ?? []), [data?.employees])
+  const planningHintsActive = year === nextYear && Boolean(data?.planningUnlocked)
+  const focusEmployee = planningHintsActive
+    ? (data?.employees ?? []).find((emp) => emp.isSelf) ??
+      (data?.employees ?? []).find((emp) => emp.canEdit) ??
+      null
+    : null
+  // Unlock открывает только следующий год; текущий редактируется без ограничений.
+  const showPlanningButton = isSuperAdmin && year === nextYear
 
   return (
     <section className="org-panel org-vacation-panel">
@@ -319,7 +397,7 @@ export default function VacationSchedule({
         <div className="org-vacation-toolbar-left">
           <h2>График отпусков</h2>
           <div className="org-vacation-year-picker" role="group" aria-label="Год">
-            {[currentYear, currentYear + 1].map((y) => (
+            {[currentYear, nextYear].map((y) => (
               <button
                 key={y}
                 type="button"
@@ -333,6 +411,21 @@ export default function VacationSchedule({
           </div>
         </div>
         <div className="org-vacation-toolbar-right">
+          {showPlanningButton ? (
+            <button
+              type="button"
+              className={data?.planningUnlocked ? 'btn-secondary' : 'btn-primary'}
+              disabled={unlocking}
+              onClick={() => void togglePlanningUnlock()}
+              title="Открыть или закрыть редактирование выбранного года для сотрудников"
+            >
+              {unlocking
+                ? 'Сохранение…'
+                : data?.planningUnlocked
+                  ? 'Закрыть планирование'
+                  : 'Планирование отпуска'}
+            </button>
+          ) : null}
           {hasEditableRows ? (
             <button
               type="button"
@@ -344,11 +437,16 @@ export default function VacationSchedule({
             >
               {editMode ? 'Готово' : 'Редактировать'}
             </button>
-          ) : (
-            <span className="org-hint">Редактирование доступно только для своей строки</span>
-          )}
+          ) : null}
         </div>
       </div>
+
+      {year === nextYear && data?.planningUnlocked ? (
+        <p className="org-hint">
+          Планирование отпусков на {year} год открыто. Один отпуск ≥14 календарных дней, ещё один ≥5;
+          праздники норму не расходуют.
+        </p>
+      ) : null}
 
       {canManage ? (
         <p className="org-hint">Администратор может редактировать график любого сотрудника.</p>
@@ -359,6 +457,25 @@ export default function VacationSchedule({
           Просмотр графика всей компании доступен всем. Чтобы редактировать свою строку, привяжите учётную
           запись к карточке сотрудника (Личный кабинет или «Управление»).
         </p>
+      ) : null}
+
+      {focusEmployee ? (
+        <div className="org-vacation-quota" role="status">
+          <strong>
+            {focusEmployee.isSelf ? 'Ваш отпуск' : focusEmployee.fullName}: осталось{' '}
+            {focusEmployee.remainingLeaveDays ?? '—'} из {focusEmployee.annualLeaveDays ?? 28} дн.
+          </strong>
+          {(focusEmployee.planningErrors ?? []).map((item) => (
+            <p key={`err-${item}`} className="org-vacation-quota-error">
+              {item}
+            </p>
+          ))}
+          {(focusEmployee.planningWarnings ?? []).map((item) => (
+            <p key={`warn-${item}`} className="org-vacation-quota-warn">
+              {item}
+            </p>
+          ))}
+        </div>
       ) : null}
 
       {editMode ? (
@@ -373,7 +490,12 @@ export default function VacationSchedule({
               {item.label}
             </button>
           ))}
-          <span className="org-hint">Клик по началу и концу диапазона в строке сотрудника</span>
+          <span className="org-hint">
+            Клик по началу и концу диапазона в строке сотрудника
+            {planningHintsActive && brush === 'vacation' && previewChargeable > 0
+              ? ` · в норму: +${previewChargeable} дн.`
+              : ''}
+          </span>
         </div>
       ) : (
         <div className="org-vacation-legend">
@@ -463,6 +585,12 @@ export default function VacationSchedule({
                               {employee.fullName}
                               {employee.isSelf ? (
                                 <span className="org-vacation-self-badge">вы</span>
+                              ) : null}
+                              {planningHintsActive ? (
+                                <span className="org-vacation-quota-inline">
+                                  {employee.remainingLeaveDays ?? '—'}/
+                                  {employee.annualLeaveDays ?? 28}
+                                </span>
                               ) : null}
                             </span>
                           </span>

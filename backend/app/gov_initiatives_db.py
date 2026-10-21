@@ -34,8 +34,9 @@ GOV_INITIATIVE_SECTION_COLUMNS: dict[str, tuple[str, ...]] = {
     "main": (
         "Закон",
         "Описание",
-        "Номер ЗнИ",
+        "Дата запуска",
         "Статус",
+        "Номер ЗнИ",
     ),
 }
 

@@ -121,7 +121,7 @@
 | sort_order / version | integer | Порядок / версия |
 | deleted_at | double precision | Soft-delete |
 
-`master_changes.actor` — email пользователя Voice, выполнившего изменение (добавление / правка / удаление / слияние). PK/`record_id`/`import_id`/`item_id`/`existing_record_id` в master_* — `bigint` (`056_voice_master_numeric_ids.sql`). Индексы по A — TEXT (`057` откатил `a_number_key` из `055`). Индекс `master_records_active_prefix` — `source_prefix` для активных строк (`058_voice_master_prefix_index.sql`).
+`master_changes.actor` — email пользователя Voice, выполнившего изменение (добавление / правка / удаление / слияние). Записи `master_changes` старше `VOICE_MASTER_HISTORY_RETENTION_DAYS` (по умолчанию 14) удаляются автоматически; `master_records` / текущая ревизия не трогаются. PK/`record_id`/`import_id`/`item_id`/`existing_record_id` в master_* — `bigint` (`056_voice_master_numeric_ids.sql`). Индексы по A — TEXT (`057` откатил `a_number_key` из `055`). Индекс `master_records_active_prefix` — `source_prefix` для активных строк (`058_voice_master_prefix_index.sql`).
 
 См. также `master_state`, `master_changes`, `master_imports`, `master_edit_lock` (миграция `050_voice_master.sql`).
 
@@ -163,6 +163,14 @@
 | updated_by_org_user_id | bigint | Кто включил |
 
 Миграция `076`. Массовый logout — `DELETE` из `auth_session`.
+
+## employee — отпуск
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| annual_leave_days | int | Норма дней отпуска в год (28) |
+
+`vacation_planning_unlock` — годы с открытым планированием (`086`).
 
 ## org_user — учётные записи
 
@@ -332,7 +340,7 @@
 | Таблица | Ключевые поля | Назначение |
 |--------|---------------|------------|
 | `gov_initiative_section` | `gid`, `name`, `sort_order` | Вкладка `main` («Госинициативы») |
-| `gov_initiative_row` | `section_id`, `sort_order`, `cells` | Закон / Описание / Номер ЗнИ / Статус |
+| `gov_initiative_row` | `section_id`, `sort_order`, `cells` | Закон / Описание / Дата запуска / Статус / Номер ЗнИ |
 | `gov_initiative_history` | `section_id`, `row_id`, `action` | Журнал изменений |
 | `gov_initiative_snapshot` | `section_id`, `rows`, `changed_by` | Снимок для отката |
 

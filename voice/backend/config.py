@@ -29,6 +29,7 @@ class Settings:
     job_workers: int
     object_ttl_seconds: int
     cleanup_interval_seconds: int
+    master_history_retention_days: int
     preview_limit: int
     auth_bootstrap_email: str
     auth_bootstrap_password: str
@@ -77,6 +78,9 @@ class Settings:
             ),
             cleanup_interval_seconds=_positive_int(
                 "CAROUSEL_CLEANUP_INTERVAL_SECONDS", 5 * 60
+            ),
+            master_history_retention_days=_positive_int(
+                "VOICE_MASTER_HISTORY_RETENTION_DAYS", 14
             ),
             preview_limit=_positive_int("CAROUSEL_PREVIEW_LIMIT", 100),
             auth_bootstrap_email=(
