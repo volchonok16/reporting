@@ -857,16 +857,16 @@ PK: (`org_user_id`, `page_key`). Для обычных сотрудников о
 |------|-----|----------|
 | `id` | bigint (identity) | PK (числовой id строки) |
 | `a_number` | text | Номер A (отображение / сравнение / btree) |
-| `b_numbers_json` | text | JSON-массив номеров B (АОН). Короткий АОН: меньше 8 символов, начинается с цифры или `*`; в JSON без префикса `b` |
+| `b_numbers_json` | text | JSON-массив номеров B (АОН). Короткий АОН: в исходнике с ведущим `*`, в JSON хранится как `*661` (без `b`). В выгрузке `*` не пишется: `4:2,1,b661`. Без `*` в исходнике — общая логика `4:4` |
 | `source_prefix` | text | Префикс/параметры строки (PANI, регион и т.п.) |
 | `comment` | text | Комментарий (до 50000 символов, проверка в API) |
 | `sort_order` | integer | Порядок в файле |
 | `version` | integer | Версия записи (optimistic concurrency) |
-| `created_at` / `updated_at` | double precision | Unix time |
+| `created_at` / `updated_at` | timestamptz | Время создания / изменения (миграция `088`; API по-прежнему отдаёт Unix float) |
 | `created_revision` / `updated_revision` | integer | Ревизии мастер-ветки |
-| `deleted_at` / `deleted_revision` | double precision / integer | Soft-delete |
+| `deleted_at` / `deleted_revision` | timestamptz / integer | Soft-delete |
 
-**Короткий АОН:** единственный B короче 8 символов (цифра/`*`) → в выгрузке маркер `4:2` и префикс `b` (`null/$ & null/$ & null/$ &79999999999=4:2,1,b9999`). Функция `master_is_short_aon` / `master_logical_row` — миграция `074_voice_short_aon_format.sql`.
+**Короткий АОН:** единственный B короче 8 символов **с ведущим `*` в исходнике** → маркер `4:2` и префикс `b` **без** звёздочки в выгрузке (`…=4:2,1,b661`). В БД признак сохраняется как `*661`. Без `*` — общая логика `4:4` без `b`. Функции — `074` / `088` / `089`.
 
 **Пакетное удаление** в UI мастер-файла: форма ≤ 50 номеров; для опорных — по 11 символов, для АОН — любая длина; большие списки — загрузка CSV/XLSX (`uploadId` в `POST /api/master/records/batch-delete-a|b`), шаблоны `GET /api/master/templates/batch-delete-a|b`.
 
@@ -884,7 +884,8 @@ PK: (`org_user_id`, `page_key`). Для обычных сотрудников о
 | `size` | bigint | Размер в байтах |
 | `format` | text | `csv`, `xlsx`, … |
 | `path` | text | Путь к файлу на диске (`CAROUSEL_DATA_DIR`) |
-| `created_at` / `expires_at` | double precision | TTL |
+| `created_at` | timestamptz | Время загрузки (`088`) |
+| `expires_at` | double precision | TTL (Unix) |
 
 Связанные таблицы: `voice_jobs`, `master_imports` (по `upload_id`).
 

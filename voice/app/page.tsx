@@ -2104,12 +2104,13 @@ export default function Home() {
     options: { full?: boolean } = {},
   ) => {
     const prefix = prefixForMappingFormat(selection);
-    const formatPreviewB = (value: string) => {
+      const formatPreviewB = (value: string) => {
       const short =
         value.length >= 1 &&
         value.length < 8 &&
-        /^(\*|[0-9])[0-9*]*$/.test(value);
-      return short ? `b${value}` : value;
+        /^\*[0-9*]*$/.test(value);
+      // «*» только признак короткого АОН; в строке — b661, не b*661
+      return short ? `b${value.slice(1)}` : value;
     };
     const firstB = selection.bNumbers[0] ?? selection.aNumber;
     const rest = selection.bNumbers
@@ -2124,7 +2125,7 @@ export default function Home() {
     const isShortAon =
       firstB.length >= 1 &&
       firstB.length < 8 &&
-      /^(\*|[0-9])[0-9*]*$/.test(firstB);
+      /^\*[0-9*]*$/.test(firstB);
     const firstBMarker =
       selection.bNumbers.length === 1 && isShortAon
         ? "4:2"
@@ -6376,7 +6377,7 @@ export default function Home() {
                         />
                       </label>
                       <label className="field">
-                        <span>Один короткий АОН (менее 8 символов)</span>
+                        <span>Один короткий АОН (с «*», менее 8 символов)</span>
                         <input value="4:2" readOnly />
                         <small>
                           Применяется автоматически вместо 4:4; номер пишется

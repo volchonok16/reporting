@@ -490,30 +490,32 @@ function hasInvalidNumberStart(value: string) {
 }
 
 function isShortAonBody(value: string) {
-  return (
-    value.length >= 1 &&
-    value.length < 8 &&
-    /^(\*|[0-9])[0-9*]*$/.test(value)
-  );
+  // Короткий АОН только с ведущим «*»; иначе — общая логика (4:4, без b).
+  return value.length >= 1 && value.length < 8 && /^\*[0-9*]*$/.test(value);
 }
 
-function canonicalizeShortAon(value: string) {
+function recoverShortAonStar(value: string) {
   const text = value.trim().replace(/^\+/, "");
-  if (text.startsWith("b") && isShortAonBody(text.slice(1))) {
-    return text.slice(1);
-  }
+  if (text.startsWith("b") && isShortAonBody(text.slice(1))) return text.slice(1);
+  if (isShortAonBody(text)) return text;
+  // b661 (выгрузка без звёздочки) → хранение *661
+  if (/^b[0-9]{1,7}$/i.test(text)) return `*${text.slice(1)}`;
   return text;
 }
 
+function canonicalizeShortAon(value: string) {
+  return recoverShortAonStar(value);
+}
+
 function isShortAonValue(value: string) {
-  const text = value.trim().replace(/^\+/, "");
-  if (text.startsWith("b") && isShortAonBody(text.slice(1))) return true;
-  return isShortAonBody(text);
+  return isShortAonBody(recoverShortAonStar(value));
 }
 
 function formatBNumberForOutput(value: string) {
-  if (!isShortAonValue(value)) return value;
-  return `b${canonicalizeShortAon(value)}`;
+  const recovered = recoverShortAonStar(value);
+  if (!isShortAonBody(recovered)) return value;
+  // В выгрузке «*» не пишем: *661 → b661
+  return `b${recovered.startsWith("*") ? recovered.slice(1) : recovered}`;
 }
 
 function isSingleShortAon(numbers: string[]) {
@@ -4660,9 +4662,10 @@ export default function MasterPage() {
               <strong>Опорные номера с коротким АОН</strong>
               <span>
                 Найдено строк: {recordStats.shortAonRecordCount}. Единственный
-                короткий АОН (менее 8 символов, начинается с цифры или «*»)
+                короткий АОН (менее 8 символов с ведущим «*» в исходнике)
                 считается допустимым и формируется с маркером 4:2 и префиксом b
-                (например, 9999 → b9999).
+                без звёздочки (например, *661 → b661). Без «*» — общая логика
+                4:4.
               </span>
             </div>
             <button
@@ -5843,7 +5846,7 @@ export default function MasterPage() {
                       }
                     }}
                   />
-                  Опорный с коротким АОН · менее 8 символов
+                  Опорный с коротким АОН · «*» и менее 8 символов
                 </label>
                 <button
                   className="text-button"

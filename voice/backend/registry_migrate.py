@@ -7,6 +7,7 @@ import sqlite3
 from pathlib import Path
 
 from .pg_db import PgConnection
+from .timeutil import as_dt
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ def migrate_sqlite_registry_if_needed(
                             int(row["size"]),
                             row["format"],
                             row["path"],
-                            float(row["created_at"]),
+                            as_dt(float(row["created_at"])),
                             float(row["expires_at"]),
                         ),
                     )
@@ -84,8 +85,8 @@ def migrate_sqlite_registry_if_needed(
                             row["workspace"],
                             row["result_path"],
                             row["report_path"],
-                            float(row["created_at"]),
-                            float(row["updated_at"]),
+                            as_dt(float(row["created_at"])),
+                            as_dt(float(row["updated_at"])),
                             float(row["expires_at"]),
                         ),
                     )

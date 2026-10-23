@@ -63,29 +63,59 @@ def test_serializer_parser_golden_round_trip() -> None:
     assert list(parsed.b_numbers) == mapping.bNumbers
 
 
-def test_serializer_short_aon_uses_marker_and_b_prefix() -> None:
+def test_serializer_short_digits_use_general_format() -> None:
+    """Короткий номер без «*» — общая логика (4:4, без префикса b)."""
+
     mapping = Mapping(
         aNumber="79999999999",
         bNumbers=["9999"],
         firstSeenOrder=1,
     )
     row = MappingSerializer().logical_row(mapping)
-    assert row == "null/$ & null/$ & null/$ &79999999999=4:2,1,b9999"
+    assert row == "null/$ & null/$ & null/$ &79999999999=4:4,1,9999"
     parsed = MappingParser(auto_detect=True).parse(row, source_row=2)
     assert parsed.a_number == "79999999999"
     assert list(parsed.b_numbers) == ["9999"]
 
 
 def test_serializer_star_short_aon() -> None:
+    """«*» в исходнике — признак короткого АОН; в выгрузке без «*»: b123."""
+
     mapping = Mapping(
         aNumber="79999999999",
         bNumbers=["*123"],
         firstSeenOrder=1,
     )
     row = MappingSerializer().logical_row(mapping)
-    assert row == "null/$ & null/$ & null/$ &79999999999=4:2,1,b*123"
+    assert row == "null/$ & null/$ & null/$ &79999999999=4:2,1,b123"
     parsed = MappingParser(auto_detect=True).parse(row, source_row=2)
     assert list(parsed.b_numbers) == ["*123"]
+
+
+def test_import_star_marker_exports_without_star() -> None:
+    """*661 / b*661 → хранение *661; выгрузка b661 (не b*661)."""
+
+    from carousel.security import normalize_number
+
+    assert normalize_number("*661", source_row=1, field="B") == "*661"
+    assert normalize_number("b*661", source_row=1, field="B") == "*661"
+    assert normalize_number("b661", source_row=1, field="B") == "*661"
+
+    for src in (
+        "null/$ & null/$ & null/$ &79999999999=4:2,1,b*661",
+        "null/$ & null/$ & null/$ &79999999999=4:2,1,*661",
+        "null/$ & null/$ & null/$ &79999999999=4:2,1,b661",
+    ):
+        parsed = MappingParser(auto_detect=True).parse(src, source_row=2)
+        assert list(parsed.b_numbers) == ["*661"]
+        out = MappingSerializer().logical_row(
+            Mapping(
+                aNumber=parsed.a_number,
+                bNumbers=list(parsed.b_numbers),
+                firstSeenOrder=1,
+            )
+        )
+        assert out == "null/$ & null/$ & null/$ &79999999999=4:2,1,b661"
 
 
 def test_csv_end_to_end() -> None:

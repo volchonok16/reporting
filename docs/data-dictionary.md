@@ -121,7 +121,7 @@
 | sort_order / version | integer | Порядок / версия |
 | deleted_at | double precision | Soft-delete |
 
-`master_changes.actor` — email пользователя Voice, выполнившего изменение (добавление / правка / удаление / слияние). Записи `master_changes` старше `VOICE_MASTER_HISTORY_RETENTION_DAYS` (по умолчанию 14) удаляются автоматически; `master_records` / текущая ревизия не трогаются. PK/`record_id`/`import_id`/`item_id`/`existing_record_id` в master_* — `bigint` (`056_voice_master_numeric_ids.sql`). Индексы по A — TEXT (`057` откатил `a_number_key` из `055`). Индекс `master_records_active_prefix` — `source_prefix` для активных строк (`058_voice_master_prefix_index.sql`).
+`master_changes.actor` — email пользователя Voice, выполнившего изменение (добавление / правка / удаление / слияние). Записи `master_changes` старше `VOICE_MASTER_HISTORY_RETENTION_DAYS` (по умолчанию 14) удаляются автоматически; `master_records` / текущая ревизия не трогаются. Поля `created_at` / `updated_at` / `merged_at` / `deleted_at` в `master_*` и `voice_*` — `timestamptz` (`088`). Короткий АОН — только с ведущим `*` (`088`). PK/`record_id`/`import_id`/`item_id`/`existing_record_id` в master_* — `bigint` (`056_voice_master_numeric_ids.sql`). Индексы по A — TEXT (`057` откатил `a_number_key` из `055`). Индекс `master_records_active_prefix` — `source_prefix` для активных строк (`058_voice_master_prefix_index.sql`).
 
 См. также `master_state`, `master_changes`, `master_imports`, `master_edit_lock` (миграция `050_voice_master.sql`).
 

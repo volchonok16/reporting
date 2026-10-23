@@ -17,6 +17,7 @@ from .errors import AppError
 from .pg_db import PgConnection, PgRow, configure as configure_db, connect as pg_connect
 from .registry_migrate import migrate_sqlite_registry_if_needed
 from .security import detect_file_format, safe_display_name
+from .timeutil import as_dt
 
 
 TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
@@ -80,7 +81,7 @@ class Registry:
     def _initialize(self) -> None:
         with self._lock, self.connect() as connection:
             migrate_sqlite_registry_if_needed(self.config.data_dir, connection)
-            now = time.time()
+            now_unix = time.time()
             interrupted_error = json.dumps(
                 {
                     "code": "SERVER_RESTARTED",
@@ -100,8 +101,8 @@ class Registry:
                 """,
                 (
                     interrupted_error,
-                    now,
-                    now + self.config.object_ttl_seconds,
+                    as_dt(now_unix),
+                    now_unix + self.config.object_ttl_seconds,
                 ),
             )
 
@@ -120,7 +121,7 @@ class Registry:
                     record.size,
                     record.format,
                     str(record.path),
-                    record.created_at,
+                    as_dt(record.created_at),
                     record.expires_at,
                 ),
             )
@@ -183,8 +184,8 @@ class Registry:
                     str(record.workspace),
                     str(record.result_path),
                     str(record.report_path),
-                    record.created_at,
-                    record.updated_at,
+                    as_dt(record.created_at),
+                    as_dt(record.updated_at),
                     record.expires_at,
                 ),
             )
@@ -255,9 +256,11 @@ class Registry:
                 if key in {"error", "summary"} and value is not None
                 else value
             )
-        now = time.time()
+        now_unix = time.time()
         columns.extend(["updated_at = ?", "expires_at = ?"])
-        values.extend([now, now + self.config.object_ttl_seconds, job_id])
+        values.extend(
+            [as_dt(now_unix), now_unix + self.config.object_ttl_seconds, job_id]
+        )
         with self._lock, self.connect() as connection:
             connection.execute(
                 f"UPDATE voice_jobs SET {', '.join(columns)} WHERE id = ?", values

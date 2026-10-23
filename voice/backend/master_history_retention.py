@@ -11,6 +11,7 @@ import os
 import time
 
 from .pg_db import connect as pg_connect
+from .timeutil import as_dt
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ def purge_old_master_changes(*, retention_days: int | None = None, force: bool =
 
     days = retention_days if retention_days is not None else retention_days_from_env()
     days = max(1, int(days))
-    cutoff = now - days * 86400.0
+    cutoff = as_dt(now - days * 86400.0)
 
     deleted = 0
     with pg_connect() as connection:

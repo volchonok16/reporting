@@ -8,7 +8,6 @@ import shutil
 import sqlite3
 import tempfile
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Iterable
@@ -43,6 +42,7 @@ from .pg_db import PgConnection, configure as configure_master_db, connect as pg
 from .reporting import ReportWriter
 from .security import normalize_number
 from .storage import Registry
+from .timeutil import as_dt, now_ts
 from .validation import ValidationService
 
 from psycopg.pq import TransactionStatus
@@ -1737,10 +1737,10 @@ class MasterService:
             values.append(action)
         if date_from is not None:
             clauses.append("created_at >= ?")
-            values.append(date_from)
+            values.append(as_dt(date_from))
         if date_to is not None:
             clauses.append("created_at < ?")
-            values.append(date_to)
+            values.append(as_dt(date_to))
         if normalized:
             clauses.append(
                 """
@@ -1848,7 +1848,7 @@ class MasterService:
                     updated_at = ?
                 WHERE status = 'analyzing'
                 """,
-                (time.time(),),
+                (now_ts(),),
             )
         for row in rows:
             try:
@@ -1877,7 +1877,7 @@ class MasterService:
                     updated_at = ?
                 WHERE status = 'merging'
                 """,
-                (time.time(),),
+                (now_ts(),),
             )
 
     def _merge_cancel_event(self, import_id: str) -> threading.Event:
@@ -1904,7 +1904,7 @@ class MasterService:
                     updated_at = ?
                 WHERE id = ? AND status = 'merging'
                 """,
-                (time.time(), import_id),
+                (now_ts(), import_id),
             )
 
     def _cancel_merge_backend(self, import_id: str) -> None:
@@ -1969,7 +1969,7 @@ class MasterService:
         reuse_existing: bool,
     ) -> str:
         upload = self.registry.get_upload(body.uploadId, session_id)
-        now = time.time()
+        now = now_ts()
         with self._lock, self._connect() as connection:
             if reuse_existing:
                 existing = connection.execute(
@@ -2191,7 +2191,7 @@ class MasterService:
         rows: int,
         connection: sqlite3.Connection | None = None,
     ) -> None:
-        params = (phase, rows, time.time(), import_id)
+        params = (phase, rows, now_ts(), import_id)
         sql = """
             UPDATE master_imports
             SET progress_phase = ?, progress_rows = ?, updated_at = ?
@@ -2217,7 +2217,7 @@ class MasterService:
                     error_code = NULL, error_message = NULL, updated_at = ?
                 WHERE id = ? AND status = 'queued'
                 """,
-                (time.time(), import_id),
+                (now_ts(), import_id),
             ).rowcount
         if claimed != 1:
             return
@@ -2249,7 +2249,7 @@ class MasterService:
                     updated_at = ?
                 WHERE id = ?
                 """,
-                (time.time(), import_id),
+                (now_ts(), import_id),
             )
         try:
             self._process_import(import_id, body, session_id)
@@ -2285,7 +2285,7 @@ class MasterService:
                     error_code = ?, error_message = ?, updated_at = ?
                 WHERE id = ?
                 """,
-                (code, message, time.time(), import_id),
+                (code, message, now_ts(), import_id),
             )
 
     def _process_import(
@@ -2388,7 +2388,7 @@ class MasterService:
     ) -> None:
         counts = {"new": 0, "unchanged": 0, "conflict": 0}
         persisted = 0
-        now = time.time()
+        now = now_ts()
         with self._connect() as connection:
             connection.execute(
                 """
@@ -2796,7 +2796,7 @@ class MasterService:
                 (
                     _json(stats),
                     int(parser_stats["inputRows"]),
-                    time.time(),
+                    now_ts(),
                     import_id,
                 ),
             )
@@ -3145,7 +3145,7 @@ class MasterService:
         actor: str,
     ) -> dict[str, Any]:
         """Start merge in background; client polls GET /imports/{id} until merged."""
-        now = time.time()
+        now = now_ts()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             import_row = connection.execute(
@@ -3237,7 +3237,7 @@ class MasterService:
                         updated_at = ?
                     WHERE id = ? AND status = 'merging'
                     """,
-                    (exc.code, exc.message, time.time(), import_id),
+                    (exc.code, exc.message, now_ts(), import_id),
                 )
         except Exception as exc:  # noqa: BLE001 — surface to UI, keep import retryable
             event = self._merge_cancellations.get(import_id)
@@ -3255,7 +3255,7 @@ class MasterService:
                             updated_at = ?
                         WHERE id = ? AND status = 'merging'
                         """,
-                        (str(exc)[:2000], time.time(), import_id),
+                        (str(exc)[:2000], now_ts(), import_id),
                     )
         finally:
             self._merge_backends.pop(import_id, None)
@@ -3305,7 +3305,7 @@ class MasterService:
         actor: str,
     ) -> dict[str, Any]:
         selected = set(body.replaceConflictItemIds)
-        now = time.time()
+        now = now_ts()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             self._merge_backends[import_id] = connection.backend_pid
@@ -3896,7 +3896,7 @@ class MasterService:
         self, body: MasterRecordRequest, session_id: str, *, actor: str
     ) -> dict[str, Any]:
         payload = self._normalize_record(body)
-        now = time.time()
+        now = now_ts()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
@@ -4001,7 +4001,7 @@ class MasterService:
         actor: str,
     ) -> dict[str, Any]:
         payload = self._normalize_record(body)
-        now = time.time()
+        now = now_ts()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             record = connection.execute(
@@ -4100,7 +4100,7 @@ class MasterService:
         *,
         actor: str,
     ) -> dict[str, Any]:
-        now = time.time()
+        now = now_ts()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             record = connection.execute(
@@ -4277,7 +4277,7 @@ class MasterService:
         else:
             numbers = list(a_numbers)
         targets = set(self._normalize_batch_numbers(numbers, field="A"))
-        now = time.time()
+        now = now_ts()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             # Index master_records_a — только совпавшие A, без полной выгрузки.
@@ -4357,7 +4357,7 @@ class MasterService:
             for value in excluded_record_ids
             if str(value).strip()
         }
-        now = time.time()
+        now = now_ts()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             stats = self._list_global_stats(connection)
@@ -4543,7 +4543,7 @@ class MasterService:
     ) -> dict[str, Any]:
         target_numbers = self._normalize_batch_numbers(b_numbers, field="B")
         targets = set(target_numbers)
-        now = time.time()
+        now = now_ts()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             selection_clauses: list[str] = []
@@ -4764,7 +4764,7 @@ class MasterService:
         and counter caches; history gets a single ``cleared`` event.
         """
         del session_id
-        now = time.time()
+        now = now_ts()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             active = int(self._list_global_stats(connection)["activeCount"])

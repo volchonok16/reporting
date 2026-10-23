@@ -146,7 +146,18 @@ def _split_script(script: str) -> list[str]:
 
 
 class PgRow(dict):
-    """dict-like row that also supports integer and attribute access."""
+    """dict-like row that also supports integer and attribute access.
+
+    TIMESTAMPTZ columns are exposed as Unix float for callers that still use
+    ``float(row["created_at"])`` / comparisons with ``time.time()``.
+    """
+
+    def __init__(self, data: dict[str, Any] | None = None, **kwargs: Any):
+        from .timeutil import coerce_row_value
+
+        raw = dict(data or {})
+        raw.update(kwargs)
+        super().__init__({key: coerce_row_value(value) for key, value in raw.items()})
 
     def __getitem__(self, key: Any) -> Any:
         if isinstance(key, int):

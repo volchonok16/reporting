@@ -788,6 +788,18 @@ class MappingParser:
         raw_b_numbers = b_payload.split(next_separator)
         if not raw_b_numbers or any(not value for value in raw_b_numbers):
             raise error("INVALID_B_NUMBER", "Готовая строка содержит пустой B-номер")
+        # Маркер 4:2 + тело без «*» (b661 / 661) — короткий АОН, в БД с «*».
+        if template.first_b_marker == "4:2":
+            restored: list[str] = []
+            for raw_b in raw_b_numbers:
+                candidate = str(raw_b).removeprefix("+").strip()
+                if candidate.startswith("b") and candidate[1:].isdigit() and len(candidate) - 1 < 8:
+                    restored.append(f"*{candidate[1:]}")
+                elif candidate.isdigit() and 1 <= len(candidate) < 8:
+                    restored.append(f"*{candidate}")
+                else:
+                    restored.append(str(raw_b))
+            raw_b_numbers = restored
         b_numbers = tuple(
             normalize_number(
                 raw_b,
