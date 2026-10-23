@@ -11,7 +11,7 @@ REPORT_HEADER = ("source_row", "code", "message", "masked_a", "masked_b")
 
 
 class ReportWriter:
-    def __init__(self, path: Path, *, buffer_size: int = 1_000):
+    def __init__(self, path: Path, *, buffer_size: int = 10_000):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._handle = self.path.open("w", encoding="utf-8", newline="")

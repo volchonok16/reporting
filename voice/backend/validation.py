@@ -19,7 +19,7 @@ from .mapping import (
     _header_token,
     is_raw_header,
 )
-from .models import HEADER, TemplateSettings
+from .models import HEADER, TemplateSettings, is_formatted_mapping_header
 from .security import normalize_number
 
 
@@ -154,7 +154,7 @@ class ValidationService:
             if value is None:
                 continue
             text = str(value)
-            if text == HEADER:
+            if is_formatted_mapping_header(text) or text == HEADER:
                 score += 100
                 continue
             try:
@@ -304,7 +304,8 @@ class ValidationService:
             None,
         )
         has_formatted_header = (
-            mode == "formatted" and str(first_non_empty or "") == HEADER
+            mode == "formatted"
+            and is_formatted_mapping_header(str(first_non_empty or ""))
         )
         width = max((len(row.values) for row in selected.rows), default=0)
         columns = []
@@ -582,7 +583,7 @@ class ValidationService:
                     ),
                     None,
                 )
-                if raw_value is None or str(raw_value) == HEADER:
+                if raw_value is None or is_formatted_mapping_header(str(raw_value)):
                     continue
                 try:
                     parsed = parser.parse(str(raw_value), source_row=row.source_row)

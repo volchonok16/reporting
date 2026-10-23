@@ -22,6 +22,7 @@ from .models import (
     TemplateSettings,
     canonicalize_pani_region_prefix,
     format_b_number_for_output,
+    is_formatted_mapping_header,
     resolved_first_b_marker,
 )
 from .reporting import ReportWriter
@@ -387,10 +388,36 @@ def _cancel_if_requested(cancelled: CancelCallback | None) -> None:
         raise CancelledError
 
 
+# Сколько строк report.csv писать по «шумным» кодам (остальное только в счётчиках).
+_REPORT_SAMPLE_LIMIT = 2_000
+
+
 class MappingBuilder:
     def __init__(self, spool: Any, report: ReportWriter):
         self.spool = spool
         self.report = report
+        self._report_samples: dict[str, int] = {}
+
+    def _report_sample(
+        self,
+        *,
+        code: str,
+        source_row: int | str = "",
+        message: str,
+        a_number: Any = "",
+        b_number: Any = "",
+    ) -> None:
+        used = self._report_samples.get(code, 0)
+        if used >= _REPORT_SAMPLE_LIMIT:
+            return
+        self._report_samples[code] = used + 1
+        self.report.add(
+            source_row=source_row,
+            code=code,
+            message=message,
+            a_number=a_number,
+            b_number=b_number,
+        )
 
     @staticmethod
     def _stats() -> dict[str, int]:
@@ -501,7 +528,7 @@ class MappingBuilder:
                     if bool(
                         getattr(self.spool, "preserve_duplicate_a", False)
                     ):
-                        self.report.add(
+                        self._report_sample(
                             source_row=row.source_row,
                             code="DUPLICATE_A_PRESERVED",
                             message="Повторная строка A сохранена отдельно",
@@ -509,7 +536,7 @@ class MappingBuilder:
                         )
                 if duplicate:
                     stats["duplicateBRemoved"] += 1
-                    self.report.add(
+                    self._report_sample(
                         source_row=row.source_row,
                         code="DUPLICATE_B_REMOVED",
                         message="Повторный B-номер удален",
@@ -525,7 +552,7 @@ class MappingBuilder:
                     a_number=raw_a,
                     b_number=raw_b,
                 )
-            if stats["inputRows"] % 10_000 == 0:
+            if stats["inputRows"] % 50_000 == 0:
                 self.spool.commit()
                 if progress is not None:
                     progress(stats["inputRows"])
@@ -565,7 +592,7 @@ class MappingBuilder:
                 )
                 continue
             text = str(raw_value)
-            if text == HEADER:
+            if is_formatted_mapping_header(text) or text == HEADER:
                 continue
             stats["inputRows"] += 1
             try:
@@ -582,7 +609,7 @@ class MappingBuilder:
                     preserve_duplicate_a = bool(
                         getattr(self.spool, "preserve_duplicate_a", False)
                     )
-                    self.report.add(
+                    self._report_sample(
                         source_row=row.source_row,
                         code=(
                             "DUPLICATE_A_PRESERVED"
@@ -596,32 +623,49 @@ class MappingBuilder:
                         ),
                         a_number=parsed.a_number,
                     )
-                for b_number in parsed.b_numbers:
-                    _new_a, duplicate_b = self.spool.add(
+                add_many = getattr(self.spool, "add_many", None)
+                if add_many is not None and not keep_duplicate_b:
+                    _new_a, removed = add_many(
                         parsed.a_number,
-                        b_number,
+                        parsed.b_numbers,
                         row.source_row,
-                        keep_duplicate=keep_duplicate_b,
                         source_prefix=parsed.source_prefix,
-                        linked_a_number=parsed.linked_a_number,
                     )
-                    if duplicate_b:
-                        stats["duplicateBRemoved"] += 1
-                        self.report.add(
+                    if removed:
+                        stats["duplicateBRemoved"] += removed
+                        self._report_sample(
                             source_row=row.source_row,
                             code="DUPLICATE_B_REMOVED",
                             message="Повторный B-номер удален",
                             a_number=parsed.a_number,
-                            b_number=b_number,
                         )
+                else:
+                    for b_number in parsed.b_numbers:
+                        _new_a, duplicate_b = self.spool.add(
+                            parsed.a_number,
+                            b_number,
+                            row.source_row,
+                            keep_duplicate=keep_duplicate_b,
+                            source_prefix=parsed.source_prefix,
+                            linked_a_number=parsed.linked_a_number,
+                        )
+                        if duplicate_b:
+                            stats["duplicateBRemoved"] += 1
+                            self._report_sample(
+                                source_row=row.source_row,
+                                code="DUPLICATE_B_REMOVED",
+                                message="Повторный B-номер удален",
+                                a_number=parsed.a_number,
+                                b_number=b_number,
+                            )
             except AppError as exc:
                 stats["invalidRows"] += 1
-                self.report.add(
+                self._report_sample(
                     source_row=row.source_row,
                     code=exc.code,
                     message=exc.message,
                 )
-            if stats["inputRows"] % 10_000 == 0:
+            if stats["inputRows"] % 50_000 == 0:
                 self.spool.commit()
                 if progress is not None:
                     progress(stats["inputRows"])
@@ -646,6 +690,8 @@ class MappingParser:
         self.allow_number_whitespace = allow_number_whitespace
         self.detected_template: TemplateSettings | None = None
         self._detected_next_marker_explicit = False
+        # Уже проверенные prefix при auto_detect + allow_mixed_templates.
+        self._validated_prefixes: dict[str, str] = {}
 
     def parse(self, value: str, *, source_row: int = 0) -> ParsedMapping:
         text = str(value)
@@ -655,6 +701,10 @@ class MappingParser:
         if text != text.strip() and not self.allow_number_whitespace:
             raise error("INVALID_FORMATTED_ROW", "В готовой строке есть лишние пробелы")
         template = self.template
+        first_b_marker = template.first_b_marker
+        next_b_marker = template.next_b_marker
+        weight = template.weight
+        resolved_prefix = template.resolved_prefix
         if self.auto_detect:
             equals_at = text.find("=")
             if equals_at < 0 or text.find("=", equals_at + 1) >= 0:
@@ -666,102 +716,161 @@ class MappingParser:
             if prefix_end < 0:
                 raise error("INVALID_PREFIX", "Некорректный параметр готовой строки")
             prefix = text[: prefix_end + 1]
-            rotation = text[equals_at + 1 :]
-            normalized_rotation = (
-                rotation[:-1]
-                if rotation.endswith(";")
-                else rotation
-            )
-            parts = normalized_rotation.split(";")
-            if not parts or any(not part for part in parts):
-                raise error(
-                    "INVALID_B_NUMBER",
-                    "Готовая строка содержит пустой B-номер",
+            # После первой детекции: читаем маркеры только из 1–2 сегментов,
+            # без проверки всех B на MIXED_TEMPLATE; prefix кэшируем.
+            if self.detected_template is not None and self.allow_mixed_templates:
+                rotation_head = text[equals_at + 1 :]
+                if rotation_head.endswith(";"):
+                    rotation_head = rotation_head[:-1]
+                first_seg, sep, rest = rotation_head.partition(";")
+                first_tokens = first_seg.split(",")
+                if len(first_tokens) != 3 or any(not token for token in first_tokens):
+                    raise error(
+                        "INVALID_FIRST_B", "Некорректный маркер первого B-номера"
+                    )
+                first_marker, weight, _first_b = first_tokens
+                next_marker = (
+                    first_marker.split(":", 1)[0]
+                    if ":" in first_marker
+                    else first_marker
                 )
-            first_tokens = parts[0].split(",")
-            if len(first_tokens) != 3 or any(not token for token in first_tokens):
-                raise error("INVALID_FIRST_B", "Некорректный маркер первого B-номера")
-            first_marker, weight, _first_b = first_tokens
-            next_marker = (
-                first_marker.split(":", 1)[0]
-                if ":" in first_marker
-                else first_marker
-            )
-            for part in parts[1:]:
-                tokens = part.split(",")
-                if len(tokens) != 3 or any(not token for token in tokens):
+                if sep:
+                    second_seg, _more_sep, _tail = rest.partition(";")
+                    second_tokens = second_seg.split(",")
+                    if len(second_tokens) == 3 and all(second_tokens):
+                        next_marker = second_tokens[0]
+                cache_key = f"{prefix}\0{first_marker}\0{next_marker}\0{weight}"
+                cached = self._validated_prefixes.get(cache_key)
+                if cached is None:
+                    try:
+                        row_template = TemplateSettings(
+                            prefix=prefix,
+                            firstBMarker=first_marker,
+                            nextBMarker=next_marker,
+                            weight=weight,
+                        )
+                    except ValueError as exc:
+                        raise error(
+                            "INVALID_PREFIX",
+                            (
+                                "PANI должен состоять ровно из 11 цифр"
+                                if (
+                                    PANI_PREFIX_PATTERN.fullmatch(prefix)
+                                    or PANI_REGION_PREFIX_PATTERN.fullmatch(prefix)
+                                    or LEGACY_PANI_REGION_PREFIX_PATTERN.fullmatch(
+                                        prefix
+                                    )
+                                )
+                                else "Некорректный параметр готовой строки"
+                            ),
+                        ) from exc
+                    cached = row_template.resolved_prefix
+                    self._validated_prefixes[cache_key] = cached
+                resolved_prefix = cached
+                first_b_marker = first_marker
+                next_b_marker = next_marker
+            else:
+                rotation = text[equals_at + 1 :]
+                normalized_rotation = (
+                    rotation[:-1]
+                    if rotation.endswith(";")
+                    else rotation
+                )
+                parts = normalized_rotation.split(";")
+                if not parts or any(not part for part in parts):
                     raise error(
-                        "INVALID_FORMATTED_ROW",
-                        "Некорректный разделитель следующего B-номера",
+                        "INVALID_B_NUMBER",
+                        "Готовая строка содержит пустой B-номер",
                     )
-                marker, next_weight, _b_number = tokens
-                if next_weight != weight:
+                first_tokens = parts[0].split(",")
+                if len(first_tokens) != 3 or any(not token for token in first_tokens):
                     raise error(
-                        "MIXED_TEMPLATE",
-                        "В строке используются разные веса B-номеров",
+                        "INVALID_FIRST_B", "Некорректный маркер первого B-номера"
                     )
-                if next_marker != marker and len(parts) > 1:
-                    if next_marker == first_marker.split(":", 1)[0]:
-                        next_marker = marker
-                    else:
+                first_marker, weight, _first_b = first_tokens
+                next_marker = (
+                    first_marker.split(":", 1)[0]
+                    if ":" in first_marker
+                    else first_marker
+                )
+                for part in parts[1:]:
+                    tokens = part.split(",")
+                    if len(tokens) != 3 or any(not token for token in tokens):
+                        raise error(
+                            "INVALID_FORMATTED_ROW",
+                            "Некорректный разделитель следующего B-номера",
+                        )
+                    marker, next_weight, _b_number = tokens
+                    if next_weight != weight:
                         raise error(
                             "MIXED_TEMPLATE",
-                            "В строке используются разные маркеры B-номеров",
+                            "В строке используются разные веса B-номеров",
                         )
-            try:
-                row_template = TemplateSettings(
-                    prefix=prefix,
-                    firstBMarker=first_marker,
-                    nextBMarker=next_marker,
-                    weight=weight,
-                )
-            except ValueError as exc:
-                raise error(
-                    "INVALID_PREFIX",
-                    (
-                        "PANI должен состоять ровно из 11 цифр"
-                        if (
-                            PANI_PREFIX_PATTERN.fullmatch(prefix)
-                            or PANI_REGION_PREFIX_PATTERN.fullmatch(prefix)
-                            or LEGACY_PANI_REGION_PREFIX_PATTERN.fullmatch(prefix)
-                        )
-                        else "Некорректный параметр готовой строки"
-                    ),
-                ) from exc
-            next_marker_explicit = len(parts) > 1
-            if self.detected_template is None:
-                self.detected_template = row_template
-                self._detected_next_marker_explicit = next_marker_explicit
-            else:
-                detected = self.detected_template
-                if (
-                    detected.first_b_marker != row_template.first_b_marker
-                    or detected.weight != row_template.weight
-                ) and not self.allow_mixed_templates:
-                    raise error(
-                        "MIXED_TEMPLATE",
-                        "Строки файла используют разные параметры шаблона",
+                    if next_marker != marker and len(parts) > 1:
+                        if next_marker == first_marker.split(":", 1)[0]:
+                            next_marker = marker
+                        else:
+                            raise error(
+                                "MIXED_TEMPLATE",
+                                "В строке используются разные маркеры B-номеров",
+                            )
+                try:
+                    row_template = TemplateSettings(
+                        prefix=prefix,
+                        firstBMarker=first_marker,
+                        nextBMarker=next_marker,
+                        weight=weight,
                     )
-                if next_marker_explicit:
+                except ValueError as exc:
+                    raise error(
+                        "INVALID_PREFIX",
+                        (
+                            "PANI должен состоять ровно из 11 цифр"
+                            if (
+                                PANI_PREFIX_PATTERN.fullmatch(prefix)
+                                or PANI_REGION_PREFIX_PATTERN.fullmatch(prefix)
+                                or LEGACY_PANI_REGION_PREFIX_PATTERN.fullmatch(prefix)
+                            )
+                            else "Некорректный параметр готовой строки"
+                        ),
+                    ) from exc
+                next_marker_explicit = len(parts) > 1
+                if self.detected_template is None:
+                    self.detected_template = row_template
+                    self._detected_next_marker_explicit = next_marker_explicit
+                    self._validated_prefixes[prefix] = row_template.resolved_prefix
+                else:
+                    detected = self.detected_template
                     if (
-                        self._detected_next_marker_explicit
-                        and detected.next_b_marker
-                        != row_template.next_b_marker
+                        detected.first_b_marker != row_template.first_b_marker
+                        or detected.weight != row_template.weight
                     ) and not self.allow_mixed_templates:
                         raise error(
                             "MIXED_TEMPLATE",
                             "Строки файла используют разные параметры шаблона",
                         )
-                    if not self._detected_next_marker_explicit:
-                        self.detected_template = TemplateSettings(
-                            prefix=detected.resolved_prefix,
-                            firstBMarker=detected.first_b_marker,
-                            nextBMarker=row_template.next_b_marker,
-                            weight=detected.weight,
-                        )
-                    self._detected_next_marker_explicit = True
-            template = row_template
-        resolved_prefix = template.resolved_prefix
+                    if next_marker_explicit:
+                        if (
+                            self._detected_next_marker_explicit
+                            and detected.next_b_marker
+                            != row_template.next_b_marker
+                        ) and not self.allow_mixed_templates:
+                            raise error(
+                                "MIXED_TEMPLATE",
+                                "Строки файла используют разные параметры шаблона",
+                            )
+                        if not self._detected_next_marker_explicit:
+                            self.detected_template = TemplateSettings(
+                                prefix=detected.resolved_prefix,
+                                firstBMarker=detected.first_b_marker,
+                                nextBMarker=row_template.next_b_marker,
+                                weight=detected.weight,
+                            )
+                        self._detected_next_marker_explicit = True
+                resolved_prefix = row_template.resolved_prefix
+                first_b_marker = row_template.first_b_marker
+                next_b_marker = row_template.next_b_marker
+                weight = row_template.weight
         if not text.startswith(resolved_prefix):
             raise error("INVALID_PREFIX", "Некорректный параметр готовой строки")
         payload = text[len(resolved_prefix) :]
@@ -778,18 +887,16 @@ class MappingParser:
         )
         if not a_number:
             raise error("INVALID_A_NUMBER", "В готовой строке отсутствует A-номер")
-        first_prefix = f"{template.first_b_marker},{template.weight},"
+        first_prefix = f"{first_b_marker},{weight},"
         if not rotation.startswith(first_prefix):
             raise error("INVALID_FIRST_B", "Некорректный маркер первого B-номера")
         b_payload = rotation[len(first_prefix) :]
-        next_separator = (
-            f";{template.next_b_marker},{template.weight},"
-        )
+        next_separator = f";{next_b_marker},{weight},"
         raw_b_numbers = b_payload.split(next_separator)
         if not raw_b_numbers or any(not value for value in raw_b_numbers):
             raise error("INVALID_B_NUMBER", "Готовая строка содержит пустой B-номер")
         # Маркер 4:2 + тело без «*» (b661 / 661) — короткий АОН, в БД с «*».
-        if template.first_b_marker == "4:2":
+        if first_b_marker == "4:2":
             restored: list[str] = []
             for raw_b in raw_b_numbers:
                 candidate = str(raw_b).removeprefix("+").strip()
@@ -811,11 +918,12 @@ class MappingParser:
         )
         if any(not value for value in b_numbers):
             raise error("INVALID_B_NUMBER", "Готовая строка содержит пустой B-номер")
+        # linked_a в spool импорта не используется — не считаем на каждой строке.
         return ParsedMapping(
             a_number=a_number,
             b_numbers=b_numbers,
             source_prefix=resolved_prefix,
-            linked_a_number=linked_a_from_prefix(resolved_prefix),
+            linked_a_number=None,
         )
 
 

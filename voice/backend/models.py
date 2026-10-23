@@ -11,7 +11,49 @@ HEADER = (
     "order=cap_idp_location_number&CAP_DRN_CLD&CAP_DRN_CLD_BCD&"
     "cap_idp_calling_party_number"
 )
+# Экспорт из внешней системы иногда даёт опечатки (numer / CD вместо number / BCD).
+HEADER_ALIASES = frozenset(
+    {
+        HEADER,
+        (
+            "order=cap_idp_location_numer&CAP_DRN_CLD&CAP_DRN_CLD_CD&"
+            "cap_idp_calling_party_numer"
+        ),
+        (
+            "order=cap_idp_location_number&CAP_DRN_CLD&CAP_DRN_CLD_CD&"
+            "cap_idp_calling_party_number"
+        ),
+        (
+            "order=cap_idp_location_numer&CAP_DRN_CLD&CAP_DRN_CLD_BCD&"
+            "cap_idp_calling_party_numer"
+        ),
+    }
+)
 NO_REGION_PREFIX = "null/$ & null/$ & null/$ &"
+_FORMATTED_BODY_MARKER_RE = re.compile(r"=\d+:?\d*,\d+,")
+
+
+def is_formatted_mapping_header(value: str | None) -> bool:
+    if value is None:
+        return False
+    text = str(value).strip().strip("\ufeff")
+    if text in HEADER_ALIASES:
+        return True
+    # Любой близкий заголовок order=cap_idp_...
+    return text.startswith("order=cap_idp_location_num")
+
+
+def looks_like_formatted_mapping_row(value: str | None) -> bool:
+    """Строка вида prefix&=marker,weight,b... (готовая связка)."""
+
+    if value is None:
+        return False
+    text = str(value).strip()
+    if not text or is_formatted_mapping_header(text):
+        return False
+    if "&" not in text or "=" not in text:
+        return False
+    return _FORMATTED_BODY_MARKER_RE.search(text) is not None
 PANI_PREFIX_PATTERN = re.compile(r"(\+?)([0-9]+)& null/\$ & null/\$ &$")
 PANI_REGION_PREFIX_PATTERN = re.compile(
     r"(\+?)([0-9]+)& D([0-9]+)\$&null&$"

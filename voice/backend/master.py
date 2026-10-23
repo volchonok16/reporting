@@ -10,7 +10,7 @@ import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
 
 from .config import Settings
 from .errors import AppError, CancelledError
@@ -50,8 +50,12 @@ from psycopg.pq import TransactionStatus
 
 logger = logging.getLogger(__name__)
 
-# Размер батча compare/merge (раньше 500): меньше round-trip к PostgreSQL.
-MASTER_IMPORT_BATCH_SIZE = 5000
+# Размер батча compare/merge: крупнее → меньше round-trip и commit.
+MASTER_IMPORT_BATCH_SIZE = 25_000
+# В UI показываем ≤500 предупреждений; в БД храним образец, счётчики — в stats.
+MASTER_IMPORT_WARNING_STORE_CAP = 5_000
+# Прогресс анализа/чтения: реже открывать отдельные соединения.
+MASTER_IMPORT_PROGRESS_EVERY = 50_000
 
 
 def _json(value: Any) -> str:
@@ -278,6 +282,32 @@ class MasterImportSpool:
             entry["b_numbers"].append(b_number)
             self._row_count += 1
         return first, duplicate
+
+    def add_many(
+        self,
+        a_number: str,
+        b_numbers: Sequence[str] | tuple[str, ...],
+        source_row: int,
+        *,
+        source_prefix: str | None = None,
+    ) -> tuple[bool, int]:
+        """Add all B for one source row; returns (is_new_a, duplicate_b_removed)."""
+
+        first = self.add_a(a_number, source_row, source_prefix=source_prefix)
+        entry = self._entries[self._entry_index[(a_number, source_row)]]
+        if entry["source_prefix"] is None and source_prefix is not None:
+            entry["source_prefix"] = source_prefix
+        seen: set[str] = entry["seen_b"]
+        removed = 0
+        append = entry["b_numbers"].append
+        for b_number in b_numbers:
+            if b_number in seen:
+                removed += 1
+                continue
+            seen.add(b_number)
+            append(b_number)
+            self._row_count += 1
+        return first, removed
 
     def source_row_for_a(self, a_number: str) -> int | None:
         return self._first_a.get(a_number)
@@ -1057,14 +1087,26 @@ class MasterService:
             "master_changes",
         }:
             raise ValueError(f"unsupported id table: {table}")
-        rows = connection.execute(
-            f"""
-            SELECT nextval(pg_get_serial_sequence('{table}', 'id')) AS id
-            FROM generate_series(1, ?)
-            """,
-            (count,),
-        ).fetchall()
-        return [int(row["id"]) for row in rows]
+        # Один nextval + setval вместо N вызовов nextval через generate_series.
+        first = int(
+            connection.execute(
+                f"""
+                SELECT nextval(pg_get_serial_sequence('{table}', 'id')) AS id
+                """
+            ).fetchone()["id"]
+        )
+        if count > 1:
+            connection.execute(
+                f"""
+                SELECT setval(
+                    pg_get_serial_sequence('{table}', 'id'),
+                    ?,
+                    true
+                )
+                """,
+                (first + count - 1,),
+            )
+        return list(range(first, first + count))
 
     @staticmethod
     def _append_change(
@@ -1112,14 +1154,21 @@ class MasterService:
     ) -> None:
         if not rows:
             return
-        connection.executemany(
-            """
-            INSERT INTO master_changes(
-                revision, sequence, record_id, action, line_number,
-                before_json, after_json, source_file, source_row, actor,
-                created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        connection.copy_rows(
+            "master_changes",
+            (
+                "revision",
+                "sequence",
+                "record_id",
+                "action",
+                "line_number",
+                "before_json",
+                "after_json",
+                "source_file",
+                "source_row",
+                "actor",
+                "created_at",
+            ),
             rows,
         )
 
@@ -2318,7 +2367,7 @@ class MasterService:
                     ).replace(",", " "),
                     status_code=413,
                 )
-            if processed_rows - last_progress >= 10_000:
+            if processed_rows - last_progress >= MASTER_IMPORT_PROGRESS_EVERY:
                 last_progress = processed_rows
                 self._update_analysis_progress(
                     import_id,
@@ -2388,6 +2437,10 @@ class MasterService:
     ) -> None:
         counts = {"new": 0, "unchanged": 0, "conflict": 0}
         persisted = 0
+        last_progress = 0
+        warning_numbers = 0
+        warning_row_keys: set[int] = set()
+        stored_warnings = 0
         now = now_ts()
         with self._connect() as connection:
             connection.execute(
@@ -2406,6 +2459,20 @@ class MasterService:
                 """,
                 (mode, now, import_id),
             )
+            master_row_exists = bool(
+                connection.execute(
+                    "SELECT EXISTS(SELECT 1 FROM master_records) AS ok"
+                ).fetchone()["ok"]
+            )
+            active_master_exists = bool(
+                connection.execute(
+                    """
+                    SELECT EXISTS(
+                        SELECT 1 FROM master_records WHERE deleted_at IS NULL
+                    ) AS ok
+                    """
+                ).fetchone()["ok"]
+            )
             entries = spool.iter_mapping_entries()
             while True:
                 batch: list[tuple[Any, int]] = []
@@ -2416,34 +2483,37 @@ class MasterService:
                     pass
                 if not batch:
                     break
-                a_numbers = [mapping.aNumber for mapping, _ in batch]
                 current_rows: dict[str, list[Any]] = {}
-                if a_numbers:
-                    unique_a = list(dict.fromkeys(a_numbers))
-                    for row in connection.execute(
-                        """
-                        SELECT
-                            record.id,
-                            record.a_number,
-                            record.b_numbers_json,
-                            record.source_prefix,
-                            record.comment,
-                            record.version,
-                            record.deleted_at,
-                            record.sort_order
-                        FROM master_records AS record
-                        LEFT JOIN matched_master_records AS matched
-                          ON matched.record_id = record.id
-                        WHERE record.a_number = ANY(?)
-                          AND matched.record_id IS NULL
-                        ORDER BY
-                            CASE WHEN record.deleted_at IS NULL THEN 0 ELSE 1 END,
-                            record.sort_order,
-                            record.id
-                        """,
-                        (unique_a,),
-                    ):
-                        current_rows.setdefault(str(row["a_number"]), []).append(row)
+                if master_row_exists:
+                    a_numbers = [mapping.aNumber for mapping, _ in batch]
+                    if a_numbers:
+                        unique_a = list(dict.fromkeys(a_numbers))
+                        for row in connection.execute(
+                            """
+                            SELECT
+                                record.id,
+                                record.a_number,
+                                record.b_numbers_json,
+                                record.source_prefix,
+                                record.comment,
+                                record.version,
+                                record.deleted_at,
+                                record.sort_order
+                            FROM master_records AS record
+                            LEFT JOIN matched_master_records AS matched
+                              ON matched.record_id = record.id
+                            WHERE record.a_number = ANY(?)
+                              AND matched.record_id IS NULL
+                            ORDER BY
+                                CASE WHEN record.deleted_at IS NULL THEN 0 ELSE 1 END,
+                                record.sort_order,
+                                record.id
+                            """,
+                            (unique_a,),
+                        ):
+                            current_rows.setdefault(str(row["a_number"]), []).append(
+                                row
+                            )
                 item_rows: list[tuple[Any, ...]] = []
                 warning_rows: list[tuple[Any, ...]] = []
                 matched_record_ids: list[tuple[int]] = []
@@ -2507,14 +2577,17 @@ class MasterService:
                         item_id="",
                     )
                     if pending_warnings:
-                        warning_rows.append(
-                            (
-                                len(item_rows) - 1,
-                                source_row,
-                                pending_warnings,
-                                status,
+                        warning_numbers += len(pending_warnings)
+                        warning_row_keys.add(int(source_row))
+                        if stored_warnings < MASTER_IMPORT_WARNING_STORE_CAP:
+                            warning_rows.append(
+                                (
+                                    len(item_rows) - 1,
+                                    source_row,
+                                    pending_warnings,
+                                    status,
+                                )
                             )
-                        )
                 if matched_record_ids:
                     connection.executemany(
                         """
@@ -2526,14 +2599,20 @@ class MasterService:
                 allocated_item_ids = self._allocate_ids(
                     connection, "master_import_items", len(item_rows)
                 )
-                connection.executemany(
-                    """
-                    INSERT INTO master_import_items(
-                        id, import_id, source_row, a_number, incoming_json,
-                        incoming_b_json, incoming_prefix, existing_record_id,
-                        current_json, status
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
+                connection.copy_rows(
+                    "master_import_items",
+                    (
+                        "id",
+                        "import_id",
+                        "source_row",
+                        "a_number",
+                        "incoming_json",
+                        "incoming_b_json",
+                        "incoming_prefix",
+                        "existing_record_id",
+                        "current_json",
+                        "status",
+                    ),
                     [
                         (item_id, *row)
                         for item_id, row in zip(allocated_item_ids, item_rows)
@@ -2542,8 +2621,12 @@ class MasterService:
                 if warning_rows:
                     flat_warnings: list[tuple[Any, ...]] = []
                     for item_index, source_row, warnings, status in warning_rows:
+                        if stored_warnings >= MASTER_IMPORT_WARNING_STORE_CAP:
+                            break
                         item_id = allocated_item_ids[item_index]
                         for warning in warnings:
+                            if stored_warnings >= MASTER_IMPORT_WARNING_STORE_CAP:
+                                break
                             flat_warnings.append(
                                 (
                                     int(import_id),
@@ -2555,29 +2638,38 @@ class MasterService:
                                     status,
                                 )
                             )
-                    connection.executemany(
-                        """
-                        INSERT INTO master_import_number_warnings(
-                            import_id, item_id, source_row, kind, number,
-                            a_number, status
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        flat_warnings,
-                    )
+                            stored_warnings += 1
+                    if flat_warnings:
+                        connection.copy_rows(
+                            "master_import_number_warnings",
+                            (
+                                "import_id",
+                                "item_id",
+                                "source_row",
+                                "kind",
+                                "number",
+                                "a_number",
+                                "status",
+                            ),
+                            flat_warnings,
+                        )
                 persisted += len(batch)
-                self._update_analysis_progress(
-                    import_id,
-                    phase="comparing",
-                    rows=persisted,
-                    connection=connection,
-                )
+                if persisted - last_progress >= MASTER_IMPORT_PROGRESS_EVERY:
+                    last_progress = persisted
+                    self._update_analysis_progress(
+                        import_id,
+                        phase="comparing",
+                        rows=persisted,
+                        connection=connection,
+                    )
                 connection.commit()
                 if len(batch) < MASTER_IMPORT_BATCH_SIZE:
                     break
 
             # Rename-match: только new-строки с уникальной B+prefix связкой.
-            # Подпись заранее — чтобы попасть в индекс master_records_signature.
-            if counts["new"] > 0:
+            # На пустом master пропускаем — JOIN ничего не даст, а signature по
+            # сотням тысяч new-строк очень дорогой.
+            if counts["new"] > 0 and active_master_exists:
                 connection.executescript(
                     """
                     DROP TABLE IF EXISTS temp.unique_incoming_signatures;
@@ -2708,58 +2800,66 @@ class MasterService:
                 duplicate_batch.append(
                     (import_id, a_number, _json(source_rows), source_name, now)
                 )
-                if len(duplicate_batch) >= 500:
-                    connection.executemany(
-                        """
-                        INSERT INTO master_duplicate_findings(
-                            import_id, a_number, source_rows_json, source_file,
-                            created_at
-                        ) VALUES (?, ?, ?, ?, ?)
-                        """,
+                if len(duplicate_batch) >= 2_000:
+                    connection.copy_rows(
+                        "master_duplicate_findings",
+                        (
+                            "import_id",
+                            "a_number",
+                            "source_rows_json",
+                            "source_file",
+                            "created_at",
+                        ),
                         duplicate_batch,
                     )
                     connection.commit()
                     duplicate_batch = []
             if duplicate_batch:
-                connection.executemany(
-                    """
-                    INSERT INTO master_duplicate_findings(
-                        import_id, a_number, source_rows_json, source_file,
-                        created_at
-                    ) VALUES (?, ?, ?, ?, ?)
-                    """,
+                connection.copy_rows(
+                    "master_duplicate_findings",
+                    (
+                        "import_id",
+                        "a_number",
+                        "source_rows_json",
+                        "source_file",
+                        "created_at",
+                    ),
                     duplicate_batch,
                 )
                 connection.commit()
 
-            master_only = int(
-                connection.execute(
-                    """
-                    SELECT COUNT(*) AS count
-                    FROM master_records AS record
-                    WHERE record.deleted_at IS NULL
-                      AND NOT EXISTS (
-                          SELECT 1 FROM master_import_items AS item
-                          WHERE item.import_id = ?
-                            AND item.a_number = record.a_number
-                      )
-                    """,
-                    (import_id,),
-                ).fetchone()["count"]
-            )
-            invalid_start_rows, invalid_start_numbers = (
-                self._import_number_start_counts(connection, import_id)
-            )
-            persisted_rows = int(
-                connection.execute(
-                    """
-                    SELECT COUNT(*) AS count
-                    FROM master_import_items
-                    WHERE import_id = ?
-                    """,
-                    (import_id,),
-                ).fetchone()["count"]
-            )
+            if not active_master_exists:
+                master_only = 0
+            else:
+                master_only = int(
+                    connection.execute(
+                        """
+                        SELECT COUNT(*) AS count
+                        FROM master_records AS record
+                        WHERE record.deleted_at IS NULL
+                          AND NOT EXISTS (
+                              SELECT 1 FROM master_import_items AS item
+                              WHERE item.import_id = ?
+                                AND item.a_number = record.a_number
+                          )
+                        """,
+                        (import_id,),
+                    ).fetchone()["count"]
+                )
+            invalid_start_rows = len(warning_row_keys)
+            invalid_start_numbers = warning_numbers
+            persisted_rows = persisted
+            if persisted_rows <= 0:
+                persisted_rows = int(
+                    connection.execute(
+                        """
+                        SELECT COUNT(*) AS count
+                        FROM master_import_items
+                        WHERE import_id = ?
+                        """,
+                        (import_id,),
+                    ).fetchone()["count"]
+                )
             expected_rows = int(parser_stats["preservedRows"])
             if persisted_rows != expected_rows:
                 raise AppError(
@@ -3730,16 +3830,40 @@ class MasterService:
                             )
 
                     if insert_rows:
-                        connection.executemany(
-                            """
-                            INSERT INTO master_records(
-                                id, a_number, b_numbers_json, source_prefix,
-                                sort_order, version, created_at, updated_at,
-                                created_revision, updated_revision, deleted_at,
-                                deleted_revision
-                            ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NULL, NULL)
-                            """,
-                            insert_rows,
+                        # version=1, deleted_*=NULL задаём в COPY явно.
+                        connection.copy_rows(
+                            "master_records",
+                            (
+                                "id",
+                                "a_number",
+                                "b_numbers_json",
+                                "source_prefix",
+                                "sort_order",
+                                "version",
+                                "created_at",
+                                "updated_at",
+                                "created_revision",
+                                "updated_revision",
+                                "deleted_at",
+                                "deleted_revision",
+                            ),
+                            [
+                                (
+                                    row[0],
+                                    row[1],
+                                    row[2],
+                                    row[3],
+                                    row[4],
+                                    1,
+                                    row[5],
+                                    row[6],
+                                    row[7],
+                                    row[8],
+                                    None,
+                                    None,
+                                )
+                                for row in insert_rows
+                            ],
                         )
                     if update_rows:
                         connection.executemany(

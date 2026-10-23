@@ -277,6 +277,29 @@ class PgConnection:
         cur.executemany(sql, seq_of_params)
         return cur
 
+    def copy_rows(
+        self,
+        table: str,
+        columns: Sequence[str],
+        rows: Sequence[Sequence[Any]],
+    ) -> None:
+        """Bulk INSERT via COPY FROM STDIN (much faster than executemany)."""
+        if not rows:
+            return
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table):
+            raise ValueError(f"invalid COPY table name: {table}")
+        safe_columns: list[str] = []
+        for column in columns:
+            name = str(column)
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+                raise ValueError(f"invalid COPY column name: {name}")
+            safe_columns.append(name)
+        cols_sql = ", ".join(safe_columns)
+        with self._conn.cursor() as cur:
+            with cur.copy(f"COPY {table} ({cols_sql}) FROM STDIN") as copy:
+                for row in rows:
+                    copy.write_row(tuple(row))
+
     def executescript(self, script: str) -> None:
         for statement in _split_script(script):
             upper = statement.upper()

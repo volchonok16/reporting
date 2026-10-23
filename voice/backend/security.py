@@ -83,6 +83,21 @@ def normalize_number(
         text = format(value, ".0f")
     else:
         text = str(value)
+    if not text:
+        return ""
+    # Hot path: обычные 79… без пробелов/«+»/короткого АОН.
+    if text.isdigit():
+        if require_seven and not text.startswith("7"):
+            number_kind = "Опорный номер" if field == "A" else "АОН"
+            raise AppError(
+                f"INVALID_{field}_NUMBER_START",
+                (
+                    f"В строке {source_row} {number_kind.lower()} {text} "
+                    "должен начинаться с 7"
+                ),
+                source_row=source_row,
+            )
+        return text
     if not text.strip():
         return ""
     if any(char.isspace() for char in text):

@@ -15,7 +15,11 @@ from xlrd.compdoc import CompDoc
 
 from .config import Settings, settings
 from .errors import AppError
-from .models import HEADER
+from .models import (
+    HEADER,
+    is_formatted_mapping_header,
+    looks_like_formatted_mapping_row,
+)
 from .security import detect_file_format
 
 
@@ -250,11 +254,23 @@ class CsvImporter(FileImporter):
             return csv.excel
 
     @staticmethod
+    def _sample_looks_like_formatted_mapping(sample: str) -> bool:
+        lines = [line.strip() for line in sample.splitlines() if line.strip()]
+        if not lines:
+            return False
+        if is_formatted_mapping_header(lines[0]):
+            return True
+        # Без точного HEADER: ≥2 строк с маркером B (иначе Sniffer режет по «,»).
+        hits = sum(1 for line in lines[:30] if looks_like_formatted_mapping_row(line))
+        return hits >= 2
+
+    @staticmethod
     def _formatted_one_column_delimiter(sample: str) -> str | None:
-        # A one-column CSV has no physical separators, so a custom delimiter
-        # cannot be inferred. The exact formatted header makes the grammar
-        # unambiguous; an absent control character lets csv.reader safely
-        # remove optional standard CSV quoting for any configured delimiter.
+        # One-column formatted CSV: commas belong to B-markers (4:4,1,79…),
+        # not to CSV columns. Exact HEADER or body pattern selects a rare
+        # delimiter so csv.reader keeps the whole line intact.
+        if not CsvImporter._sample_looks_like_formatted_mapping(sample):
+            return None
         for candidate in ("\x1f", "\x1e", "\t", "|", "^"):
             if candidate in sample:
                 continue
@@ -262,7 +278,17 @@ class CsvImporter(FileImporter):
                 first = next(csv.reader(sample.splitlines()[:1], delimiter=candidate))
             except (csv.Error, StopIteration):
                 continue
-            if first == [HEADER]:
+            if not first:
+                continue
+            cell = str(first[0])
+            if (
+                is_formatted_mapping_header(cell)
+                or looks_like_formatted_mapping_row(cell)
+                or cell == HEADER
+            ):
+                return candidate
+            # Sample matched overall; first line may be a header alias — still OK.
+            if is_formatted_mapping_header(sample.splitlines()[0]):
                 return candidate
         return None
 
@@ -277,11 +303,13 @@ class CsvImporter(FileImporter):
                 sample = source.read(64 * 1024)
                 source.seek(0)
                 formatted_delimiter = self._formatted_one_column_delimiter(sample)
-                reader = (
-                    csv.reader(source, delimiter=formatted_delimiter)
-                    if formatted_delimiter is not None
-                    else csv.reader(source, self._dialect(sample))
-                )
+                if formatted_delimiter is not None:
+                    # Прямое чтение строк быстрее csv.reader и не режет по «,».
+                    for source_row, line in enumerate(source, start=1):
+                        text = line.rstrip("\r\n")
+                        yield RowRecord(source_row, (text,))
+                    return
+                reader = csv.reader(source, self._dialect(sample))
                 for source_row, values in enumerate(reader, start=1):
                     yield RowRecord(source_row, tuple(values))
         except csv.Error as exc:
@@ -301,6 +329,14 @@ class FormattedMappingImporter(FileImporter):
         return self.delegate.listSheets()
 
     def iterateRows(self, sheet: str | None = None) -> Iterator[RowRecord]:
+        # CSV already yields one cell per line when formatted — skip re-scan.
+        if isinstance(self.delegate, CsvImporter):
+            for row in self.delegate.iterateRows(sheet):
+                value = row.values[0] if row.values else None
+                if value is not None and not str(value).strip():
+                    value = None
+                yield RowRecord(row.source_row, (value,))
+            return
         for row in self.delegate.iterateRows(sheet):
             first_non_empty = next(
                 (value for value in row.values if value is not None and str(value).strip()),
