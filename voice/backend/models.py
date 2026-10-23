@@ -63,66 +63,94 @@ LEGACY_PANI_REGION_PREFIX_PATTERN = re.compile(
 )
 
 
-def _looks_like_short_aon_body(value: str) -> bool:
-    """Short AON body: < 8 chars, starts with '*', then digits/'*'.
+def aon_significant_length(value: str) -> int:
+    """Длина тела АОН без ``+``, префикса выгрузки ``b`` и ведущего ``*``.
 
-    Короткие номера без ведущего «*» сериализуются общей логикой (маркер 4:4,
-    без префикса b).
+    Правила маркера: 11 → ``4:4``; 1..4 → ``4:2``; 5..10 и >11 → ошибка.
     """
 
-    if not value or len(value) >= 8:
+    text = str(value).removeprefix("+").strip()
+    if not text:
+        return 0
+    if text[0] in "bB":
+        text = text[1:]
+    if text.startswith("*"):
+        text = text[1:]
+    return len(text)
+
+
+def is_aon_length_invalid(value: str) -> bool:
+    """True, если длина тела АОН 5..10 или >11 (недопустимо)."""
+
+    length = aon_significant_length(value)
+    if length == 0:
         return False
-    if value[0] != "*":
+    if length == 11:
         return False
-    return all(char.isdigit() or char == "*" for char in value[1:])
+    if 1 <= length <= 4:
+        return False
+    return True
+
+
+def _looks_like_short_aon_body(value: str) -> bool:
+    """Короткий АОН: тело 1..4 символа после опционального ведущего ``*``."""
+
+    if not value:
+        return False
+    if value.startswith("*"):
+        body = value[1:]
+        return 1 <= len(body) <= 4 and all(
+            char.isdigit() or char == "*" for char in body
+        )
+    return 1 <= len(value) <= 4 and all(
+        char.isdigit() or char == "*" for char in value
+    )
 
 
 def is_short_aon_value(value: str) -> bool:
-    """True for a short AON, including optional serialisation prefix `b`."""
+    """True for short AON (body length 1..4), with optional ``b`` / ``*``."""
 
-    text = str(value).removeprefix("+")
-    if text.startswith("b") and _looks_like_short_aon_body(text[1:]):
-        return True
+    text = str(value).removeprefix("+").strip()
+    if text.startswith("b") or text.startswith("B"):
+        text = text[1:]
     return _looks_like_short_aon_body(text)
 
 
 def recover_short_aon_star(value: str) -> str:
-    """Нормализация короткого АОН для хранения: всегда с ведущим «*».
+    """Нормализация короткого АОН для хранения.
 
-    В исходнике «*» — признак короткого АОН. В хранилище оставляем ``*661``,
-    чтобы отличать от обычного короткого ``661`` (общая логика 4:4).
-    В выгрузке «*» не пишется: ``b661``, не ``b*661``.
-
-    ``*661`` / ``b*661`` → ``*661``;
-    ``b661`` (уже без «*» в файле) → ``*661``;
-    обычные цифры без ``b`` не трогаем.
+    ``*661`` / ``b*661`` → ``*661`` (признак ``*`` сохранён);
+    ``b661`` (выгрузка со ``*``) → ``*661``;
+    ``661`` без ``*`` и без ``b`` → ``661`` (без подстановки ``*``).
     """
 
     text = str(value).removeprefix("+").strip()
     if not text:
         return text
-    if text.startswith("b") and _looks_like_short_aon_body(text[1:]):
+    if text[0] in "bB" and text[1:].startswith("*") and _looks_like_short_aon_body(
+        text[1:]
+    ):
         return text[1:]
-    if _looks_like_short_aon_body(text):
+    if _looks_like_short_aon_body(text) and text.startswith("*"):
         return text
     if (
         len(text) >= 2
         and text[0] in "bB"
         and text[1:].isdigit()
-        and len(text) - 1 < 8
+        and 1 <= len(text) - 1 <= 4
     ):
         return f"*{text[1:]}"
     return text
 
 
 def canonicalize_short_aon(value: str) -> str:
-    """Stored form: leading ``*``, without serialisation prefix ``b``."""
+    """Stored short AON: keep ``*`` if present; never invent ``b``."""
 
     return recover_short_aon_star(value)
 
 
 def short_aon_output_body(value: str) -> str:
-    """Тело короткого АОН для выгрузки: без ведущего ``*`` (``*661`` → ``661``)."""
+    """Тело короткого АОН без ведущего ``*`` (``*661`` → ``661``)."""
 
     body = canonicalize_short_aon(value)
     if body.startswith("*"):
@@ -131,22 +159,32 @@ def short_aon_output_body(value: str) -> str:
 
 
 def format_b_number_for_output(value: str) -> str:
-    """Serialize B: short AON → ``b`` + digits without ``*`` (``*661`` → ``b661``)."""
+    """Выгрузка B: при ``*`` → заменить на ``b``; без ``*`` — как есть.
+
+    ``*661`` → ``b661``; ``661`` → ``661`` (ничего не подставляем).
+    """
 
     recovered = recover_short_aon_star(value)
     if not is_short_aon_value(recovered):
-        return str(value)
-    return f"b{short_aon_output_body(recovered)}"
+        return str(value).removeprefix("+").strip() or str(value)
+    if recovered.startswith("*"):
+        return f"b{recovered[1:]}"
+    return short_aon_output_body(recovered)
 
 
 def resolved_first_b_marker(
     b_numbers: Sequence[str],
     configured_marker: str = "4:4",
 ) -> str:
-    """Use the short-number marker for a single short AON (< 8 chars)."""
+    """Маркер первого B: 11 символов → ``4:4``; 1..4 → ``4:2``."""
 
-    if is_single_short_aon(b_numbers):
+    if not b_numbers:
+        return configured_marker
+    first = str(b_numbers[0])
+    if is_short_aon_value(first):
         return "4:2"
+    if aon_significant_length(first) == 11:
+        return "4:4"
     return configured_marker
 
 

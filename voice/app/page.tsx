@@ -2104,14 +2104,20 @@ export default function Home() {
     options: { full?: boolean } = {},
   ) => {
     const prefix = prefixForMappingFormat(selection);
+      const aonBodyLength = (value: string) => {
+        let text = value.replace(/^\+/, "");
+        if (/^[bB]/.test(text)) text = text.slice(1);
+        if (text.startsWith("*")) text = text.slice(1);
+        return text.length;
+      };
       const formatPreviewB = (value: string) => {
-      const short =
-        value.length >= 1 &&
-        value.length < 8 &&
-        /^\*[0-9*]*$/.test(value);
-      // «*» только признак короткого АОН; в строке — b661, не b*661
-      return short ? `b${value.slice(1)}` : value;
-    };
+        const text = value.replace(/^\+/, "");
+        // «*» → «b»; без «*» ничего не подставляем
+        if (text.startsWith("*") && aonBodyLength(text) <= 4) {
+          return `b${text.slice(1)}`;
+        }
+        return text;
+      };
     const firstB = selection.bNumbers[0] ?? selection.aNumber;
     const rest = selection.bNumbers
       .slice(1, options.full ? undefined : 4)
@@ -2122,14 +2128,13 @@ export default function Home() {
       .join("");
     const truncated =
       !options.full && selection.bNumbers.length > 4 ? ";…" : "";
-    const isShortAon =
-      firstB.length >= 1 &&
-      firstB.length < 8 &&
-      /^\*[0-9*]*$/.test(firstB);
+    const firstLen = aonBodyLength(firstB);
     const firstBMarker =
-      selection.bNumbers.length === 1 && isShortAon
+      firstLen >= 1 && firstLen <= 4
         ? "4:2"
-        : template.firstBMarker;
+        : firstLen === 11
+          ? "4:4"
+          : template.firstBMarker;
     const terminator = selection.kind === "pani-region" ? ";" : "";
     return `${prefix}${selection.aNumber}=${firstBMarker},${template.weight},${formatPreviewB(firstB)}${rest}${truncated}${terminator}`;
   };
@@ -6377,11 +6382,11 @@ export default function Home() {
                         />
                       </label>
                       <label className="field">
-                        <span>Один короткий АОН (с «*», менее 8 символов)</span>
+                        <span>Короткий АОН (1–4 символа)</span>
                         <input value="4:2" readOnly />
                         <small>
-                          Применяется автоматически вместо 4:4; номер пишется
-                          как b9999.
+                          Автоматически при длине 1–4: с «*» → b…, без «*» —
+                          как есть; при 11 символах — маркер 4:4.
                         </small>
                       </label>
                       <label className="field">

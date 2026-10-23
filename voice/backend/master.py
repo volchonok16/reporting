@@ -5004,6 +5004,27 @@ class MasterService:
                 "discardedDeletedRecords": discarded_records,
             }
 
+    def _iter_active_logical_rows(
+        self, connection: sqlite3.Connection
+    ) -> Iterable[str]:
+        rows = connection.execute(
+            """
+            SELECT a_number, b_numbers_json, source_prefix
+            FROM master_records
+            WHERE deleted_at IS NULL
+            ORDER BY sort_order, id
+            """
+        )
+        for row in rows:
+            b_numbers = json.loads(str(row["b_numbers_json"]))
+            if not b_numbers:
+                continue
+            yield _logical_master_row(
+                str(row["a_number"]),
+                str(row["b_numbers_json"]),
+                str(row["source_prefix"]),
+            )
+
     def export_csv(self, destination: Path) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection, destination.open(
@@ -5011,26 +5032,19 @@ class MasterService:
         ) as target:
             writer = csv.writer(target, lineterminator="\r\n")
             writer.writerow([HEADER])
-            rows = connection.execute(
-                """
-                SELECT * FROM master_records
-                WHERE deleted_at IS NULL
-                ORDER BY sort_order
-                """
-            )
-            for row in rows:
-                b_numbers = json.loads(str(row["b_numbers_json"]))
-                if not b_numbers:
-                    continue
-                writer.writerow(
-                    [
-                        _logical_master_row(
-                            str(row["a_number"]),
-                            str(row["b_numbers_json"]),
-                            str(row["source_prefix"]),
-                        )
-                    ]
-                )
+            for logical in self._iter_active_logical_rows(connection):
+                writer.writerow([logical])
+
+    def export_txt(self, destination: Path) -> None:
+        """Plain-text export: header + logical rows, no CSV quoting."""
+
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with self._connect() as connection, destination.open(
+            "w", encoding="utf-8", newline=""
+        ) as target:
+            target.write(f"{HEADER}\r\n")
+            for logical in self._iter_active_logical_rows(connection):
+                target.write(f"{logical}\r\n")
 
     def export_msisdn_csv(self, destination: Path) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)

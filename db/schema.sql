@@ -1763,14 +1763,53 @@ AS $$
     SELECT value ~ '^[0-9]+$'
 $$;
 
+CREATE OR REPLACE FUNCTION master_aon_significant_length(value TEXT)
+RETURNS INT
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT CASE
+        WHEN value IS NULL OR btrim(value) = '' THEN 0
+        ELSE length(
+            CASE
+                WHEN left(ltrim(value, '+'), 1) IN ('b', 'B')
+                    THEN CASE
+                        WHEN substr(ltrim(value, '+'), 2, 1) = '*'
+                            THEN substr(ltrim(value, '+'), 3)
+                        ELSE substr(ltrim(value, '+'), 2)
+                    END
+                WHEN left(ltrim(value, '+'), 1) = '*'
+                    THEN substr(ltrim(value, '+'), 2)
+                ELSE ltrim(value, '+')
+            END
+        )
+    END
+$$;
+
 CREATE OR REPLACE FUNCTION master_is_short_aon(value TEXT)
 RETURNS BOOLEAN
 LANGUAGE sql
 IMMUTABLE
 AS $$
     SELECT value IS NOT NULL
-       AND length(value) BETWEEN 1 AND 7
-       AND value ~ '^(\*|[0-9])[0-9*]*$'
+       AND master_aon_significant_length(value) BETWEEN 1 AND 4
+       AND ltrim(value, '+') ~ '^(b|B)?\*?[0-9*]{1,4}$'
+$$;
+
+CREATE OR REPLACE FUNCTION master_format_b_for_output(value TEXT)
+RETURNS TEXT
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT CASE
+        WHEN value IS NULL THEN NULL
+        WHEN master_is_short_aon(value)
+             AND ltrim(value, '+') ~ '^(b|B)?\*'
+            THEN 'b' || regexp_replace(ltrim(value, '+'), '^(b|B)?\*', '')
+        WHEN master_is_short_aon(value)
+            THEN regexp_replace(ltrim(value, '+'), '^(b|B)', '')
+        ELSE ltrim(value, '+')
+    END
 $$;
 
 -- SQLite GLOB → regex (для параметризованных GLOB ? в MasterService)
@@ -1848,13 +1887,12 @@ BEGIN
         RETURN prefix || a_number || '=';
     END IF;
     first_b := arr ->> 0;
-    IF jsonb_array_length(arr) = 1 AND master_is_short_aon(first_b) THEN
+    IF master_is_short_aon(first_b) THEN
         first_marker := '4:2';
+    ELSIF master_aon_significant_length(first_b) = 11 THEN
+        first_marker := '4:4';
     END IF;
-    out_first := CASE
-        WHEN master_is_short_aon(first_b) THEN 'b' || first_b
-        ELSE COALESCE(first_b, a_number)
-    END;
+    out_first := COALESCE(master_format_b_for_output(first_b), a_number);
     rest := '';
     idx := 0;
     FOR elem IN SELECT jsonb_array_elements_text(arr)
@@ -1862,10 +1900,7 @@ BEGIN
         IF idx = 0 THEN
             NULL;
         ELSE
-            out_elem := CASE
-                WHEN master_is_short_aon(elem) THEN 'b' || elem
-                ELSE elem
-            END;
+            out_elem := COALESCE(master_format_b_for_output(elem), elem);
             rest := rest || ';4,1,' || out_elem;
         END IF;
         idx := idx + 1;

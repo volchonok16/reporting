@@ -12,7 +12,13 @@ from typing import Any
 
 from .config import Settings
 from .errors import AppError
-from .models import canonicalize_short_aon, is_short_aon_value, recover_short_aon_star
+from .models import (
+    aon_significant_length,
+    canonicalize_short_aon,
+    is_aon_length_invalid,
+    is_short_aon_value,
+    recover_short_aon_star,
+)
 
 
 ZIP_MAGIC = b"PK\x03\x04"
@@ -85,19 +91,6 @@ def normalize_number(
         text = str(value)
     if not text:
         return ""
-    # Hot path: обычные 79… без пробелов/«+»/короткого АОН.
-    if text.isdigit():
-        if require_seven and not text.startswith("7"):
-            number_kind = "Опорный номер" if field == "A" else "АОН"
-            raise AppError(
-                f"INVALID_{field}_NUMBER_START",
-                (
-                    f"В строке {source_row} {number_kind.lower()} {text} "
-                    "должен начинаться с 7"
-                ),
-                source_row=source_row,
-            )
-        return text
     if not text.strip():
         return ""
     if any(char.isspace() for char in text):
@@ -120,13 +113,56 @@ def normalize_number(
             source_row=source_row,
         )
     if field == "B":
-        # *661 / b*661 / b661 → в БД *661 (признак короткого); в выгрузке будет b661
+        # *661 / b*661 / b661 → *661; 661 без * остаётся 661; 5..10 и >11 — ошибка
         recovered = recover_short_aon_star(text)
+        if is_aon_length_invalid(recovered) or is_aon_length_invalid(text):
+            length = aon_significant_length(recovered)
+            raise AppError(
+                "INVALID_B_NUMBER_LENGTH",
+                (
+                    f"В строке {source_row} АОН имеет недопустимую длину "
+                    f"{length} (допустимо 1–4 или ровно 11 символов)"
+                ),
+                source_row=source_row,
+            )
         if is_short_aon_value(recovered):
             return canonicalize_short_aon(recovered)
+    # Hot path: обычные цифры без «+»/короткого АОН.
+    if text.isdigit():
+        if field == "B" and is_aon_length_invalid(text):
+            length = aon_significant_length(text)
+            raise AppError(
+                "INVALID_B_NUMBER_LENGTH",
+                (
+                    f"В строке {source_row} АОН имеет недопустимую длину "
+                    f"{length} (допустимо 1–4 или ровно 11 символов)"
+                ),
+                source_row=source_row,
+            )
+        if require_seven and not text.startswith("7"):
+            number_kind = "Опорный номер" if field == "A" else "АОН"
+            raise AppError(
+                f"INVALID_{field}_NUMBER_START",
+                (
+                    f"В строке {source_row} {number_kind.lower()} {text} "
+                    "должен начинаться с 7"
+                ),
+                source_row=source_row,
+            )
+        return text
     if not NUMBER_RE.fullmatch(text):
         raise AppError(code, f"В строке {source_row} некорректный {field}-номер", source_row=source_row)
     normalized = text.removeprefix("+")
+    if field == "B" and is_aon_length_invalid(normalized):
+        length = aon_significant_length(normalized)
+        raise AppError(
+            "INVALID_B_NUMBER_LENGTH",
+            (
+                f"В строке {source_row} АОН имеет недопустимую длину "
+                f"{length} (допустимо 1–4 или ровно 11 символов)"
+            ),
+            source_row=source_row,
+        )
     if require_seven and not normalized.startswith("7"):
         number_kind = "Опорный номер" if field == "A" else "АОН"
         raise AppError(

@@ -644,6 +644,20 @@ def export_master(session_id: MasterActionSessionId) -> FileResponse:
     )
 
 
+@app.get("/api/master/export/txt")
+def export_master_txt(session_id: MasterActionSessionId) -> FileResponse:
+    del session_id
+    export_dir = settings.data_dir / "exports"
+    export_path = export_dir / f"master-{opaque_id()}.txt"
+    master_service.export_txt(export_path)
+    return FileResponse(
+        export_path,
+        media_type="text/plain; charset=utf-8",
+        filename="master.txt",
+        background=BackgroundTask(export_path.unlink, missing_ok=True),
+    )
+
+
 @app.get("/api/master/export/msisdn")
 def export_master_msisdn(
     _user: VoiceAdmin,

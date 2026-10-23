@@ -304,10 +304,12 @@ class CsvImporter(FileImporter):
                 source.seek(0)
                 formatted_delimiter = self._formatted_one_column_delimiter(sample)
                 if formatted_delimiter is not None:
-                    # Прямое чтение строк быстрее csv.reader и не режет по «,».
-                    for source_row, line in enumerate(source, start=1):
-                        text = line.rstrip("\r\n")
-                        yield RowRecord(source_row, (text,))
+                    # Редкий delimiter: запятые внутри маркеров B не режут поля,
+                    # csv.reader снимает CSV-кавычки (result.csv convert).
+                    reader = csv.reader(source, delimiter=formatted_delimiter)
+                    for source_row, values in enumerate(reader, start=1):
+                        cell = values[0] if values else ""
+                        yield RowRecord(source_row, (cell,))
                     return
                 reader = csv.reader(source, self._dialect(sample))
                 for source_row, values in enumerate(reader, start=1):

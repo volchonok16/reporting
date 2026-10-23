@@ -489,17 +489,30 @@ function hasInvalidNumberStart(value: string) {
   return !!normalized && !normalized.startsWith("7");
 }
 
+function aonSignificantLength(value: string) {
+  let text = value.trim().replace(/^\+/, "");
+  if (/^[bB]/.test(text)) text = text.slice(1);
+  if (text.startsWith("*")) text = text.slice(1);
+  return text.length;
+}
+
 function isShortAonBody(value: string) {
-  // Короткий АОН только с ведущим «*»; иначе — общая логика (4:4, без b).
-  return value.length >= 1 && value.length < 8 && /^\*[0-9*]*$/.test(value);
+  // Короткий АОН: значимая длина 1..4 (с опциональным ведущим «*»).
+  if (value.startsWith("*")) {
+    const body = value.slice(1);
+    return body.length >= 1 && body.length <= 4 && /^[0-9*]+$/.test(body);
+  }
+  return value.length >= 1 && value.length <= 4 && /^[0-9*]+$/.test(value);
 }
 
 function recoverShortAonStar(value: string) {
   const text = value.trim().replace(/^\+/, "");
-  if (text.startsWith("b") && isShortAonBody(text.slice(1))) return text.slice(1);
-  if (isShortAonBody(text)) return text;
-  // b661 (выгрузка без звёздочки) → хранение *661
-  if (/^b[0-9]{1,7}$/i.test(text)) return `*${text.slice(1)}`;
+  if (text.startsWith("b") && text.slice(1).startsWith("*") && isShortAonBody(text.slice(1))) {
+    return text.slice(1);
+  }
+  if (isShortAonBody(text) && text.startsWith("*")) return text;
+  // b661 (выгрузка со «*») → хранение *661; 661 без b/«*» не трогаем
+  if (/^b[0-9]{1,4}$/i.test(text)) return `*${text.slice(1)}`;
   return text;
 }
 
@@ -508,14 +521,16 @@ function canonicalizeShortAon(value: string) {
 }
 
 function isShortAonValue(value: string) {
-  return isShortAonBody(recoverShortAonStar(value));
+  const text = value.trim().replace(/^\+/, "").replace(/^[bB]/, "");
+  return isShortAonBody(text);
 }
 
 function formatBNumberForOutput(value: string) {
   const recovered = recoverShortAonStar(value);
-  if (!isShortAonBody(recovered)) return value;
-  // В выгрузке «*» не пишем: *661 → b661
-  return `b${recovered.startsWith("*") ? recovered.slice(1) : recovered}`;
+  if (!isShortAonValue(recovered)) return value.trim().replace(/^\+/, "");
+  // «*» → «b»; без «*» ничего не подставляем
+  if (recovered.startsWith("*")) return `b${recovered.slice(1)}`;
+  return recovered.replace(/^[bB]/, "");
 }
 
 function isSingleShortAon(numbers: string[]) {
@@ -523,9 +538,11 @@ function isSingleShortAon(numbers: string[]) {
 }
 
 function invalidBNumbers(numbers: string[]) {
-  return numbers.filter(
-    (value) => !isShortAonValue(value) && hasInvalidNumberLength(value),
-  );
+  return numbers.filter((value) => {
+    if (isShortAonValue(value)) return false;
+    const length = aonSignificantLength(value);
+    return length !== 11;
+  });
 }
 
 function invalidStartBNumbers(numbers: string[]) {
@@ -783,8 +800,11 @@ function formattedImportLine(record: ImportRecord) {
     parameter.region,
     parameter.custom,
   );
-  const firstBMarker =
-    bNumbers.length === 1 && isShortAonValue(first) ? "4:2" : "4:4";
+  const firstBMarker = isShortAonValue(first)
+    ? "4:2"
+    : aonSignificantLength(first) === 11
+      ? "4:4"
+      : "4:4";
   return `${prefix}${record.aNumber}=${firstBMarker},1,${formatBNumberForOutput(first)}${rest
     .map((number) => `;4,1,${formatBNumberForOutput(number)}`)
     .join("")}`;
@@ -3645,15 +3665,18 @@ export default function MasterPage() {
       localStorage.removeItem(activeMasterImportStorageKey(user.id));
   };
 
-  const downloadMaster = async () => {
+  const downloadMaster = async (format: "csv" | "txt" = "csv") => {
     if (!masterEditable) return;
+    const fileName = format === "txt" ? "master.txt" : "master.csv";
     try {
-      const response = await apiFetch("/api/master/export");
+      const response = await apiFetch(
+        format === "txt" ? "/api/master/export/txt" : "/api/master/export",
+      );
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = "master.csv";
+      anchor.download = fileName;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -3662,7 +3685,7 @@ export default function MasterPage() {
       setError(
         nextError instanceof Error
           ? nextError.message
-          : "Не удалось выгрузить master.csv.",
+          : `Не удалось выгрузить ${fileName}.`,
       );
     }
   };
@@ -3989,15 +4012,15 @@ export default function MasterPage() {
           </small>
           {allowedShortEditorAon && (
             <small className="short-aon-note">
-              Единственный короткий АОН {allowedShortEditorAon} допустим
-              (менее 8 символов, цифра или «*») и будет сформирован как{" "}
+              Короткий АОН {allowedShortEditorAon} допустим (1–4 символа) и
+              будет сформирован как{" "}
               {`4:2,1,${formatBNumberForOutput(allowedShortEditorAon)}`}.
             </small>
           )}
           {!!invalidEditorB.length && (
             <small className="number-length-warning">
-              АОН с длиной не 11 символов: {invalidEditorB.join(", ")}.
-              Сохранение не заблокировано.
+              АОН с недопустимой длиной (нужно 1–4 или ровно 11):{" "}
+              {invalidEditorB.join(", ")}. Сохранение не заблокировано.
             </small>
           )}
           {!!invalidStartEditorB.length && (
@@ -4446,15 +4469,28 @@ export default function MasterPage() {
             <button
               className="secondary-button"
               type="button"
-              onClick={() => void downloadMaster()}
+              onClick={() => void downloadMaster("csv")}
               disabled={!recordStats.activeCount || !masterEditable}
               title={
                 masterEditable
-                  ? undefined
+                  ? "CSV: одна колонка, строки в кавычках при наличии запятых"
                   : "Сначала займите мастер-файл"
               }
             >
               Скачать master.csv
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => void downloadMaster("txt")}
+              disabled={!recordStats.activeCount || !masterEditable}
+              title={
+                masterEditable
+                  ? "TXT: те же связки построчно, без CSV-кавычек"
+                  : "Сначала займите мастер-файл"
+              }
+            >
+              Скачать master.txt
             </button>
             {user?.voiceAdmin && (
               <button
@@ -4662,8 +4698,8 @@ export default function MasterPage() {
               <strong>Опорные номера с коротким АОН</strong>
               <span>
                 Найдено строк: {recordStats.shortAonRecordCount}. Единственный
-                короткий АОН (менее 8 символов с ведущим «*» в исходнике)
-                считается допустимым и формируется с маркером 4:2 и префиксом b
+                короткий АОН (1–4 символа): маркер 4:2; при «*» в исходнике в
+                выгрузке «*» заменяется на b, без «*» префикс не подставляется
                 без звёздочки (например, *661 → b661). Без «*» — общая логика
                 4:4.
               </span>
@@ -5846,7 +5882,7 @@ export default function MasterPage() {
                       }
                     }}
                   />
-                  Опорный с коротким АОН · «*» и менее 8 символов
+                  Опорный с коротким АОН · 1–4 символа
                 </label>
                 <button
                   className="text-button"
