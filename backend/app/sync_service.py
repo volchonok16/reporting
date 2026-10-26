@@ -371,15 +371,27 @@ def upsert_task(
     return db.execute(stmt).scalar_one()
 
 
-def _release_to_area_owner(db: Session, board: BoardConfig, item: dict) -> bool:
+def _release_to_area_owner(
+    db: Session,
+    board: BoardConfig,
+    item: dict,
+    *,
+    source_system_id: int,
+) -> bool:
     """Карточка чужой, более точной доски: не переписывать её на текущую и не удалять."""
     fields = item.get("fields") or {}
     owner = area_owned_by_other_board(fields.get("System.AreaPath"), board, get_boards())
     if owner is None:
         return False
     external_id = str(item.get("id") or "")
-    existing = db.scalar(select(Task).where(Task.external_id == external_id, Task.source == "tfs"))
-    if existing is not None and existing.task_type == TASK_TYPE_CHANGE:
+    existing = db.scalar(
+        select(Task).where(
+            Task.source_system_id == source_system_id,
+            Task.external_id == external_id,
+            Task.task_type == TASK_TYPE_CHANGE,
+        )
+    )
+    if existing is not None:
         extra = dict(existing.extra_json or {})
         tagged = normalize_board_code(str(extra.get("board_code") or ""))
         current = normalize_board_code(board.code)
@@ -387,6 +399,7 @@ def _release_to_area_owner(db: Session, board: BoardConfig, item: dict) -> bool:
             extra["board_code"] = owner.code
             existing.extra_json = extra
             existing.source_team = owner.name
+            existing.last_synced_at = datetime.now(UTC)
             db.add(existing)
             logger.info(
                 "sync_reassign_area board=%s owner=%s id=%s",
@@ -450,7 +463,7 @@ async def sync_board(
         protected_external_ids: set[str] = set()
         owned_payloads = []
         for item in zni_payloads:
-            if _release_to_area_owner(db, board, item):
+            if _release_to_area_owner(db, board, item, source_system_id=source_system_id):
                 protected_external_ids.add(str(item["id"]))
                 continue
             owned_payloads.append(item)
