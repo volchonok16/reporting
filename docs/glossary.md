@@ -343,6 +343,7 @@
 | `actual_period` | varchar(128) | Фактическая дата месяц/квартал. Редактирование только в статусах из `ZNI_ACTUAL_PERIOD_EDITABLE_STATES` (по умолчанию `UAT,Pilot,Closed`) — колонка доски или `System.State`. Если пусто: для Closed — дата входа в Closed, иначе — дата входа в Pilot |
 | `desired_date` | date | Желаемая дата. Если пусто — в UI/API подставляется плановая дата |
 | `comment` | text | Комментарий |
+| `plan_quarter` | varchar(16) | Заявленный квартал закрытия, канон `YYYY-Qn` (например `2026-Q1`). Не из TFS и не колонка «План квартала» (итерация). Если квартал закончился, а ЗНИ не закрыта в его последний день или раньше — строка в таблице и в Excel розовая `#FF3495` |
 | `updated_at` | timestamptz | Последнее сохранение |
 
 ## zni_category — справочник категорий ЗНИ
@@ -753,8 +754,8 @@
 | `GET /api/products?hideClosed=` | Список продуктов TFS с дочерними ЗНИ (`parent_task_id`) |
 | `POST /api/sync` | Синхронизация; body `{ board }` |
 | `GET /api/sync/status` | Статус и прогресс |
-| `GET /api/export` | Excel тех же строк, что таблица ЗНИ: те же `board`, `search`, `sort`, даты, `status`, `quarter`, `customer`, `ect_reservation`, `linked_environment`, `metric`, `tag_group`. Колонки «Ссылка» (URL ЗНИ, гиперссылка и у номера) и «Продукт» (`parent_task_id`) |
-| `PATCH /api/tasks/{id}/external-data` | Внешние поля ЗНИ (приоритет, коммерческий эффект, даты); не в TFS. Любой авторизованный пользователь; **`actualPeriod`** — только администратор и только в статусах `ZNI_ACTUAL_PERIOD_EDITABLE_STATES` (по умолчанию `UAT,Pilot,Closed`) |
+| `GET /api/export` | Excel. `export_scope=filters` — те же фильтры, что таблица (`board`, `search`, `sort`, даты, `status`, `quarter`, `customer`, `ect_reservation`, `linked_environment`, `metric`, `tag_group`). `export_scope=overdue` — все просроченные по заявленному кварталу, без фильтров страницы. `export_scope=all` — все ЗНИ всех досок, включая закрытые. Колонки «Ссылка», «Продукт», «Факт закрытия», «Заявленный квартал» |
+| `PATCH /api/tasks/{id}/external-data` | Внешние поля ЗНИ (приоритет, коммерческий эффект, даты, заявленный квартал `planQuarter`); не в TFS. Любой авторизованный пользователь; **`actualPeriod`** — только администратор и только в статусах `ZNI_ACTUAL_PERIOD_EDITABLE_STATES` (по умолчанию `UAT,Pilot,Closed`) |
 | `GET/POST /api/notifications` | Inbox (по умолчанию только непрочитанные) и отправка уведомлений; получатели — все активные `org_user` при audience=`all`, независимо от ролей и доступа к вкладкам; звук при новых; тип `delivery=popup` — модальное окно по центру (опрос ~3 с). **Отправка только для администратора** |
 
 Диаграммы: [diagrams.md](diagrams.md) · Production: [deploy/DEPLOY.md](../deploy/DEPLOY.md).

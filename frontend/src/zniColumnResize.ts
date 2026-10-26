@@ -14,6 +14,7 @@ export type ZniColumnKey =
   | 'reservation'
   | 'externalPriority'
   | 'externalCategory'
+  | 'externalPlan'
   | 'externalEffect'
   | 'externalActual'
   | 'externalDesired'

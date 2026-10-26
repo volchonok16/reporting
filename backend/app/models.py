@@ -131,6 +131,7 @@ class ZniExternalData(Base):
     actual_period: Mapped[str | None] = mapped_column(String(128))
     desired_date: Mapped[date | None] = mapped_column(Date)
     comment: Mapped[str | None] = mapped_column(Text)
+    plan_quarter: Mapped[str | None] = mapped_column(String(16))
     category_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("zni_category.id", ondelete="SET NULL")
     )

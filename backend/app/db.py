@@ -244,6 +244,8 @@ def ensure_startup_schema() -> None:
         "087_gov_initiatives_launch_date.sql",
         "088_voice_short_aon_star_and_timestamps.sql",
         "089_voice_short_aon_strip_star_on_export.sql",
+        "090_voice_aon_length_first_marker.sql",
+        "091_zni_external_plan_quarter.sql",
     )
 
     auth_session_sql = """

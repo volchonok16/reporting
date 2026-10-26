@@ -1295,6 +1295,48 @@ body.zni-col-resizing {
   background: color-mix(in srgb, #d97706 18%, transparent);
 }
 
+.zni-table tbody tr.zni-table-row-overdue > td,
+.zni-table tbody tr.zni-table-row-overdue:hover > td {
+  color: #ff3495;
+  background: color-mix(in srgb, #ff3495 14%, transparent);
+}
+
+.zni-table tbody tr.zni-table-row-overdue > td a {
+  color: #ff3495;
+}
+
+.zni-plan-quarter {
+  display: flex;
+  gap: 4px;
+}
+
+.zni-plan-quarter .business-value-input {
+  min-width: 0;
+}
+
+.zni-export-menu {
+  position: relative;
+}
+
+.zni-export-menu-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 240px;
+  padding: 8px;
+  background: var(--surface);
+  border: 2px solid var(--text-primary);
+  border-radius: 16px;
+}
+
+.zni-export-menu-panel .btn-secondary {
+  width: 100%;
+}
+
 .zni-field-derived {
   font-style: italic;
   color: var(--text-muted);

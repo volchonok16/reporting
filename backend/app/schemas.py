@@ -176,6 +176,9 @@ class ChangeRequestOut(BaseModel):
     externalActualPeriod: str | None = None
     externalDesiredDate: date | None = None
     externalComment: str | None = None
+    externalPlanQuarter: str | None = None
+    closedAt: date | None = None
+    planOverdue: bool = False
     externalCategoryId: int | None = None
     externalCategoryName: str | None = None
     pilotEnteredAt: date | None = None
@@ -200,6 +203,8 @@ class DashboardOut(BaseModel):
     metrics: DashboardMetricsOut
     items: list[ChangeRequestOut]
     totalShown: int
+    totalZniShown: int = 0
+    totalErrorsShown: int = 0
     availableStatuses: list[str] = Field(default_factory=list)
     availableQuarters: list[QuarterOptionOut] = Field(default_factory=list)
     availableCustomers: list[str] = Field(
@@ -445,6 +450,11 @@ class ZniExternalDataUpdateIn(BaseModel):
     )
     desiredDate: date | None = Field(default=None, description="Желаемая дата")
     comment: str | None = Field(default=None, max_length=4000, description="Комментарий")
+    planQuarter: str | None = Field(
+        default=None,
+        max_length=16,
+        description="Заявленный квартал, YYYY-Qn",
+    )
     categoryId: int | None = Field(default=None, description="Категория (zni_category.id)")
 
 

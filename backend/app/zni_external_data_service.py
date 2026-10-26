@@ -7,6 +7,7 @@ from app.board_metrics import matches_board_states
 from app.config import settings
 from app.models import Task, ZniExternalData
 from app.zni_category_service import ensure_zni_category
+from app.zni_plan_quarter import normalize_plan_quarter
 
 PRIORITY_MAX_LENGTH = 255
 COMMERCIAL_EFFECT_MAX_LENGTH = 4000
@@ -56,6 +57,8 @@ def update_zni_external_data(
     set_desired_date: bool = False,
     comment: str | None = None,
     set_comment: bool = False,
+    plan_quarter: str | None = None,
+    set_plan_quarter: bool = False,
     category_id: int | None = None,
     set_category_id: bool = False,
     can_manage_org: bool = False,
@@ -92,6 +95,8 @@ def update_zni_external_data(
         row.desired_date = desired_date
     if set_comment:
         row.comment = _clean_text(comment, max_length=COMMENT_MAX_LENGTH)
+    if set_plan_quarter:
+        row.plan_quarter = normalize_plan_quarter(plan_quarter)
     if set_category_id:
         ensure_zni_category(db, category_id)
         row.category_id = category_id

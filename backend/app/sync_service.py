@@ -22,7 +22,7 @@ from app.json_utils import as_work_item_list
 from app.iteration_plan import parse_iteration_plan, quarter_key_from_date
 from app.release_fields import work_item_planned_release
 from app.linked_errors import is_error_work_item_type, parent_zni_id_from_error_payload
-from app.product_fields import board_for_area_path, product_owner_from_fields
+from app.product_fields import area_owned_by_other_board, board_for_area_path, product_owner_from_fields
 from app.resource_reservation import compute_ect_resource_reservation
 from app.ect_acceptance import compute_ect_acceptance
 from app.completed_metrics import effective_closed_date, effective_closed_date_from_fields
@@ -371,6 +371,32 @@ def upsert_task(
     return db.execute(stmt).scalar_one()
 
 
+def _release_to_area_owner(db: Session, board: BoardConfig, item: dict) -> bool:
+    """Карточка чужой, более точной доски: не переписывать её на текущую и не удалять."""
+    fields = item.get("fields") or {}
+    owner = area_owned_by_other_board(fields.get("System.AreaPath"), board, get_boards())
+    if owner is None:
+        return False
+    external_id = str(item.get("id") or "")
+    existing = db.scalar(select(Task).where(Task.external_id == external_id, Task.source == "tfs"))
+    if existing is not None and existing.task_type == TASK_TYPE_CHANGE:
+        extra = dict(existing.extra_json or {})
+        tagged = normalize_board_code(str(extra.get("board_code") or ""))
+        current = normalize_board_code(board.code)
+        if tagged in {"", current}:
+            extra["board_code"] = owner.code
+            existing.extra_json = extra
+            existing.source_team = owner.name
+            db.add(existing)
+            logger.info(
+                "sync_reassign_area board=%s owner=%s id=%s",
+                board.code,
+                owner.code,
+                external_id,
+            )
+    return True
+
+
 async def sync_board(
     db: Session,
     *,
@@ -396,11 +422,10 @@ async def sync_board(
             exclude_states=board.exclude_sync_states or None,
         )
         if not zni_ids:
-            prune_stale_board_tasks(
-                db,
-                board=board,
-                source_system_id=source_system_id,
-                synced_external_ids=set(),
+            logger.warning(
+                "sync_board_empty_wiql board=%s area=%s — доску не очищаю",
+                board.code,
+                board.area_path,
             )
             return 0, 0
 
@@ -422,7 +447,21 @@ async def sync_board(
             and not is_excluded_sync_title(item.get("fields") or {})
             and not should_skip_closed_zni(item.get("fields") or {})
         ]
-        skipped = len(zni_payloads_raw) - len(zni_payloads)
+        protected_external_ids: set[str] = set()
+        owned_payloads = []
+        for item in zni_payloads:
+            if _release_to_area_owner(db, board, item):
+                protected_external_ids.add(str(item["id"]))
+                continue
+            owned_payloads.append(item)
+        if protected_external_ids:
+            logger.info(
+                "sync_keep_specific_area board=%s kept=%s",
+                board.code,
+                len(protected_external_ids),
+            )
+        zni_payloads = owned_payloads
+        skipped = len(zni_payloads_raw) - len(zni_payloads) - len(protected_external_ids)
         if skipped:
             logger.info("sync_skip_closed_old board=%s skipped=%s", board.code, skipped)
         fetched += len(zni_payloads)
@@ -733,6 +772,7 @@ async def sync_board(
 
         synced_external_ids = {str(item["id"]) for item in zni_payloads}
         synced_external_ids.update(synced_error_ids)
+        synced_external_ids.update(protected_external_ids)
         prune_stale_board_tasks(
             db,
             board=board,

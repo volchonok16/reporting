@@ -293,7 +293,7 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 
 После каждой миграции `migrate.sh` автоматически выдаёт **alex** и **ivan** права на все таблицы и sequences.
 
-Миграция `db/migrations/085_zni_board_include_in_all.sql`: колонка `zni_board.include_in_all_boards`. `false` убирает доску из вкладки «Все доски», не отключая её собственную вкладку и синк.
+Миграция `db/migrations/085_zni_board_include_in_all.sql`: колонка `zni_board.include_in_all_boards`. `false` убирает доску из вкладки «Все доски», не отключая её собственную вкладку и синк. Миграция `db/migrations/091_zni_external_plan_quarter.sql`: `zni_external_data.plan_quarter` — заявленный квартал закрытия.
 
 Для ручной оргсхемы добавлена миграция `db/migrations/010_org_chart_layout.sql`: таблица `org_chart_layout` хранит координаты карточек и линии вкладки «Пирамида».
 

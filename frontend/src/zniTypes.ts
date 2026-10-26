@@ -53,6 +53,9 @@ export type ChangeRequest = {
   externalActualPeriod?: string | null
   externalDesiredDate?: string | null
   externalComment?: string | null
+  externalPlanQuarter?: string | null
+  closedAt?: string | null
+  planOverdue?: boolean
   externalCategoryId?: number | null
   externalCategoryName?: string | null
 }

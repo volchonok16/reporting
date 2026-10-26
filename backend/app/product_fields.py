@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.boards import BoardConfig, get_boards, normalize_tfs_path
+from app.boards import BoardConfig, get_boards, normalize_board_code, normalize_tfs_path
 from app.config import settings
 from app.zni_description import tfs_identity_display_name
 
@@ -45,3 +45,17 @@ def board_for_area_path(
                 best = board
                 best_len = len(board_area)
     return best
+
+
+def area_owned_by_other_board(
+    area_path: str | None,
+    board: BoardConfig,
+    boards: list[BoardConfig] | None = None,
+) -> BoardConfig | None:
+    """Доска с более точным area_path. None, если карточка принадлежит ``board`` или пути нет."""
+    owner = board_for_area_path(area_path, boards)
+    if owner is None:
+        return None
+    if normalize_board_code(owner.code) == normalize_board_code(board.code):
+        return None
+    return owner

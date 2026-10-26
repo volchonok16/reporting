@@ -80,6 +80,7 @@
 | actual_period | varchar | Фактическая дата месяц/квартал (правка при статусах `ZNI_ACTUAL_PERIOD_EDITABLE_STATES`) |
 | desired_date | date | Желаемая дата |
 | comment | text | Комментарий |
+| plan_quarter | varchar(16) | Заявленный квартал `YYYY-Qn`, не TFS |
 
 ## zni_category — справочник категорий ЗНИ
 

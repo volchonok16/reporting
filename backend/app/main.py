@@ -710,6 +710,8 @@ def patch_zni_external_data(
             set_desired_date="desiredDate" in fields,
             comment=payload.comment,
             set_comment="comment" in fields,
+            plan_quarter=payload.planQuarter,
+            set_plan_quarter="planQuarter" in fields,
             category_id=payload.categoryId,
             set_category_id="categoryId" in fields,
             can_manage_org=can_manage_org(meta),
@@ -1552,6 +1554,7 @@ def export_report(
     linked_environment: str | None = Query(default=None),
     metric: str | None = Query(default=None),
     tag_group: list[str] = Query(default=[]),
+    export_scope: str = Query(default="filters"),
     _: str = Depends(require_pat),
     __: None = Depends(require_full_app_access),
 ) -> Response:
@@ -1569,6 +1572,7 @@ def export_report(
         linked_environment=linked_environment,
         metric=metric,
         tag_groups=tag_group,
+        export_scope=export_scope,
     )
     return Response(
         content=content,

@@ -40,6 +40,7 @@ from app.roadmap_priority_service import roadmap_comment_from_task, roadmap_prio
 from app.digital_plan_service import ect_acceptance_from_task, has_uc_from_task
 from app.zni_external_data_service import actual_period_editable_statuses, load_external_data_by_task_ids
 from app.completed_metrics import effective_closed_date, has_customer_name
+from app.zni_plan_quarter import format_plan_quarter_label, plan_quarter_is_overdue
 from app.pilot_metrics import first_pilot_entered_at
 from app.resource_reservation import ect_resource_reservation_label
 from app.zni_description import tfs_identity_display_name
@@ -431,6 +432,8 @@ def _change_request_to_out(
     stored_desired = external.desired_date if external else None
     effective_desired = stored_desired if stored_desired is not None else planned_date
     effective_actual, actual_from_pilot, actual_from_closed = _effective_actual_period(row, external)
+    declared_quarter = external.plan_quarter if external else None
+    closed_on = effective_closed_date(row) if _is_closed_zni(row) else None
     return ChangeRequestOut(
         id=str(row.id),
         number=row.external_id,
@@ -472,6 +475,9 @@ def _change_request_to_out(
         externalActualPeriod=effective_actual,
         externalDesiredDate=effective_desired,
         externalComment=external.comment if external else None,
+        externalPlanQuarter=declared_quarter,
+        closedAt=closed_on,
+        planOverdue=plan_quarter_is_overdue(declared_quarter, closed_on=closed_on),
         externalCategoryId=external.category_id if external else None,
         externalCategoryName=(
             external.category.name if external and external.category is not None else None
@@ -789,7 +795,19 @@ def _compute_metrics(
     )
 
     return DashboardMetricsOut(
-        totalTasks=sum(1 for row in rows if not _is_closed_zni(row)),
+        totalTasks=sum(
+            1
+            for row in rows
+            if not _is_closed_zni(row)
+            and _matches_dashboard_row(
+                row,
+                None,
+                board_code=board_code,
+                errors_by_parent=errors_by_parent,
+                date_from=date_from,
+                date_to=date_to,
+            )
+        ),
         inProgress=sum(1 for row in rows if _metric_row(row, "in_progress")),
         launchingSoon=sum(1 for row in rows if _metric_row(row, "launching_soon")),
         launched=sum(1 for row in rows if _metric_row(row, "launched")),
@@ -813,6 +831,8 @@ def load_change_requests(
     metric: str | None = None,
     tag_groups: list[str] | None = None,
     customer: list[str] | str | None = None,
+    include_closed: bool = False,
+    every_board: bool = False,
 ) -> DashboardOut:
     boards = ensure_boards_loaded(db, refresh=True)
     all_boards = is_all_boards(board_code)
@@ -825,7 +845,8 @@ def load_change_requests(
     )
 
     if all_boards:
-        scope = _boards_task_clause(boards_included_in_all(boards))
+        catalog = boards if every_board else boards_included_in_all(boards)
+        scope = _boards_task_clause(catalog)
     elif board is None:
         return DashboardOut(
             board=None,
@@ -833,6 +854,8 @@ def load_change_requests(
             metrics=_empty_metrics(),
             items=[],
             totalShown=0,
+            totalZniShown=0,
+            totalErrorsShown=0,
             availableCustomers=[],
             actualPeriodEditableStatuses=actual_period_editable_statuses(),
         )
@@ -873,7 +896,7 @@ def load_change_requests(
             date_to=date_to,
         )
         and _matches_tag_groups(row, selected_tag_groups)
-        and _matches_closed_table_visibility(row, metric)
+        and (True if include_closed else _matches_closed_table_visibility(row, metric))
     ]
     filtered = [row for row in pre_customer if _matches_customer(row, customer)]
     available_customers = _collect_available_customers(pre_customer)
@@ -927,6 +950,9 @@ def load_change_requests(
             )
         )
 
+    total_zni_shown = len(filtered)
+    total_errors_shown = len(filtered_incident_errors)
+
     return DashboardOut(
         board=_board_out(board, boards) if board and not all_boards else None,
         allBoards=all_boards,
@@ -940,6 +966,8 @@ def load_change_requests(
         ),
         items=items,
         totalShown=len(items),
+        totalZniShown=total_zni_shown,
+        totalErrorsShown=total_errors_shown,
         availableStatuses=_collect_available_statuses(
             filtered + (
                 _standalone_incident_errors(error_rows)
@@ -981,8 +1009,10 @@ _EXPORT_HEADERS = [
     "Статус доски",
     "Дата начала",
     "Целевая дата",
+    "Факт закрытия",
     "Планируемая дата",
     "План квартала",
+    "Заявленный квартал",
     "Плановый релиз",
     "Бронь ресурса ЕЦТ",
     "Доска",
@@ -995,6 +1025,9 @@ _EXPORT_HEADERS = [
     "Комментарий",
 ]
 _EXPORT_HEADER_FILL = PatternFill(fill_type="solid", fgColor="CCCCCC")
+_EXPORT_OVERDUE_FILL = PatternFill(fill_type="solid", fgColor="FFD0EA")
+_EXPORT_OVERDUE_FONT = Font(color="FF3495")
+_EXPORT_OVERDUE_LINK_FONT = Font(color="FF3495", underline="single")
 _EXPORT_HEADER_FONT = Font(bold=True)
 _EXPORT_LINK_FONT = Font(color="0563C1", underline="single")
 _EXPORT_TEXT_ALIGNMENT = Alignment(wrap_text=True, vertical="top")
@@ -1026,8 +1059,10 @@ def _export_row_values(item: ChangeRequestOut) -> list[object]:
         item.boardColumn or "",
         item.startDate.isoformat() if item.startDate else "",
         item.releaseDate.isoformat() if item.releaseDate else "",
+        item.closedAt.isoformat() if item.closedAt else "",
         item.plannedLabel or (item.plannedDate.isoformat() if item.plannedDate else ""),
         item.planQuarter or "",
+        format_plan_quarter_label(item.externalPlanQuarter),
         item.plannedRelease or "",
         ect_resource_reservation_label(item.ectResourceReservation),
         item.boardName or "",
@@ -1056,24 +1091,39 @@ def export_xlsx(
     metric: str | None = None,
     tag_groups: list[str] | None = None,
     customer: list[str] | str | None = None,
+    export_scope: str = "filters",
 ) -> tuple[bytes, str]:
-    """Те же строки, что таблица ЗНИ при тех же фильтрах и сортировке."""
-    loaded = load_change_requests(
-        db,
-        board_code=board_code,
-        search=search,
-        sort=sort,
-        date_from=date_from,
-        date_to=date_to,
-        status=status,
-        quarter=quarter,
-        ect_reservation=ect_reservation,
-        linked_environment=linked_environment,
-        metric=metric,
-        tag_groups=tag_groups,
-        customer=customer,
-    )
+    """Строки ЗНИ: фильтры страницы, только просрочка или все ЗНИ."""
+    scope = (export_scope or "filters").strip().lower()
+    if scope not in {"filters", "overdue", "all"}:
+        scope = "filters"
+    if scope == "filters":
+        loaded = load_change_requests(
+            db,
+            board_code=board_code,
+            search=search,
+            sort=sort,
+            date_from=date_from,
+            date_to=date_to,
+            status=status,
+            quarter=quarter,
+            ect_reservation=ect_reservation,
+            linked_environment=linked_environment,
+            metric=metric,
+            tag_groups=tag_groups,
+            customer=customer,
+        )
+    else:
+        loaded = load_change_requests(
+            db,
+            board_code="all",
+            sort=sort,
+            include_closed=True,
+            every_board=True,
+        )
     items = [item for item in loaded.items if not is_excluded_zni_title(item.title)]
+    if scope == "overdue":
+        items = [item for item in items if item.planOverdue]
 
     workbook = Workbook()
     sheet = workbook.active
@@ -1088,15 +1138,18 @@ def export_xlsx(
         for col_index, value in enumerate(_export_row_values(item), start=1):
             cell = sheet.cell(row=row_index, column=col_index, value=value)
             cell.alignment = _EXPORT_TEXT_ALIGNMENT
+            if item.planOverdue:
+                cell.fill = _EXPORT_OVERDUE_FILL
+                cell.font = _EXPORT_OVERDUE_FONT
         if item.url:
             for column in (_EXPORT_NUMBER_COLUMN, _EXPORT_LINK_COLUMN):
                 link_cell = sheet.cell(row=row_index, column=column)
                 link_cell.hyperlink = item.url
-                link_cell.font = _EXPORT_LINK_FONT
+                link_cell.font = _EXPORT_OVERDUE_LINK_FONT if item.planOverdue else _EXPORT_LINK_FONT
         if item.product and item.product.url:
             product_cell = sheet.cell(row=row_index, column=_EXPORT_PRODUCT_COLUMN)
             product_cell.hyperlink = item.product.url
-            product_cell.font = _EXPORT_LINK_FONT
+            product_cell.font = _EXPORT_OVERDUE_LINK_FONT if item.planOverdue else _EXPORT_LINK_FONT
 
     last_row = max(1, len(items) + 1)
     for col_index in range(1, len(_EXPORT_HEADERS) + 1):
@@ -1116,6 +1169,8 @@ def export_xlsx(
     workbook.save(buffer)
     stamp = datetime.now(_MOSCOW_TZ).strftime("%Y%m%d")
     suffix = "all"
-    if board_code and not is_all_boards(board_code):
+    if scope == "overdue":
+        suffix = "overdue"
+    elif scope == "filters" and board_code and not is_all_boards(board_code):
         suffix = board_code.strip().lower()
     return buffer.getvalue(), f"zni-report-{suffix}-{stamp}.xlsx"

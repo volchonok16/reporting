@@ -216,6 +216,7 @@ erDiagram
     zni_external_data {
         bigint task_id PK
         varchar priority
+        varchar plan_quarter
         bigint category_id FK
         text comment
     }

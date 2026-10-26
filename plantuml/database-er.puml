@@ -123,6 +123,7 @@ package "Задачи" #FFF8E8 {
     actual_period : varchar
     desired_date : date
     comment : text
+    plan_quarter : varchar
     category_id : FK
   }
 

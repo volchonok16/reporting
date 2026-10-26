@@ -85,6 +85,9 @@ type ChangeRequest = {
   externalActualPeriod?: string | null
   externalDesiredDate?: string | null
   externalComment?: string | null
+  externalPlanQuarter?: string | null
+  closedAt?: string | null
+  planOverdue?: boolean
   externalCategoryId?: number | null
   externalCategoryName?: string | null
   pilotEnteredAt?: string | null
@@ -107,6 +110,8 @@ type DashboardData = {
   }
   items: ChangeRequest[]
   totalShown: number
+  totalZniShown?: number
+  totalErrorsShown?: number
   availableStatuses: string[]
   availableQuarters: QuarterOption[]
   availableCustomers: string[]
@@ -190,7 +195,7 @@ function itemRowKey(item: ChangeRequest): string {
 }
 
 function tableColumnCount(allBoards: boolean, externalFieldsVisible: boolean): number {
-  return (allBoards ? 9 : 8) + (externalFieldsVisible ? 6 : 0)
+  return (allBoards ? 9 : 8) + (externalFieldsVisible ? 7 : 0)
 }
 
 type ColumnMenuOption = {
@@ -584,6 +589,7 @@ type ExternalFieldKey =
   | 'desiredDate'
   | 'comment'
   | 'categoryId'
+  | 'planQuarter'
 
 type ExternalFieldEditorProps = {
   item: ChangeRequest
@@ -618,6 +624,8 @@ function externalFieldValue(item: ChangeRequest, field: ExternalFieldKey): strin
       return (item.externalDesiredDate ?? '').slice(0, 10)
     case 'comment':
       return item.externalComment ?? ''
+    case 'planQuarter':
+      return item.externalPlanQuarter ?? ''
     case 'categoryId':
       return item.externalCategoryId != null ? String(item.externalCategoryId) : ''
   }
@@ -646,6 +654,74 @@ function CategorySelect({ item, categories, disabled, saving, onSave }: Category
   )
 }
 
+function PlanQuarterSelect({
+  item,
+  disabled,
+  saving,
+  onSave,
+}: {
+  item: ChangeRequest
+  disabled: boolean
+  saving: boolean
+  onSave: (item: ChangeRequest, field: ExternalFieldKey, value: string) => void
+}) {
+  const stored = item.externalPlanQuarter ?? ''
+  const match = /^(\d{4})-Q([1-4])$/.exec(stored)
+  const [year, setYear] = useState(match?.[1] ?? '')
+  const [quarter, setQuarter] = useState(match?.[2] ?? '')
+  useEffect(() => {
+    setYear(match?.[1] ?? '')
+    setQuarter(match?.[2] ?? '')
+  }, [stored])
+  const currentYear = new Date().getFullYear()
+  const years = new Set<number>()
+  for (let offset = -1; offset <= 2; offset += 1) years.add(currentYear + offset)
+  if (year) years.add(Number(year))
+  const yearOptions = [...years].filter((value) => Number.isFinite(value)).sort((a, b) => a - b)
+
+  const commit = (nextYear: string, nextQuarter: string) => {
+    setYear(nextYear)
+    setQuarter(nextQuarter)
+    if (nextYear && nextQuarter) {
+      const next = `${nextYear}-Q${nextQuarter}`
+      if (next !== stored) onSave(item, 'planQuarter', next)
+      return
+    }
+    if (!nextYear && !nextQuarter && stored) onSave(item, 'planQuarter', '')
+  }
+
+  return (
+    <span className="zni-plan-quarter">
+      <select
+        className="business-value-input"
+        value={year}
+        disabled={disabled || saving}
+        aria-label="Год заявленного квартала"
+        onChange={(event) => commit(event.target.value, quarter)}
+      >
+        <option value="">Год</option>
+        {yearOptions.map((value) => (
+          <option key={value} value={value}>
+            {value}
+          </option>
+        ))}
+      </select>
+      <select
+        className="business-value-input"
+        value={quarter}
+        disabled={disabled || saving}
+        aria-label="Заявленный квартал"
+        onChange={(event) => commit(year, event.target.value)}
+      >
+        <option value="">Q</option>
+        <option value="1">Q1</option>
+        <option value="2">Q2</option>
+        <option value="3">Q3</option>
+        <option value="4">Q4</option>
+      </select>
+    </span>
+  )
+}
 
 const DEFAULT_ACTUAL_PERIOD_EDITABLE_STATUSES = ['UAT', 'Pilot', 'Closed']
 
@@ -819,6 +895,27 @@ const METRIC_LABELS: Record<MetricFilter, string> = {
   errors: 'Ошибки',
 }
 
+function zniTableRowsSummary(data: DashboardData | undefined): string {
+  const total = data?.totalShown ?? 0
+  const items = data?.items ?? []
+  const zniItems = items.filter((item) => !isErrorRow(item))
+  const withCustomer = zniItems.filter((item) => !item.missingCustomer).length
+  const withoutCustomer = zniItems.filter((item) => item.missingCustomer).length
+  const errors =
+    data?.totalErrorsShown ?? items.filter((item) => isErrorRow(item)).length
+  if (withoutCustomer === 0 && errors === 0) {
+    return `Показано строк ${total}`
+  }
+  const parts = [`с заказчиком ${withCustomer}`]
+  if (withoutCustomer > 0) {
+    parts.push(`без заказчика ${withoutCustomer}`)
+  }
+  if (errors > 0) {
+    parts.push(`ошибок ${errors}`)
+  }
+  return `Показано строк ${total} (${parts.join(', ')})`
+}
+
 function currentQuarterIsoRange(): { from: string; to: string } {
   const now = new Date()
   const year = now.getFullYear()
@@ -884,6 +981,8 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [exportMenuOpen, setExportMenuOpen] = useState(false)
+  const exportMenuRef = useRef<HTMLDivElement>(null)
   const [savingBusinessValueId, setSavingBusinessValueId] = useState<string | null>(null)
   const [savingExternalKey, setSavingExternalKey] = useState<string | null>(null)
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set())
@@ -1022,6 +1121,15 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
     metricFilter,
   ])
 
+  useEffect(() => {
+    if (!exportMenuOpen) return
+    const onPointer = (event: PointerEvent) => {
+      if (!exportMenuRef.current?.contains(event.target as Node)) setExportMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointer)
+    return () => document.removeEventListener('pointerdown', onPointer)
+  }, [exportMenuOpen])
+
   const loadDashboard = useCallback(async () => {
     if (!boardCode) return
     setLoading(true)
@@ -1133,8 +1241,13 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
     }
   }, [])
 
-  const downloadExport = useCallback(async (fallbackName: string) => {
-    const response = await apiFetch(`/api/export?${dashboardParams()}`)
+  const downloadExport = useCallback(async (
+    scope: 'filters' | 'overdue' | 'all',
+    fallbackName: string,
+  ) => {
+    const params = scope === 'filters' ? dashboardParams() : new URLSearchParams()
+    params.set('export_scope', scope)
+    const response = await apiFetch(`/api/export?${params}`)
     if (!response.ok) {
       throw new Error(await readApiError(response))
     }
@@ -1168,14 +1281,19 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
     }
   }
 
-  const handleExport = async () => {
+  const handleExport = async (scope: 'filters' | 'overdue' | 'all') => {
+    setExportMenuOpen(false)
     setExporting(true)
     const toastId = notifyLoading('Подготовка выгрузки…', 'dashboard-export')
     try {
       const fallbackName =
-        boardCode === ALL_BOARDS ? 'zni-report-all.xlsx' : 'zni-report.xlsx'
+        scope === 'overdue'
+          ? 'zni-report-overdue.xlsx'
+          : scope === 'all'
+            ? 'zni-report-all.xlsx'
+            : 'zni-report.xlsx'
       updateLoading('Формирование Excel…', toastId)
-      await downloadExport(fallbackName)
+      await downloadExport(scope, fallbackName)
       notifySuccess('Отчёт выгружен', toastId)
     } catch (err) {
       notifyError(err, 'Ошибка выгрузки', toastId)
@@ -1267,6 +1385,9 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                   externalActualPeriod: updated.externalActualPeriod,
                   externalDesiredDate: updated.externalDesiredDate,
                   externalComment: updated.externalComment,
+                  externalPlanQuarter: updated.externalPlanQuarter,
+                  planOverdue: updated.planOverdue,
+                  closedAt: updated.closedAt,
                   externalCategoryId: updated.externalCategoryId,
                   externalCategoryName: updated.externalCategoryName,
                 }
@@ -1428,9 +1549,45 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
           >
             {syncing ? 'Синхронизация…' : 'Обновить из TFS'}
           </button>
-          <button type="button" className="btn-primary" onClick={handleExport} disabled={syncing || exporting}>
-            {exporting ? 'Выгрузка…' : 'Выгрузить'}
-          </button>
+          <div className="zni-export-menu" ref={exportMenuRef}>
+            <button
+              type="button"
+              className="btn-primary"
+              aria-expanded={exportMenuOpen}
+              onClick={() => setExportMenuOpen((open) => !open)}
+              disabled={syncing || exporting}
+            >
+              {exporting ? 'Выгрузка…' : 'Выгрузить'}
+            </button>
+            {exportMenuOpen ? (
+              <div className="zni-export-menu-panel" role="menu">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  role="menuitem"
+                  onClick={() => handleExport('overdue')}
+                >
+                  Просрочка
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  role="menuitem"
+                  onClick={() => handleExport('filters')}
+                >
+                  По фильтрам страницы
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  role="menuitem"
+                  onClick={() => handleExport('all')}
+                >
+                  Все ЗНИ
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -1487,7 +1644,7 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
 
       <section className="table-section">
         <p className="table-meta">
-          Показано строк {data?.totalShown ?? 0}
+          {zniTableRowsSummary(data)}
           {metricFilter ? ` · фильтр: ${METRIC_LABELS[metricFilter]}` : ''}
           {linkedEnvironmentFilter && boardCode === DIGITAL_BOARD ? ' · требует доп. доработок' : ''}
           {tagGroupFilter.length ? ` · область: ${tagGroupFilterLabel()}` : ''}
@@ -1511,6 +1668,7 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                   <>
                     <col className="col-external-priority" style={colStyle('externalPriority')} />
                     <col className="col-external-category" style={colStyle('externalCategory')} />
+                    <col className="col-external-plan" style={colStyle('externalPlan')} />
                     <col className="col-external-effect" style={colStyle('externalEffect')} />
                     <col className="col-external-actual" style={colStyle('externalActual')} />
                     <col className="col-external-desired-date" style={colStyle('externalDesired')} />
@@ -1615,6 +1773,12 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                         onColumnResize={handleColumnResize}
                       />
                       <PlainColumnHeader
+                        label="Заявленный квартал"
+                        columnKey="externalPlan"
+                        columnWidth={columnWidths.externalPlan}
+                        onColumnResize={handleColumnResize}
+                      />
+                      <PlainColumnHeader
                         label="Коммерческий эффект"
                         columnKey="externalEffect"
                         columnWidth={columnWidths.externalEffect}
@@ -1659,10 +1823,17 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                         expanded ? 'zni-table-row-expanded' : '',
                         isErrorRow(item) ? 'zni-table-row-error' : '',
                         item.missingCustomer ? 'zni-table-row-no-customer' : '',
+                        item.planOverdue ? 'zni-table-row-overdue' : '',
                       ]
                         .filter(Boolean)
                         .join(' ') || undefined}
-                      title={item.missingCustomer ? 'Не указан заказчик (Заказчик ЗНИ / Logrocon.PO)' : undefined}
+                      title={
+                        item.planOverdue
+                          ? 'Заявленный квартал прошёл, ЗНИ не закрыта'
+                          : item.missingCustomer
+                            ? 'Не указан заказчик (Заказчик ЗНИ / Logrocon.PO)'
+                            : undefined
+                      }
                     >
                       <td className="cell-expand">
                         {hasDetails ? (
@@ -1765,6 +1936,18 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
                                 categories={zniCategories}
                                 disabled={externalFieldsReadOnly}
                                 saving={savingExternalKey === `${item.number}:categoryId`}
+                                onSave={saveExternalField}
+                              />
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td className="cell-business-value">
+                            {!isErrorRow(item) ? (
+                              <PlanQuarterSelect
+                                item={item}
+                                disabled={externalFieldsReadOnly}
+                                saving={savingExternalKey === `${item.number}:planQuarter`}
                                 onSave={saveExternalField}
                               />
                             ) : (

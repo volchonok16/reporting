@@ -272,6 +272,7 @@ CREATE TABLE zni_external_data (
     actual_period        VARCHAR(128),
     desired_date         DATE,
     comment              TEXT,
+    plan_quarter         VARCHAR(16),
     category_id          BIGINT REFERENCES zni_category(id) ON DELETE SET NULL,
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -285,6 +286,7 @@ COMMENT ON COLUMN zni_external_data.commercial_effect IS 'Коммерчески
 COMMENT ON COLUMN zni_external_data.actual_period IS 'Фактическая дата: месяц/квартал';
 COMMENT ON COLUMN zni_external_data.desired_date IS 'Желаемая дата';
 COMMENT ON COLUMN zni_external_data.comment IS 'Комментарий (внешнее поле, не TFS)';
+COMMENT ON COLUMN zni_external_data.plan_quarter IS 'Заявленный квартал закрытия, YYYY-Qn';
 COMMENT ON COLUMN zni_external_data.category_id IS 'Категория ЗНИ (справочник zni_category)';
 
 -- Связь задачи с несколькими релизами (если в источнике несколько fix versions)
