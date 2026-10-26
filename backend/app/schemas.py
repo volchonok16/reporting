@@ -65,6 +65,7 @@ class TfsAuthStatusOut(BaseModel):
     canManageOrg: bool = False
     isSuperAdmin: bool = False
     canUnlockProductStatus: bool = False
+    unlockableOfficeGids: list[str] = Field(default_factory=list)
     voiceOnly: bool = False
     otherUser: bool = False
     pageAccessRestricted: bool = False

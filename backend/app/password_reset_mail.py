@@ -252,6 +252,48 @@ def status_office_lock_state_email_text(*, office_name: str, locked: bool) -> st
     )
 
 
+def status_office_admin_unlock_email_html(
+    *,
+    admin_name: str,
+    office_name: str,
+    logo_src: str = "",
+) -> str:
+    safe_admin = escape(admin_name)
+    safe_office = escape(office_name)
+    message = (
+        f"Администратор {safe_admin} разблокировал офис «{safe_office}», "
+        "к которому он принадлежит."
+    )
+    body = f"""
+          <tr>
+            <td style="padding:8px 28px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#000000;">
+              Добрый день.
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 28px 28px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#000000;">
+              {message}
+            </td>
+          </tr>
+          {_status_button_html()}
+          {_signature_html(logo_src)}"""
+    return _email_shell(title="Офис разблокирован администратором", body=body, logo_src=logo_src)
+
+
+def status_office_admin_unlock_email_text(*, admin_name: str, office_name: str) -> str:
+    return (
+        "Офис разблокирован администратором\n\n"
+        "Добрый день.\n\n"
+        f"Администратор {admin_name} разблокировал офис «{office_name}», "
+        "к которому он принадлежит.\n"
+        f"Перейти к статусу: {STATUS_PAGE_URL}\n\n"
+        "t2 продукт\n"
+        "Менеджеры проектного офиса\n"
+        "ООО «Т2 Мобайл», г. Москва\n"
+        "Киевское шоссе, 22-й км., д.6, стр.1\n"
+    )
+
+
 def status_locked_email_html(*, logo_src: str = "") -> str:
     body = f"""
           <tr>

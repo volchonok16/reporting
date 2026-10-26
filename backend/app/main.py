@@ -336,6 +336,7 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
     auth_mode = meta.get("auth_mode")
     voice_only_flag = is_voice_only(meta)
     superadmin_flag = is_superadmin_user(meta)
+    unlockable_office_gids: list[str] = []
     can_unlock_product_status = superadmin_flag
     can_sync_tfs = False if (voice_only_flag and not superadmin_flag) else _can_sync_tfs(auth, meta)
     can_manage_org_flag = False if (voice_only_flag and not superadmin_flag) else can_manage_org(meta)
@@ -377,10 +378,11 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
                 if superadmin_flag
                 else (False if voice_only_flag else has_planning_access(db, meta))
             )
-            if not can_unlock_product_status:
-                from app.status_office_schedule import is_status_office_lead
+            if not can_unlock_product_status and org_user is not None and org_user.role == 100:
+                from app.status_office_schedule import admin_member_office_gids
 
-                can_unlock_product_status = is_status_office_lead(db, meta)
+                unlockable_office_gids = admin_member_office_gids(db, org_user_id)
+                can_unlock_product_status = bool(unlockable_office_gids)
         finally:
             close_db_session(db)
     else:
@@ -396,6 +398,7 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
         canManageOrg=can_manage_org_flag,
         isSuperAdmin=superadmin_flag,
         canUnlockProductStatus=can_unlock_product_status,
+        unlockableOfficeGids=unlockable_office_gids,
         voiceOnly=voice_only_flag and not superadmin_flag,
         otherUser=other_user_flag,
         pageAccessRestricted=page_access_restricted,
@@ -875,7 +878,7 @@ def product_status_b2b_office_editing_lock(
     _: None = Depends(require_full_app_access),
 ) -> ProductStatusSheetOut:
     _, meta = get_session_with_meta(x_session_id)
-    from app.status_office_schedule import is_status_office_lead
+    from app.status_office_schedule import admin_can_unlock_office, actor_display_name
 
     if payload.locked:
         if not is_superadmin_user(meta):
@@ -883,10 +886,10 @@ def product_status_b2b_office_editing_lock(
                 status_code=403,
                 detail="Блокировать офис может только суперадминистратор.",
             )
-    elif not is_superadmin_user(meta) and not is_status_office_lead(db, meta):
+    elif not is_superadmin_user(meta) and not admin_can_unlock_office(db, meta, gid):
         raise HTTPException(
             status_code=403,
-            detail="Снять блокировку может суперадминистратор или руководитель.",
+            detail="Разблокировать можно только свой офис, в состав которого вы входите.",
         )
     if not payload.notify and not is_superadmin_user(meta):
         raise HTTPException(
@@ -902,6 +905,15 @@ def product_status_b2b_office_editing_lock(
         from app.status_office_schedule import send_office_lock_notice_by_gid
 
         send_office_lock_notice_by_gid(db, gid=gid, locked=payload.locked)
+    if not payload.locked and not is_superadmin_user(meta):
+        from app.status_office_schedule import send_admin_unlock_notice_to_superadmins
+
+        office_name = sheet.name if hasattr(sheet, "name") else gid
+        send_admin_unlock_notice_to_superadmins(
+            db,
+            office_name=str(office_name),
+            admin_name=actor_display_name(db, meta),
+        )
     notify_product_status_saved(
         workbook=WORKBOOK_B2B,
         gids=[gid],

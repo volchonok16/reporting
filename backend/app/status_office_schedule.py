@@ -325,6 +325,101 @@ def claim_job(db: Session, job_key: str, ran_on) -> bool:
     return inserted is not None
 
 
+def admin_member_office_gids(db: Session, org_user_id: int) -> list[str]:
+    """Офисы, в состав которых входит администратор (org_user.role = 100)."""
+    rows = db.execute(
+        text(
+            """
+            SELECT o.gid
+            FROM org_user AS u
+            JOIN employee AS e ON e.user_id = u.id AND e.is_active = TRUE
+            JOIN b2b_product_status_office_member AS m ON m.employee_id = e.id
+            JOIN b2b_product_status_office AS o ON o.id = m.office_id
+            WHERE u.id = :org_user_id
+              AND u.status = 10
+              AND u.role = 100
+            ORDER BY o.sort_order, o.name
+            """
+        ),
+        {"org_user_id": org_user_id},
+    ).scalars()
+    return [str(item) for item in rows]
+
+
+def admin_can_unlock_office(db: Session, meta: dict | None, gid: str) -> bool:
+    org_user_id = (meta or {}).get("org_user_id")
+    if not org_user_id or (meta or {}).get("org_user_role") != "admin":
+        return False
+    return gid in admin_member_office_gids(db, int(org_user_id))
+
+
+def actor_display_name(db: Session, meta: dict | None) -> str:
+    org_user_id = (meta or {}).get("org_user_id")
+    if org_user_id:
+        row = db.execute(
+            text(
+                """
+                SELECT COALESCE(NULLIF(btrim(e.full_name), ''), NULLIF(btrim(u.email), ''))
+                FROM org_user AS u
+                LEFT JOIN employee AS e ON e.user_id = u.id AND e.is_active = TRUE
+                WHERE u.id = :org_user_id
+                LIMIT 1
+                """
+            ),
+            {"org_user_id": int(org_user_id)},
+        ).scalar()
+        if row and str(row).strip():
+            return str(row).strip()
+    login = (meta or {}).get("app_login")
+    if isinstance(login, str) and login.strip():
+        return login.strip()
+    return "Администратор"
+
+
+def superadmin_emails(db: Session) -> list[str]:
+    rows = db.execute(
+        text(
+            """
+            SELECT DISTINCT lower(btrim(email)) AS email
+            FROM org_user
+            WHERE status = 10
+              AND role = 1000
+              AND email IS NOT NULL
+              AND position('@' IN btrim(email)) > 0
+            """
+        )
+    ).scalars()
+    return sorted({item.strip() for item in rows if item and item.strip()})
+
+
+def send_admin_unlock_notice_to_superadmins(
+    db: Session,
+    *,
+    office_name: str,
+    admin_name: str,
+) -> None:
+    from app.password_reset_mail import (
+        MailNotConfigured,
+        MailSendError,
+        send_html_mail,
+        status_office_admin_unlock_email_html,
+        status_office_admin_unlock_email_text,
+    )
+
+    recipients = superadmin_emails(db)
+    subject = f"Администратор разблокировал офис «{office_name}»"
+    if not recipients:
+        logger.warning("Письмо «%s»: нет суперадминистраторов с почтой", subject)
+        return
+    html = status_office_admin_unlock_email_html(admin_name=admin_name, office_name=office_name)
+    text_body = status_office_admin_unlock_email_text(admin_name=admin_name, office_name=office_name)
+    for email in recipients:
+        try:
+            send_html_mail(to_email=email, subject=subject, html=html, text=text_body)
+        except (MailNotConfigured, MailSendError):
+            logger.exception("Не удалось отправить «%s» на %s", subject, email)
+
+
 def is_status_office_lead(db: Session, meta: dict | None) -> bool:
     """Руководитель офиса: глава отдела, роль «Руководитель» или должность с «лид»."""
     org_user_id = (meta or {}).get("org_user_id")

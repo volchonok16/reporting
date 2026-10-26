@@ -42,7 +42,7 @@ type WorkbookAppProps = {
   canSyncTfs: boolean
   canManageOrg: boolean
   isSuperAdmin: boolean
-  canUnlockProductStatus: boolean
+  unlockableOfficeGids: string[]
   voiceOnly: boolean
   planningAccess: boolean
   otherUser: boolean
@@ -61,7 +61,7 @@ export default function WorkbookApp({
   canSyncTfs,
   canManageOrg,
   isSuperAdmin,
-  canUnlockProductStatus,
+  unlockableOfficeGids,
   voiceOnly,
   planningAccess,
   otherUser,
@@ -295,7 +295,7 @@ export default function WorkbookApp({
             <ProductStatusB2B
               canManageOrg={canManageOrg}
               isSuperAdmin={isSuperAdmin}
-              canUnlockOffice={canUnlockProductStatus}
+              unlockableOfficeGids={unlockableOfficeGids}
             />
           </div>
         )}

@@ -13,7 +13,7 @@ import {
 type ProductStatusB2BProps = {
   canManageOrg?: boolean
   isSuperAdmin?: boolean
-  canUnlockOffice?: boolean
+  unlockableOfficeGids?: string[]
 }
 
 function B2bTitleSwitcher({
@@ -57,7 +57,7 @@ function B2bTitleSwitcher({
 export default function ProductStatusB2B({
   canManageOrg = false,
   isSuperAdmin = false,
-  canUnlockOffice = false,
+  unlockableOfficeGids = [],
 }: ProductStatusB2BProps) {
   const [panel, setPanel] = useState<B2bPanelId>(() => loadB2bPanel())
 
@@ -92,7 +92,7 @@ export default function ProductStatusB2B({
           canEditAdminColumns={canManageOrg}
           enableOfficeEditLock={isSuperAdmin}
           bypassOfficeEditLock={isSuperAdmin}
-          canUnlockOffice={canUnlockOffice || isSuperAdmin}
+          unlockableOfficeGids={isSuperAdmin ? [] : unlockableOfficeGids}
           commitOnRefresh
         />
       ) : null}

@@ -158,8 +158,8 @@ export type ProductStatusWorkbookConfig = {
   enableOfficeEditLock?: boolean
   /** Суперадмин: правки даже при editing_locked */
   bypassOfficeEditLock?: boolean
-  /** Руководитель: может снять блокировку, но не включить её */
-  canUnlockOffice?: boolean
+  /** Офисы, которые администратор может разблокировать. Пустой список — только суперадмин. */
+  unlockableOfficeGids?: string[]
   /** Правки в БД только по «Обновить»; до этого можно откатить */
   commitOnRefresh?: boolean
   /** Числовые колонки (простой ввод, без rich-text) */
@@ -619,7 +619,7 @@ export default function ProductStatusWorkbook({
   canEditAdminColumns = false,
   enableOfficeEditLock = false,
   bypassOfficeEditLock = false,
-  canUnlockOffice = false,
+  unlockableOfficeGids = [],
   commitOnRefresh = false,
   numericColumns,
   sumColumn,
@@ -1066,6 +1066,10 @@ export default function ProductStatusWorkbook({
     [activeGid, sheets],
   )
 
+  const canUnlockActiveOffice =
+    enableOfficeEditLock ||
+    Boolean(activeGid && unlockableOfficeGids.includes(activeGid))
+
   const isSheetReadOnly =
     (activeSheetEditingLocked && !bypassOfficeEditLock) || activeSheetReadOnly
 
@@ -1076,7 +1080,7 @@ export default function ProductStatusWorkbook({
     const notify = options?.notify !== false
     const nextLocked = options?.locked ?? !sheet.editingLocked
     if (nextLocked && !enableOfficeEditLock) return
-    if (!nextLocked && !enableOfficeEditLock && !canUnlockOffice) return
+    if (!nextLocked && !canUnlockActiveOffice) return
     if (!notify && !enableOfficeEditLock) return
     const message = !notify && nextLocked
       ? `Заблокировать офис «${sheet.name}» без письма сотрудникам?`
@@ -1139,7 +1143,8 @@ export default function ProductStatusWorkbook({
     bypassOfficeEditLock,
     canEditAdminColumns,
     dirty,
-    canUnlockOffice,
+    canUnlockActiveOffice,
+    unlockableOfficeGids,
     enableOfficeEditLock,
     loadSheetData,
     loadedGids,
@@ -2203,7 +2208,7 @@ export default function ProductStatusWorkbook({
           ) : null}
           {activeGid && viewMode === 'table' && !activeSheetReadOnly && (
             (enableOfficeEditLock && canEditAdminColumns && !isSheetReadOnly) ||
-            (canUnlockOffice && activeSheetEditingLocked)
+            (canUnlockActiveOffice && activeSheetEditingLocked)
           ) ? (
             <div className="product-status-toolbar-actions-group">
               <button
@@ -2301,7 +2306,7 @@ export default function ProductStatusWorkbook({
               <p className="product-status-editing-locked-banner" role="status">
                 {activeSheetReadOnly
                   ? 'Сводка собирается автоматически из строк с галочкой «Идет в презентацию» и сгруппирована по офисам — только просмотр.'
-                  : canUnlockOffice
+                  : canUnlockActiveOffice
                     ? officeLockNotice(activeSheet.name, activeSheet.editingLockedAt)
                     : officeLockNotice(
                         activeSheet.name,
