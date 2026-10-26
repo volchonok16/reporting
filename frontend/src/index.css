@@ -1308,10 +1308,13 @@ body.zni-col-resizing {
 .zni-plan-quarter {
   display: flex;
   gap: 4px;
+  min-width: 156px;
 }
 
 .zni-plan-quarter .business-value-input {
-  min-width: 0;
+  flex: 1 1 72px;
+  min-width: 72px;
+  width: auto;
 }
 
 .zni-export-menu {
@@ -1379,6 +1382,14 @@ input.zni-field-overdue.zni-field-derived {
   min-width: 1080px;
 }
 
+.zni-table-external {
+  min-width: 1760px;
+}
+
+.zni-table-all.zni-table-external {
+  min-width: 1860px;
+}
+
 .zni-table col.col-expand {
   width: 36px;
 }
@@ -1421,6 +1432,10 @@ input.zni-field-overdue.zni-field-derived {
 
 .zni-table col.col-external-category {
   width: 160px;
+}
+
+.zni-table col.col-external-plan {
+  width: 180px;
 }
 
 .zni-table col.col-external-effect {

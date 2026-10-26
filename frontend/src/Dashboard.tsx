@@ -1653,7 +1653,9 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
         </p>
         <div className="table">
           <div className="table-scroll">
-            <table className={`zni-table${data?.allBoards ? ' zni-table-all' : ''}`}>
+            <table
+              className={`zni-table${data?.allBoards ? ' zni-table-all' : ''}${externalFieldsVisible ? ' zni-table-external' : ''}`}
+            >
               <colgroup>
                 <col className="col-expand" style={colStyle('expand')} />
                 <col className="col-id" style={colStyle('id')} />
