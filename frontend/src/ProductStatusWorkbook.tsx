@@ -2303,17 +2303,29 @@ export default function ProductStatusWorkbook({
         >
           <div className="product-status-scroll-chrome-inner">
             {isSheetReadOnly && activeSheet ? (
-              <p className="product-status-editing-locked-banner" role="status">
-                {activeSheetReadOnly
-                  ? 'Сводка собирается автоматически из строк с галочкой «Идет в презентацию» и сгруппирована по офисам — только просмотр.'
-                  : canUnlockActiveOffice
-                    ? officeLockNotice(activeSheet.name, activeSheet.editingLockedAt)
-                    : officeLockNotice(
-                        activeSheet.name,
-                        activeSheet.editingLockedAt,
-                        ' Для разблокировки обратитесь к Склярову Ивану или Тараскину Александру.',
-                      )}
-              </p>
+              <div className="product-status-editing-locked-banner" role="status">
+                <p>
+                  {activeSheetReadOnly
+                    ? 'Сводка собирается автоматически из строк с галочкой «Идет в презентацию» и сгруппирована по офисам — только просмотр.'
+                    : canUnlockActiveOffice
+                      ? officeLockNotice(activeSheet.name, activeSheet.editingLockedAt)
+                      : officeLockNotice(
+                          activeSheet.name,
+                          activeSheet.editingLockedAt,
+                          ' Для разблокировки обратитесь к Склярову Ивану или Тараскину Александру.',
+                        )}
+                </p>
+                {canUnlockActiveOffice && activeSheetEditingLocked && !activeSheetReadOnly ? (
+                  <button
+                    type="button"
+                    className="btn-primary product-status-toolbar-btn"
+                    onClick={() => void toggleOfficeEditingLock()}
+                    disabled={toolbarBusy || !activeSheetReady}
+                  >
+                    Разблокировать офис
+                  </button>
+                ) : null}
+              </div>
             ) : null}
             {!isSheetReadOnly && activeSheetEditingLocked && bypassOfficeEditLock && activeSheet ? (
               <p className="product-status-editing-locked-banner" role="status">

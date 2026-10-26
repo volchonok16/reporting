@@ -889,7 +889,7 @@ def product_status_b2b_office_editing_lock(
     elif not is_superadmin_user(meta) and not admin_can_unlock_office(db, meta, gid):
         raise HTTPException(
             status_code=403,
-            detail="Разблокировать можно только свой офис, в состав которого вы входите.",
+            detail="Разблокировать офис может администратор.",
         )
     if not payload.notify and not is_superadmin_user(meta):
         raise HTTPException(

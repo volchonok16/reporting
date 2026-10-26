@@ -1109,7 +1109,7 @@ CREATE TABLE b2b_product_status_office (
 
 COMMENT ON TABLE b2b_product_status_office IS 'Продуктовые офисы B2B (вкладки «Офис: SMS», «Офис: CORE» и т.д.)';
 COMMENT ON COLUMN b2b_product_status_office.gid IS 'Идентификатор вкладки (стабильный ключ для API и UI)';
-COMMENT ON COLUMN b2b_product_status_office.editing_locked IS 'Блокировка редактирования таблицы офиса. Вручную включает суперадминистратор (org_user.role = 1000). Снимает он у любого офиса, администратор (role = 100) — только у офиса, где он в составе';
+COMMENT ON COLUMN b2b_product_status_office.editing_locked IS 'Блокировка редактирования таблицы офиса. Вручную включает суперадминистратор (org_user.role = 1000). Снимает он и администратор (role = 100) на любом офисе. Разблокировка администратором шлёт письмо суперадминистраторам';
 COMMENT ON COLUMN b2b_product_status_office.editing_locked_at IS 'Момент последней блокировки этого офиса';
 COMMENT ON COLUMN b2b_product_status_office.editing_unlocked_at IS 'Момент последней разблокировки этого офиса';
 COMMENT ON COLUMN b2b_product_status_office.auto_lock_enabled IS 'Участвует ли офис в автоблокировке по своему расписанию. Письмо уходит сотрудникам из b2b_product_status_office_member';

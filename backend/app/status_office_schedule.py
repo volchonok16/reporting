@@ -326,15 +326,17 @@ def claim_job(db: Session, job_key: str, ran_on) -> bool:
 
 
 def admin_member_office_gids(db: Session, org_user_id: int) -> list[str]:
-    """Офисы, в состав которых входит администратор (org_user.role = 100)."""
+    """Офисы, на которых администратор (org_user.role = 100) видит «Разблокировать офис».
+
+    Кнопка есть на каждом активном офисе. Состав офиса для этого не нужен:
+    учётка администратора обычно не входит в «Сотрудники офиса».
+    """
     rows = db.execute(
         text(
             """
             SELECT o.gid
             FROM org_user AS u
-            JOIN employee AS e ON e.user_id = u.id AND e.is_active = TRUE
-            JOIN b2b_product_status_office_member AS m ON m.employee_id = e.id
-            JOIN b2b_product_status_office AS o ON o.id = m.office_id
+            JOIN b2b_product_status_office AS o ON o.is_active = TRUE
             WHERE u.id = :org_user_id
               AND u.status = 10
               AND u.role = 100
@@ -348,7 +350,7 @@ def admin_member_office_gids(db: Session, org_user_id: int) -> list[str]:
 
 def admin_can_unlock_office(db: Session, meta: dict | None, gid: str) -> bool:
     org_user_id = (meta or {}).get("org_user_id")
-    if not org_user_id or (meta or {}).get("org_user_role") != "admin":
+    if not org_user_id:
         return False
     return gid in admin_member_office_gids(db, int(org_user_id))
 

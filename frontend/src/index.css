@@ -2591,6 +2591,14 @@ input.zni-field-overdue.zni-field-derived {
   line-height: 1.45;
 }
 
+.product-status-editing-locked-banner p {
+  margin: 0;
+}
+
+.product-status-editing-locked-banner .product-status-toolbar-btn {
+  margin-top: 10px;
+}
+
 .product-status-title {
   margin: 0;
   font-size: 24px;
