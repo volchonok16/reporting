@@ -47,6 +47,8 @@ SUMMARY_SHEET_NAME = "Сводка"
 SUMMARY_OFFICE_COLUMN = "Офис"
 SUMMARY_STATUS_COLUMN = "Статус"
 SUMMARY_PROJECT_TITLE_KEY = "__summaryTitle"
+SUMMARY_ROW_KIND_KEY = "__summaryRowKind"
+NEWS_SUMMARY_HEADING = "Новости и запуски"
 SUMMARY_COLUMNS: tuple[str, ...] = (
     SUMMARY_OFFICE_COLUMN,
     SUMMARY_STATUS_COLUMN,
@@ -262,6 +264,50 @@ def _copy_cell_preserving_table(primary: str, fallback: str = "") -> str:
     return primary
 
 
+def _news_cell(cells: dict[str, Any], *names: str) -> str:
+    for name in names:
+        value = cells.get(name)
+        if value is not None and str(value).strip():
+            return str(value)
+    return ""
+
+
+def build_news_summary_rows(
+    sections: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    """Сверху сводки: заголовок «Новости и запуски», затем по строке на новость и запуск."""
+    items: list[dict[str, str]] = []
+    for section in sections:
+        section_gid = str(section.get("gid") or "")
+        for row in section.get("rows") or []:
+            cells = row.get("cells") if isinstance(row.get("cells"), dict) else {}
+            date = _news_cell(cells, "Дата")
+            title = _news_cell(cells, "Новость", "Продукт")
+            description = _news_cell(cells, "Описание")
+            if not any(display_cell_text(value).strip() for value in (date, title, description)):
+                continue
+            source_row_id = row.get("id")
+            items.append(
+                {
+                    SUMMARY_OFFICE_COLUMN: date,
+                    SUMMARY_STATUS_COLUMN: title,
+                    WHY_COLUMN: description,
+                    SUMMARY_ROW_KIND_KEY: "news-item",
+                    ROW_ID_KEY: f"{SUMMARY_GID}-news-{section_gid}-{source_row_id}",
+                }
+            )
+    if not items:
+        return []
+    heading = {
+        SUMMARY_OFFICE_COLUMN: NEWS_SUMMARY_HEADING,
+        SUMMARY_STATUS_COLUMN: "",
+        WHY_COLUMN: "",
+        SUMMARY_ROW_KIND_KEY: "news-heading",
+        ROW_ID_KEY: f"{SUMMARY_GID}-news-heading",
+    }
+    return [heading, *items]
+
+
 def build_summary_rows(
     offices_with_rows: list[tuple[dict[str, Any], list[dict[str, Any]]]],
     *,
@@ -317,7 +363,14 @@ def _load_summary_sheet(db: Session, *, offices: list[dict[str, Any]], meta_only
     ]
     row_ids = [int(row["id"]) for _, office_rows in packed for row in office_rows]
     attachments_by_row = load_attachments_by_row_ids(db, row_ids)
-    return _summary_sheet(build_summary_rows(packed, attachments_by_row=attachments_by_row))
+    from app.b2b_news_db import load_news_sections_with_rows
+
+    try:
+        news_rows = build_news_summary_rows(load_news_sections_with_rows(db))
+    except Exception:
+        news_rows = []
+    status_rows = build_summary_rows(packed, attachments_by_row=attachments_by_row)
+    return _summary_sheet([*news_rows, *status_rows])
 
 
 def _load_offices(db: Session) -> list[dict[str, Any]]:

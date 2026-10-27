@@ -20,6 +20,7 @@ from app.b2b_product_status_db import (
     _cells_json,
     _office_summary_label,
     _row_has_content,
+    build_news_summary_rows,
     build_summary_rows,
     save_b2b_product_status_to_db,
     set_b2b_product_status_office_editing_locked,
@@ -47,6 +48,46 @@ def test_columns_include_coordination_and_flags() -> None:
 def test_office_summary_label_strips_prefix() -> None:
     assert _office_summary_label("Офис: SMS") == "SMS"
     assert _office_summary_label("Аналитики: планирование") == "Аналитики: планирование"
+
+
+def test_build_news_summary_rows_puts_heading_then_news_and_launches() -> None:
+    rows = build_news_summary_rows(
+        [
+            {
+                "gid": "news",
+                "rows": [
+                    {"id": 1, "cells": {"Дата": "", "Новость": "", "Описание": ""}},
+                    {
+                        "id": 2,
+                        "cells": {
+                            "Дата": "14.10",
+                            "Новость": "Запуск тарифа",
+                            "Описание": "Коротко",
+                        },
+                    },
+                ],
+            },
+            {
+                "gid": "launches",
+                "rows": [
+                    {
+                        "id": 3,
+                        "cells": {
+                            "Дата": "15.10",
+                            "Продукт": "SMS",
+                            "Описание": "Вышли",
+                        },
+                    }
+                ],
+            },
+        ]
+    )
+    assert rows[0]["__summaryRowKind"] == "news-heading"
+    assert rows[0]["Офис"] == "Новости и запуски"
+    assert [(row["Офис"], row["Статус"], row["Зачем и для чего делаем"]) for row in rows[1:]] == [
+        ("14.10", "Запуск тарифа", "Коротко"),
+        ("15.10", "SMS", "Вышли"),
+    ]
 
 
 def test_build_summary_rows_only_presentation_and_office_order() -> None:

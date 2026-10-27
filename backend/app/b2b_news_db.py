@@ -184,6 +184,21 @@ def _load_section(db: Session, *, gid: str) -> dict[str, Any] | None:
     return dict(row._mapping) if row else None
 
 
+def load_news_sections_with_rows(db: Session) -> list[dict[str, Any]]:
+    """Активные вкладки «Новости» и «Запуски» со строками, в порядке вкладок."""
+    sections = _load_sections(db)
+    packed: list[dict[str, Any]] = []
+    for section in sections:
+        packed.append(
+            {
+                "gid": str(section["gid"]),
+                "name": str(section["name"]),
+                "rows": _load_section_rows(db, section_id=int(section["id"])),
+            }
+        )
+    return packed
+
+
 def _load_section_rows(db: Session, *, section_id: int) -> list[dict[str, Any]]:
     result = db.execute(
         text(

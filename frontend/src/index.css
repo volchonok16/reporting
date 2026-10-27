@@ -2843,6 +2843,19 @@ body.product-status-col-resizing .product-status-col-resize-handle {
   font-weight: inherit;
 }
 
+.product-status-table--summary > tbody > tr.product-status-row--summary-news-heading > td {
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: var(--surface-1);
+  border-bottom: 2px solid var(--text-primary);
+}
+
+.product-status-table--summary > tbody > tr.product-status-row--summary-news > td {
+  background: var(--surface-1);
+}
+
 .product-status-table--summary > tbody > tr.product-status-row--summary-office-start:not(:first-child) > td {
   border-top: 2px solid var(--border-strong);
 }

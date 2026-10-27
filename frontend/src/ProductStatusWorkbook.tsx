@@ -1930,6 +1930,16 @@ export default function ProductStatusWorkbook({
     let lastOffice: string | null = null
     let officeStripe = 0
     for (const { row, rowIndex } of visibleRows) {
+      const summaryKind = row['__summaryRowKind'] ?? ''
+      if (summaryKind === 'news-heading' || summaryKind === 'news-item') {
+        byRowIndex.set(
+          rowIndex,
+          summaryKind === 'news-heading'
+            ? 'product-status-row--summary-news-heading'
+            : 'product-status-row--summary-news',
+        )
+        continue
+      }
       const office = displayCellText(row['Офис'] ?? '').trim()
       if (lastOffice !== null && office !== lastOffice) {
         officeStripe += 1
@@ -2306,7 +2316,7 @@ export default function ProductStatusWorkbook({
               <div className="product-status-editing-locked-banner" role="status">
                 <p>
                   {activeSheetReadOnly
-                    ? 'Сводка собирается автоматически из строк с галочкой «Идет в презентацию» и сгруппирована по офисам — только просмотр.'
+                    ? 'Сводка только для просмотра: сверху «Новости и запуски», ниже строки статуса с галочкой «Идет в презентацию», по офисам.'
                     : canUnlockActiveOffice
                       ? officeLockNotice(activeSheet.name, activeSheet.editingLockedAt)
                       : officeLockNotice(

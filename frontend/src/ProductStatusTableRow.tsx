@@ -32,6 +32,7 @@ import { displayCellText } from './productStatusRichTextUtils'
 import type { ChangeRequest } from './zniTypes'
 
 const PRODUCT_STATUS_SUMMARY_TITLE_KEY = '__summaryTitle'
+const PRODUCT_STATUS_SUMMARY_ROW_KIND_KEY = '__summaryRowKind'
 
 export type ActiveCell = {
   rowIndex: number
@@ -242,7 +243,11 @@ function ProductStatusTableRow({
           {rowNumber ?? ''}
         </td>
       ) : null}
-      {columns.map((column) => {
+      {row[PRODUCT_STATUS_SUMMARY_ROW_KIND_KEY] === 'news-heading' ? (
+        <td className="product-status-summary-news-heading" colSpan={columns.length}>
+          {row['Офис'] || 'Новости и запуски'}
+        </td>
+      ) : columns.map((column) => {
         const isActive = rowActive && activeCell?.column === column
         const colClass = resolveColumnClass(column)
         const readOnly = isReadOnlyColumn?.(column) ?? false
