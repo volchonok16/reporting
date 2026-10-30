@@ -2591,6 +2591,182 @@ input.zni-field-overdue.zni-field-derived {
   line-height: 1.45;
 }
 
+.office-penalty-modal {
+  width: min(420px, calc(100vw - 32px));
+}
+
+.office-penalty-office {
+  margin: 0 0 8px;
+  font-weight: 700;
+}
+
+.office-penalty-now {
+  margin: 0 0 16px;
+}
+
+.office-penalty-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.office-penalty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.office-raffle {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: #000;
+  color: #fff;
+}
+
+.office-raffle-canvas,
+.office-raffle-confetti {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.office-raffle-confetti span {
+  position: absolute;
+  top: -12px;
+  width: 8px;
+  height: 14px;
+  background: #ff3495;
+  animation: office-raffle-fall 3.4s linear infinite;
+}
+
+.office-raffle-confetti span:nth-child(3n) {
+  background: #16d5df;
+}
+
+.office-raffle-confetti span:nth-child(3n + 1) {
+  background: #fff;
+}
+
+@keyframes office-raffle-fall {
+  0% {
+    transform: translateY(-10vh) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(110vh) rotate(360deg);
+    opacity: 0.2;
+  }
+}
+
+.office-raffle-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 2;
+}
+
+.office-raffle-stage {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 72px 24px 32px;
+}
+
+.office-raffle-spotlight,
+.office-raffle-sheet {
+  width: min(720px, 100%);
+  background: #fff;
+  color: #000;
+  padding: 28px 32px;
+  border: 2px solid #fff;
+}
+
+.office-raffle-spotlight {
+  animation: office-raffle-pop 0.45s ease;
+}
+
+@keyframes office-raffle-pop {
+  from {
+    transform: scale(0.86);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.office-raffle-place {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.office-raffle-spotlight h2,
+.office-raffle-sheet h2,
+.office-raffle-sheet h3 {
+  margin: 0 0 8px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.office-raffle-spotlight h2 {
+  font-size: 40px;
+  line-height: 1.1;
+}
+
+.office-raffle-sheet h2 {
+  font-size: 28px;
+}
+
+.office-raffle-sheet h3 {
+  font-size: 22px;
+}
+
+.office-raffle-points {
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #ff3495;
+}
+
+.office-raffle-members {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.office-raffle-sheet ol {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+}
+
+.office-raffle-sheet li + li {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 2px solid #000;
+}
+
+.office-raffle-empty {
+  color: #fff;
+  font-size: 18px;
+}
+
 .product-status-editing-locked-banner p {
   margin: 0;
 }

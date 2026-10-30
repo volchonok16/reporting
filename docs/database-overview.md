@@ -152,7 +152,7 @@
 | `youjail_attachment` | Вложения карточек |
 | `youjail_execution` | Запуски исполнителя |
 | `youjail_execution_log` | Лог stdout/stderr/system |
-| `b2b_product_status_office` | Продуктовые офисы B2B; `editing_locked_at` и `editing_unlocked_at` — время блокировки и разблокировки этого офиса |
+| `b2b_product_status_office` | Продуктовые офисы B2B; `editing_locked_at` и `editing_unlocked_at` — время блокировки и разблокировки; `penalty_points` — баллы офиса |
 | `app_scheduled_job_run` | День последнего запуска напоминания и блокировки статуса продукта |
 | `b2b_product_status_schedule` | Общее напоминание о статусе (`weekday`, `minutes`) |
 | `b2b_product_status_office_schedule` | День и время автоблокировки каждого офиса |

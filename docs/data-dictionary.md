@@ -301,7 +301,7 @@
 
 | Таблица | Ключевые поля | Назначение |
 |---------|---------------|------------|
-| `b2b_product_status_office` | `gid`, `name`, `sort_order`, `editing_locked`, `editing_locked_at`, `editing_unlocked_at`, `auto_lock_enabled` | Вкладки офисов. Время блокировки и разблокировки хранится отдельно по каждому офису |
+| `b2b_product_status_office` | `gid`, `name`, `sort_order`, `editing_locked`, `editing_locked_at`, `editing_unlocked_at`, `auto_lock_enabled`, `penalty_points` | Вкладки офисов. Время блокировки и разблокировки хранится отдельно по каждому офису. `penalty_points` — баллы офиса |
 | `b2b_product_status_office_member` | `office_id`, `employee_id` | Сотрудники офиса: им уходит письмо о блокировке и разблокировке |
 | `app_scheduled_job_run` | `job_key`, `ran_on`, `ran_at` | Один запуск напоминания, предупреждения за 30 минут, блокировки или разблокировки статуса за календарный день |
 | `b2b_product_status_schedule` | `job_key`, `weekday`, `minutes` | Общее напоминание о статусе, Europe/Moscow |

@@ -5,6 +5,7 @@ import type { ProfileData } from './types'
 import OrgPhoto from './OrgPhoto'
 import PasswordInput from './PasswordInput'
 import ProfileOfficeCalendar from './ProfileOfficeCalendar'
+import OfficeRaffle from '../OfficeRaffle'
 
 const APP_PAGE_LABELS: Record<string, string> = {
   zni: 'ЗНИ',
@@ -21,15 +22,18 @@ const APP_PAGE_LABELS: Record<string, string> = {
 
 type EmployeeProfileProps = {
   onClose: () => void
+  isSuperAdmin?: boolean
 }
 
-export default function EmployeeProfile({ onClose }: EmployeeProfileProps) {
+export default function EmployeeProfile({ onClose, isSuperAdmin = false }: EmployeeProfileProps) {
   const [profile, setProfile] = useState<ProfileData | null>(null)
   const [fullName, setFullName] = useState('')
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [newPasswordRepeat, setNewPasswordRepeat] = useState('')
   const [loading, setLoading] = useState(true)
+  const [raffleOpen, setRaffleOpen] = useState(false)
+  const [mailing, setMailing] = useState(false)
 
   const loadProfile = async () => {
     setLoading(true)
@@ -73,6 +77,22 @@ export default function EmployeeProfile({ onClose }: EmployeeProfileProps) {
     }
   }
 
+  const handleSendResults = async () => {
+    if (!window.confirm('Разослать итоги баллов всем на почту?')) return
+    setMailing(true)
+    try {
+      const result = await postJson<{ sent: number; failed: number }>(
+        '/api/product-status/b2b/raffle/mail',
+        {},
+      )
+      notifySuccess(`Итоги отправлены: ${result.sent}. Не доставлено: ${result.failed}.`)
+    } catch (err) {
+      notifyProblem(err, 'Не удалось разослать итоги')
+    } finally {
+      setMailing(false)
+    }
+  }
+
   const handlePasswordSave = async (event: React.FormEvent) => {
     event.preventDefault()
     const next = newPassword.trim()
@@ -104,6 +124,7 @@ export default function EmployeeProfile({ onClose }: EmployeeProfileProps) {
   }
 
   return (
+    <>
     <div className="org-modal-backdrop" onClick={onClose}>
       <div className="org-modal org-profile-modal" onClick={(e) => e.stopPropagation()}>
         <header className="org-modal-header">
@@ -226,10 +247,34 @@ export default function EmployeeProfile({ onClose }: EmployeeProfileProps) {
               </form>
             </section>
 
+            {isSuperAdmin ? (
+              <section className="org-panel">
+                <h3>Розыгрыш баллов</h3>
+                <p className="org-hint">
+                  Места от большего числа баллов к меньшему. Балл начисляется офису, когда его разблокирует обычный администратор.
+                </p>
+                <div className="office-penalty-actions">
+                  <button type="button" className="btn-primary" onClick={() => setRaffleOpen(true)}>
+                    Розыгрыш
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={mailing}
+                    onClick={() => void handleSendResults()}
+                  >
+                    Разослать итоги
+                  </button>
+                </div>
+              </section>
+            ) : null}
+
             <ProfileOfficeCalendar enabled={Boolean(profile.employee)} />
           </div>
         ) : null}
       </div>
     </div>
+    {raffleOpen ? <OfficeRaffle onClose={() => setRaffleOpen(false)} /> : null}
+    </>
   )
 }

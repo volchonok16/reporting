@@ -246,6 +246,7 @@ def ensure_startup_schema() -> None:
         "089_voice_short_aon_strip_star_on_export.sql",
         "090_voice_aon_length_first_marker.sql",
         "091_zni_external_plan_quarter.sql",
+        "092_b2b_product_status_office_penalty.sql",
     )
 
     auth_session_sql = """

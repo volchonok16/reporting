@@ -658,6 +658,10 @@ export default function ProductStatusWorkbook({
   const [snapshotLoading, setSnapshotLoading] = useState(false)
   const [restoringSnapshotId, setRestoringSnapshotId] = useState<number | null>(null)
   const [togglingOfficeLock, setTogglingOfficeLock] = useState(false)
+  const [penaltyMode, setPenaltyMode] = useState<'add' | 'sub' | null>(null)
+  const [penaltyValue, setPenaltyValue] = useState('1')
+  const [penaltyPoints, setPenaltyPoints] = useState<number | null>(null)
+  const [penaltyBusy, setPenaltyBusy] = useState(false)
   const [loadedGids, setLoadedGids] = useState<Set<string>>(() => new Set())
   const [sheetLoadingGid, setSheetLoadingGid] = useState<string | null>(null)
   const [columnFilters, setColumnFilters] = useState<Record<string, Set<string> | null>>({})
@@ -1150,6 +1154,48 @@ export default function ProductStatusWorkbook({
     loadedGids,
     sheets,
   ])
+
+  const openPenalty = useCallback(
+    async (mode: 'add' | 'sub') => {
+      if (!activeGid) return
+      setPenaltyMode(mode)
+      setPenaltyValue('1')
+      setPenaltyPoints(null)
+      try {
+        const payload = await getJson<{ points: number }>(
+          `${apiBase}/offices/${encodeURIComponent(activeGid)}/penalty`,
+        )
+        setPenaltyPoints(payload.points)
+      } catch (err) {
+        setPenaltyMode(null)
+        notifyProblem(err, 'Не удалось прочитать баллы офиса')
+      }
+    },
+    [activeGid, apiBase],
+  )
+
+  const submitPenalty = useCallback(async () => {
+    if (!activeGid || !penaltyMode) return
+    const amount = Number(penaltyValue)
+    if (!Number.isInteger(amount) || amount <= 0) {
+      notifyWarning('Укажите целое число больше нуля')
+      return
+    }
+    setPenaltyBusy(true)
+    try {
+      const payload = await postJson<{ points: number }>(
+        `${apiBase}/offices/${encodeURIComponent(activeGid)}/penalty`,
+        { delta: penaltyMode === 'add' ? amount : -amount },
+      )
+      setPenaltyPoints(payload.points)
+      notifySuccess(penaltyMode === 'add' ? 'Баллы начислены' : 'Баллы списаны')
+      setPenaltyMode(null)
+    } catch (err) {
+      notifyProblem(err, 'Не удалось изменить баллы')
+    } finally {
+      setPenaltyBusy(false)
+    }
+  }, [activeGid, apiBase, penaltyMode, penaltyValue])
 
   const handleRestoreSnapshot = useCallback(
     async (snapshotId: number) => {
@@ -2259,6 +2305,28 @@ export default function ProductStatusWorkbook({
                   Разблокировать без уведомления
                 </button>
               ) : null}
+              {enableOfficeEditLock ? (
+                <button
+                  type="button"
+                  className="btn-secondary product-status-toolbar-btn"
+                  onClick={() => void openPenalty('add')}
+                  disabled={toolbarBusy || !activeSheetReady}
+                  title="Начислить баллы этому офису"
+                >
+                  +
+                </button>
+              ) : null}
+              {enableOfficeEditLock ? (
+                <button
+                  type="button"
+                  className="btn-secondary product-status-toolbar-btn"
+                  onClick={() => void openPenalty('sub')}
+                  disabled={toolbarBusy || !activeSheetReady}
+                  title="Списать баллы этого офиса"
+                >
+                  −
+                </button>
+              ) : null}
             </div>
           ) : null}
           <div className="product-status-toolbar-actions-group product-status-toolbar-actions-group--main">
@@ -2857,6 +2925,45 @@ export default function ProductStatusWorkbook({
         </div>
       </section>
       )}
+      {penaltyMode && activeSheet ? (
+        <div className="org-modal-backdrop" onClick={() => setPenaltyMode(null)}>
+          <div className="org-modal office-penalty-modal" onClick={(event) => event.stopPropagation()}>
+            <header className="org-modal-header">
+              <h2>{penaltyMode === 'add' ? 'Начислить баллы' : 'Списать баллы'}</h2>
+              <button type="button" className="btn-ghost" onClick={() => setPenaltyMode(null)}>
+                Закрыть
+              </button>
+            </header>
+            <p className="office-penalty-office">{activeSheet.name}</p>
+            <p className="office-penalty-now">
+              Сейчас: {penaltyPoints == null ? '…' : `${penaltyPoints} баллов`}
+            </p>
+            <label className="office-penalty-field">
+              Сколько
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={penaltyValue}
+                onChange={(event) => setPenaltyValue(event.target.value)}
+              />
+            </label>
+            <div className="office-penalty-actions">
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={penaltyBusy}
+                onClick={() => void submitPenalty()}
+              >
+                {penaltyMode === 'add' ? 'Начислить' : 'Списать'}
+              </button>
+              <button type="button" className="btn-secondary" onClick={() => setPenaltyMode(null)}>
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </RootTag>
   )
 }

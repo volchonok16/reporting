@@ -116,6 +116,11 @@ from app.schemas import (
     ProductStatusHistoryOut,
     ProductStatusOfficeAccessIn,
     ProductStatusOfficeAccessOut,
+    OfficePenaltyAdjustIn,
+    OfficePenaltyOut,
+    OfficeRaffleMailOut,
+    OfficeRaffleOut,
+    OfficeRafflePlaceOut,
     ProductStatusOfficeEditingLockIn,
     ProductStatusOfficeMemberOut,
     ProductStatusScheduleOut,
@@ -914,6 +919,9 @@ def product_status_b2b_office_editing_lock(
             office_name=str(office_name),
             admin_name=actor_display_name(db, meta),
         )
+        from app.office_penalty import record_admin_unlock_penalty
+
+        record_admin_unlock_penalty(db, gid=gid)
     notify_product_status_saved(
         workbook=WORKBOOK_B2B,
         gids=[gid],
@@ -921,6 +929,66 @@ def product_status_b2b_office_editing_lock(
         origin_connection_id=x_live_connection_id,
     )
     return sheet
+
+
+def _require_superadmin(x_session_id: str | None) -> dict:
+    _, meta = get_session_with_meta(x_session_id)
+    if not is_superadmin_user(meta):
+        raise HTTPException(status_code=403, detail="Это действие доступно только суперадминистратору.")
+    return meta or {}
+
+
+@app.get("/api/product-status/b2b/offices/{gid}/penalty", response_model=OfficePenaltyOut)
+def product_status_office_penalty(
+    gid: str,
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_full_app_access),
+) -> OfficePenaltyOut:
+    _require_superadmin(x_session_id)
+    from app.office_penalty import office_penalty_points
+
+    payload = office_penalty_points(db, gid)
+    return OfficePenaltyOut(**payload)
+
+
+@app.post("/api/product-status/b2b/offices/{gid}/penalty", response_model=OfficePenaltyOut)
+def product_status_office_penalty_adjust(
+    gid: str,
+    payload: OfficePenaltyAdjustIn,
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_full_app_access),
+) -> OfficePenaltyOut:
+    _require_superadmin(x_session_id)
+    from app.office_penalty import add_office_penalty
+
+    updated = add_office_penalty(db, gid=gid, delta=payload.delta)
+    return OfficePenaltyOut(**updated)
+
+
+@app.get("/api/product-status/b2b/raffle", response_model=OfficeRaffleOut)
+def product_status_office_raffle(
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_full_app_access),
+) -> OfficeRaffleOut:
+    _require_superadmin(x_session_id)
+    from app.office_penalty import load_raffle
+
+    return OfficeRaffleOut(places=[OfficeRafflePlaceOut(**item) for item in load_raffle(db)])
+
+
+@app.post("/api/product-status/b2b/raffle/mail", response_model=OfficeRaffleMailOut)
+def product_status_office_raffle_mail(
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: None = Depends(require_full_app_access),
+) -> OfficeRaffleMailOut:
+    _require_superadmin(x_session_id)
+    from app.office_penalty import send_raffle_results
+
+    return OfficeRaffleMailOut(**send_raffle_results(db))
 
 
 def _office_access_out(payload: dict) -> ProductStatusOfficeAccessOut:

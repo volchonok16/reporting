@@ -303,6 +303,7 @@ export default function WorkbookApp({
 
       {profileOpen && !voiceOnly ? (
         <EmployeeProfile
+          isSuperAdmin={isSuperAdmin}
           onClose={() => {
             setProfileOpen(false)
             onAuthRefresh()

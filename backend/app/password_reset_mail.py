@@ -294,6 +294,58 @@ def status_office_admin_unlock_email_text(*, admin_name: str, office_name: str) 
     )
 
 
+def status_raffle_email_html(*, places: list[dict], logo_src: str = "") -> str:
+    rows = []
+    for item in places:
+        members = ", ".join(item.get("members") or []) or "состав не задан"
+        rows.append(
+            "<tr>"
+            f'<td style="padding:8px 12px;border-bottom:1px solid #000000;font-family:Arial,Helvetica,sans-serif;font-size:14px;">{escape(str(item["place"]))}</td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #000000;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;">{escape(str(item["name"]))}</td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #000000;font-family:Arial,Helvetica,sans-serif;font-size:14px;">{escape(str(item["points"]))}</td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #000000;font-family:Arial,Helvetica,sans-serif;font-size:13px;">{escape(members)}</td>'
+            "</tr>"
+        )
+    table = "".join(rows) or (
+        '<tr><td colspan="4" style="padding:8px 12px;font-family:Arial,Helvetica,sans-serif;">Пока нет офисов.</td></tr>'
+    )
+    body = f"""
+          <tr>
+            <td style="padding:8px 28px 16px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#000000;">
+              Добрый день. Итоги баллов офисов: первое место — больше баллов.
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 28px 28px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
+                <tr>
+                  <th align="left" style="padding:8px 12px;border-bottom:2px solid #000000;font-family:Arial,Helvetica,sans-serif;font-size:12px;">Место</th>
+                  <th align="left" style="padding:8px 12px;border-bottom:2px solid #000000;font-family:Arial,Helvetica,sans-serif;font-size:12px;">Офис</th>
+                  <th align="left" style="padding:8px 12px;border-bottom:2px solid #000000;font-family:Arial,Helvetica,sans-serif;font-size:12px;">Баллы</th>
+                  <th align="left" style="padding:8px 12px;border-bottom:2px solid #000000;font-family:Arial,Helvetica,sans-serif;font-size:12px;">Состав</th>
+                </tr>
+                {table}
+              </table>
+            </td>
+          </tr>
+          {_status_button_html()}
+          {_signature_html(logo_src)}"""
+    return _email_shell(title="Итоги баллов офисов", body=body, logo_src=logo_src)
+
+
+def status_raffle_email_text(*, places: list[dict]) -> str:
+    lines = ["Итоги баллов офисов", "", "Добрый день.", ""]
+    if not places:
+        lines.append("Пока нет офисов.")
+    for item in places:
+        members = ", ".join(item.get("members") or []) or "состав не задан"
+        lines.append(
+            f"{item['place']} место. {item['name']}. {item['points']} баллов. Состав: {members}"
+        )
+    lines.extend(["", f"Перейти к статусу: {STATUS_PAGE_URL}", "", "t2 продукт", "Менеджеры проектного офиса"])
+    return "\n".join(lines)
+
+
 def status_locked_email_html(*, logo_src: str = "") -> str:
     body = f"""
           <tr>

@@ -285,6 +285,33 @@ class ProductStatusOfficeEditingLockIn(BaseModel):
     notify: bool = True
 
 
+class OfficePenaltyAdjustIn(BaseModel):
+    delta: int = Field(..., ge=-10000, le=10000)
+
+
+class OfficePenaltyOut(BaseModel):
+    gid: str
+    name: str
+    points: int
+
+
+class OfficeRafflePlaceOut(BaseModel):
+    place: int
+    gid: str
+    name: str
+    points: int
+    members: list[str] = Field(default_factory=list)
+
+
+class OfficeRaffleOut(BaseModel):
+    places: list[OfficeRafflePlaceOut]
+
+
+class OfficeRaffleMailOut(BaseModel):
+    sent: int
+    failed: int
+
+
 class ProductStatusOfficeMemberOut(BaseModel):
     employeeId: int
     fullName: str

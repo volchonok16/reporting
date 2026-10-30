@@ -1104,6 +1104,7 @@ CREATE TABLE b2b_product_status_office (
     editing_unlocked_at TIMESTAMPTZ,
     auto_lock_enabled   BOOLEAN      NOT NULL DEFAULT TRUE,
     skip_lock_until     TIMESTAMPTZ,
+    penalty_points      INTEGER      NOT NULL DEFAULT 0,
     created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
@@ -1114,6 +1115,7 @@ COMMENT ON COLUMN b2b_product_status_office.editing_locked_at IS 'Момент �
 COMMENT ON COLUMN b2b_product_status_office.editing_unlocked_at IS 'Момент последней разблокировки этого офиса';
 COMMENT ON COLUMN b2b_product_status_office.auto_lock_enabled IS 'Участвует ли офис в автоблокировке по своему расписанию. Письмо уходит сотрудникам из b2b_product_status_office_member';
 COMMENT ON COLUMN b2b_product_status_office.skip_lock_until IS 'До этого момента офис не блокируется по расписанию. Задаёт суперадминистратор';
+COMMENT ON COLUMN b2b_product_status_office.penalty_points IS 'Баллы офиса. +1 при разблокировке администратором (role = 100). Суперадминистратор начисляет и списывает вручную';
 
 CREATE TABLE b2b_product_status_office_member (
     office_id   BIGINT NOT NULL REFERENCES b2b_product_status_office(id) ON DELETE CASCADE,
