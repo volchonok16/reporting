@@ -1,6 +1,6 @@
 # UML — ER-диаграмма и компоненты
 
-> Актуальная полная картина workbook: [diagrams.md](diagrams.md) (architecture, use case, ER с Staffing / YouJail / B2B).
+> Актуальная полная картина workbook: [diagrams.md](diagrams.md) (architecture, use case, ER с Staffing / B2B).
 
 ## ER-диаграмма (Mermaid)
 
@@ -12,13 +12,10 @@ erDiagram
     team ||--o{ task : assigned
     task |o--o| task : parent_child
     task ||--o{ task_status_duration : time_in_status
-    task ||--o{ youjail_card_zni : linked
 
     employee ||--o{ workspace_booking : books
     workspace_place ||--o{ workspace_booking : place
     employee ||--o{ employee_time_off_day : absence
-    youjail_board ||--o{ youjail_card : cards
-    youjail_card ||--o{ youjail_card_zni : zni
     b2b_product_status_office ||--o{ b2b_product_status_row : rows
 
     auth_session {

@@ -33,13 +33,16 @@
 
 | Сервис | Порт (dev) | Назначение |
 |--------|------------|------------|
-| `frontend` | 5173 | Workbook: ЗНИ, B2B статус, Планы, Доска, Staffing, Диаграммы |
-| `backend` | 8000 | FastAPI: TFS sync, org, youjail, B2B+PPTX, сессии |
+| `frontend` | 5173 | Workbook: ЗНИ, B2B статус, Госинициативы, Симметрика, Staffing, Планирование, Voice |
+| `canvas-studio` | 8080 | Симметрика (редактор макетов), iframe во вкладке |
+| `backend` | 8000 | FastAPI: TFS sync, org, B2B+PPTX, Voice, сессии |
 | `postgres` | 5432 | PostgreSQL (`reporting_pgdata`) |
-| `minio` | 9000 / 9001 | Фото сотрудников, bucket `photos` (`reporting_miniodata`) |
-| `minio-init` | — | One-shot: создать bucket + public read |
+| `minio` | 9000 / 9001 | Фото / вложения (private buckets; `reporting_miniodata`) |
+| `minio-init` | — | One-shot: buckets + `anonymous set none` |
 
-**Тома / каталоги:** `YOUJAIL_WORKSPACE_DIR` (файлы доски), `ORG_UPLOADS_DIR` (fallback фото), `assets/Status.pptx` (шаблон презентаций).
+**Тома / каталоги:** `ORG_UPLOADS_DIR` (fallback фото), `assets/Status.pptx` (шаблон презентаций).
+
+**Auth / ACL:** сессии, page ACL, SSO iframe, rate limit — [auth-and-roles.md](auth-and-roles.md). Dev-порты на `127.0.0.1` — [docker.md](docker.md).
 
 **Локально:** `bash scripts/dev.sh` или `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build`
 
@@ -81,16 +84,14 @@
 
 | Метод | Путь | Назначение |
 |-------|------|------------|
-| POST | `/api/auth/login` | Вход email/пароль → `sessionId` (свой PAT не принимается) |
-| GET | `/api/dashboard` | Метрики и список ЗНИ |
+| POST | `/api/auth/login` | Вход email/пароль → `sessionId` (свой PAT не принимается; rate limit) |
+| GET | `/api/dashboard` | Метрики и список ЗНИ (сессия + page ACL `zni`) |
 | POST | `/api/sync` | Запуск синхронизации доски |
 | GET | `/api/export` | Excel: ЗНИ + ошибки, колонки «Заказчик», «Продукт» |
 | GET/POST | `/api/product-status/b2b/presentation` | Генерация PPTX |
 | GET/POST | `/api/revenue-activities` | Активности по выручкам (вкладки «Влияние по базе» / «Влияние по выручке») |
 | GET/POST | `/api/revenue-activities/excel` | Экспорт в Excel (числа как number) |
 | * | `/api/org/*` | Staffing: отпуска, бронь, офис, сотрудники |
-| * | `/api/youjail/*` | Доска YouJail |
-
 Диаграммы: [diagrams.md](diagrams.md) · глоссарий API подробнее: [glossary.md](glossary.md).
 
 ## Таблицы (37) + представления (4)
@@ -106,7 +107,7 @@
 | `field_mapping` | Поле источника → поле `task` |
 | `team` | Канонические команды (коды досок из `zni_board`, напр. `digital_streams_b2b`, `b2b_product_core`, `be_t2_team`) |
 | `zni_board` | Конфиг досок ЗНИ: alias, board_name, area_path, теги, TFS project/team, метрики |
-| `auth_session` | Сессии PAT для веб-приложения |
+| `auth_session` | Сессии веб-приложения (`sessionId`, TTL; PAT пользователя не хранится) |
 | `app_maintenance` | Singleton: режим обслуживания (`enabled`, `message`, `allow_admin`) + массовый logout через очистку `auth_session` |
 | `org_user` | Учётные записи сотрудников (email/пароль; `voice_only` — только вкладка Voice; `must_change_password` — обязательная смена пароля при входе) |
 | `org_password_reset` | Одноразовые коды самостоятельного сброса пароля (хеш, 15 минут) |
@@ -119,6 +120,7 @@
 | `employee_expertise` | Экспертиза сотрудника |
 | `employee_time_off_day` | График отпусков (день + тип) |
 | `vacation_planning_unlock` | Годы с открытым планированием отпусков (суперадмин) |
+| `vacation_overlap_block` | Пары сотрудников с запретом пересечения отпусков |
 | `workspace_place` | Справочник рабочих мест (номера 23–53 и 99–106; см. миграции `008`, `012`) |
 | `workspace_booking` | Бронь места на календарный день |
 | `employee_office_day` | Дни присутствия сотрудника в офисе без привязки к месту |
@@ -134,24 +136,10 @@
 | `master_edit_lock` | Voice: эксклюзивная блокировка редактирования |
 | `voice_uploads` | Voice: метаданные загруженных файлов |
 | `voice_jobs` | Voice: задания обработки |
+| `simmetrika_kv` | Симметрика: JSON (users, sessions, files-meta, projects, teams, codes) |
+| `simmetrika_blob` | Симметрика: снапшоты/картинки/версии макетов (bytea) |
+| `simmetrika_secret` | Симметрика: серверный секрет (бывший файл `data/secret`) |
 | `org_chart_layout` | Сохранённая ручная раскладка оргсхемы (координаты карточек и линии) |
-| `youjail_board` | Доски YouJail (общие/командные и личные по `owner_employee_id`) |
-| `youjail_board_pin` | Закреплённые доски пользователя (персональный порядок) |
-| `youjail_board_member` | Прямой доступ к доске: `admin` или `member` |
-| `youjail_project` | Проекты доски YouJail (repo, контекст) |
-| `youjail_task_type` | Типы карточек YouJail |
-| `youjail_column` | Колонки kanban (Backlog … Done) |
-| `youjail_card` | Карточки YouJail с заметками markdown |
-| `youjail_tag` | Теги карточек YouJail (labels) |
-| `youjail_card_tag` | Связь карточки и тегов |
-| `youjail_card_zni` | Привязка карточки к ЗНИ (`task`, `change_request`) |
-| `youjail_card_event` | История изменений карточки |
-| `youjail_card_link` | Связи карточек на одной доске |
-| `youjail_card_comment` | Комментарии к карточке YouJail |
-| `youjail_comment_attachment` | Вложения к комментариям |
-| `youjail_attachment` | Вложения карточек |
-| `youjail_execution` | Запуски исполнителя |
-| `youjail_execution_log` | Лог stdout/stderr/system |
 | `b2b_product_status_office` | Продуктовые офисы B2B; `editing_locked_at` и `editing_unlocked_at` — время блокировки и разблокировки; `penalty_points` — баллы офиса |
 | `app_scheduled_job_run` | День последнего запуска напоминания и блокировки статуса продукта |
 | `b2b_product_status_schedule` | Общее напоминание о статусе (`weekday`, `minutes`) |
@@ -172,7 +160,7 @@
 | `revenue_activity_history` | История изменений активностей по выручкам |
 | `revenue_activity_snapshot` | Снимки версий для отката |
 | `gov_initiative_section` | Вкладка «Госинициативы» (`main`) |
-| `gov_initiative_row` | Строки: Закон / Описание / Дата запуска / Статус / Номер ЗнИ |
+| `gov_initiative_row` | Строки: Закон / Описание / Дата запуска / Статус / Номер ЗнИ / Ответственный |
 | `gov_initiative_history` | История изменений госинициатив |
 | `gov_initiative_snapshot` | Снимки версий госинициатив |
 | `schema_migration` | Журнал применённых SQL-миграций (`ensure_startup_schema`) |

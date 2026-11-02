@@ -8,8 +8,8 @@
 
 | Файл | Содержание |
 |------|------------|
-| `database-er.puml` | ER: задачи, Staffing/org, YouJail, B2B status, sync |
-| `architecture.puml` | Workbook + MinIO, YouJail FS, Status.pptx, FineBI |
+| `database-er.puml` | ER: задачи, Staffing/org, B2B status, sync |
+| `architecture.puml` | Workbook + MinIO, Status.pptx, FineBI |
 | `use-case.puml` | Use cases всех вкладок workbook + BI + TFS |
 
 ## Как открыть

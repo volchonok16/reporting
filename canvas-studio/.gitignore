@@ -1,0 +1,7 @@
+dist/
+node_modules/
+.DS_Store
+*.log
+data/
+# Secrets for deploy.sh --env (docs/DEPLOY.md): never committed
+env.txt

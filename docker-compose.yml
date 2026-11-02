@@ -37,6 +37,7 @@ services:
       - ./voice/data:/data
     environment:
       VOICE_SSO_SECRET: ${VOICE_SSO_SECRET:-reporting-voice-sso-dev-secret}
+      CANVAS_STUDIO_SSO_SECRET: ${CANVAS_STUDIO_SSO_SECRET:-reporting-canvas-studio-sso-dev-secret}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://alex:alex@postgres:5432/reporting}
       CAROUSEL_DATA_DIR: /data
       CAROUSEL_CORS_ORIGINS: ${CAROUSEL_CORS_ORIGINS:-http://localhost:3100,http://localhost:5173,http://127.0.0.1:5173}
@@ -136,8 +137,9 @@ services:
       sleep 5 &&
       mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
       mc mb local/$$MINIO_BUCKET --ignore-existing &&
-      mc anonymous set download local/$$MINIO_BUCKET &&
-      mc mb local/$$MINIO_ATTACHMENTS_BUCKET --ignore-existing
+      mc anonymous set none local/$$MINIO_BUCKET &&
+      mc mb local/$$MINIO_ATTACHMENTS_BUCKET --ignore-existing &&
+      mc anonymous set none local/$$MINIO_ATTACHMENTS_BUCKET
       "
 
   frontend:
@@ -145,11 +147,50 @@ services:
       context: ./frontend
       args:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+        VITE_CANVAS_STUDIO_URL: ${CANVAS_STUDIO_PUBLIC_URL:-http://localhost:8080}
     container_name: reporting-frontend
     restart: unless-stopped
     depends_on:
       - backend
       - voice-web
+      - canvas-studio
+
+  canvas-studio:
+    build:
+      context: ./canvas-studio
+    container_name: reporting-canvas-studio
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    environment:
+      CS_HOST: 0.0.0.0
+      CS_PORT: 8080
+      CS_DATA: /data
+      CS_TRUST_PROXY: "1"
+      CS_OPEN_REGISTRATION: "0"
+      CS_REPORTING_AUTH_ONLY: "1"
+      CS_REPORTING_SSO_SECRET: ${CANVAS_STUDIO_SSO_SECRET:-reporting-canvas-studio-sso-dev-secret}
+      CS_FRAME_ANCESTORS: ${CANVAS_STUDIO_FRAME_ANCESTORS:-http://localhost:5173 http://127.0.0.1:5173}
+      CS_APP_URL: ${CANVAS_STUDIO_PUBLIC_URL:-http://localhost:8080}
+      CS_SECURE: ${CS_SECURE:-0}
+      # Пользователи/макеты/блобы в PostgreSQL (simmetrika_*), не в JSON на диске.
+      CS_DATABASE_URL: ${CS_DATABASE_URL:-postgresql://alex:alex@postgres:5432/reporting}
+    volumes:
+      # Кэш шрифтов Google; данные макетов — в БД при CS_DATABASE_URL.
+      - ./canvas-studio/data:/data
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:8080/api/health').then(r=>r.json()).then(t=>process.exit(t&&t.ok?0:1)).catch(()=>process.exit(1))
+      interval: 15s
+      timeout: 5s
+      start_period: 40s
+      retries: 8
 
   voice-web:
     build:

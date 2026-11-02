@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch } from './api'
 import { resolveTheme, THEME_CHANGE_EVENT, type Theme } from './theme'
 
@@ -17,11 +17,11 @@ function currentTheme(): Theme {
   return resolveTheme()
 }
 
-function buildVoiceSrc(theme: Theme, ssoToken?: string): string {
+/** SSO-токен в URL не кладём — только embed + theme; сессия через postMessage. */
+function buildVoiceSrc(theme: Theme): string {
   const url = new URL(resolveVoiceAppUrl())
   url.searchParams.set('embed', '1')
   url.searchParams.set('theme', theme)
-  if (ssoToken) url.searchParams.set('reportingSso', ssoToken)
   return url.toString()
 }
 
@@ -78,7 +78,21 @@ async function fetchReportingSsoToken(): Promise<string> {
   return data.token
 }
 
+function postToVoice(
+  frame: Window | null | undefined,
+  targetOrigin: string,
+  message: { type: string; token?: string; theme?: Theme },
+): void {
+  if (!frame) return
+  try {
+    frame.postMessage(message, targetOrigin)
+  } catch {
+    /* ignore */
+  }
+}
+
 export default function Voice() {
+  const voiceOrigin = useMemo(() => window.location.origin, [])
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [iframeSrc, setIframeSrc] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -97,29 +111,29 @@ export default function Voice() {
     let cancelled = false
     void (async () => {
       try {
-        // Параллельно: проверка upstream + SSO reporting (пользователь уже вошёл).
         const [, token] = await Promise.all([
           assertVoiceUpstream(),
           ensureSsoToken().catch(() => ''),
         ])
         if (cancelled) return
-        setIframeSrc(buildVoiceSrc(currentTheme(), token || undefined))
+        setIframeSrc(buildVoiceSrc(currentTheme()))
         setError(null)
-        // Если SSO пришёл чуть позже probe — дошлём в iframe.
-        if (!token) {
+        const send = (sso: string) => {
+          postToVoice(iframeRef.current?.contentWindow, voiceOrigin, {
+            type: 'reporting-sso',
+            token: sso,
+          })
+        }
+        if (token) {
+          window.setTimeout(() => {
+            if (!cancelled) send(token)
+          }, 0)
+        } else {
           void ensureSsoToken()
             .then((lateToken) => {
-              if (cancelled) return
-              const frame = iframeRef.current?.contentWindow
-              if (frame) {
-                frame.postMessage({ type: 'reporting-sso', token: lateToken }, '*')
-              } else {
-                setIframeSrc(buildVoiceSrc(currentTheme(), lateToken))
-              }
+              if (!cancelled) send(lateToken)
             })
-            .catch(() => {
-              /* UI уже открыт из reporting */
-            })
+            .catch(() => undefined)
         }
       } catch (err) {
         if (cancelled) return
@@ -129,28 +143,31 @@ export default function Voice() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [voiceOrigin])
 
   useEffect(() => {
     const onThemeChange = (event: Event) => {
       const theme = (event as CustomEvent<Theme>).detail
       if (theme !== 'dark' && theme !== 'light') return
-      const frame = iframeRef.current?.contentWindow
-      if (!frame) return
-      frame.postMessage({ type: 'reporting-theme', theme }, '*')
+      postToVoice(iframeRef.current?.contentWindow, voiceOrigin, {
+        type: 'reporting-theme',
+        theme,
+      })
     }
 
     const onFrameMessage = (event: MessageEvent) => {
+      if (event.origin !== voiceOrigin) return
+      if (event.source !== iframeRef.current?.contentWindow) return
       const data = event.data
       if (!data || typeof data !== 'object') return
       if (data.type !== 'voice-auth-required') return
       void (async () => {
         try {
           const token = await ensureSsoToken()
-          const frame = iframeRef.current?.contentWindow
-          if (frame) {
-            frame.postMessage({ type: 'reporting-sso', token }, '*')
-          }
+          postToVoice(iframeRef.current?.contentWindow, voiceOrigin, {
+            type: 'reporting-sso',
+            token,
+          })
         } catch {
           /* не блокируем вкладку */
         }
@@ -163,17 +180,25 @@ export default function Voice() {
       window.removeEventListener(THEME_CHANGE_EVENT, onThemeChange)
       window.removeEventListener('message', onFrameMessage)
     }
-  }, [])
+  }, [voiceOrigin])
 
   const handleIframeLoad = () => {
     const frame = iframeRef.current
     if (!frame) return
     if (iframeLooksLikeReporting(frame)) {
       setIframeSrc(null)
-      setError(
-        'Voice iframe снова открыл reporting. Обновите frontend/voice-web образы и nginx.',
-      )
+      setError('Voice iframe снова открыл reporting. Обновите frontend/voice-web образы и nginx.')
+      return
     }
+    postToVoice(frame.contentWindow, voiceOrigin, {
+      type: 'reporting-theme',
+      theme: currentTheme(),
+    })
+    void ensureSsoToken()
+      .then((token) => {
+        postToVoice(frame.contentWindow, voiceOrigin, { type: 'reporting-sso', token })
+      })
+      .catch(() => undefined)
   }
 
   if (error) {

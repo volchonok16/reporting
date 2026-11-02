@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.auth_sessions import get_session_with_meta
@@ -9,6 +9,15 @@ from app.db import get_db
 FULL_APP_ROLE = "full"
 ROADMAP_APP_ROLE = "roadmap"
 ROADMAP_DIGITAL_BOARD_CODE = "digital_streams_b2b"
+
+# Эндпоинты, доступные при must_change_password (смена пароля / статус / выход).
+_PASSWORD_CHANGE_ALLOW_SUFFIXES = (
+    "/api/auth/status",
+    "/api/auth/logout",
+    "/api/auth/defaults",
+    "/api/profile",
+    "/api/org/profile",
+)
 
 
 def normalize_app_role(value: str | None) -> str:
@@ -79,6 +88,8 @@ def ensure_page_access(db: Session, meta: dict, page_key: str) -> None:
     if is_superadmin_user(meta):
         return
     if is_voice_only(meta):
+        if page_key == "voice":
+            return
         raise HTTPException(status_code=403, detail="Доступен только раздел Voice.")
     org_user_id = meta.get("org_user_id")
     if not org_user_id:
@@ -119,14 +130,36 @@ def has_planning_access(db: Session, meta: dict) -> bool:
     return "planning" in get_user_allowed_page_keys(db, int(org_user_id))
 
 
+def ensure_password_change_allowed(meta: dict, request: Request | None = None) -> None:
+    """Блокирует API, пока не сменён временный пароль (кроме allowlist)."""
+    if not meta.get("must_change_password"):
+        return
+    path = (request.url.path if request is not None else "").rstrip("/") or "/"
+    if path in {s.rstrip("/") for s in _PASSWORD_CHANGE_ALLOW_SUFFIXES}:
+        return
+    if path.endswith("/password") or path.endswith("/change-password"):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail="Необходимо сменить временный пароль перед продолжением работы.",
+        headers={"X-Must-Change-Password": "1"},
+    )
+
+
 def require_app_page(page_key: str):
+    """Сессия + не roadmap + page ACL + must_change_password."""
+
     def _dependency(
+        request: Request,
         x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
         db: Session = Depends(get_db),
     ) -> dict:
         auth, meta = get_session_with_meta(x_session_id)
         if auth is None:
             raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
+        if is_roadmap_role(meta.get("app_role")):
+            raise HTTPException(status_code=403, detail="Недостаточно прав.")
+        ensure_password_change_allowed(meta, request)
         ensure_page_access(db, meta, page_key)
         return meta
 

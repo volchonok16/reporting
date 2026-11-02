@@ -1,0 +1,825 @@
+<meta charset="utf-8">
+<title>Архитектура — Симметрика</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+/* ── Симметрика tokens (точно как в styles.css) ─────────────────── */
+:root {
+  --bg:           #ffffff;
+  --bg-subtle:    #f5f5f5;
+  --bg-hover:     #f0f0f0;
+  --border:       #e6e6e6;
+  --text:         #1e1e1e;
+  --text-muted:   #5c5c5c;
+  --text-faint:   #707070;
+  --accent:       #4f5bd5;
+  --accent-soft:  #eceefb;
+  --component:    #9747ff;
+  --green:        #1a7a4a;
+  --green-soft:   #e6f4ec;
+  --orange:       #c46c00;
+  --orange-soft:  #fff0d9;
+  --radius:       6px;
+  --font:         'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono:         'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:           #2c2c2c;
+    --bg-subtle:    #383838;
+    --bg-hover:     #3a3a3a;
+    --border:       #444444;
+    --text:         #f2f2f2;
+    --text-muted:   #c2c2c2;
+    --text-faint:   #a6a6a6;
+    --accent:       #838cf0;
+    --accent-soft:  #2b2f55;
+    --component:    #b48cff;
+    --green:        #4ade80;
+    --green-soft:   #1a3326;
+    --orange:       #fbbf24;
+    --orange-soft:  #2d2008;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:           #2c2c2c;
+  --bg-subtle:    #383838;
+  --bg-hover:     #3a3a3a;
+  --border:       #444444;
+  --text:         #f2f2f2;
+  --text-muted:   #c2c2c2;
+  --text-faint:   #a6a6a6;
+  --accent:       #838cf0;
+  --accent-soft:  #2b2f55;
+  --component:    #b48cff;
+  --green:        #4ade80;
+  --green-soft:   #1a3326;
+  --orange:       #fbbf24;
+  --orange-soft:  #2d2008;
+  color-scheme: dark;
+}
+
+/* ── Reset ──────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--bg);
+  padding-left:  max(0px, env(safe-area-inset-left, 0px));
+  padding-right: max(0px, env(safe-area-inset-right, 0px));
+  padding-block: 0;
+}
+
+/* ── Top nav ─────────────────────────────────────────────────────── */
+.topnav {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 max(20px, env(safe-area-inset-left, 0px));
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  height: env(safe-area-inset-top, 0px);
+  z-index: 11;
+  background: var(--bg);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  text-decoration: none;
+  color: var(--text);
+}
+.brand-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.brand-name {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.1px;
+}
+.nav-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+.nav-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.nav-badge {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+}
+
+/* ── Page layout ─────────────────────────────────────────────────── */
+.page {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 32px max(20px, env(safe-area-inset-left, 0px));
+  padding-bottom: 80px;
+}
+
+/* ── Section ─────────────────────────────────────────────────────── */
+section { margin-top: 40px; }
+section:first-child { margin-top: 0; }
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.section-note {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+p {
+  color: var(--text-muted);
+  max-width: 72ch;
+  font-size: 13px;
+}
+p + p { margin-top: 6px; }
+
+code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 4px;
+  color: var(--accent);
+}
+
+/* ── Page header (hero) ──────────────────────────────────────────── */
+.page-hero {
+  padding: 20px 0 28px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 32px;
+}
+.hero-eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.page-hero h1 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  line-height: 1.2;
+  text-wrap: balance;
+  margin-bottom: 8px;
+}
+.hero-desc {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ── File-kind cards ─────────────────────────────────────────────── */
+.kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.kind {
+  flex: 1 1 200px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+}
+.kind-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.kind.design  .kind-label { color: var(--accent); }
+.kind.board   .kind-label { color: var(--green); }
+.kind.diagram .kind-label { color: var(--component); }
+.kind p { font-size: 12px; }
+
+/* ── Layer stack ─────────────────────────────────────────────────── */
+.stack { display: flex; flex-direction: column; gap: 3px; }
+
+.stack-row {
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+  min-height: 44px;
+}
+
+.stack-label {
+  width: 96px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.stack-boxes {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  min-width: 0;
+}
+
+.box {
+  flex: 1 1 auto;
+  min-width: 72px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+}
+.box-name {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text);
+}
+.box-desc {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+.box.hi { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); }
+.box.hi .box-name { color: var(--accent); }
+.box.srv { background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 25%, var(--border)); }
+.box.srv .box-name { color: var(--green); }
+
+.stack-connector {
+  width: 96px; flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px;
+}
+.stack-connector-line {
+  width: 1px; flex: 1; background: var(--border); min-height: 6px;
+}
+.stack-connector-label {
+  font-size: 10px; color: var(--text-faint); white-space: nowrap; padding: 0 4px;
+}
+
+/* ── Package cards ───────────────────────────────────────────────── */
+.pkg-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
+  gap: 8px;
+}
+.pkg {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.pkg-path {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  margin-bottom: 5px;
+}
+.pkg h3 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.pkg p { font-size: 12px; max-width: 100%; }
+.pkg-files {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ── Data flow ───────────────────────────────────────────────────── */
+.flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 8px;
+}
+.flow-step {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  flex-shrink: 0;
+}
+.flow-step-name { font-size: 12px; font-weight: 500; color: var(--text); }
+.flow-step-note { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+.flow-arrow { font-size: 14px; color: var(--text-faint); padding: 0 6px; flex-shrink: 0; }
+
+/* ── Deploy diagram ──────────────────────────────────────────────── */
+.deploy-wrap { overflow-x: auto; }
+.deploy-wrap svg { display: block; max-width: 100%; }
+
+/* ── Stats ───────────────────────────────────────────────────────── */
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.stat {
+  flex: 1 1 130px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
+  color: var(--accent);
+}
+.stat-label { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* ── Responsive ──────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .stack-label { width: 64px; font-size: 9px; }
+  .stack-connector { width: 64px; }
+  .box { min-width: 56px; }
+  .topnav { padding: 0 max(16px, env(safe-area-inset-left, 0px)); }
+  .page { padding-inline: max(16px, env(safe-area-inset-left, 0px)); }
+}
+</style>
+
+<!-- Nav -->
+<nav class="topnav">
+  <a class="brand" href="https://simmetrika.online" target="_blank">
+    <svg width="22" height="22" viewBox="0 0 64 64" fill="none" aria-hidden="true" style="flex-shrink:0">
+      <path d="M26 9.5A22.5 22.5 0 0 0 26 54.5" stroke="#4F5BD5" stroke-width="9" stroke-linecap="round"/>
+      <path d="M38 9.5A22.5 22.5 0 0 1 38 54.5" stroke="#A24BE8" stroke-width="9" stroke-linecap="round"/>
+      <path d="M32 23.5L40.5 32L32 40.5L23.5 32Z" fill="#FFAE1A"/>
+    </svg>
+    <span class="brand-name">Симметрика</span>
+  </a>
+  <span class="nav-sep"></span>
+  <span class="nav-label">Документация</span>
+  <span class="nav-badge">v0.1.0</span>
+</nav>
+
+<div class="page">
+
+  <!-- Hero -->
+  <div class="page-hero">
+    <div class="hero-eyebrow">Архитектура</div>
+    <h1>Устройство Симметрики</h1>
+    <p class="hero-desc">Монорепозиторий без внешних runtime-зависимостей — макеты, доски и схемы в одном редакторе.</p>
+  </div>
+
+  <!-- Виды файлов -->
+  <section>
+    <div class="section-head">
+      <h2>Три вида файлов</h2>
+      <span class="section-note">fileKind в корневом узле документа</span>
+    </div>
+    <div class="kinds">
+      <div class="kind design">
+        <div class="kind-label">DESIGN · Макет</div>
+        <p>Пиксель-перфект вёрстка, компоненты, переменные, авто-раскладка, прототипы.</p>
+      </div>
+      <div class="kind board">
+        <div class="kind-label">BOARD · Доска</div>
+        <p>Стикеры, фигуры с текстом, связи, штампы, разделы. Таймер, голосование, маркер.</p>
+      </div>
+      <div class="kind diagram">
+        <div class="kind-label">DIAGRAM · Схема</div>
+        <p>Майнд-карты, блок-схемы, дерево по тексту. Движок DocPlan, экспорт SVG.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Стек слоёв -->
+  <section>
+    <div class="section-head">
+      <h2>Слои пакетов</h2>
+      <span class="section-note">каждый зависит только от нижних; имена через import map</span>
+    </div>
+    <div class="stack">
+
+      <div class="stack-row">
+        <div class="stack-label">Браузер</div>
+        <div class="stack-boxes">
+          <div class="box hi">
+            <span class="box-name">apps/web</span>
+            <span class="box-desc">index.html · styles.css · Service Worker · лендинг</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack-row" style="min-height:24px">
+        <div class="stack-connector">
+          <div class="stack-connector-line"></div>
+          <div class="stack-connector-label">import map</div>
+          <div class="stack-connector-line"></div>
+        </div>
+        <div class="stack-boxes"></div>
+      </div>
+
+      <div class="stack-row">
+        <div class="stack-label">Редактор</div>
+        <div class="stack-boxes">
+          <div class="box hi">
+            <span class="box-name">app.ts</span>
+            <span class="box-desc">точка входа, роутинг</span>
+          </div>
+          <div class="box hi">
+            <span class="box-name">canvas-view.ts</span>
+            <span class="box-desc">холст, инструменты</span>
+          </div>
+          <div class="box hi">
+            <span class="box-name">editor.ts</span>
+            <span class="box-desc">транзакции, команды</span>
+          </div>
+          <div class="box hi">
+            <span class="box-name">board-view.ts</span>
+            <span class="box-desc">инструменты доски</span>
+          </div>
+          <div class="box hi">
+            <span class="box-name">ui/</span>
+            <span class="box-desc">панели, диалоги, главная</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack-row" style="min-height:18px">
+        <div class="stack-connector">
+          <div class="stack-connector-line"></div>
+        </div>
+        <div class="stack-boxes"></div>
+      </div>
+
+      <div class="stack-row">
+        <div class="stack-label">Рендер</div>
+        <div class="stack-boxes">
+          <div class="box">
+            <span class="box-name">render</span>
+            <span class="box-desc">WebGL2 тайлы + Canvas2D · сцена · вьюпорт · PDF/SVG · шрифты TTF/OTF</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack-row" style="min-height:18px">
+        <div class="stack-connector"><div class="stack-connector-line"></div></div>
+        <div class="stack-boxes"></div>
+      </div>
+
+      <div class="stack-row">
+        <div class="stack-label">Компоненты</div>
+        <div class="stack-boxes">
+          <div class="box">
+            <span class="box-name">components</span>
+            <span class="box-desc">экземпляры · стили · переменные · syncBoard (стикеры, фигуры, связи, штампы)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack-row" style="min-height:18px">
+        <div class="stack-connector"><div class="stack-connector-line"></div></div>
+        <div class="stack-boxes"></div>
+      </div>
+
+      <div class="stack-row">
+        <div class="stack-label">Логика</div>
+        <div class="stack-boxes">
+          <div class="box">
+            <span class="box-name">layout</span>
+            <span class="box-desc">auto layout (Flexbox) · ограничения · измерение текста</span>
+          </div>
+          <div class="box" style="border-color: color-mix(in srgb, var(--component) 25%, var(--border));">
+            <span class="box-name" style="color:var(--component)">diagrams</span>
+            <span class="box-desc">DocPlan · майнд-карты · дерево · блок-схемы</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack-row" style="min-height:18px">
+        <div class="stack-connector"><div class="stack-connector-line"></div></div>
+        <div class="stack-boxes"></div>
+      </div>
+
+      <div class="stack-row">
+        <div class="stack-label">Основа</div>
+        <div class="stack-boxes">
+          <div class="box">
+            <span class="box-name">geometry</span>
+            <span class="box-desc">матрицы · прямоугольники · булевы операции · векторные сети</span>
+          </div>
+          <div class="box">
+            <span class="box-name">core</span>
+            <span class="box-desc">схема узлов · операции · документ · слияние (CRDT) · i18n</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack-row" style="min-height:24px">
+        <div class="stack-connector">
+          <div class="stack-connector-line"></div>
+          <div class="stack-connector-label">HTTP + WS</div>
+          <div class="stack-connector-line"></div>
+        </div>
+        <div class="stack-boxes"></div>
+      </div>
+
+      <div class="stack-row">
+        <div class="stack-label">Сервер</div>
+        <div class="stack-boxes">
+          <div class="box srv">
+            <span class="box-name">server/api.ts</span>
+            <span class="box-desc">файлы · версии · команды · ветки</span>
+          </div>
+          <div class="box srv">
+            <span class="box-name">server/live.ts</span>
+            <span class="box-desc">WebSocket · live-комнаты</span>
+          </div>
+          <div class="box srv">
+            <span class="box-name">server/auth.ts</span>
+            <span class="box-desc">сессии · почта</span>
+          </div>
+          <div class="box srv">
+            <span class="box-name">server/storage.ts</span>
+            <span class="box-desc">JSON на диске · версии</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Поток транзакции -->
+  <section>
+    <div class="section-head">
+      <h2>Поток транзакции</h2>
+      <span class="section-note">один шаг отмены — единый результат для всех</span>
+    </div>
+    <div class="flow">
+      <div class="flow-step">
+        <div class="flow-step-name">Жест</div>
+        <div class="flow-step-note">drag / resize / ввод</div>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">
+        <div class="flow-step-name">Transaction</div>
+        <div class="flow-step-note">create / set / move</div>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">
+        <div class="flow-step-name">Pipeline</div>
+        <div class="flow-step-note">стили → переопределения → экземпляры → доска → layout</div>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">
+        <div class="flow-step-name">Scene</div>
+        <div class="flow-step-note">damaged tiles</div>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">
+        <div class="flow-step-name">WebGL2</div>
+        <div class="flow-step-note">тайлы 256 px</div>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">
+        <div class="flow-step-name">WebSocket</div>
+        <div class="flow-step-note">ops → другие клиенты</div>
+      </div>
+    </div>
+    <p style="margin-top:10px;font-size:12px;">Отмена, экспорт и соавторы видят одни и те же операции — дублирующей логики нет.</p>
+  </section>
+
+  <!-- Инфраструктура -->
+  <section>
+    <div class="section-head">
+      <h2>Инфраструктура</h2>
+      <span class="section-note">VPS 159.194.250.13 · Ubuntu · simmetrika.online</span>
+    </div>
+    <div class="deploy-wrap">
+      <svg viewBox="0 0 700 190" width="700" height="190" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arr" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L7,3 z" fill="var(--text-faint)"/>
+          </marker>
+        </defs>
+
+        <!-- Browser -->
+        <rect x="10" y="64" width="126" height="68" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1"/>
+        <text x="73" y="90" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="500" fill="var(--accent)">Браузер</text>
+        <text x="73" y="106" text-anchor="middle" font-family="Inter, sans-serif" font-size="10" fill="var(--text-faint)">apps/web + editor</text>
+        <text x="73" y="120" text-anchor="middle" font-family="Inter, sans-serif" font-size="10" fill="var(--text-faint)">Service Worker</text>
+
+        <!-- Arrow -->
+        <line x1="136" y1="98" x2="172" y2="98" stroke="var(--text-faint)" stroke-width="1.5" marker-end="url(#arr)"/>
+        <text x="154" y="92" text-anchor="middle" font-family="Inter, sans-serif" font-size="10" fill="var(--text-faint)">HTTPS</text>
+
+        <!-- nginx -->
+        <rect x="177" y="64" width="108" height="68" rx="6" fill="var(--bg-hover)" stroke="var(--border)" stroke-width="1"/>
+        <text x="231" y="90" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="500" fill="var(--text)">nginx</text>
+        <text x="231" y="106" text-anchor="middle" font-family="Inter, sans-serif" font-size="10" fill="var(--text-faint)">TLS termination</text>
+        <text x="231" y="120" text-anchor="middle" font-family="Inter, sans-serif" font-size="10" fill="var(--text-faint)">reverse proxy</text>
+
+        <!-- Arrow -->
+        <line x1="285" y1="98" x2="321" y2="98" stroke="var(--text-faint)" stroke-width="1.5" marker-end="url(#arr)"/>
+        <text x="303" y="92" text-anchor="middle" font-family="Inter, sans-serif" font-size="10" fill="var(--text-faint)">:8080</text>
+
+        <!-- Node.js -->
+        <rect x="326" y="44" width="200" height="108" rx="6" fill="var(--green-soft)" stroke="var(--green)" stroke-width="1"/>
+        <text x="426" y="68" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="500" fill="var(--green)">Node.js · packages/server</text>
+        <text x="426" y="86" text-anchor="middle" font-family="Inter, sans-serif" font-size="10" fill="var(--text-faint)">REST API + WebSocket</text>
+        <text x="426" y="102" text-anchor="middle" font-family="Inter, sans-serif" font-size="10" fill="var(--text-faint)">systemd: canvas-studio</text>
+        <text x="426" y="118" text-anchor="middle" font-family="Inter, sans-serif" font-size="10" fill="var(--text-faint)">--max-old-space=256M</text>
+        <text x="426" y="134" text-anchor="middle" font-family="Inter, sans-serif" font-size="10" fill="var(--text-faint)">apps/server/src/main.ts</text>
+
+        <!-- Arrow -->
+        <line x1="526" y1="98" x2="562" y2="98" stroke="var(--text-faint)" stroke-width="1.5" marker-end="url(#arr)"/>
+
+        <!-- Storage -->
+        <rect x="567" y="64" width="122" height="68" rx="6" fill="var(--orange-soft)" stroke="var(--orange)" stroke-width="1"/>
+        <text x="628" y="90" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="500" fill="var(--orange)">Диск</text>
+        <text x="628" y="106" text-anchor="middle" font-family="Inter, sans-serif" font-size="10" fill="var(--text-faint)">/var/canvas-studio</text>
+        <text x="628" y="120" text-anchor="middle" font-family="Inter, sans-serif" font-size="10" fill="var(--text-faint)">JSON + assets</text>
+
+        <!-- VPS border -->
+        <rect x="164" y="16" width="524" height="158" rx="6" fill="none" stroke="var(--border)" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="184" y="32" font-family="Inter, sans-serif" font-size="10" fill="var(--text-faint)">VPS · Ubuntu · Let's Encrypt · ufw</text>
+      </svg>
+    </div>
+    <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:4px;">
+      <span class="tag">certbot / Let's Encrypt</span>
+      <span class="tag">www + canvas.typehero.online → 301</span>
+      <span class="tag">SMTP Beget · no-reply@simmetrika.online</span>
+      <span class="tag">бэкап при каждом деплое</span>
+    </div>
+  </section>
+
+  <!-- Пакеты -->
+  <section>
+    <div class="section-head">
+      <h2>Ключевые пакеты</h2>
+    </div>
+    <div class="pkg-grid">
+
+      <div class="pkg">
+        <div class="pkg-path">packages/core</div>
+        <h3>Документ и операции</h3>
+        <p>CRDT-подобная модель: три операции (create/set/move), часы Лэмпорта, дробные индексы порядка. Слияние без конфликтов — «последняя запись побеждает» по свойству.</p>
+        <div class="pkg-files">
+          <span class="tag">document.ts</span><span class="tag">ops.ts</span><span class="tag">merge.ts</span><span class="tag">schema.ts</span><span class="tag">store.ts</span>
+        </div>
+      </div>
+
+      <div class="pkg">
+        <div class="pkg-path">packages/render</div>
+        <h3>WebGL2-рендер</h3>
+        <p>Тайлы 256 px, каждый — Canvas2D-текстура в WebGL2. Семейства масштабов через ¼ октавы. При повреждении — перерисовка только затронутых тайлов. <code>?gpu=0</code> — fallback.</p>
+        <div class="pkg-files">
+          <span class="tag">canvas-renderer.ts</span><span class="tag">scene.ts</span><span class="tag">viewport.ts</span><span class="tag">font-file.ts</span>
+        </div>
+      </div>
+
+      <div class="pkg">
+        <div class="pkg-path">packages/components</div>
+        <h3>Конвейер транзакции</h3>
+        <p>После каждой правки: стили → переопределения экземпляров → синхронизация → доска → auto layout. Записывается в той же транзакции — один шаг отмены.</p>
+        <div class="pkg-files">
+          <span class="tag">board.ts</span><span class="tag">instances.ts</span><span class="tag">styles.ts</span><span class="tag">variables.ts</span>
+        </div>
+      </div>
+
+      <div class="pkg">
+        <div class="pkg-path">packages/layout</div>
+        <h3>Auto layout</h3>
+        <p>Повторяет CSS Flexbox (FIXED / HUG / FILL / FR / %). Ширины раньше высот. Текст измеряется Canvas2D в браузере, детерминированным приближением в тестах.</p>
+        <div class="pkg-files">
+          <span class="tag">engine.ts</span><span class="tag">text-measure.ts</span><span class="tag">constraints.ts</span>
+        </div>
+      </div>
+
+      <div class="pkg">
+        <div class="pkg-path">packages/geometry</div>
+        <h3>Геометрия</h3>
+        <p>Матрицы 2×3, прямоугольники, булевы операции (union/subtract/intersect через booleanRegions), векторные сети, переменная обводка.</p>
+        <div class="pkg-files">
+          <span class="tag">matrix.ts</span><span class="tag">boolean.ts</span><span class="tag">network.ts</span><span class="tag">shapes.ts</span>
+        </div>
+      </div>
+
+      <div class="pkg">
+        <div class="pkg-path">packages/server</div>
+        <h3>Сервер</h3>
+        <p>Node.js без фреймворков. REST API + WebSocket для live-комнат. Хранение в JSON-файлах на диске. Версии, ветки, команды, комментарии, почта SMTP Beget.</p>
+        <div class="pkg-files">
+          <span class="tag">api.ts</span><span class="tag">live.ts</span><span class="tag">websocket.ts</span><span class="tag">storage.ts</span><span class="tag">versions.ts</span>
+        </div>
+      </div>
+
+      <div class="pkg">
+        <div class="pkg-path">packages/diagrams</div>
+        <h3>Движок схем</h3>
+        <p>Вендорный движок DocPlan (<code>vendor/</code>) — майнд-карты, дерево, блок-схемы. Генерируется в <code>engine.js</code> через <code>tools/diagrams-engine.mjs</code>. Экспорт SVG.</p>
+        <div class="pkg-files">
+          <span class="tag">engine.js</span><span class="tag">vendor/</span>
+        </div>
+      </div>
+
+      <div class="pkg">
+        <div class="pkg-path">packages/editor/src/fig</div>
+        <h3>Импорт Figma (.fig)</h3>
+        <p>Собственный парсер без зависимостей: zstd-распаковка, kiwi-десериализация, конвертация в схему. Компоненты, векторные сети, auto layout, переопределения.</p>
+        <div class="pkg-files">
+          <span class="tag">zstd.ts</span><span class="tag">kiwi.ts</span><span class="tag">convert.ts</span><span class="tag">archive.ts</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Статистика -->
+  <section>
+    <div class="section-head">
+      <h2>Кодовая база</h2>
+    </div>
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-value">~45 k</div>
+        <div class="stat-label">строк TypeScript</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">198</div>
+        <div class="stat-label">модулей в сборке</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">0</div>
+        <div class="stat-label">runtime-зависимостей</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">3</div>
+        <div class="stat-label">вида файлов</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">675 мс</div>
+        <div class="stat-label">время сборки</div>
+      </div>
+    </div>
+    <p style="margin-top:10px;font-size:12px;">Детальное описание механизмов — в <code>docs/ARCHITECTURE.md</code>.</p>
+  </section>
+
+</div>

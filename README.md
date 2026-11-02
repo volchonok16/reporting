@@ -2,12 +2,12 @@
 
 **Репозиторий:** [github.com/volchonok16/reporting](https://github.com/volchonok16/reporting)
 
-Централизованная платформа для выгрузки задач из **Jira**, **TFS (Azure DevOps)**, **Trello** и **прочих систем** в единую **PostgreSQL**-базу. Веб-приложение **FastAPI + Vite** — workbook: **ЗНИ**, **Статус продукта B2B** (включая генерацию PPTX), **Доска YouJail**, **Staffing** (отпуска, бронь мест, офис, оргсхема), **Диаграммы**.
+Централизованная платформа для выгрузки задач из **Jira**, **TFS (Azure DevOps)**, **Trello** и **прочих систем** в единую **PostgreSQL**-базу. Веб-приложение **FastAPI + Vite** — workbook: **ЗНИ**, **Статус продукта B2B** (включая генерацию PPTX), **Госинициативы**, **Симметрика** (canvas-studio), **Staffing**, **Планирование**, **Voice**.
 
 ## Текущий этап
 
 - Схема БД (`db/schema.sql` + миграции) и полный workbook
-- **Backend:** FastAPI — TFS sync, org/staffing, YouJail, B2B status + PPTX, roadmap
+- **Backend:** FastAPI — TFS sync, org/staffing, B2B status + PPTX, roadmap
 - **Frontend:** вкладки workbook + личный кабинет
 - PlantUML / Mermaid: ER, архитектура, use case (`plantuml/`, `docs/diagrams.md`)
 - Документация (`docs/`)
@@ -21,6 +21,9 @@
 | **Confluence** | [docs/confluence.md](docs/confluence.md) + `docs/diagrams/png/` |
 | Обзор всех таблиц | [docs/database-overview.md](docs/database-overview.md) |
 | **Глоссарий** | [docs/glossary.md](docs/glossary.md) |
+| **Auth / роли / ACL** | [docs/auth-and-roles.md](docs/auth-and-roles.md) |
+| **Руководство администратора** | [docs/admin-guide.md](docs/admin-guide.md) |
+| Симметрика (iframe) | [canvas-studio/INTEGRATION.md](canvas-studio/INTEGRATION.md) |
 | **Пробелы в docs** | [docs/documentation-gaps.md](docs/documentation-gaps.md) |
 | Docker | [docs/docker.md](docs/docker.md) |
 
@@ -63,11 +66,11 @@ bash scripts/up.sh prod
 
 ```
 reporting/
-├── backend/                      # FastAPI: TFS, org, youjail, B2B+PPTX, roadmap
-├── frontend/                     # Vite + React: workbook (6 вкладок)
+├── backend/                      # FastAPI: TFS, org, B2B+PPTX, roadmap
+├── frontend/                     # Vite + React: workbook
 ├── deploy/                       # nginx, certbot, production-скрипты
 ├── db/schema.sql                 # DDL PostgreSQL
-├── db/migrations/                # Миграции (org, youjail, b2b, …)
+├── db/migrations/                # Миграции (org, b2b, …)
 ├── plantuml/                     # ER, архитектура, use case
 ├── docs/                         # Глоссарий, docker, диаграммы
 ├── scripts/                      # dev.sh, production.sh, migrate.sh
@@ -96,11 +99,9 @@ reporting/
 | Статус продукта B2B | таблицы офисов/строк; новости |
 | Генерация презентаций PPTX | `GET/POST /api/product-status/b2b/presentation` + `assets/Status.pptx` |
 | Планы Digital | roadmap priority/comment в `extra_json` |
-| Доска YouJail | `/api/youjail/*`; файлы в `YOUJAIL_WORKSPACE_DIR` |
-| MinIO | фото сотрудников, bucket `photos` (`minio` + `minio-init`) |
+| MinIO | фото сотрудников, private bucket `photos` (отдача через `/api/org/photos/` + сессия) |
 | Staffing | отпуска, бронь мест, офис, оргсхема (`/api/org/*`) |
-| Диаграммы (UI) | вкладка «Диаграммы» — конструктор |
-| Вход | PAT **или** email/пароль (`org_user` / `APP_AUTH_*`) |
+| Вход | email/пароль (`org_user` / `APP_AUTH_*`); сессии, page ACL, SSO — [docs/auth-and-roles.md](docs/auth-and-roles.md) |
 | Единая задача | `task`, `project`, `source_system` |
 | ЗНИ ↔ Ошибка | `task_type`, `parent_task_id` |
 | Время в статусе / бэклоге | `task_status_duration`, views `v_*` |

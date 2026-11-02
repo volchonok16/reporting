@@ -2,7 +2,7 @@
 
 Описание **всех таблиц**, **полей** и **представлений** единой PostgreSQL-базы. Имена полей одинаковы для задач из Jira, TFS, Trello и прочих систем; сырые значения источника хранятся отдельно там, где это указано.
 
-**Связанные документы:** [teams.md](teams.md) · [database-overview.md](database-overview.md) · [data-dictionary.md](data-dictionary.md) · [documentation-gaps.md](documentation-gaps.md) · DDL: [../db/schema.sql](../db/schema.sql)
+**Связанные документы:** [teams.md](teams.md) · [database-overview.md](database-overview.md) · [data-dictionary.md](data-dictionary.md) · [auth-and-roles.md](auth-and-roles.md) · [admin-guide.md](admin-guide.md) · [documentation-gaps.md](documentation-gaps.md) · DDL: [../db/schema.sql](../db/schema.sql)
 
 ---
 
@@ -323,7 +323,7 @@
 
 ## zni_external_data — внешние поля ЗНИ
 
-Локальные данные карточки ЗНИ, **не приходят из TFS** и не затираются синхронизацией. Заполняются в дашборде ЗНИ (`PATCH /api/tasks/{id}/external-data`). Остальные поля — любой авторизованный пользователь; **`actual_period`** («Фактическая дата месяц/квартал») — только администратор и только в статусах из `ZNI_ACTUAL_PERIOD_EDITABLE_STATES`. Одна строка на `task.id`.
+Локальные данные карточки ЗНИ, **не приходят из TFS** и не затираются синхронизацией. Заполняются в дашборде ЗНИ (`PATCH /api/tasks/{id}/external-data`, page ACL `zni`). Остальные поля — пользователь с доступом к вкладке ЗНИ; **`actual_period`** («Фактическая дата месяц/квартал») — только администратор и только в статусах из `ZNI_ACTUAL_PERIOD_EDITABLE_STATES`. Одна строка на `task.id`.
 
 Отображение в `GET /api/dashboard` (без записи в БД, пока пользователь не сохранит вручную):
 
@@ -485,22 +485,24 @@
 
 ## auth_session — сессия веб-приложения
 
-Серверное хранение учётных данных TFS для синхронизации. Клиент получает только `sessionId` (заголовок `X-Session-Id`).
+Серверное хранение метаданных входа и (при необходимости) учётных данных TFS для синхронизации. Клиент получает только `sessionId` (заголовок `X-Session-Id` / для фото `<img>` — query `sid`). Подробная матрица ролей и ACL: [auth-and-roles.md](auth-and-roles.md).
 
-| Способ входа | `auth_mode` | PAT в сессии |
-|--------------|-------------|--------------|
-| PAT пользователя | `pat` | PAT из формы входа |
-| Логин/пароль приложения | `app_user` | `TFS_SYNC_PAT` с сервера |
+| Способ входа | `auth_mode` | PAT в payload |
+|--------------|-------------|---------------|
+| Логин/пароль (`org_user` / `APP_AUTH_*`) | `app_user` | **Не хранится** — sentinel; при sync подставляется `TFS_SYNC_PAT` с сервера |
+| PAT (legacy) | `pat` | PAT пользователя (вход по PAT в API отключён) |
+
+Срок жизни: `SESSION_TTL_HOURS` (по умолчанию 72) от `created_at`. Неактивный / удалённый `org_user` — сессия отзывается при обращении. При каждом запросе обновляются `org_user_role`, `voice_*`, `must_change_password`.
 
 Пользователи приложения задаются в `APP_AUTH_USERS` (`login:password`, по строке). Секреты — только в `.env`, не в репозитории.
 
-Пользователи с ограниченным доступом — `APP_AUTH_ROADMAP_USERS`: только вкладка **Планы**, синхронизация TFS только по доске `digital_streams_b2b` (кнопка «Обновить из TFS»), **без редактирования** приоритета колбаски (Обязательно / Средний / Можно пропустить — `extra_json.roadmap_priority`) и ценности для бизнеса. Роль в сессии: `app_role` = `roadmap` (остальные — `full`).
+Пользователи с ограниченным доступом — `APP_AUTH_ROADMAP_USERS`: только вкладка **Планы**, синхронизация TFS только по доске `digital_streams_b2b` (кнопка «Обновить из TFS»), **без редактирования** приоритета колбаски и ценности для бизнеса. Роль в сессии: `app_role` = `roadmap` (остальные — `full`). API ЗНИ/статуса для roadmap — 403; Планы — `require_digital_plan_access`.
 
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `id` | varchar(64) | Идентификатор сессии |
-| `payload` | jsonb | `base_url`, `project`, `pat`, `auth_mode`, `app_login`, `app_role` и др. (не отдаётся в API) |
-| `created_at` | timestamptz | Время создания сессии |
+| `payload` | jsonb | `base_url`, `project`, `auth_mode`, `app_login`, `app_role`, `org_user_id`, `org_user_role`, `voice_only`, `voice_admin`, `must_change_password`; для `app_user` поле `pat` — sentinel, не реальный токен (не отдаётся в API) |
+| `created_at` | timestamptz | Время создания сессии (от него считается TTL) |
 
 ---
 
@@ -525,8 +527,8 @@
 | `System.Description` | `extra_json.business_goal` | Текст секции «Цель и бизнес-смысл доработки*» (до следующего заголовка `<b>…</b>`) |
 | `Microsoft.VSTS.Common.BusinessValue` | `extra_json.business_value` | Ценность для бизнеса (целое число; колонка дашборда ЗНИ и поле на колбаске **Планы**; редактирование через `PATCH /api/tasks/{id}/business-value`, только `app_role` = `full`) |
 | Планы приоритет | `extra_json.roadmap_priority` | Локальное поле (не в TFS): цвет колбаски на вкладке **Планы** — `red` / `yellow` / `green`; `PATCH /api/tasks/{id}/roadmap-priority` (только `app_role` = `full`); при синхронизации TFS сохраняется в БД |
-| Планы комментарий | `extra_json.roadmap_comment` | Локальное поле (не в TFS): текст внизу колбаски на вкладке **Планы**; `PATCH /api/tasks/{id}/roadmap-comment` (любой авторизованный пользователь); при синхронизации TFS сохраняется в БД |
-| Use Case | `extra_json.has_uc` | Локальное поле (не в TFS): на колбаске **Планы** — `false` по умолчанию («Нет»), `true` — «Да»; `PATCH /api/tasks/{id}/digital-plan-uc` (любой авторизованный пользователь); при синхронизации TFS сохраняется в БД |
+| Планы комментарий | `extra_json.roadmap_comment` | Локальное поле (не в TFS): текст внизу колбаски на вкладке **Планы**; `PATCH /api/tasks/{id}/roadmap-comment` (`require_digital_plan_access`: zni или roadmap); при синхронизации TFS сохраняется в БД |
+| Use Case | `extra_json.has_uc` | Локальное поле (не в TFS): на колбаске **Планы** — `false` по умолчанию («Нет»), `true` — «Да»; `PATCH /api/tasks/{id}/digital-plan-uc` (`require_digital_plan_access`); при синхронизации TFS сохраняется в БД |
 | Hierarchy-Forward → «Продукт» | `task.parent_task_id` | Родительский продукт TFS; в API дашборда — `product` (`id`, `title`, `url`); в Excel-выгрузке ЗНИ — колонка **«Продукт»** (`номер: название`, гиперссылка на TFS) |
 | Related → «Бронь ресурсов» | `extra_json.ect_resource_reservation` | `true` / `false`: у ЗНИ есть Related на элемент типа «Бронь ресурсов» (колонка «Бронь ресурса ЕЦТ») |
 | Related → CRM / Bercut / ESB | `extra_json.linked_environments` | Массив связанных ЗНИ в окружениях **CRM** (`Tele2\Продукты`), **Bercut** (`BE-T2\BE Analytics`) и **ESB** (`BE-T2\ESB\ESB Analytics`): `key`, `label`, `zni_id`, `status`, `board_column`, `url`. Заполняется при синхронизации доски **Digital** (WIQL Related между областями). В дашборде ЗНИ — в раскрывающейся панели строки; фильтр **«Требует доп. доработок»** (`linked_environment=yes`, только доска Digital) оставляет ЗНИ с хотя бы одной такой связью |
@@ -697,23 +699,23 @@
 
 Дашборд-workbook: FastAPI + Vite; production — nginx + HTTPS (хосты в `.env` / `CERTBOT_DOMAINS`, см. [deploy/DEPLOY.md](../deploy/DEPLOY.md)).
 
-**Вкладки UI:** ЗНИ · Статус продукта B2B · Доска (YouJail) · Staffing · Диаграммы (+ личный кабинет). Вкладка «Планы Digital» скрыта.
+**Вкладки UI:** ЗНИ · Продукты · Статус продукта B2B · Госинициативы · Симметрика · Staffing · Планирование · Voice (+ личный кабинет).
 
 | Компонент | Путь / URL | Назначение |
 |-----------|------------|------------|
 | Frontend | `frontend/`, HTTPS UI | React workbook |
-| Backend | `backend/`, HTTPS API | REST: TFS, org, youjail, B2B+PPTX |
+| Backend | `backend/`, HTTPS API | REST: TFS, org, B2B+PPTX, Voice |
 | PostgreSQL | `postgres:5432`, volume `reporting_pgdata` | Доменные данные (в т.ч. B2B в БД) |
-| MinIO | `:9000` API / `:9001` Console, volume `reporting_miniodata` | Фото (`MINIO_BUCKET=photos`) |
-| minio-init | one-shot `mc` | Создание bucket + anonymous download |
-| `YOUJAIL_WORKSPACE_DIR` | диск backend | Вложения / worktree доски |
+| MinIO | `:9000` API / `:9001` Console, volume `reporting_miniodata` | Фото (`MINIO_BUCKET=photos`, **без** anonymous download) |
+| minio-init | one-shot `mc` | Создание buckets + `anonymous set none` |
 | `ORG_UPLOADS_DIR` | `/app/uploads` | Fallback фото без MinIO |
+| Auth / роли | [auth-and-roles.md](auth-and-roles.md) | Сессии, page ACL, SSO, rate limit |
 | PPTX template | `backend/assets/Status.pptx` | Локальный эталон для «Скачать презентацию» B2B. Переопределение: `B2B_PRODUCT_STATUS_PRESENTATION_TEMPLATE`. Без Google. |
 | nginx | `deploy/nginx/` | HTTPS, reverse proxy на :5173 и :8000 |
 | certbot | `scripts/production.sh` | Let's Encrypt (`CERTBOT_DOMAINS`) |
 | FineBI | JDBC → Postgres | Views `v_*` |
 
-Аутентификация: `POST /api/auth/login` — логин и пароль (`org_user` или `APP_AUTH_USERS`). Выгрузка из TFS идёт серверным `TFS_SYNC_PAT`, свой PAT на вход не принимается. Сессия — `auth_session`, заголовок `X-Session-Id`. Секреты TFS не отдаются клиенту.
+Аутентификация: `POST /api/auth/login` — логин и пароль (`org_user` или `APP_AUTH_USERS`), с rate limit. Выгрузка из TFS идёт серверным `TFS_SYNC_PAT`, свой PAT на вход не принимается. Сессия — `auth_session`, заголовок `X-Session-Id` (TTL — `SESSION_TTL_HOURS`). Секреты TFS не отдаются клиенту. Данные API (ЗНИ, продукты, статус, …) и SSO Voice/Симметрики требуют сессию и page ACL — см. [auth-and-roles.md](auth-and-roles.md).
 
 ### Метрики дашборда
 
@@ -790,14 +792,14 @@ API (только `canManageOrg`): `GET/PATCH /api/admin/maintenance`, `POST /ap
 | `status` | smallint | `0` удалён, `9` неактивен, `10` активен |
 | `voice_only` | boolean | Галочка **Voice сервисы** (только админ reporting): если true — доступна только вкладка **Voice**; если false — Voice и все остальные вкладки |
 | `voice_admin` | boolean | Галочка **Администратор Voice** (только админ reporting): если true — доступны «Очистить журнал и обнулить версию» и «Очистить мастер-файл»; без флага эти действия недоступны |
-| `must_change_password` | boolean | Если true — при входе показывается блокирующее окно смены пароля; закрыть и продолжить работу нельзя, пока не задан новый пароль (не пустой и не временный `12345678`). Ставится при создании/сбросе пароля (галочка в карточке сотрудника) или автоматически, если пароль = `12345678`. Сбрасывается после успешной смены через `POST /api/profile/password`. В `/api/auth/status` — `mustChangePassword`. Миграция: `075_org_user_must_change_password.sql` |
+| `must_change_password` | boolean | Если true — UI показывает блокирующее окно смены пароля **и** backend отклоняет остальные API (403, `X-Must-Change-Password`), кроме `/api/auth/status|logout|defaults` и `/api/profile` / `/api/profile/password`. Ставится при создании/сбросе пароля или если пароль = `12345678`. Сбрасывается после `POST /api/profile/password`. В `/api/auth/status` — `mustChangePassword`. Миграция: `075_org_user_must_change_password.sql` |
 | `created_at`, `updated_at` | timestamptz | Метки времени |
 
 Суперадминистратор (`role = 1000`, сессия `org_user_role=superadmin`): доступ ко всем вкладкам; правки в заблокированных офисах статуса продукта (`editing_locked`); ручная блокировка и разблокировка любого офиса (`PATCH /api/product-status/b2b/offices/{gid}/editing-lock`); управление `allowedPageKeys` для любого сотрудника в Staffing. Назначение: `UPDATE org_user SET role = 1000 WHERE email = '…';` — через UI выдать/снять нельзя. В `/api/auth/status` — `isSuperAdmin`, `unlockableOfficeGids`, `pageAccessRestricted`. Администратор (`role = 100`) видит «Разблокировать офис» на каждой заблокированной вкладке офиса и может снять блокировку. Состав офиса для кнопки не нужен. После такой разблокировки суперадминистраторам (`role = 1000`) уходит письмо с именем администратора и названием офиса. Включить блокировку вручную может только суперадминистратор.
 
 Связь: `employee.user_id` → `org_user.id`. Вход по email/паролю через `POST /api/auth/login` (режим app_user).
 
-Самостоятельный сброс (только `org_user`, не учётки из `APP_AUTH_USERS`): `POST /api/auth/password-reset/request` сначала проверяет, что активная учётка с таким логином есть (иначе 404), и только потом шлёт шестизначный код на её почту. `POST /api/auth/password-reset/verify` подтверждает код. `POST /api/auth/password-reset/confirm` задаёт новый логин и пароль и снимает `must_change_password`. Коды — таблица `org_password_reset` (хеш, 15 минут, один раз). Письмо уходит через SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`). Миграция: `077_org_password_reset.sql`.
+Самостоятельный сброс (только `org_user`, не учётки из `APP_AUTH_USERS`): `POST /api/auth/password-reset/request` **не раскрывает** наличие учётки (единый текст ответа); при существующей активной учётке шлёт шестизначный код на почту. `verify` / `confirm` — с rate limit по IP. `confirm` задаёт новый логин и пароль и снимает `must_change_password`. Коды — `org_password_reset` (хеш, 15 минут, один раз). SMTP: `SMTP_*`. Миграция: `077_org_password_reset.sql`.
 
 ## org_password_reset — коды сброса пароля
 
@@ -812,9 +814,9 @@ API (только `canManageOrg`): `GET/PATCH /api/admin/maintenance`, `POST /ap
 
 Вкладка **Voice** (`SheetId = voice`) доступна всем авторизованным пользователям (same-origin `/voice/` → frontend-nginx → `voice-web` с `basePath=/voice`, `/voice-api/` → reporting **backend** mount `/voice-api`). Проверка маршрута: `GET /voice/reporting-voice.txt` должен вернуть `voice-ok` (не HTML reporting). Пользователи с `voice_only = true` (**Voice сервисы**) видят только эту вкладку; остальные вкладки для них скрыты. Тема iframe синхронизируется с reporting (`?theme=light|dark`).
 
-Авторизация единая: reporting выдаёт короткий SSO-токен (`POST /api/voice/sso-token`, секрет `VOICE_SSO_SECRET`, в токене флаги `admin` и `voiceAdmin`), Voice обменивает его на свою сессию (`POST /voice-api/api/auth/reporting-sso`) — отдельный логин карусели не нужен. Очистка журнала/мастер-файла — только при `org_user.voice_admin = true` (**Администратор Voice**).
+Авторизация единая: reporting выдаёт короткий SSO-токен (`POST /api/voice/sso-token` при доступе к вкладке `voice`, секрет `VOICE_SSO_SECRET`, в токене флаги `admin` и `voiceAdmin`). Токен **не** кладётся в URL iframe — только `postMessage` (`reporting-sso` / `voice-auth-required`, проверка origin). Voice обменивает его на сессию (`POST /voice-api/api/auth/reporting-sso`). Очистка журнала/мастер-файла — только при `org_user.voice_admin = true` (**Администратор Voice**).
 
-Для сотрудников с `employee.hide_from_pyramid = true` (**Другие пользователи**) список разрешённых вкладок хранится в `org_user_page_access` (см. `app_page`). API: `GET /api/org/app-pages` (админ), поле `allowedPageKeys` в карточке сотрудника; в `/api/auth/status` — `otherUser` и `allowedPageKeys`.
+Для сотрудников с `employee.hide_from_pyramid = true` (**Другие пользователи**) список разрешённых вкладок хранится в `org_user_page_access` (см. `app_page`). API: `GET /api/org/app-pages` (админ), поле `allowedPageKeys` в карточке сотрудника; в `/api/auth/status` — `otherUser` и `allowedPageKeys`. Те же ключи проверяются на **backend** (`require_app_page` / `ensure_page_access`) — не только скрытие вкладок в UI.
 
 Вкладка **Планирование** (`page_key = planning`) по умолчанию скрыта. Доступ выдаётся явно: галочка **Планирование** в карточке сотрудника (пишет `org_user_page_access.planning`) или выбор вкладки в списке для «Других пользователей». Администраторы reporting (`canManageOrg`) видят Планирование без отдельного гранта. В `/api/auth/status` — флаг `planningAccess`; API `/api/planning/*` без гранта возвращает 403.
 
@@ -918,7 +920,7 @@ PK: (`org_user_id`, `page_key`). Для обычных сотрудников о
 | `position_id` | bigint | FK → `job_position` |
 | `position` | varchar(255) | Название должности (денормализация) |
 | `manager_id` | bigint | FK → `employee` (руководитель) |
-| `photo_path` | varchar(512) | Ключ объекта в MinIO (`employees/…`) или путь в `ORG_UPLOADS_DIR` |
+| `photo_path` | varchar(512) | Ключ объекта (`employees/<id>_<uuid>.ext`) в MinIO или `ORG_UPLOADS_DIR`; отдача только `GET /api/org/photos/…` с сессией (не публичный MinIO URL) |
 | `daily_work_hours` | numeric(4,2) | Рабочих часов в день (по умолчанию 8) |
 | `annual_leave_days` | int | Норма отпускных дней в календарном году (по умолчанию 28; может быть больше/меньше). Праздничные дни в период отпуска норму не расходуют. Миграция: `086_vacation_planning.sql` |
 | `is_active` | boolean | Активен |
@@ -971,206 +973,24 @@ PK: (`org_user_id`, `page_key`). Для обычных сотрудников о
 
 ---
 
-## YouJail — отдельная kanban-доска
-
-Самостоятельный модуль на вкладке **«Доска»**. Карточки можно привязать к ЗНИ из синхронизированной таблицы `task` (по номеру, несколько через запятую). Остальное не связано с TFS-синком напрямую. Поддерживает **несколько досок**, **fuzzy-поиск** (`pg_trgm`), **PTY-терминал** в браузере (WebSocket + xterm.js) и CLI **`ty`**.
-
-### youjail_board
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `id` | bigserial | PK |
-| `name` | varchar(255) | Название доски |
-| `slug` | varchar(64) | Уникальный код |
-| `description` | text | Описание |
-| `sort_order` | integer | Порядок в списке |
-| `is_active` | boolean | Активна |
-| `owner_employee_id` | bigint | FK → `employee`; личная доска сотрудника (`NULL` = общая/командная) |
-| `canManage` | bool (API) | Управление колонками и участниками доски |
-
-У каждой доски свой набор колонок (`youjail_column.board_id`) и карточек (`youjail_card.board_id`). Seed: доска `main` («Основная»). **Личная доска** создаётся автоматически при первом входе в YouJail: название = `employee.full_name`, slug `personal-{employee_id}`; владелец — админ доски; к командам не привязывается.
-
-### youjail_board_member
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `board_id` | bigint | FK → `youjail_board` |
-| `employee_id` | bigint | FK → `employee` |
-| `role` | varchar(32) | `admin` — колонки и участники; `member` — карточки |
-
-Прямой доступ к доске (в т.ч. к чужой личной). Владелец личной доски (`owner_employee_id`) — неявный admin. Уникальность: `(board_id, employee_id)`.
-
-### youjail_board_pin
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `employee_id` | bigint | FK → `employee` |
-| `board_id` | bigint | FK → `youjail_board` |
-| `pinned_at` | timestamptz | Время закрепления (порядок в списке) |
-
-Персональная настройка: какие доски показывать вверху переключателя. API: `pinned` в метаданных доски; `POST /api/youjail/boards/{id}/pin` — переключить закрепление.
-
-### youjail_project
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `id` | bigserial | PK |
-| `name` | varchar(255) | Название проекта |
-| `slug` | varchar(64) | Уникальный код |
-| `repo_path` | text | Путь к git-репозиторию для worktree |
-| `context_md` | text | Кэш контекста проекта (markdown) |
-| `instructions_md` | text | Инструкции для исполнителя |
-| `is_active` | boolean | Активен |
-
-### youjail_task_type
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `name` | varchar(128) | Тип задачи (`feature`, `bugfix`, …) |
-| `instructions_md` | text | Подсказки для агента |
-
-### youjail_column
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `board_id` | bigint | FK → `youjail_board` |
-| `column_key` | varchar(32) | Стабильный ключ (`backlog`, `in_progress`, … или пользовательский) |
-| `title`, `tone`, `sort_order` | | Отображение колонки на доске |
-
-### youjail_card
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `board_id` | bigint | FK → `youjail_board` |
-| `column_id` | bigint | FK → `youjail_column` |
-| `card_number` | integer | Порядковый номер на доске |
-| `cardKey` | string (API) | `{SLUG_UPPER}-N`: `MAIN-1`, `PERSONAL134-2` (slug доски без дефисов + номер) |
-| `cardKeyGlobal` | string (API) | То же, что `cardKey` — глобально уникальный ключ для связей между досками |
-| `project_id`, `task_type_id` | bigint | Проект и тип |
-| `title` | varchar(1000) | Заголовок |
-| `description_md` | text | Заметки (markdown); упоминания: `@[ФИО](employee:uuid)` (`employee.public_id`); старый формат `employee:123` читается для совместимости |
-| `pinned`, `archived` | boolean | Закрепление / архив |
-| `closed_at`, `scheduled_at` | timestamptz | Закрытие / план |
-| `executor` | varchar(64) | AI-агент: `manual`, `claude`, `codex`, … |
-| `assignee_employee_id` | bigint | FK → `employee` — ответственный; при создании подставляется автор карточки |
-| `worktree_path`, `worktree_branch` | text | Git worktree |
-| `execution_status` | varchar(32) | `idle`, `queued`, `running`, `succeeded`, `failed` |
-| `zniNumbers` | string (API) | Номера ЗНИ через запятую; в БД — `youjail_card_zni` |
-
-### youjail_card_zni
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `card_id` | bigint | FK → `youjail_card` |
-| `task_id` | bigint | FK → `task` (ЗНИ, `task_type = change_request`) |
-| `sort_order` | integer | Порядок как в поле ввода |
-
-Связь M:N. Ввод: `123456, 789012`. API: `zniNumbers`, `znis[]`; lookup: `POST /api/youjail/zni/lookup`. Несуществующий номер при сохранении → HTTP 400.
-
-### youjail_card_event
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `card_id` | bigint | FK → `youjail_card` |
-| `event_type` | varchar(64) | `created`, `moved`, `title_changed`, `zni_changed`, … |
-| `actor_employee_id` | bigint | FK → `employee` |
-| `payload` | jsonb | Детали изменения |
-| `created_at` | timestamptz | Время |
-
-API: `history[]` в `GET /api/youjail/cards/{id}`.
-
-### youjail_card_link
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `card_id` | bigint | FK → `youjail_card` |
-| `related_card_id` | bigint | FK → `youjail_card` (любая доступная доска) |
-
-Связи вручную: поле `relatedCardKeys` — ключи через запятую (`MAIN-1`, `PERSONAL134-2`). Поиск по всем доступным доскам. API: `relatedCardKeys`, `relatedCards` (в т.ч. по общей ЗНИ на той же доске).
-
-### youjail_card_comment
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `card_id` | bigint | FK → `youjail_card` |
-| `body_md` | text | Текст комментария (markdown, @упоминания) |
-| `author_employee_id` | bigint | FK → `employee` (автор) |
-| `author_label` | varchar(255) | Имя, если сотрудник не привязан |
-| `created_at`, `updated_at` | timestamptz | Время создания и обновления |
-
-API: `comments[]` в `GET /api/youjail/cards/{id}`; создание: `POST /api/youjail/cards/{id}/comments` (multipart: `body_md`, `files[]`); редактирование: `PATCH /api/youjail/comments/{id}` (`bodyMd`, только автор или админ организации). События `comment_added`, `comment_edited` в `youjail_card_event`. В ответе комментария: `canEdit`.
-
-### youjail_comment_attachment
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `comment_id` | bigint | FK → `youjail_card_comment` |
-| `filename` | varchar(512) | Имя файла |
-| `storage_path` | text | Путь на диске (`YOUJAIL_WORKSPACE_DIR`) |
-| `content_type` | varchar(128) | MIME-тип |
-| `size_bytes` | bigint | Размер |
-
-Скачивание: `GET /api/youjail/comment-attachments/{id}/download`. Изображения отображаются inline в UI. При создании комментария с файлом запись также попадает в `youjail_attachment` (общие вложения карточки); при чтении карточки выполняется синхронизация пропущенных файлов.
-
-### youjail_attachment, youjail_execution, youjail_execution_log
-
-Вложения к карточке; запуски исполнителя и построчный лог (`stdout` / `stderr` / `system` / `pty`).
-
-### youjail_team
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `name`, `slug` | varchar | Название и уникальный ключ команды YouJail |
-| `boardIds` | int[] | В API (`detailed=true`): id досок, к которым привязана команда |
-| `description` | text | Описание |
-| `is_active`, `sort_order` | | Активность и порядок в списке |
-
-### youjail_team_member
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `team_id` | bigint | FK → `youjail_team` |
-| `employee_id` | bigint | FK → `employee` |
-| `role` | varchar(32) | `member` (по умолчанию) |
-
-Уникальность: `(team_id, employee_id)`.
-
-### youjail_board_team
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `board_id` | bigint | FK → `youjail_board` |
-| `team_id` | bigint | FK → `youjail_team` |
-
-Связь M:N: доска видна участникам любой из привязанных команд. Без привязанных команд доска доступна только админам. Личные доски (`owner_employee_id IS NOT NULL`) в команды не включаются.
-
-### youjail_tag
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `id` | bigserial | PK |
-| `name` | varchar(128) | Отображаемое имя тега (уникально без учёта регистра) |
-| `slug` | varchar(64) | Уникальный slug |
-| `color` | varchar(7) | Цвет в формате `#RRGGBB` (как label в Jira) |
-
-### youjail_card_tag
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `card_id` | bigint | FK → `youjail_card` |
-| `tag_id` | bigint | FK → `youjail_tag` |
-
-Связь M:N: у карточки может быть несколько тегов. API: `GET/POST /api/youjail/tags`, обновление карточки — поле `tagIds`.
-
-API: префикс `/api/youjail/*`. `DELETE /api/youjail/boards/{id}`, `POST /api/youjail/boards/{id}/pin`, `POST /api/youjail/boards/{id}/columns`, `PATCH /api/youjail/columns/{id}`, `DELETE /api/youjail/columns/{id}?moveToColumnId=…`, `POST/DELETE /api/youjail/boards/{id}/members`, `POST /api/youjail/zni/lookup`, `POST /api/youjail/cards/{id}/comments`, `PATCH /api/youjail/comments/{id}`, `GET /api/youjail/comment-attachments/{id}/download`, `GET/POST/PATCH/DELETE /api/youjail/teams`, `PUT /api/youjail/teams/{id}/boards`, `PUT /api/youjail/boards/{id}/teams`, `GET/POST /api/youjail/tags`. Доступ к доске: админы организации — все; пользователи — команды, личная доска (`owner_employee_id`), прямой доступ (`youjail_board_member`). Управление колонками: глобальный админ, владелец личной доски или `youjail_board_member.role = admin`. WebSocket PTY: `GET /api/youjail/executions/{id}/terminal?X-Session-Id=…`. Fuzzy-поиск: `GET /api/youjail/board?search=…&boardId=…`. CLI: `python backend/scripts/ty.py`.
-
----
-
 ## job_position, team_role, expertise_direction
 
 Справочники должностей, ролей в отделе и направлений экспертизы. Поля: `name`, `sort_order`, `is_active`, timestamps. Таблица `employee_expertise` связывает сотрудника с направлением и уровнем (`level`).
 
 ---
+
+## vacation_overlap_block — запрет пересечения отпусков
+
+Пары сотрудников, которым **нельзя** планировать отпуск в одни и те же календарные дни. Настраивает администратор в карточке сотрудника (Staffing → «Не пересекать отпуск с»). Связь взаимная: A↔B хранится один раз с `employee_id_a < employee_id_b`.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `employee_id_a` | bigint PK, FK → `employee` | Меньший id пары |
+| `employee_id_b` | bigint PK, FK → `employee` | Больший id пары |
+| `created_by_org_user_id` | bigint FK → `org_user` | Кто задал правило |
+| `created_at` | timestamptz | Когда создано |
+
+Проверка при `PUT /api/org/vacations/range` с `kind=vacation`: если в диапазоне есть дни отпуска у запрещённого партнёра — HTTP 400. Миграция: `094_vacation_overlap_block.sql`. В API сотрудника: `vacationOverlapEmployeeIds`.
 
 ## vacation_planning_unlock — открытие планирования отпусков
 
@@ -1343,7 +1163,7 @@ API: `POST /api/product-status/b2b/rows/{row_id}/attachments?gid=`, `GET /api/pr
 
 ## b2b_product_status_project — проекты координации по офисам
 
-Справочник проектов для колонки «Проект координация». Seed: миграция `047_b2b_product_status_projects.sql` (SMS, VOICE, Перспективные продукты, M2M/IoT, Продуктовый маркетинг). Остальные офисы без записей — в UI остаётся свободный ввод.
+Справочник проектов для колонки «Проект координация». Seed: миграция `047_b2b_product_status_projects.sql` (SMS, VOICE, Перспективные продукты, M2M/IoT, Продуктовый маркетинг). Остальные офисы без записей — в UI остаётся свободный ввод. **Суперадмин** может добавлять/править/деактивировать проекты офиса и диапазоны приоритета: `GET/PUT /api/product-status/b2b/offices/{gid}/projects`, UI «Проекты офиса» на вкладке статуса.
 
 | Поле | Тип | Описание |
 |------|-----|----------|
@@ -1355,7 +1175,7 @@ API: `POST /api/product-status/b2b/rows/{row_id}/attachments?gid=`, `GET /api/pr
 
 ## b2b_product_status_project_priority — диапазон приоритета проекта
 
-У каждого проекта координации внутри офиса — **один** числовой диапазон. В ячейке «Приоритет» хранится **одно число** из этого диапазона, и строки сортируются по нему. Один номер внутри проекта нельзя занять дважды: если выбрать уже занятое число, строка его забирает, а непрерывный хвост сдвигается на +1 до первого свободного (занято 53 и свободно 54 — прежний 53 становится 54; заняты 53–55 — они становятся 54–56). Выбранное число не переписывается в `rangeFrom`, `rangeFrom+1`… при сохранении и обновлении листа. Плотная нумерация с начала диапазона выполняется только после перетаскивания строки. «Неактуальное» = да очищает приоритет этой строки. Пример диапазона: проект «SCEF и NIDD» → `1–49`. Диапазоны не пересекаются между проектами одного офиса (по `sort_order`: `1-49`, `50-70`, `71-85`, `86-95`, `96-100`, далее блоки по 20). Миграции: `071_…`, `072_…`, `073_b2b_product_status_one_range_per_project.sql`. API: `projectPriorityRanges: { [проект]: { rangeFrom, rangeTo } }`. При выборе проекта UI подставляет следующий свободный номер в диапазоне. Без справочника — свободный числовой ввод.
+У каждого проекта координации внутри офиса — **один** числовой диапазон. В ячейке «Приоритет» хранится **одно число** из этого диапазона, и строки сортируются по нему. Один номер внутри проекта нельзя занять дважды: если выбрать уже занятое число, строка его забирает, а непрерывный хвост сдвигается на +1 до первого свободного (занято 53 и свободно 54 — прежний 53 становится 54; заняты 53–55 — они становятся 54–56). Выбранное число не переписывается в `rangeFrom`, `rangeFrom+1`… при сохранении и обновлении листа. Плотная нумерация с начала диапазона выполняется только после перетаскивания строки. «Неактуальное» = да очищает приоритет этой строки. Пример диапазона: проект «SCEF и NIDD» → `1–49`. Диапазоны не пересекаются между проектами одного офиса (проверка при сохранении справочника суперадмином; seed: `1-49`, `50-70`, `71-85`, `86-95`, `96-100`, далее блоки по 20). Миграции: `071_…`, `072_…`, `073_b2b_product_status_one_range_per_project.sql`. API листа: `projectPriorityRanges: { [проект]: { rangeFrom, rangeTo } }`; админ-API: `GET/PUT …/offices/{gid}/projects`. При выборе проекта UI подставляет следующий свободный номер в диапазоне. Без справочника — свободный числовой ввод. Удаление из UI деактивирует запись (`is_active=false`), строки с прежним именем в `cells` не переписываются автоматически.
 
 | Поле | Тип | Описание |
 |------|-----|----------|
@@ -1478,7 +1298,7 @@ Seed (миграция `036`): `base` → «Влияние по базе», `rev
 | `id` | bigserial | PK |
 | `section_id` | bigint | FK → `gov_initiative_section` |
 | `sort_order` | int | Порядок строки |
-| `cells` | jsonb | Колонки: «Закон», «Описание», «Дата запуска», «Статус», «Номер ЗнИ» (порядок UI/Excel; миграция `087`) |
+| `cells` | jsonb | Колонки: «Закон», «Описание», «Дата запуска», «Статус», «Номер ЗнИ», «Ответственный» (порядок UI/Excel; миграции `087`, `096`) |
 
 API: `/api/gov-initiatives` (load/save/excel/history/snapshots), по образцу revenue-activities. История/снимки: `gov_initiative_history`, `gov_initiative_snapshot`.
 
@@ -1660,3 +1480,43 @@ Seed: Низкая, Средняя, Высокая, Критическая. Ве
 | Календарь | `GET /api/planning/calendar?year=`, `PUT /api/planning/calendar` (админ) |
 
 Справочник сотрудников и экспертиз — `employee`, `employee_expertise`, `expertise_direction` (см. [teams.md](teams.md)).
+
+---
+
+## simmetrika_kv — JSON-хранилище Симметрики
+
+Миграция `097_simmetrika_storage.sql`. Вместо файлов `canvas-studio/data/{users,sessions,files-meta,…}/*.json`.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `bucket` | text | Логическая папка: `users`, `sessions`, `files-meta`, `projects`, `teams`, `codes` |
+| `id` | text | Идентификатор записи внутри bucket |
+| `payload` | jsonb | Тело записи (как бывший `.json`) |
+| `updated_at` | timestamptz | Время последней записи |
+
+PK: `(bucket, id)`. Уникальный email: `ux_simmetrika_users_email` (`098`). Индекс сессий по `userId`: `ix_simmetrika_sessions_user`.
+
+---
+
+## simmetrika_blob — бинарное содержимое макетов Симметрики
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `file_id` | text | ID файла макета |
+| `name` | text | Имя объекта: `snapshot.json`, `thumbnail`, `comments.json`, `i<sha>`, `v<hex>.gz`, … |
+| `content` | bytea | Байты объекта |
+| `updated_at` | timestamptz | Время последней записи |
+
+PK: `(file_id, name)`. Том `canvas-studio/data` остаётся только для кэша Google Fonts.
+
+---
+
+## simmetrika_secret — серверный секрет Симметрики
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | text | Обычно `default` |
+| `value` | bytea | HMAC/доказательства паролей ссылок (≥32 байт) |
+| `updated_at` | timestamptz | Время обновления |
+
+Контейнер `canvas-studio` читает/пишет через `CS_DATABASE_URL` (драйвер `pg`). Auth пользователей — SSO reporting (`POST /api/canvas-studio/sso-token` + page ACL `canvas-studio`, обмен через `postMessage`, без токена в URL). Подробнее: [INTEGRATION.md](../canvas-studio/INTEGRATION.md), [auth-and-roles.md](auth-and-roles.md).

@@ -748,23 +748,6 @@ body {
   flex-direction: column;
 }
 
-.workbook-content:has(.youjail-page) {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-  background: var(--surface-2);
-}
-
-.workbook-content:has(.youjail-page) > .app {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-  background: var(--surface-2);
-}
-
 .workbook-voice-title {
   cursor: default;
   pointer-events: none;
@@ -2356,6 +2339,11 @@ input.zni-field-overdue.zni-field-derived {
   margin: 4px 0 0;
 }
 
+.product-status-toolbar-actions .product-status-office-projects-panel {
+  width: min(640px, 100%);
+  max-width: min(640px, 100%);
+}
+
 .product-status-toolbar-actions-group {
   display: inline-flex;
   align-items: center;
@@ -2446,6 +2434,64 @@ input.zni-field-overdue.zni-field-derived {
   align-items: center;
   padding: 4px 0;
   font-size: 13px;
+}
+
+.product-status-office-projects-list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.product-status-office-projects-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.product-status-office-projects-name,
+.product-status-office-projects-range input {
+  height: 32px;
+  padding: 0 12px;
+  border: 2px solid var(--text-primary, #000);
+  border-radius: 999px;
+  background: var(--surface-1, #fff);
+  color: var(--text-primary, #000);
+  font-size: 13px;
+}
+
+.product-status-office-projects-name {
+  min-width: 0;
+  width: 100%;
+}
+
+.product-status-office-projects-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.product-status-office-projects-range input {
+  width: 72px;
+  padding: 0 8px;
+}
+
+.product-status-office-projects-remove {
+  height: var(--btn-height);
+  padding: 0 var(--btn-pad-x);
+  font-size: 12px;
+}
+
+.product-status-office-projects-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .product-status-toolbar-btn {
@@ -4608,27 +4654,17 @@ button:is(
   .login-tab.active,
   .product-status-sheet-tab-active,
   .linked-env-filter-btn-active,
-  .diagram-kind-tab-active,
-  .diagram-theme-btn.is-active,
   .org-subtab-active,
   .org-vacation-year-btn-active,
-  .roadmap-quarter-btn-active,
-  .youjail-columns-btn.is-active,
-  .youjail-team-tab.is-active,
-  .youjail-notes-tab.is-active
+  .roadmap-quarter-btn-active
 ),
 button:is(
   .login-tab.active,
   .product-status-sheet-tab-active,
   .linked-env-filter-btn-active,
-  .diagram-kind-tab-active,
-  .diagram-theme-btn.is-active,
   .org-subtab-active,
   .org-vacation-year-btn-active,
-  .roadmap-quarter-btn-active,
-  .youjail-columns-btn.is-active,
-  .youjail-team-tab.is-active,
-  .youjail-notes-tab.is-active
+  .roadmap-quarter-btn-active
 ):hover {
   background: var(--t2-mint);
   border-color: var(--t2-mint);

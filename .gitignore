@@ -23,6 +23,10 @@ plantuml/out/
 dist/*.tar
 dist/*.manifest.txt
 
+# Симметрика (canvas-studio): локальные файлы сервера
+canvas-studio/data/
+canvas-studio/dist/
+
 # Voice (carousel) local artifacts
 voice/node_modules/
 voice/.next/

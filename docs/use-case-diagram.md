@@ -32,21 +32,12 @@ flowchart TB
         UC_ROADMAP((Roadmap колбаски))
     end
 
-    subgraph YJ["Доска YouJail"]
-        UC_YJ((Kanban доски))
-        UC_YJ_ZNI((Связь с ЗНИ))
-    end
-
     subgraph Staff["Staffing"]
         UC_VAC((График отпусков))
         UC_BOOK((Бронь мест))
         UC_OFFICE((Сотрудники в офисе))
         UC_ORG((Состав / пирамида))
         UC_PHOTO((Фото → MinIO))
-    end
-
-    subgraph Diag["Диаграммы"]
-        UC_DIAG((Конструктор UI))
     end
 
     subgraph BI["Отчётность BI"]
@@ -65,13 +56,10 @@ flowchart TB
     A1 --> UC_NEWS
     A1 --> UC_PPTX
     A1 --> UC_ROADMAP
-    A1 --> UC_YJ
-    A1 --> UC_YJ_ZNI
     A1 --> UC_VAC
     A1 --> UC_BOOK
     A1 --> UC_OFFICE
     A1 --> UC_ORG
-    A1 --> UC_DIAG
     A1 --> UC_PHOTO
 
     A2 --> UC_ORG
@@ -95,8 +83,8 @@ flowchart TB
 
 | ID | Use Case | Описание |
 |----|----------|----------|
-| UC_AUTH | Вход | PAT TFS или email/пароль (`org_user` / `APP_AUTH_*`) → `auth_session` |
-| UC_PROFILE | Личный кабинет | Фото (MinIO), пароль, дни в офисе без места |
+| UC_AUTH | Вход | Email/пароль (`org_user` / `APP_AUTH_*`) → `auth_session` (TTL); sync через `TFS_SYNC_PAT`. См. [auth-and-roles.md](auth-and-roles.md) |
+| UC_PROFILE | Личный кабинет | Фото через `/api/org/photos/…` + сессия, пароль, дни в офисе |
 
 ### ЗНИ
 
@@ -121,12 +109,6 @@ flowchart TB
 |----|----------|----------|
 | UC_ROADMAP | Roadmap | Колбаски: `extra_json.roadmap_priority`, `roadmap_comment` |
 
-### Доска YouJail
-
-| ID | Use Case | Описание |
-|----|----------|----------|
-| UC_YJ | Kanban | Доски, колонки, карточки, теги, комментарии, PTY |
-| UC_YJ_ZNI | Связь с ЗНИ | `youjail_card_zni` → `task` |
 
 ### Staffing
 
@@ -136,23 +118,17 @@ flowchart TB
 | UC_BOOK | Бронь мест | `workspace_place` / `workspace_booking` |
 | UC_OFFICE | Сотрудники в офисе | бронь + `employee_office_day` + отсутствия |
 | UC_ORG | Состав / пирамида | отделы, сотрудники, `org_chart_layout` |
-| UC_PHOTO | Фото сотрудника | MinIO bucket `photos` (`employee.photo_path`); fallback `ORG_UPLOADS_DIR` |
+| UC_PHOTO | Фото сотрудника | MinIO `photos` (private) → отдача только API с сессией; fallback `ORG_UPLOADS_DIR` |
 
 ### Инфраструктура (связь с use cases)
 
 | Ресурс | Кто использует |
 |--------|----------------|
 | MinIO | UC_PHOTO, профиль, Staffing |
-| `YOUJAIL_WORKSPACE_DIR` | UC_YJ вложения / исполнения |
 | `assets/Status.pptx` | UC_PPTX |
-| PostgreSQL | данные B2B / org / YouJail / ЗНИ |
+| PostgreSQL | данные B2B / org / ЗНИ |
 | FineBI ← PostgreSQL views | UC2–UC4 |
 
-### Диаграммы
-
-| ID | Use Case | Описание |
-|----|----------|----------|
-| UC_DIAG | Конструктор | Вкладка «Диаграммы» — UI-редактор схем |
 
 ### BI
 

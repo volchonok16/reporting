@@ -15,9 +15,8 @@ APP_PAGES: list[AppPageDef] = [
     {"page_key": "products", "label": "Продукты", "sort_order": 15},
     {"page_key": "product-status-b2b", "label": "Статус продукта B2B", "sort_order": 20},
     {"page_key": "gov-initiatives", "label": "Госинициативы", "sort_order": 35},
-    {"page_key": "youjail-board", "label": "Доска", "sort_order": 50},
+    {"page_key": "canvas-studio", "label": "Симметрика", "sort_order": 45},
     {"page_key": "departments", "label": "Staffing", "sort_order": 60},
-    {"page_key": "diagrams", "label": "Диаграммы", "sort_order": 70},
     {"page_key": "planning", "label": "Планирование", "sort_order": 80},
     {"page_key": "voice", "label": "Voice", "sort_order": 90},
 ]

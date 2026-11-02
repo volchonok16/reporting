@@ -122,6 +122,7 @@ export type Employee = {
   isOrganizationHead: boolean
   hideFromPyramid?: boolean
   allowedPageKeys?: string[]
+  vacationOverlapEmployeeIds?: number[]
   user?: OrgUserBrief | null
   expertises: EmployeeExpertise[]
   departments: EmployeeDepartmentBrief[]

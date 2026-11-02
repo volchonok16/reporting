@@ -2,12 +2,12 @@ import logging
 from datetime import date
 import asyncio
 
-from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from app.app_access import can_manage_org, has_planning_access, is_roadmap_role, is_superadmin_user, is_voice_only, sync_board_denied_reason
+from app.app_access import can_manage_org, ensure_page_access, ensure_password_change_allowed, has_planning_access, is_roadmap_role, is_superadmin_user, is_voice_only, require_app_page, sync_board_denied_reason
 from app.app_page_service import get_user_allowed_page_keys, is_other_user_employee, sync_app_pages
 from app.auth_service import login_with_app_user
 from app.auth_sessions import (
@@ -68,7 +68,9 @@ from app.b2b_product_status_db import (
     restore_b2b_product_status_snapshot,
     save_b2b_product_status_to_db,
     get_b2b_product_status_office_access,
+    get_b2b_product_status_office_projects,
     set_b2b_product_status_office_access,
+    set_b2b_product_status_office_projects,
     set_b2b_product_status_office_editing_locked,
 )
 from app.product_status_service import load_b2b_product_status
@@ -116,6 +118,9 @@ from app.schemas import (
     ProductStatusHistoryOut,
     ProductStatusOfficeAccessIn,
     ProductStatusOfficeAccessOut,
+    ProductStatusOfficeProjectOut,
+    ProductStatusOfficeProjectsIn,
+    ProductStatusOfficeProjectsOut,
     OfficePenaltyAdjustIn,
     OfficePenaltyOut,
     OfficeRaffleMailOut,
@@ -142,12 +147,13 @@ from app.password_reset import (
     request_password_reset,
     verify_reset_code,
 )
+from app.canvas_studio_sso import issue_canvas_studio_sso_token
+from app.rate_limit import login_by_ip, login_by_user, reset_verify_by_ip
 from app.voice_sso import issue_voice_sso_token
 from app.sync_service import run_sync
 from app.tfs_auth import TfsAuth
 from app.org_routes import profile_router, router as org_router, users_router
 from app.notification_routes import router as notification_router
-from app.youjail_routes import router as youjail_router
 from app.planning_routes import router as planning_router
 from app.zni_category_routes import router as zni_category_router
 from app.voice_integration import integrate_voice, start_voice_jobs, stop_voice_jobs
@@ -165,13 +171,32 @@ app.add_middleware(
 )
 
 
+_INSECURE_SSO_DEFAULTS = frozenset(
+    {
+        "reporting-voice-sso-dev-secret",
+        "reporting-canvas-studio-sso-dev-secret",
+    }
+)
+
+
+def _assert_secure_secrets() -> None:
+    voice = (settings.voice_sso_secret or "").strip()
+    canvas = (settings.canvas_studio_sso_secret or "").strip()
+    insecure = [name for name, val in (("VOICE_SSO_SECRET", voice), ("CANVAS_STUDIO_SSO_SECRET", canvas)) if val in _INSECURE_SSO_DEFAULTS or len(val) < 24]
+    env = (settings.app_env or "development").strip().lower()
+    if insecure and env in {"production", "prod"}:
+        raise RuntimeError(
+            "Небезопасные SSO-секреты в production: " + ", ".join(insecure) + ". Задайте уникальные значения ≥24 символов."
+        )
+    if insecure:
+        logger.warning("Используются небезопасные/короткие SSO-секреты (%s). Смените перед продом.", ", ".join(insecure))
+
+
 @app.on_event("startup")
 async def startup() -> None:
-    from app.youjail_terminal import set_main_event_loop
-
     loop = asyncio.get_running_loop()
-    set_main_event_loop(loop)
     set_product_status_live_event_loop(loop)
+    _assert_secure_secrets()
     ensure_startup_schema()
     integrate_voice(app)
     db = next(get_db())
@@ -199,7 +224,6 @@ app.include_router(org_router)
 app.include_router(profile_router)
 app.include_router(users_router)
 app.include_router(notification_router)
-app.include_router(youjail_router)
 app.include_router(product_status_live_router)
 app.include_router(planning_router)
 app.include_router(zni_category_router)
@@ -219,28 +243,36 @@ def require_pat(x_session_id: str | None = Header(default=None, alias="X-Session
     return auth.pat
 
 
-def require_session(x_session_id: str | None = Header(default=None, alias="X-Session-Id")) -> None:
-    if get_session(x_session_id) is None:
+def require_session(
+    request: Request,
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+) -> None:
+    auth, meta = get_session_with_meta(x_session_id)
+    if auth is None:
         raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
+    ensure_password_change_allowed(meta, request)
 
 
 def require_full_app_access(
+    request: Request,
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
 ) -> None:
-    _, meta = get_session_with_meta(x_session_id)
-    if get_session(x_session_id) is None:
+    auth, meta = get_session_with_meta(x_session_id)
+    if auth is None:
         raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
     if is_voice_only(meta):
         raise HTTPException(status_code=403, detail="Доступен только раздел Voice.")
     if is_roadmap_role(meta.get("app_role")):
         raise HTTPException(status_code=403, detail="Недостаточно прав.")
+    ensure_password_change_allowed(meta, request)
 
 
 def require_org_manage_access(
+    request: Request,
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
 ) -> None:
-    _, meta = get_session_with_meta(x_session_id)
-    if get_session(x_session_id) is None:
+    auth, meta = get_session_with_meta(x_session_id)
+    if auth is None:
         raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
     if is_voice_only(meta):
         raise HTTPException(status_code=403, detail="Доступен только раздел Voice.")
@@ -248,6 +280,32 @@ def require_org_manage_access(
         raise HTTPException(status_code=403, detail="Недостаточно прав.")
     if not can_manage_org(meta):
         raise HTTPException(status_code=403, detail="Недостаточно прав.")
+    ensure_password_change_allowed(meta, request)
+
+
+# Page-scoped ACL (UI + API)
+require_zni_access = require_app_page("zni")
+require_products_access = require_app_page("products")
+require_product_status_access = require_app_page("product-status-b2b")
+require_gov_access = require_app_page("gov-initiatives")
+
+
+def require_digital_plan_access(
+    request: Request,
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Планы Digital: полный доступ к zni или роль roadmap."""
+    auth, meta = get_session_with_meta(x_session_id)
+    if auth is None:
+        raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
+    ensure_password_change_allowed(meta, request)
+    if is_voice_only(meta):
+        raise HTTPException(status_code=403, detail="Доступен только раздел Voice.")
+    if is_roadmap_role(meta.get("app_role")):
+        return meta
+    ensure_page_access(db, meta, "zni")
+    return meta
 
 
 def _can_sync_tfs(auth: TfsAuth | None, meta: dict) -> bool:
@@ -266,11 +324,13 @@ def health() -> dict[str, str]:
 @app.post("/api/voice/sso-token", response_model=VoiceSsoTokenOut)
 def voice_sso_token(
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    db: Session = Depends(get_db),
 ) -> VoiceSsoTokenOut:
     """Короткий SSO-токен для вкладки Voice (без второго логина)."""
     auth, meta = get_session_with_meta(x_session_id)
     if auth is None:
         raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
+    ensure_page_access(db, meta, "voice")
     login = (meta.get("app_login") or "").strip()
     if not login:
         login = "user@reporting.local"
@@ -294,6 +354,31 @@ def voice_sso_token(
         is_admin=bool(is_admin),
         voice_admin=bool(voice_admin),
         display_name=login,
+    )
+    return VoiceSsoTokenOut(token=token, expiresIn=120)
+
+
+@app.post("/api/canvas-studio/sso-token", response_model=VoiceSsoTokenOut)
+def canvas_studio_sso_token(
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    db: Session = Depends(get_db),
+) -> VoiceSsoTokenOut:
+    """Короткий SSO-токен для вкладки Симметрика (без второго логина)."""
+    auth, meta = get_session_with_meta(x_session_id)
+    if auth is None:
+        raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
+    ensure_page_access(db, meta, "canvas-studio")
+    login = (meta.get("app_login") or "").strip()
+    if not login:
+        login = "user@reporting.local"
+    if "@" not in login:
+        login = f"{login}@reporting.local"
+    is_admin = meta.get("org_user_role") in {"admin", "superadmin"} or meta.get("auth_mode") == "pat"
+    display_name = (meta.get("display_name") or meta.get("app_login") or login).strip() or login
+    token = issue_canvas_studio_sso_token(
+        email=login,
+        display_name=display_name,
+        is_admin=bool(is_admin),
     )
     return VoiceSsoTokenOut(token=token, expiresIn=120)
 
@@ -421,27 +506,39 @@ def auth_status(x_session_id: str | None = Header(default=None, alias="X-Session
 
 
 @app.post("/api/auth/login", response_model=AuthLoginOut)
-async def auth_login(payload: TfsAuthIn) -> AuthLoginOut:
+async def auth_login(payload: TfsAuthIn, request: Request) -> AuthLoginOut:
     if (payload.pat or "").strip():
         raise HTTPException(status_code=400, detail="Вход по PAT-токену отключён. Используйте логин и пароль.")
 
     username = (payload.username or "").strip()
     password = payload.password or ""
+    client_ip = request.client.host if request.client else "unknown"
 
     if username and password:
-        return await login_with_app_user(
+        if not login_by_ip.allow(client_ip) or not login_by_user.allow(username.casefold()):
+            raise HTTPException(status_code=429, detail="Слишком много попыток входа. Подождите несколько минут.")
+        result = await login_with_app_user(
             username=username,
             password=password,
             base_url=payload.baseUrl,
             project=payload.project,
             project_id=payload.projectId,
         )
+        login_by_user.reset(username.casefold())
+        return result
 
     raise HTTPException(status_code=400, detail="Укажите логин и пароль.")
 
 
 @app.post("/api/auth/password-reset/request", response_model=PasswordResetOut)
-def auth_password_reset_request(payload: PasswordResetRequestIn, db: Session = Depends(get_db)) -> PasswordResetOut:
+def auth_password_reset_request(
+    payload: PasswordResetRequestIn,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> PasswordResetOut:
+    client_ip = request.client.host if request.client else "unknown"
+    if not reset_verify_by_ip.allow(f"req:{client_ip}"):
+        raise HTTPException(status_code=429, detail="Слишком много запросов. Подождите несколько минут.")
     try:
         message = request_password_reset(db, payload.email)
     except PasswordResetError as exc:
@@ -450,7 +547,14 @@ def auth_password_reset_request(payload: PasswordResetRequestIn, db: Session = D
 
 
 @app.post("/api/auth/password-reset/verify", response_model=PasswordResetOut)
-def auth_password_reset_verify(payload: PasswordResetVerifyIn, db: Session = Depends(get_db)) -> PasswordResetOut:
+def auth_password_reset_verify(
+    payload: PasswordResetVerifyIn,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> PasswordResetOut:
+    client_ip = request.client.host if request.client else "unknown"
+    if not reset_verify_by_ip.allow(f"ver:{client_ip}"):
+        raise HTTPException(status_code=429, detail="Слишком много попыток. Подождите несколько минут.")
     try:
         verify_reset_code(db, email=payload.email, code=payload.code)
     except PasswordResetError as exc:
@@ -459,7 +563,14 @@ def auth_password_reset_verify(payload: PasswordResetVerifyIn, db: Session = Dep
 
 
 @app.post("/api/auth/password-reset/confirm", response_model=PasswordResetOut)
-def auth_password_reset_confirm(payload: PasswordResetConfirmIn, db: Session = Depends(get_db)) -> PasswordResetOut:
+def auth_password_reset_confirm(
+    payload: PasswordResetConfirmIn,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> PasswordResetOut:
+    client_ip = request.client.host if request.client else "unknown"
+    if not reset_verify_by_ip.allow(f"conf:{client_ip}"):
+        raise HTTPException(status_code=429, detail="Слишком много попыток. Подождите несколько минут.")
     try:
         login = confirm_password_reset(
             db,
@@ -538,7 +649,10 @@ def revoke_all_sessions(
 
 
 @app.get("/api/boards", response_model=list[BoardOut])
-def list_boards(db: Session = Depends(get_db)) -> list[BoardOut]:
+def list_boards(
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_zni_access),
+) -> list[BoardOut]:
     boards = ensure_boards_loaded(db, refresh=True)
     items = [
         BoardOut(
@@ -566,6 +680,7 @@ def list_boards(db: Session = Depends(get_db)) -> list[BoardOut]:
 @app.get("/api/dashboard", response_model=DashboardOut)
 def dashboard(
     db: Session = Depends(get_db),
+    _: dict = Depends(require_zni_access),
     board: str | None = Query(default=None),
     search: str | None = Query(default=None),
     sort: str = Query(default="planned_date_upcoming"),
@@ -614,6 +729,7 @@ def dashboard(
 @app.get("/api/products", response_model=ProductsOut)
 def products(
     db: Session = Depends(get_db),
+    _: dict = Depends(require_products_access),
     hide_closed: bool = Query(default=True, alias="hideClosed"),
 ) -> ProductsOut:
     return load_products(db, hide_closed=hide_closed)
@@ -623,7 +739,7 @@ def products(
 def tasks_lookup(
     payload: TaskLookupIn,
     db: Session = Depends(get_db),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_zni_access),
 ) -> TaskLookupOut:
     return TaskLookupOut(items=load_change_requests_by_numbers(db, payload.numbers))
 
@@ -634,7 +750,7 @@ async def patch_business_value(
     payload: BusinessValueUpdateIn,
     db: Session = Depends(get_db),
     pat: str = Depends(require_pat),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_zni_access),
 ) -> ChangeRequestOut:
     try:
         await update_business_value(
@@ -656,7 +772,7 @@ async def patch_business_value(
 @app.get("/api/digital-plan", response_model=DigitalPlanOut)
 def digital_plan(
     db: Session = Depends(get_db),
-    _: None = Depends(require_session),
+    _: dict = Depends(require_digital_plan_access),
     year: int = Query(default=2026, ge=2020, le=2100),
     plan_tag: str = Query(default="Q3-Q4'26"),
 ) -> DigitalPlanOut:
@@ -671,7 +787,7 @@ def patch_digital_plan_uc(
     external_id: str,
     payload: DigitalPlanUcUpdateIn,
     db: Session = Depends(get_db),
-    _: None = Depends(require_session),
+    _: dict = Depends(require_digital_plan_access),
 ) -> ChangeRequestOut:
     try:
         update_digital_plan_has_uc(
@@ -695,14 +811,8 @@ def patch_zni_external_data(
     payload: ZniExternalDataUpdateIn,
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    meta: dict = Depends(require_zni_access),
 ) -> ChangeRequestOut:
-    _, meta = get_session_with_meta(x_session_id)
-    if get_session(x_session_id) is None:
-        raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
-    if is_voice_only(meta):
-        raise HTTPException(status_code=403, detail="Доступен только раздел Voice.")
-    if is_roadmap_role(meta.get("app_role")):
-        raise HTTPException(status_code=403, detail="Недостаточно прав.")
     fields = payload.model_fields_set
     try:
         update_zni_external_data(
@@ -739,7 +849,7 @@ def patch_roadmap_priority(
     external_id: str,
     payload: RoadmapPriorityUpdateIn,
     db: Session = Depends(get_db),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_zni_access),
 ) -> ChangeRequestOut:
     try:
         update_roadmap_priority(
@@ -762,7 +872,7 @@ def patch_roadmap_comment(
     external_id: str,
     payload: RoadmapCommentUpdateIn,
     db: Session = Depends(get_db),
-    _: None = Depends(require_session),
+    _: dict = Depends(require_digital_plan_access),
 ) -> ChangeRequestOut:
     try:
         update_roadmap_comment(
@@ -786,7 +896,7 @@ def product_status_b2b(
     gid: str | None = Query(default=None),
     meta_only: bool = Query(default=False),
     refresh: bool = Query(default=False),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> ProductStatusB2BOut:
     del refresh
     return load_b2b_product_status(
@@ -799,7 +909,7 @@ def product_status_b2b(
 @app.get("/api/product-status/b2b/presentation")
 def product_status_b2b_presentation(
     db: Session = Depends(get_db),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> Response:
     content, filename = generate_b2b_product_status_presentation(
         load_b2b_product_status(db=db),
@@ -815,7 +925,7 @@ def product_status_b2b_presentation(
 @app.get("/api/product-status/b2b/excel")
 def product_status_b2b_excel(
     db: Session = Depends(get_db),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> Response:
     content, filename = generate_b2b_product_status_excel(load_b2b_product_status(db=db))
     return Response(
@@ -828,7 +938,7 @@ def product_status_b2b_excel(
 @app.post("/api/product-status/b2b/excel")
 def product_status_b2b_excel_from_payload(
     payload: ProductStatusB2BOut,
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> Response:
     content, filename = generate_b2b_product_status_excel(payload)
     return Response(
@@ -841,7 +951,7 @@ def product_status_b2b_excel_from_payload(
 @app.post("/api/product-status/b2b/presentation")
 def product_status_b2b_presentation_from_payload(
     payload: ProductStatusB2BOut,
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> Response:
     content, filename = generate_b2b_product_status_presentation(payload)
     return Response(
@@ -857,7 +967,7 @@ def product_status_b2b_save(
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
     x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     save_b2b_product_status_to_db(db, payload, meta=meta)
@@ -880,7 +990,7 @@ def product_status_b2b_office_editing_lock(
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
     x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_zni_access),
 ) -> ProductStatusSheetOut:
     _, meta = get_session_with_meta(x_session_id)
     from app.status_office_schedule import admin_can_unlock_office, actor_display_name
@@ -943,7 +1053,7 @@ def product_status_office_penalty(
     gid: str,
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> OfficePenaltyOut:
     _require_superadmin(x_session_id)
     from app.office_penalty import office_penalty_points
@@ -958,7 +1068,7 @@ def product_status_office_penalty_adjust(
     payload: OfficePenaltyAdjustIn,
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> OfficePenaltyOut:
     _require_superadmin(x_session_id)
     from app.office_penalty import add_office_penalty
@@ -971,7 +1081,7 @@ def product_status_office_penalty_adjust(
 def product_status_office_raffle(
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> OfficeRaffleOut:
     _require_superadmin(x_session_id)
     from app.office_penalty import load_raffle
@@ -983,7 +1093,7 @@ def product_status_office_raffle(
 def product_status_office_raffle_mail(
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> OfficeRaffleMailOut:
     _require_superadmin(x_session_id)
     from app.office_penalty import send_raffle_results
@@ -1018,7 +1128,7 @@ def product_status_b2b_office_access(
     gid: str,
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> ProductStatusOfficeAccessOut:
     _, meta = get_session_with_meta(x_session_id)
     if not is_superadmin_user(meta):
@@ -1036,7 +1146,7 @@ def product_status_b2b_office_access_save(
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
     x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> ProductStatusOfficeAccessOut:
     _, meta = get_session_with_meta(x_session_id)
     if not is_superadmin_user(meta):
@@ -1078,6 +1188,68 @@ def product_status_b2b_office_access_save(
     return _office_access_out(saved)
 
 
+def _office_projects_out(payload: dict) -> ProductStatusOfficeProjectsOut:
+    return ProductStatusOfficeProjectsOut(
+        gid=str(payload["gid"]),
+        name=str(payload["name"]),
+        projects=[
+            ProductStatusOfficeProjectOut(
+                id=int(item["id"]),
+                name=str(item["name"]),
+                sortOrder=int(item["sortOrder"]),
+                rangeFrom=int(item["rangeFrom"]),
+                rangeTo=int(item["rangeTo"]),
+                isActive=bool(item.get("isActive", True)),
+            )
+            for item in payload.get("projects") or []
+        ],
+    )
+
+
+@app.get(
+    "/api/product-status/b2b/offices/{gid}/projects",
+    response_model=ProductStatusOfficeProjectsOut,
+)
+def product_status_b2b_office_projects(
+    gid: str,
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: dict = Depends(require_product_status_access),
+) -> ProductStatusOfficeProjectsOut:
+    _require_superadmin(x_session_id)
+    return _office_projects_out(get_b2b_product_status_office_projects(db, gid=gid))
+
+
+@app.put(
+    "/api/product-status/b2b/offices/{gid}/projects",
+    response_model=ProductStatusOfficeProjectsOut,
+)
+def product_status_b2b_office_projects_save(
+    gid: str,
+    payload: ProductStatusOfficeProjectsIn,
+    db: Session = Depends(get_db),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    _: dict = Depends(require_product_status_access),
+) -> ProductStatusOfficeProjectsOut:
+    _require_superadmin(x_session_id)
+    saved = set_b2b_product_status_office_projects(
+        db,
+        gid=gid,
+        projects=[
+            {
+                "id": item.id,
+                "name": item.name,
+                "sortOrder": item.sortOrder,
+                "rangeFrom": item.rangeFrom,
+                "rangeTo": item.rangeTo,
+                "isActive": item.isActive,
+            }
+            for item in payload.projects
+        ],
+    )
+    return _office_projects_out(saved)
+
+
 def _schedule_slot(weekday: int, minutes: int) -> ProductStatusScheduleSlotOut:
     from app.status_office_schedule import format_schedule_time
 
@@ -1116,7 +1288,7 @@ def _schedule_from_payload(payload: ProductStatusScheduleOut) -> dict:
 def product_status_b2b_schedule(
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> ProductStatusScheduleOut:
     _, meta = get_session_with_meta(x_session_id)
     if not is_superadmin_user(meta):
@@ -1134,7 +1306,7 @@ def product_status_b2b_schedule_save(
     payload: ProductStatusScheduleOut,
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> ProductStatusScheduleOut:
     _, meta = get_session_with_meta(x_session_id)
     if not is_superadmin_user(meta):
@@ -1155,7 +1327,7 @@ def product_status_b2b_delete_row(
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
     x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     delete_b2b_product_status_row(db, gid=gid, row_id=row_id, meta=meta)
@@ -1179,7 +1351,7 @@ async def product_status_b2b_upload_attachment(
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
     x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> ProductStatusAttachmentOut:
     _, meta = get_session_with_meta(x_session_id)
     payload = await save_product_status_attachment(
@@ -1203,7 +1375,7 @@ def product_status_b2b_download_attachment(
     attachment_id: int,
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> Response:
     from urllib.parse import quote
 
@@ -1229,7 +1401,7 @@ def product_status_b2b_delete_attachment(
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
     x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     result = delete_product_status_attachment(db, attachment_id=attachment_id, meta=meta)
@@ -1288,7 +1460,7 @@ def b2b_news(
     meta_only: bool = Query(default=False),
     refresh: bool = Query(default=False),
     db: Session = Depends(get_db),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> ProductStatusB2BOut:
     del refresh
     return load_b2b_news(
@@ -1304,7 +1476,7 @@ def b2b_news_save(
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
     x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     save_b2b_news_to_db(db, payload, meta=meta)
@@ -1324,7 +1496,7 @@ def b2b_news_delete_row(
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
     x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     delete_b2b_news_row(db, gid=gid, row_id=row_id, meta=meta)
@@ -1342,7 +1514,7 @@ def b2b_news_history(
     gid: str = Query(...),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> ProductStatusHistoryOut:
     return load_b2b_news_history(db, gid=gid, limit=limit)
 
@@ -1352,7 +1524,7 @@ def b2b_news_snapshots(
     gid: str = Query(...),
     limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> ProductStatusSnapshotsOut:
     return load_b2b_news_snapshots(db, gid=gid, limit=limit)
 
@@ -1364,7 +1536,7 @@ def b2b_news_restore_snapshot(
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
     x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     restore_b2b_news_snapshot(db, snapshot_id=snapshot_id, gid=gid, meta=meta)
@@ -1383,7 +1555,7 @@ def revenue_activities(
     meta_only: bool = Query(default=False),
     refresh: bool = Query(default=False),
     db: Session = Depends(get_db),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> ProductStatusB2BOut:
     del refresh
     return load_revenue_activities(
@@ -1396,7 +1568,7 @@ def revenue_activities(
 @app.get("/api/revenue-activities/excel")
 def revenue_activities_excel(
     db: Session = Depends(get_db),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> Response:
     content, filename = generate_revenue_activities_excel(load_revenue_activities(db=db))
     return Response(
@@ -1409,7 +1581,7 @@ def revenue_activities_excel(
 @app.post("/api/revenue-activities/excel")
 def revenue_activities_excel_from_payload(
     payload: ProductStatusB2BOut,
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> Response:
     content, filename = generate_revenue_activities_excel(payload)
     return Response(
@@ -1425,7 +1597,7 @@ def revenue_activities_save(
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
     x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     save_revenue_activities_to_db(db, payload, meta=meta)
@@ -1445,7 +1617,7 @@ def revenue_activities_delete_row(
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
     x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     delete_revenue_activity_row(db, gid=gid, row_id=row_id, meta=meta)
@@ -1504,7 +1676,7 @@ def gov_initiatives(
     meta_only: bool = Query(default=False),
     refresh: bool = Query(default=False),
     db: Session = Depends(get_db),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_product_status_access),
 ) -> ProductStatusB2BOut:
     del refresh
     return load_gov_initiatives(
@@ -1517,7 +1689,7 @@ def gov_initiatives(
 @app.get("/api/gov-initiatives/excel")
 def gov_initiatives_excel(
     db: Session = Depends(get_db),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_gov_access),
 ) -> Response:
     content, filename = generate_gov_initiatives_excel(load_gov_initiatives(db=db))
     return Response(
@@ -1530,7 +1702,7 @@ def gov_initiatives_excel(
 @app.post("/api/gov-initiatives/excel")
 def gov_initiatives_excel_from_payload(
     payload: ProductStatusB2BOut,
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_gov_access),
 ) -> Response:
     content, filename = generate_gov_initiatives_excel(payload)
     return Response(
@@ -1546,7 +1718,7 @@ def gov_initiatives_save(
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
     x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_gov_access),
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     save_gov_initiatives_to_db(db, payload, meta=meta)
@@ -1566,7 +1738,7 @@ def gov_initiatives_delete_row(
     db: Session = Depends(get_db),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
     x_live_connection_id: str | None = Header(default=None, alias="X-Live-Connection-Id"),
-    _: None = Depends(require_full_app_access),
+    _: dict = Depends(require_gov_access),
 ) -> dict[str, str]:
     _, meta = get_session_with_meta(x_session_id)
     delete_gov_initiative_row(db, gid=gid, row_id=row_id, meta=meta)
@@ -1636,7 +1808,7 @@ def export_report(
     tag_group: list[str] = Query(default=[]),
     export_scope: str = Query(default="filters"),
     _: str = Depends(require_pat),
-    __: None = Depends(require_full_app_access),
+    __: dict = Depends(require_gov_access),
 ) -> Response:
     content, filename = export_xlsx(
         db,
@@ -1722,7 +1894,11 @@ async def start_sync(
 
 
 @app.get("/api/sync/{sync_id}", response_model=SyncRunOut)
-def sync_status(sync_id: int, db: Session = Depends(get_db)) -> SyncRunOut:
+def sync_status(
+    sync_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_session),
+) -> SyncRunOut:
     sync_run = db.get(SyncRun, sync_id)
     if sync_run is None:
         raise HTTPException(status_code=404, detail="Sync run not found")

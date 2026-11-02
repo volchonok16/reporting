@@ -247,6 +247,13 @@ def ensure_startup_schema() -> None:
         "090_voice_aon_length_first_marker.sql",
         "091_zni_external_plan_quarter.sql",
         "092_b2b_product_status_office_penalty.sql",
+        "092_zni_scoring.sql",
+        "093_zni_scoring_drop_size.sql",
+        "094_vacation_overlap_block.sql",
+        "095_drop_youjail.sql",
+        "096_gov_initiatives_responsible.sql",
+        "097_simmetrika_storage.sql",
+        "098_simmetrika_indexes.sql",
     )
 
     auth_session_sql = """

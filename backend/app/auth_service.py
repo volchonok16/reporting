@@ -97,6 +97,7 @@ async def login_with_app_user(
     org_user_role: str | None = None
     voice_only = False
     voice_admin = False
+    must_change_password = False
     app_role = FULL_APP_ROLE
     app_login = login
 
@@ -106,6 +107,10 @@ async def login_with_app_user(
         if org_user is not None:
             if not verify_org_user_password(org_user, password):
                 raise HTTPException(status_code=401, detail="Неверный логин или пароль.")
+            from app.org_models import ORG_USER_STATUS_ACTIVE
+
+            if int(org_user.status) != ORG_USER_STATUS_ACTIVE:
+                raise HTTPException(status_code=401, detail="Учётная запись отключена.")
             org_user_id = org_user.id
             if org_user.role == ORG_USER_ROLE_SUPERADMIN:
                 org_user_role = "superadmin"
@@ -115,6 +120,7 @@ async def login_with_app_user(
                 org_user_role = "user"
             voice_only = bool(getattr(org_user, "voice_only", False))
             voice_admin = bool(getattr(org_user, "voice_admin", False))
+            must_change_password = bool(getattr(org_user, "must_change_password", False))
             app_login = org_user.email
             app_role = FULL_APP_ROLE
         else:
@@ -158,6 +164,7 @@ async def login_with_app_user(
         org_user_role=org_user_role,
         voice_only=voice_only,
         voice_admin=voice_admin,
+        must_change_password=must_change_password,
     )
     return AuthLoginOut(
         sessionId=session_id,

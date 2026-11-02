@@ -31,7 +31,6 @@ package "Production" #F4F5F7 {
     database "PostgreSQL\n:5432" as pg #FFFFFF
     [MinIO\nphotos :9000] as minio #FFFFFF
     [minio-init] as minioinit #FFFFFF
-    folder "youjail workspace" as yjfs #FFFFFF
     folder "uploads fallback" as uploads #FFFFFF
     folder "Status.pptx" as pptx #FFFFFF
   }
@@ -46,7 +45,6 @@ package "Модули" #FFFAE6 {
   [Auth] as auth #FFFFFF
   [TFS Sync] as sync #FFFFFF
   [Org / Staffing] as org #FFFFFF
-  [YouJail] as yj #FFFFFF
   [B2B + PPTX] as b2b #FFFFFF
   [Roadmap] as roadmap #FFFFFF
 }
@@ -60,7 +58,6 @@ fe --> api : REST / session
 api --> auth
 api --> sync
 api --> org
-api --> yj
 api --> b2b
 api --> roadmap
 api --> pg
@@ -70,8 +67,6 @@ sync --> pg
 org --> pg
 org --> minio
 org --> uploads
-yj --> pg
-yj --> yjfs
 b2b --> pg
 b2b --> pptx
 roadmap --> pg
@@ -79,9 +74,8 @@ minioinit --> minio
 pg --> finebi : views
 
 note right of fe
-  Вкладки: ЗНИ · B2B · Планы
-  Доска · Staffing · Диаграммы
-  + профиль
+  Вкладки: ЗНИ · B2B · Staffing
+  Планирование · Voice · профиль
 end note
 
 note bottom of b2b

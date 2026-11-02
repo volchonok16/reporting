@@ -504,6 +504,20 @@ CREATE TABLE vacation_planning_unlock (
 COMMENT ON TABLE vacation_planning_unlock IS
     'Годы, для которых суперадмин открыл планирование отпусков';
 
+CREATE TABLE vacation_overlap_block (
+    employee_id_a          BIGINT NOT NULL REFERENCES employee(id) ON DELETE CASCADE,
+    employee_id_b          BIGINT NOT NULL REFERENCES employee(id) ON DELETE CASCADE,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by_org_user_id BIGINT REFERENCES org_user(id) ON DELETE SET NULL,
+    PRIMARY KEY (employee_id_a, employee_id_b),
+    CONSTRAINT vacation_overlap_block_ordered CHECK (employee_id_a < employee_id_b)
+);
+
+CREATE INDEX idx_vacation_overlap_block_b ON vacation_overlap_block (employee_id_b);
+
+COMMENT ON TABLE vacation_overlap_block IS
+    'Пары сотрудников (a < b), которым запрещено пересечение дней отпуска';
+
 CREATE UNIQUE INDEX employee_public_id_uq ON employee (public_id);
 
 CREATE TABLE employee_expertise (
@@ -565,276 +579,6 @@ CREATE UNIQUE INDEX ux_org_chart_layout_company
     WHERE scope = 'company';
 
 COMMENT ON TABLE org_chart_layout IS 'Сохранённая ручная раскладка оргсхемы';
-
--- -----------------------------------------------------------------------------
--- YouJail — отдельная kanban-доска; карточки могут ссылаться на ЗНИ из task (youjail_card_zni)
--- -----------------------------------------------------------------------------
-
-CREATE TABLE youjail_board (
-    id              BIGSERIAL PRIMARY KEY,
-    name            VARCHAR(255) NOT NULL,
-    slug            VARCHAR(64) NOT NULL UNIQUE,
-    description     TEXT NOT NULL DEFAULT '',
-    sort_order      INTEGER NOT NULL DEFAULT 0,
-    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
-    owner_employee_id BIGINT REFERENCES employee(id) ON DELETE CASCADE,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE UNIQUE INDEX ix_youjail_board_personal_owner
-  ON youjail_board (owner_employee_id)
-  WHERE owner_employee_id IS NOT NULL;
-
-CREATE TABLE youjail_project (
-    id              BIGSERIAL PRIMARY KEY,
-    name            VARCHAR(255) NOT NULL,
-    slug            VARCHAR(64) NOT NULL UNIQUE,
-    repo_path       TEXT,
-    context_md      TEXT NOT NULL DEFAULT '',
-    instructions_md TEXT NOT NULL DEFAULT '',
-    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE youjail_task_type (
-    id              BIGSERIAL PRIMARY KEY,
-    name            VARCHAR(128) NOT NULL UNIQUE,
-    instructions_md TEXT NOT NULL DEFAULT '',
-    sort_order      INTEGER NOT NULL DEFAULT 0,
-    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE youjail_column (
-    id              BIGSERIAL PRIMARY KEY,
-    board_id        BIGINT NOT NULL REFERENCES youjail_board(id) ON DELETE CASCADE,
-    column_key      VARCHAR(32) NOT NULL,
-    title           VARCHAR(128) NOT NULL,
-    tone            VARCHAR(32) NOT NULL,
-    sort_order      INTEGER NOT NULL
-);
-
-CREATE UNIQUE INDEX ix_youjail_column_board_key ON youjail_column (board_id, column_key);
-
-CREATE TABLE youjail_card (
-    id              BIGSERIAL PRIMARY KEY,
-    board_id        BIGINT NOT NULL REFERENCES youjail_board(id) ON DELETE CASCADE,
-    column_id       BIGINT NOT NULL REFERENCES youjail_column(id) ON DELETE RESTRICT,
-    card_number     INTEGER NOT NULL,
-    project_id      BIGINT REFERENCES youjail_project(id) ON DELETE SET NULL,
-    task_type_id    BIGINT REFERENCES youjail_task_type(id) ON DELETE SET NULL,
-    title           VARCHAR(1000) NOT NULL,
-    description_md  TEXT NOT NULL DEFAULT '',
-    pinned          BOOLEAN NOT NULL DEFAULT FALSE,
-    archived        BOOLEAN NOT NULL DEFAULT FALSE,
-    closed_at       TIMESTAMPTZ,
-    scheduled_at    TIMESTAMPTZ,
-    sort_order      INTEGER NOT NULL DEFAULT 0,
-    executor        VARCHAR(64) NOT NULL DEFAULT 'manual',
-    worktree_path   TEXT,
-    worktree_branch VARCHAR(255),
-    execution_status VARCHAR(32) NOT NULL DEFAULT 'idle',
-    assignee_employee_id BIGINT REFERENCES employee(id) ON DELETE SET NULL,
-    created_by      VARCHAR(255),
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX ix_youjail_card_column_sort ON youjail_card (column_id, sort_order, id);
-CREATE INDEX ix_youjail_card_board_column ON youjail_card (board_id, column_id, sort_order, id);
-CREATE UNIQUE INDEX ix_youjail_card_board_number ON youjail_card (board_id, card_number);
-CREATE INDEX ix_youjail_card_assignee ON youjail_card (assignee_employee_id);
-
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE INDEX ix_youjail_card_title_trgm ON youjail_card USING gin (title gin_trgm_ops);
-CREATE INDEX ix_youjail_card_description_trgm ON youjail_card USING gin (description_md gin_trgm_ops);
-
-CREATE TABLE youjail_attachment (
-    id              BIGSERIAL PRIMARY KEY,
-    card_id         BIGINT NOT NULL REFERENCES youjail_card(id) ON DELETE CASCADE,
-    filename        VARCHAR(512) NOT NULL,
-    storage_path    TEXT NOT NULL,
-    content_type    VARCHAR(128),
-    size_bytes      BIGINT NOT NULL DEFAULT 0,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE youjail_execution (
-    id              BIGSERIAL PRIMARY KEY,
-    card_id         BIGINT NOT NULL REFERENCES youjail_card(id) ON DELETE CASCADE,
-    executor        VARCHAR(64) NOT NULL,
-    status          VARCHAR(32) NOT NULL DEFAULT 'running',
-    started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    finished_at     TIMESTAMPTZ,
-    exit_code       INTEGER,
-    error_message   TEXT,
-    worktree_path   TEXT
-);
-
-CREATE INDEX ix_youjail_execution_card_started ON youjail_execution (card_id, started_at DESC);
-
-CREATE TABLE youjail_execution_log (
-    id              BIGSERIAL PRIMARY KEY,
-    execution_id    BIGINT NOT NULL REFERENCES youjail_execution(id) ON DELETE CASCADE,
-    seq             INTEGER NOT NULL,
-    stream          VARCHAR(16) NOT NULL DEFAULT 'stdout',
-    content         TEXT NOT NULL,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (execution_id, seq)
-);
-
-COMMENT ON TABLE youjail_card IS 'Карточки доски YouJail';
-COMMENT ON TABLE youjail_execution IS 'Запуски исполнителя по карточке YouJail';
-
-CREATE TABLE youjail_team (
-    id              BIGSERIAL PRIMARY KEY,
-    name            VARCHAR(255) NOT NULL,
-    slug            VARCHAR(64) NOT NULL UNIQUE,
-    description     TEXT NOT NULL DEFAULT '',
-    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
-    sort_order      INTEGER NOT NULL DEFAULT 0,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE youjail_team_member (
-    id              BIGSERIAL PRIMARY KEY,
-    team_id         BIGINT NOT NULL REFERENCES youjail_team(id) ON DELETE CASCADE,
-    employee_id     BIGINT NOT NULL REFERENCES employee(id) ON DELETE CASCADE,
-    role            VARCHAR(32) NOT NULL DEFAULT 'member',
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (team_id, employee_id)
-);
-
-CREATE TABLE youjail_board_team (
-    id              BIGSERIAL PRIMARY KEY,
-    board_id        BIGINT NOT NULL REFERENCES youjail_board(id) ON DELETE CASCADE,
-    team_id         BIGINT NOT NULL REFERENCES youjail_team(id) ON DELETE CASCADE,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (board_id, team_id)
-);
-
-CREATE INDEX ix_youjail_team_member_employee ON youjail_team_member (employee_id);
-CREATE INDEX ix_youjail_board_team_board ON youjail_board_team (board_id);
-CREATE INDEX ix_youjail_board_team_team ON youjail_board_team (team_id);
-
-CREATE TABLE youjail_board_member (
-    id              BIGSERIAL PRIMARY KEY,
-    board_id        BIGINT NOT NULL REFERENCES youjail_board(id) ON DELETE CASCADE,
-    employee_id     BIGINT NOT NULL REFERENCES employee(id) ON DELETE CASCADE,
-    role            VARCHAR(32) NOT NULL DEFAULT 'member',
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (board_id, employee_id)
-);
-
-CREATE INDEX ix_youjail_board_member_board ON youjail_board_member (board_id);
-CREATE INDEX ix_youjail_board_member_employee ON youjail_board_member (employee_id);
-
-CREATE TABLE youjail_board_pin (
-    id              BIGSERIAL PRIMARY KEY,
-    employee_id     BIGINT NOT NULL REFERENCES employee(id) ON DELETE CASCADE,
-    board_id        BIGINT NOT NULL REFERENCES youjail_board(id) ON DELETE CASCADE,
-    pinned_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (employee_id, board_id)
-);
-
-CREATE INDEX ix_youjail_board_pin_employee ON youjail_board_pin (employee_id, pinned_at ASC);
-
-COMMENT ON TABLE youjail_board_pin IS 'Закреплённые доски YouJail (настройка пользователя)';
-
-CREATE TABLE youjail_tag (
-    id              BIGSERIAL PRIMARY KEY,
-    name            VARCHAR(128) NOT NULL,
-    slug            VARCHAR(64) NOT NULL UNIQUE,
-    color           VARCHAR(7),
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE UNIQUE INDEX ix_youjail_tag_name_lower ON youjail_tag (LOWER(name));
-
-CREATE TABLE youjail_card_tag (
-    id              BIGSERIAL PRIMARY KEY,
-    card_id         BIGINT NOT NULL REFERENCES youjail_card(id) ON DELETE CASCADE,
-    tag_id          BIGINT NOT NULL REFERENCES youjail_tag(id) ON DELETE CASCADE,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (card_id, tag_id)
-);
-
-CREATE INDEX ix_youjail_card_tag_card ON youjail_card_tag (card_id);
-CREATE INDEX ix_youjail_card_tag_tag ON youjail_card_tag (tag_id);
-
-COMMENT ON TABLE youjail_tag IS 'Теги карточек YouJail (как labels в Jira)';
-COMMENT ON TABLE youjail_card_tag IS 'Связь карточки YouJail с тегами';
-
-CREATE TABLE youjail_card_zni (
-    id              BIGSERIAL PRIMARY KEY,
-    card_id         BIGINT NOT NULL REFERENCES youjail_card(id) ON DELETE CASCADE,
-    task_id         BIGINT NOT NULL REFERENCES task(id) ON DELETE CASCADE,
-    sort_order      INTEGER NOT NULL DEFAULT 0,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (card_id, task_id)
-);
-
-CREATE INDEX ix_youjail_card_zni_card ON youjail_card_zni (card_id, sort_order, id);
-CREATE INDEX ix_youjail_card_zni_task ON youjail_card_zni (task_id);
-
-COMMENT ON TABLE youjail_card_zni IS 'Связь карточки YouJail с ЗНИ из task (change_request)';
-
-CREATE TABLE youjail_card_event (
-    id                  BIGSERIAL PRIMARY KEY,
-    card_id             BIGINT NOT NULL REFERENCES youjail_card(id) ON DELETE CASCADE,
-    event_type          VARCHAR(64) NOT NULL,
-    actor_employee_id   BIGINT REFERENCES employee(id) ON DELETE SET NULL,
-    actor_label         VARCHAR(255),
-    payload             JSONB NOT NULL DEFAULT '{}',
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX ix_youjail_card_event_card ON youjail_card_event (card_id, created_at DESC, id DESC);
-
-CREATE TABLE youjail_card_link (
-    id                  BIGSERIAL PRIMARY KEY,
-    card_id             BIGINT NOT NULL REFERENCES youjail_card(id) ON DELETE CASCADE,
-    related_card_id     BIGINT NOT NULL REFERENCES youjail_card(id) ON DELETE CASCADE,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (card_id, related_card_id),
-    CHECK (card_id <> related_card_id)
-);
-
-CREATE INDEX ix_youjail_card_link_card ON youjail_card_link (card_id);
-CREATE INDEX ix_youjail_card_link_related ON youjail_card_link (related_card_id);
-
-COMMENT ON TABLE youjail_card_event IS 'История изменений карточки YouJail';
-COMMENT ON TABLE youjail_card_link IS 'Связи карточек YouJail (в т.ч. между досками)';
-
-CREATE TABLE youjail_card_comment (
-    id                  BIGSERIAL PRIMARY KEY,
-    card_id             BIGINT NOT NULL REFERENCES youjail_card(id) ON DELETE CASCADE,
-    body_md             TEXT NOT NULL DEFAULT '',
-    author_employee_id  BIGINT REFERENCES employee(id) ON DELETE SET NULL,
-    author_label        VARCHAR(255),
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX ix_youjail_card_comment_card ON youjail_card_comment (card_id, created_at ASC, id ASC);
-
-CREATE TABLE youjail_comment_attachment (
-    id              BIGSERIAL PRIMARY KEY,
-    comment_id      BIGINT NOT NULL REFERENCES youjail_card_comment(id) ON DELETE CASCADE,
-    filename        VARCHAR(512) NOT NULL,
-    storage_path    TEXT NOT NULL,
-    content_type    VARCHAR(128),
-    size_bytes      BIGINT NOT NULL DEFAULT 0,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX ix_youjail_comment_attachment_comment ON youjail_comment_attachment (comment_id);
-
-COMMENT ON TABLE youjail_card_comment IS 'Комментарии к карточке YouJail';
-COMMENT ON TABLE youjail_comment_attachment IS 'Вложения к комментариям YouJail';
 
 CREATE TABLE employee_time_off_day (
     id              BIGSERIAL PRIMARY KEY,
@@ -1046,25 +790,6 @@ INSERT INTO canonical_status (code, name, category, sort_order, is_terminal) VAL
     ('done',          'Готово',           'done',      90, TRUE),
     ('cancelled',     'Отменено',         'cancelled', 100, TRUE)
 ON CONFLICT (code) DO NOTHING;
-
-INSERT INTO youjail_board (id, name, slug, sort_order)
-VALUES (1, 'Основная', 'main', 1)
-ON CONFLICT (slug) DO NOTHING;
-
-INSERT INTO youjail_column (board_id, column_key, title, tone, sort_order)
-VALUES
-    (1, 'backlog', 'Backlog', 'backlog', 1),
-    (1, 'in_progress', 'In Progress', 'progress', 2),
-    (1, 'blocked', 'Blocked', 'blocked', 3),
-    (1, 'done', 'Done', 'done', 4)
-ON CONFLICT (board_id, column_key) DO NOTHING;
-
-INSERT INTO youjail_task_type (name, instructions_md, sort_order)
-VALUES
-    ('feature', 'Реализовать новую функциональность.', 1),
-    ('bugfix', 'Исправить ошибку и добавить регрессионную проверку.', 2),
-    ('chore', 'Техническое обслуживание без изменения поведения.', 3)
-ON CONFLICT (name) DO NOTHING;
 
 -- team: без seed — команды создаёт ETL/скрипт по доскам, тегам, area path
 
@@ -2155,6 +1880,58 @@ FOR EACH ROW EXECUTE FUNCTION master_records_exact_count_delete_fn();
 CREATE TRIGGER master_records_exact_count_update
 AFTER UPDATE OF a_number, b_numbers_json, source_prefix, deleted_at ON master_records
 FOR EACH ROW EXECUTE FUNCTION master_records_exact_count_update_fn();
+
+-- -----------------------------------------------------------------------------
+-- Симметрика (canvas-studio): хранилище вместо JSON-файлов на диске
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS simmetrika_kv (
+    bucket      TEXT         NOT NULL,
+    id          TEXT         NOT NULL,
+    payload     JSONB        NOT NULL,
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (bucket, id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_simmetrika_kv_bucket
+    ON simmetrika_kv (bucket);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_simmetrika_users_email
+    ON simmetrika_kv (lower(payload->>'email'))
+    WHERE bucket = 'users' AND payload->>'email' IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS ix_simmetrika_sessions_user
+    ON simmetrika_kv ((payload->>'userId'))
+    WHERE bucket = 'sessions';
+
+COMMENT ON TABLE simmetrika_kv IS 'Симметрика: JSON-записи (users, sessions, files-meta, projects, teams, codes)';
+COMMENT ON COLUMN simmetrika_kv.bucket IS 'Логическая «папка»: users | sessions | files-meta | projects | teams | codes';
+COMMENT ON COLUMN simmetrika_kv.id IS 'Идентификатор записи внутри bucket';
+COMMENT ON COLUMN simmetrika_kv.payload IS 'Тело записи (как бывший .json на диске)';
+
+CREATE TABLE IF NOT EXISTS simmetrika_blob (
+    file_id     TEXT         NOT NULL,
+    name        TEXT         NOT NULL,
+    content     BYTEA        NOT NULL,
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (file_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS ix_simmetrika_blob_file
+    ON simmetrika_blob (file_id);
+
+COMMENT ON TABLE simmetrika_blob IS 'Симметрика: содержимое файлов (snapshot, картинки, thumbnail, comments, versions)';
+COMMENT ON COLUMN simmetrika_blob.file_id IS 'ID файла макета';
+COMMENT ON COLUMN simmetrika_blob.name IS 'Имя объекта: snapshot.json, thumbnail, comments.json, i<sha>, v<hex>.gz, …';
+COMMENT ON COLUMN simmetrika_blob.content IS 'Байты объекта';
+
+CREATE TABLE IF NOT EXISTS simmetrika_secret (
+    id          TEXT         PRIMARY KEY DEFAULT 'default',
+    value       BYTEA        NOT NULL,
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE simmetrika_secret IS 'Симметрика: серверный секрет (бывший файл data/secret)';
 
 -- -----------------------------------------------------------------------------
 -- Журнал миграций schema

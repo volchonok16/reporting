@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Симметрика</title>
+    <meta name="description" content="Макеты и прототипы, презентации, доски для обсуждений и схемы по тексту — в браузере, для всей команды. Импорт файлов Figma и PowerPoint." />
+    <!-- The card of a link in messengers and social networks (Telegram, Max, VK…): og.png is shot from landing/og-source.html. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Симметрика" />
+    <meta property="og:locale" content="ru_RU" />
+    <meta property="og:url" content="https://simmetrika.online/" />
+    <meta property="og:title" content="Симметрика — общее место для идей, схем и макетов" />
+    <meta property="og:description" content="Макеты и прототипы, презентации, доски для обсуждений и схемы по тексту — в браузере, для всей команды. Макет по описанию, импорт Figma и PowerPoint." />
+    <meta property="og:image" content="https://simmetrika.online/apps/web/landing/og.png?v=2" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Симметрика: редактор макетов и презентаций" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="/apps/web/icons/favicon.svg?v=3" type="image/svg+xml" />
+    <link rel="icon" href="/apps/web/icons/favicon-32.png?v=3" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apps/web/icons/apple-touch-icon.png?v=3" />
+    <link rel="manifest" href="/apps/web/manifest.webmanifest?v=3" />
+    <meta name="apple-mobile-web-app-title" content="Симметрика" />
+    <meta name="application-name" content="Симметрика" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#2c2c2c" media="(prefers-color-scheme: dark)" />
+    <link rel="preload" href="/apps/web/fonts/inter/InterVariable.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/apps/web/styles.css" />
+    <!-- importmap -->
+    <script>
+      // Before the scripts load: the chosen theme, and which skeleton the start screen shows —
+      // the editor or the file list to those who will get there, the landing page to a new visitor.
+      (function () {
+        try {
+          var q = new URLSearchParams(location.search);
+          var s = localStorage;
+          var theme = s.getItem('cs-theme');
+          if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme);
+          var known = !!s.getItem('cs.offline.user') || s.getItem('cs.mode') === 'local';
+          var kind = '';
+          if (q.has('present') || q.has('welcome') || q.has('login')) kind = '';
+          else if (q.has('file') || q.has('new')) kind = known || q.has('t') ? (q.has('board') ? 'board' : 'editor') : '';
+          else if (s.getItem('cs.offline.user') || q.has('local')) kind = 'home';
+          else kind = 'landing';
+          if (kind) document.documentElement.setAttribute('data-boot', kind);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="app">
+      <!-- Shown at once, before the scripts load; the app replaces it. -->
+      <div class="boot" role="status" aria-live="polite">
+        <span class="boot-spinner" aria-hidden="true"></span>
+        <p class="boot-text">Загрузка…</p>
+        <!-- Skeletons: the layout that is coming, grey (FEAT: skeleton screens). -->
+        <div class="boot-skel boot-editor" aria-hidden="true">
+          <div class="bs-top"><i class="bs-pill"></i><i class="bs-pill bs-wide"></i><i class="bs-pill"></i></div>
+          <div class="bs-left"><i class="bs-tabs"></i><i class="bs-head"></i><i class="bs-row"></i><hr /><i class="bs-row"></i><i class="bs-row"></i><i class="bs-row"></i><i class="bs-row"></i><i class="bs-row"></i><i class="bs-row"></i></div>
+          <div class="bs-canvas"><i class="bs-dock"></i></div>
+          <div class="bs-right"><i class="bs-tabs"></i><i class="bs-head"></i><i class="bs-field"></i><i class="bs-field"></i><hr /><i class="bs-head"></i><i class="bs-field"></i><hr /><i class="bs-head"></i><i class="bs-field"></i><i class="bs-field"></i></div>
+        </div>
+        <div class="boot-skel boot-home" aria-hidden="true">
+          <div class="bs-side"><i class="bs-brand"></i><i class="bs-line"></i><i class="bs-search"></i><i class="bs-nav"></i><i class="bs-nav"></i></div>
+          <div class="bs-main"><i class="bs-title"></i><div class="bs-grid"><div><i class="bs-thumb"></i><i class="bs-line"></i></div><div><i class="bs-thumb"></i><i class="bs-line"></i></div><div><i class="bs-thumb"></i><i class="bs-line"></i></div><div><i class="bs-thumb"></i><i class="bs-line"></i></div><div><i class="bs-thumb"></i><i class="bs-line"></i></div><div><i class="bs-thumb"></i><i class="bs-line"></i></div></div></div>
+        </div>
+        <div class="boot-skel boot-landing" aria-hidden="true">
+          <div class="bl-header"><i class="bl-logo"></i><div class="bl-nav"><i></i><i></i><i></i><i></i><i></i><i></i></div><i class="bl-cta"></i></div>
+          <div class="bl-hero">
+            <div class="bl-text"><i class="bl-badge"></i><i class="bl-h1"></i><i class="bl-h1 bl-mid"></i><i class="bl-h1"></i><i class="bl-h1 bl-short"></i><i class="bl-p"></i><i class="bl-p"></i><i class="bl-p bl-short"></i><div class="bl-buttons"><i></i><i></i></div></div>
+            <i class="bl-shot"></i>
+          </div>
+        </div>
+      </div>
+      <noscript>Для работы редактора нужен JavaScript.</noscript>
+    </div>
+    <script type="module" src="/apps/web/src/main.ts"></script>
+  </body>
+</html>

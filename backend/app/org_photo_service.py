@@ -61,41 +61,66 @@ async def save_employee_photo(employee_id: int, file: UploadFile) -> str:
     return rel_path
 
 
-def _use_direct_minio_url() -> bool:
-    public_base = settings.minio_public_url.strip().rstrip("/")
-    if not public_base:
-        return False
-    lowered = public_base.lower()
-    if any(token in lowered for token in ("localhost", "127.0.0.1", "://minio", "://minio:")):
-        return False
-    return True
+def _safe_photo_rel(photo_path: str) -> str | None:
+    """Только employees/<id>_<hex>.ext — без path traversal."""
+    normalized = photo_path.lstrip("/").replace("\\", "/")
+    if not normalized or ".." in normalized.split("/"):
+        return None
+    parts = normalized.split("/")
+    if len(parts) != 2 or parts[0] != "employees":
+        return None
+    name = parts[1]
+    if not name or "/" in name or name.startswith("."):
+        return None
+    ext = Path(name).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        return None
+    return f"employees/{name}"
 
 
 def photo_public_url(photo_path: str | None) -> str | None:
+    """Всегда через авторизованный API (не публичный MinIO)."""
     if not photo_path:
         return None
-    normalized = photo_path.lstrip("/")
-    if _use_direct_minio_url():
-        public_base = settings.minio_public_url.rstrip("/")
-        return f"{public_base}/{settings.minio_bucket}/{normalized}"
-    return f"/api/org/photos/{normalized}"
+    safe = _safe_photo_rel(photo_path)
+    if not safe:
+        return None
+    return f"/api/org/photos/{safe}"
 
 
 def delete_photo_file(photo_path: str | None) -> None:
     if not photo_path:
         return
+    safe = _safe_photo_rel(photo_path)
+    if not safe:
+        return
     if minio_configured():
-        delete_object(photo_path)
-    target = uploads_dir() / photo_path
+        delete_object(safe)
+    target = uploads_dir() / safe
+    try:
+        target = target.resolve()
+        root = uploads_dir().resolve()
+        if root not in target.parents and target != root:
+            return
+    except OSError:
+        return
     if target.is_file():
         target.unlink()
 
 
 def load_photo_content(photo_path: str) -> tuple[bytes, str] | None:
-    target = uploads_dir() / photo_path
+    safe = _safe_photo_rel(photo_path)
+    if not safe:
+        return None
+    root = uploads_dir().resolve()
+    target = (root / safe).resolve()
+    try:
+        target.relative_to(root)
+    except ValueError:
+        return None
     if target.is_file():
         content_type = _content_type(target.suffix.lower())
         return target.read_bytes(), content_type
     if minio_configured():
-        return get_object_bytes(photo_path)
+        return get_object_bytes(safe)
     return None

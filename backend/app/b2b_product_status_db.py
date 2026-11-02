@@ -804,6 +804,283 @@ def set_b2b_product_status_office_access(
     return access
 
 
+def get_b2b_product_status_office_projects(db: Session, *, gid: str) -> dict[str, Any]:
+    """Справочник проектов координации и диапазонов приоритета для офиса (в т.ч. неактивные)."""
+    office = _load_office(db, gid=gid)
+    if office is None:
+        raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
+    rows = db.execute(
+        text(
+            """
+            SELECT
+                p.id,
+                p.name,
+                p.sort_order,
+                p.is_active,
+                pr.range_from,
+                pr.range_to
+            FROM b2b_product_status_project AS p
+            LEFT JOIN LATERAL (
+                SELECT range_from, range_to
+                FROM b2b_product_status_project_priority
+                WHERE project_id = p.id
+                  AND is_active = TRUE
+                ORDER BY sort_order, range_from, id
+                LIMIT 1
+            ) AS pr ON TRUE
+            WHERE p.office_id = :office_id
+            ORDER BY p.is_active DESC, p.sort_order, p.id
+            """
+        ),
+        {"office_id": int(office["id"])},
+    ).mappings()
+    projects: list[dict[str, Any]] = []
+    for row in rows:
+        range_from = row.get("range_from")
+        range_to = row.get("range_to")
+        projects.append(
+            {
+                "id": int(row["id"]),
+                "name": str(row["name"]),
+                "sortOrder": int(row["sort_order"] or 0),
+                "rangeFrom": int(range_from) if range_from is not None else 1,
+                "rangeTo": int(range_to) if range_to is not None else 1,
+                "isActive": bool(row["is_active"]),
+            }
+        )
+    return {"gid": office["gid"], "name": office["name"], "projects": projects}
+
+
+def _validate_office_project_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    seen_names: set[str] = set()
+    active_ranges: list[tuple[int, int, str]] = []
+    for index, raw in enumerate(items):
+        name = str(raw.get("name") or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail=f"Проект #{index + 1}: пустое имя.")
+        name_key = name.casefold()
+        if name_key in seen_names:
+            raise HTTPException(status_code=400, detail=f"Дублируется имя проекта «{name}».")
+        seen_names.add(name_key)
+        try:
+            range_from = int(raw.get("rangeFrom"))
+            range_to = int(raw.get("rangeTo"))
+            sort_order = int(raw.get("sortOrder") if raw.get("sortOrder") is not None else (index + 1) * 10)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Проект «{name}»: укажите целые числа в полях «от» и «до» "
+                    f"(например, от 1 до 49)."
+                ),
+            ) from exc
+        if range_from < 1:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Проект «{name}»: начало приоритета должно быть не меньше 1 "
+                    f"(сейчас «от» = {range_from})."
+                ),
+            )
+        if range_to < range_from:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Проект «{name}»: конец приоритета («до» = {range_to}) "
+                    f"не может быть меньше начала («от» = {range_from})."
+                ),
+            )
+        is_active = bool(raw.get("isActive", True))
+        if is_active:
+            for other_from, other_to, other_name in active_ranges:
+                if not (range_to < other_from or range_from > other_to):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"Диапазоны «{name}» ({range_from}–{range_to}) и "
+                            f"«{other_name}» ({other_from}–{other_to}) пересекаются."
+                        ),
+                    )
+            active_ranges.append((range_from, range_to, name))
+        project_id = raw.get("id")
+        normalized.append(
+            {
+                "id": int(project_id) if project_id is not None else None,
+                "name": name,
+                "sortOrder": sort_order,
+                "rangeFrom": range_from,
+                "rangeTo": range_to,
+                "isActive": is_active,
+            }
+        )
+    return normalized
+
+
+def set_b2b_product_status_office_projects(
+    db: Session,
+    *,
+    gid: str,
+    projects: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Полная замена справочника проектов офиса (создать / обновить / деактивировать)."""
+    office = _load_office(db, gid=gid)
+    if office is None:
+        raise HTTPException(status_code=404, detail=f"Офис gid={gid} не найден.")
+    office_id = int(office["id"])
+    items = _validate_office_project_items(projects)
+
+    existing = [
+        dict(row)
+        for row in db.execute(
+            text(
+                """
+                SELECT id, name, is_active
+                FROM b2b_product_status_project
+                WHERE office_id = :office_id
+                """
+            ),
+            {"office_id": office_id},
+        ).mappings()
+    ]
+    by_id = {int(row["id"]): row for row in existing}
+    by_name = {str(row["name"]).casefold(): int(row["id"]) for row in existing}
+
+    kept_ids: set[int] = set()
+    for item in items:
+        project_id = item["id"]
+        if project_id is not None and project_id not in by_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Проект id={project_id} не принадлежит офису {gid}.",
+            )
+        if project_id is None:
+            existing_id = by_name.get(item["name"].casefold())
+            if existing_id is not None:
+                project_id = existing_id
+        range_label = f"{item['rangeFrom']}-{item['rangeTo']}"
+        if project_id is None:
+            inserted = db.execute(
+                text(
+                    """
+                    INSERT INTO b2b_product_status_project (office_id, name, sort_order, is_active)
+                    VALUES (:office_id, :name, :sort_order, :is_active)
+                    RETURNING id
+                    """
+                ),
+                {
+                    "office_id": office_id,
+                    "name": item["name"],
+                    "sort_order": item["sortOrder"],
+                    "is_active": item["isActive"],
+                },
+            ).first()
+            project_id = int(inserted._mapping["id"])
+        else:
+            db.execute(
+                text(
+                    """
+                    UPDATE b2b_product_status_project
+                    SET name = :name,
+                        sort_order = :sort_order,
+                        is_active = :is_active
+                    WHERE id = :id
+                      AND office_id = :office_id
+                    """
+                ),
+                {
+                    "id": project_id,
+                    "office_id": office_id,
+                    "name": item["name"],
+                    "sort_order": item["sortOrder"],
+                    "is_active": item["isActive"],
+                },
+            )
+        db.execute(
+            text(
+                """
+                UPDATE b2b_product_status_project_priority
+                SET is_active = FALSE
+                WHERE project_id = :project_id
+                """
+            ),
+            {"project_id": project_id},
+        )
+        if item["isActive"]:
+            updated = db.execute(
+                text(
+                    """
+                    UPDATE b2b_product_status_project_priority
+                    SET name = :name,
+                        range_from = :range_from,
+                        range_to = :range_to,
+                        sort_order = 10,
+                        is_active = TRUE
+                    WHERE id = (
+                        SELECT id
+                        FROM b2b_product_status_project_priority
+                        WHERE project_id = :project_id
+                        ORDER BY id
+                        LIMIT 1
+                    )
+                    """
+                ),
+                {
+                    "project_id": project_id,
+                    "name": range_label,
+                    "range_from": item["rangeFrom"],
+                    "range_to": item["rangeTo"],
+                },
+            )
+            if updated.rowcount == 0:
+                db.execute(
+                    text(
+                        """
+                        INSERT INTO b2b_product_status_project_priority (
+                            project_id, name, range_from, range_to, sort_order, is_active
+                        )
+                        VALUES (
+                            :project_id, :name, :range_from, :range_to, 10, TRUE
+                        )
+                        """
+                    ),
+                    {
+                        "project_id": project_id,
+                        "name": range_label,
+                        "range_from": item["rangeFrom"],
+                        "range_to": item["rangeTo"],
+                    },
+                )
+        kept_ids.add(project_id)
+
+    for existing_id in by_id:
+        if existing_id in kept_ids:
+            continue
+        db.execute(
+            text(
+                """
+                UPDATE b2b_product_status_project
+                SET is_active = FALSE
+                WHERE id = :id
+                """
+            ),
+            {"id": existing_id},
+        )
+        db.execute(
+            text(
+                """
+                UPDATE b2b_product_status_project_priority
+                SET is_active = FALSE
+                WHERE project_id = :project_id
+                """
+            ),
+            {"project_id": existing_id},
+        )
+
+    db.commit()
+    return get_b2b_product_status_office_projects(db, gid=gid)
+
+
 def set_b2b_product_status_office_editing_locked(
     db: Session,
     *,

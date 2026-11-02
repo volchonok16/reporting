@@ -26,6 +26,7 @@ import {
 import { computeRevenueColumnTotals, withRevenueResult } from './revenueActivitiesColumns'
 import ProductStatusColumnFilter, { rowMatchesColumnFilters } from './ProductStatusColumnFilter'
 import ProductStatusOfficeAccess from './ProductStatusOfficeAccess'
+import ProductStatusOfficeProjects from './ProductStatusOfficeProjects'
 import ProductStatusSchedule from './ProductStatusSchedule'
 import type { ChangeRequest, TaskLookupResponse } from './zniTypes'
 import ZniDetailModal from './ZniDetailModal'
@@ -2234,7 +2235,27 @@ export default function ProductStatusWorkbook({
             <ProductStatusSchedule apiBase={apiBase} />
           ) : null}
           {enableOfficeEditLock && activeGid && activeSheet && !activeSheet.readOnly && viewMode === 'table' ? (
-            <ProductStatusOfficeAccess apiBase={apiBase} gid={activeGid} officeName={activeSheet.name} />
+            <>
+              <ProductStatusOfficeAccess apiBase={apiBase} gid={activeGid} officeName={activeSheet.name} />
+              <ProductStatusOfficeProjects
+                apiBase={apiBase}
+                gid={activeGid}
+                officeName={activeSheet.name}
+                onSaved={(meta) => {
+                  setSheets((current) =>
+                    current.map((sheet) =>
+                      sheet.gid === activeGid
+                        ? {
+                            ...sheet,
+                            projects: meta.projects,
+                            projectPriorityRanges: meta.projectPriorityRanges,
+                          }
+                        : sheet,
+                    ),
+                  )
+                }}
+              />
+            </>
           ) : null}
           {(enableExcelExport || enablePresentationExport) ? (
             <div className="product-status-toolbar-actions-group">

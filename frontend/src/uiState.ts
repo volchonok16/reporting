@@ -6,10 +6,9 @@ export type SheetId =
   | 'product-status-b2b'
   | 'revenue-activities'
   | 'gov-initiatives'
+  | 'canvas-studio'
   | 'roadmap'
-  | 'youjail-board'
   | 'departments'
-  | 'diagrams'
   | 'planning'
   | 'voice'
 
@@ -71,6 +70,7 @@ type UiState = {
   b2bNewsGid?: string | null
   revenueActivitiesGid?: string | null
   revenueActivitiesRowNumberDirection?: RevenueRowNumberDirection
+  govInitiativesRowNumberDirection?: RevenueRowNumberDirection
   b2bPanel?: B2bPanelId
   org?: Partial<OrgUiState>
   planning?: Partial<PlanningUiState>
@@ -97,10 +97,9 @@ const WORKBOOK_SHEETS: SheetId[] = [
   'product-status-b2b',
   'revenue-activities',
   'gov-initiatives',
+  'canvas-studio',
   'roadmap',
-  'youjail-board',
   'departments',
-  'diagrams',
   'planning',
   'voice',
 ]
@@ -122,6 +121,9 @@ export function loadActiveSheet(): SheetId {
   }
   if (sheet === 'digital-plan') {
     return 'roadmap'
+  }
+  if (sheet === 'youjail-board' || sheet === 'diagrams') {
+    return 'zni'
   }
   if (sheet && WORKBOOK_SHEETS.includes(sheet as SheetId)) {
     return sheet as SheetId
@@ -230,6 +232,14 @@ export function loadRevenueActivitiesRowNumberDirection(): RevenueRowNumberDirec
 
 export function saveRevenueActivitiesRowNumberDirection(direction: RevenueRowNumberDirection): void {
   writeUiState({ revenueActivitiesRowNumberDirection: direction })
+}
+
+export function loadGovInitiativesRowNumberDirection(): RevenueRowNumberDirection {
+  return readUiState().govInitiativesRowNumberDirection === 'bottom' ? 'bottom' : 'top'
+}
+
+export function saveGovInitiativesRowNumberDirection(direction: RevenueRowNumberDirection): void {
+  writeUiState({ govInitiativesRowNumberDirection: direction })
 }
 
 export function loadB2bPanel(): B2bPanelId {

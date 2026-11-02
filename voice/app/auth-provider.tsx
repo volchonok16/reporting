@@ -285,6 +285,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setEmbedded(isEmbed);
 
     const onParentMessage = (event: MessageEvent) => {
+      try {
+        if (event.source !== window.parent || window.parent === window) return;
+      } catch {
+        return;
+      }
       const data = event.data;
       if (!data || typeof data !== "object") return;
       if (data.type === "reporting-sso" && typeof data.token === "string") {

@@ -105,6 +105,21 @@ class Settings(BaseSettings):
         alias="VOICE_SSO_SECRET",
         description="Общий секрет HMAC для SSO во вкладку Voice (должен совпадать с carousel/Voice API в backend).",
     )
+    canvas_studio_sso_secret: str = Field(
+        default="reporting-canvas-studio-sso-dev-secret",
+        alias="CANVAS_STUDIO_SSO_SECRET",
+        description="Общий секрет HMAC для SSO во вкладку Симметрика (должен совпадать с CS_REPORTING_SSO_SECRET).",
+    )
+    app_env: str = Field(
+        default="development",
+        alias="APP_ENV",
+        description="development | production. В production дефолтные SSO/MinIO-секреты запрещены.",
+    )
+    session_ttl_hours: int = Field(
+        default=72,
+        alias="SESSION_TTL_HOURS",
+        description="Срок жизни сессии reporting (часов) с момента создания.",
+    )
     tfs_sync_pat: str = Field(
         default="",
         alias="TFS_SYNC_PAT",
@@ -232,23 +247,6 @@ class Settings(BaseSettings):
         default="/app/uploads",
         alias="ORG_UPLOADS_DIR",
         description="Локальный каталог фото сотрудников (fallback, если MinIO недоступен).",
-    )
-    youjail_workspace_dir: str = Field(
-        default="/app/youjail-workspace",
-        alias="YOUJAIL_WORKSPACE_DIR",
-        description="Корень git worktree и вложений YouJail.",
-    )
-    youjail_executor_command: str = Field(
-        default="",
-        alias="YOUJAIL_EXECUTOR_COMMAND",
-        description=(
-            "Команда исполнителя: шаблон с {worktree_path}, {title}, {description}, {card_id}. "
-            "Пусто — демо-режим (лог без реального агента)."
-        ),
-    )
-    youjail_max_attachment_bytes: int = Field(
-        default=50 * 1024 * 1024,
-        alias="YOUJAIL_MAX_ATTACHMENT_BYTES",
     )
     minio_endpoint: str = Field(
         default="",

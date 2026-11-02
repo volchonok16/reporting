@@ -12,6 +12,7 @@ import { employeeApiRef, employeeApiRefFromId } from './employeeMentions'
 import OrgPhoto from './OrgPhoto'
 import OrgFilterIcon from './OrgFilterIcon'
 import AppPageMultiSelect from './AppPageMultiSelect'
+import EmployeeOverlapMultiSelect from './EmployeeOverlapMultiSelect'
 import { buildHolidayKeySet } from './ruPublicHolidays'
 import { MONTH_NAMES_FULL, WEEKDAY_NAMES, getMonthDays, isWeekendDay, toDayKey } from './scheduleUtils'
 import type {
@@ -172,6 +173,7 @@ const EMPTY_EMPLOYEE = {
   userVoiceOnly: false,
   userVoiceAdmin: false,
   userPlanningAccess: false,
+  vacationOverlapEmployeeIds: [] as number[],
 }
 
 const EMPTY_DEPARTMENT = {
@@ -298,6 +300,22 @@ export default function Departments({
     () => (editingEmployeeId ? employeeById.get(editingEmployeeId) ?? null : null),
     [editingEmployeeId, employeeById],
   )
+  const vacationOverlapOptions = useMemo(() => {
+    const departmentId = employeeDepartmentIds[0]
+    if (departmentId == null) return []
+    return employees
+      .filter((emp) => {
+        if (editingEmployeeId != null && emp.id === editingEmployeeId) return false
+        if (!emp.isActive) return false
+        return emp.departments.some((dept) => dept.departmentId === departmentId)
+      })
+      .map((emp) => ({
+        id: emp.id,
+        publicId: emp.publicId,
+        name: emp.fullName,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' }))
+  }, [employeeDepartmentIds, employees, editingEmployeeId])
   const employeeOfficeMonthDays = useMemo(
     () => getMonthDays(employeeOfficeYear, employeeOfficeMonth),
     [employeeOfficeYear, employeeOfficeMonth],
@@ -658,6 +676,7 @@ export default function Departments({
         emp.user?.planningAccess ||
           (emp.allowedPageKeys ?? emp.user?.allowedPageKeys ?? []).includes('planning'),
       ),
+      vacationOverlapEmployeeIds: [...(emp.vacationOverlapEmployeeIds ?? [])],
     })
     setShowEmployeeModal(true)
   }
@@ -726,6 +745,7 @@ export default function Departments({
       userVoiceOnly: employeeForm.userVoiceOnly,
       userVoiceAdmin: employeeForm.userVoiceAdmin,
       userPlanningAccess: employeeForm.userPlanningAccess,
+      vacationOverlapEmployeeIds: employeeForm.vacationOverlapEmployeeIds,
       departmentIds: employeeDepartmentIds,
     }
     setSavingEmployee(true)
@@ -757,6 +777,7 @@ export default function Departments({
               }
             : {}),
           departmentIds: body.departmentIds,
+          vacationOverlapEmployeeIds: body.vacationOverlapEmployeeIds,
         })
       } else {
         const created = await postJson<Employee>('/api/org/employees', body)
@@ -1420,6 +1441,27 @@ export default function Departments({
                     По умолчанию 28 календарных дней. Праздничные дни в период отпуска норму не расходуют.
                   </p>
                   <label>
+                    Не пересекать отпуск с
+                    <EmployeeOverlapMultiSelect
+                      options={vacationOverlapOptions}
+                      value={employeeForm.vacationOverlapEmployeeIds.filter((id) =>
+                        vacationOverlapOptions.some((option) => option.id === id),
+                      )}
+                      onChange={(ids) =>
+                        setEmployeeForm({ ...employeeForm, vacationOverlapEmployeeIds: ids })
+                      }
+                      placeholder={
+                        employeeDepartmentIds[0] == null
+                          ? '— сначала выберите отдел —'
+                          : '— выберите сотрудников отдела —'
+                      }
+                      disabled={employeeDepartmentIds[0] == null}
+                    />
+                  </label>
+                  <p className="org-hint">
+                    Только коллеги того же отдела, по алфавиту. Взаимный запрет пересечения дней отпуска.
+                  </p>
+                  <label>
                     Должность
                     <select
                       value={employeeForm.positionId}
@@ -1459,7 +1501,32 @@ export default function Departments({
                         value={employeeDepartmentIds[0] ?? ''}
                         onChange={(e) => {
                           const value = e.target.value
-                          setEmployeeDepartmentIds(value ? [Number(value)] : [])
+                          const nextDepartmentIds = value ? [Number(value)] : []
+                          setEmployeeDepartmentIds(nextDepartmentIds)
+                          const departmentId = nextDepartmentIds[0]
+                          if (departmentId == null) {
+                            setEmployeeForm((current) => ({
+                              ...current,
+                              vacationOverlapEmployeeIds: [],
+                            }))
+                            return
+                          }
+                          const allowed = new Set(
+                            employees
+                              .filter(
+                                (emp) =>
+                                  emp.isActive &&
+                                  emp.id !== editingEmployeeId &&
+                                  emp.departments.some((dept) => dept.departmentId === departmentId),
+                              )
+                              .map((emp) => emp.id),
+                          )
+                          setEmployeeForm((current) => ({
+                            ...current,
+                            vacationOverlapEmployeeIds: current.vacationOverlapEmployeeIds.filter((id) =>
+                              allowed.has(id),
+                            ),
+                          }))
                         }}
                       >
                         <option value="">— не выбран —</option>

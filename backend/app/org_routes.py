@@ -142,15 +142,13 @@ def _load_session_meta_basic(
 
 
 def require_org_admin(meta: dict = Depends(_load_session_meta)) -> dict:
+    from app.app_access import can_manage_org
+
     if meta.get("app_role") == "roadmap":
         raise HTTPException(status_code=403, detail="Недостаточно прав.")
-    if meta.get("org_user_role") in {"admin", "superadmin"}:
-        return meta
-    if meta.get("auth_mode") == "app_user" and meta.get("app_role") == "full":
-        return meta
-    if meta.get("auth_mode") == "pat":
-        return meta
-    raise HTTPException(status_code=403, detail="Недостаточно прав для управления отделами.")
+    if not can_manage_org(meta):
+        raise HTTPException(status_code=403, detail="Недостаточно прав для управления отделами.")
+    return meta
 
 
 @router.get("/app-pages", response_model=list[AppPageOut])
@@ -264,7 +262,13 @@ def api_create_employee(
     db: Session = Depends(get_db),
     meta: dict = Depends(require_org_admin),
 ) -> EmployeeOut:
-    return create_employee(db, data, allow_full_page_acl=meta.get("org_user_role") == "superadmin")
+    actor_id = int(meta["org_user_id"]) if meta.get("org_user_id") else None
+    return create_employee(
+        db,
+        data,
+        allow_full_page_acl=meta.get("org_user_role") == "superadmin",
+        actor_org_user_id=actor_id,
+    )
 
 
 @router.patch("/employees/{employee_ref}", response_model=EmployeeOut)
@@ -274,11 +278,13 @@ def api_update_employee(
     db: Session = Depends(get_db),
     meta: dict = Depends(require_org_admin),
 ) -> EmployeeOut:
+    actor_id = int(meta["org_user_id"]) if meta.get("org_user_id") else None
     return update_employee(
         db,
         employee_ref,
         data,
         allow_full_page_acl=meta.get("org_user_role") == "superadmin",
+        actor_org_user_id=actor_id,
     )
 
 
@@ -561,12 +567,24 @@ def api_delete_workspace_place(
 
 
 @router.get("/photos/{photo_path:path}")
-def api_serve_photo(photo_path: str) -> Response:
+def api_serve_photo(
+    photo_path: str,
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    sid: str | None = Query(default=None, description="Сессия для <img src> (без custom headers)"),
+) -> Response:
+    # img не шлёт X-Session-Id — допускаем ?sid= (тот же одноразовый session id).
+    auth, _meta = get_session_with_meta(x_session_id or sid)
+    if auth is None:
+        raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
     loaded = load_photo_content(photo_path)
     if loaded is None:
         raise HTTPException(status_code=404, detail="Фото не найдено.")
     body, content_type = loaded
-    return Response(content=body, media_type=content_type)
+    return Response(
+        content=body,
+        media_type=content_type,
+        headers={"Cache-Control": "private, max-age=300"},
+    )
 
 
 profile_router = APIRouter(prefix="/api/profile", tags=["profile"])

@@ -45,21 +45,12 @@ rectangle "Система reporting" {
     usecase "Roadmap колбаски\nприоритет / комментарий" as UC_ROADMAP
   }
 
-  package "Доска YouJail" {
-    usecase "Kanban доски\nкарточки, теги" as UC_YJ
-    usecase "Связь карточки ↔ ЗНИ" as UC_YJ_ZNI
-  }
-
   package "Staffing" {
     usecase "График отпусков" as UC_VAC
     usecase "Бронь мест" as UC_BOOK
     usecase "Сотрудники в офисе" as UC_OFFICE
     usecase "Состав / пирамида\nоргсхема" as UC_ORG
     usecase "Фото в MinIO" as UC_PHOTO
-  }
-
-  package "Диаграммы" {
-    usecase "Конструктор диаграмм\n(UI)" as UC_DIAG
   }
 
   package "Отчётность BI" {
@@ -86,13 +77,10 @@ user --> UC_B2B
 user --> UC_NEWS
 user --> UC_PPTX
 user --> UC_ROADMAP
-user --> UC_YJ
-user --> UC_YJ_ZNI
 user --> UC_VAC
 user --> UC_BOOK
 user --> UC_OFFICE
 user --> UC_ORG
-user --> UC_DIAG
 user --> UC_PHOTO
 
 admin --> UC_ORG

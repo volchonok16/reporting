@@ -1,5 +1,14 @@
 # Безопасность и эксплуатация
 
+## Auth через reporting (iframe)
+
+Вкладка Voice в workbook: SSO только через reporting. Подробная матрица: [docs/auth-and-roles.md](../../docs/auth-and-roles.md).
+
+- `POST /api/voice/sso-token` (reporting) — нужна сессия и page ACL `voice` (или `voice_only`); при `must_change_password` / inactive — отказ.
+- Токен **не** передаётся в query iframe; только `postMessage` (`reporting-sso` / `voice-auth-required`) с проверкой `event.source === iframe` / `parent`.
+- Секрет: `VOICE_SSO_SECRET`; при `APP_ENV=production` дефолтные/короткие секреты запрещены на старте reporting backend.
+- Dev-порт `voice-web` слушает `127.0.0.1` ([docker.md](../../docs/docker.md)).
+
 ## Граница доверия
 
 Все загрузки считаются недоверенными. Формат определяется по содержимому и

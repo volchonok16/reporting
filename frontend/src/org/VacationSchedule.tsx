@@ -346,6 +346,7 @@ export default function VacationSchedule({
       await load({ silent: true })
     } catch (err) {
       notifyProblem(err, 'Ошибка сохранения')
+      await load({ silent: true })
     } finally {
       setSaving(false)
       setRangeStart(null)

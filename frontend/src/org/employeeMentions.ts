@@ -36,7 +36,7 @@ export function renderEmployeeMentionHtml(_match: string, name: string, employee
   const safeRef = employeeRef
     .replace(/&/g, '&amp;')
     .replace(/"/g, '&quot;')
-  return `<button type="button" class="youjail-mention-chip" data-employee-ref="${safeRef}">${safeName}</button>`
+  return `<button type="button" class="org-mention-chip" data-employee-ref="${safeRef}">${safeName}</button>`
 }
 
 export function replaceEmployeeMentionsInText(text: string): string {

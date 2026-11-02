@@ -26,11 +26,9 @@
 | Статус продукта B2B | Таблица по офисам, новости, PPTX |
 | Активности по выручкам | Активность, влияния (тыс/млн), Комментарий, Статус F2 2026, Ответственный; №; фильтры; Excel |
 | Планы Digital | Roadmap (приоритет, комментарий) |
-| Доска | YouJail kanban + связь с ЗНИ |
 | Staffing | Отпуска, бронь мест, офис, оргсхема |
-| Диаграммы | UI-конструктор схем |
 
-Вход: PAT TFS или email/пароль. Данные — **PostgreSQL**. Фото — **MinIO**.
+Вход: email/пароль (`org_user` / `APP_AUTH_*`). Sync TFS — серверный `TFS_SYNC_PAT`. Данные — **PostgreSQL**. Фото — **MinIO** (только через API с сессией). Роли/ACL: [auth-and-roles.md](auth-and-roles.md).
 
 ---
 
@@ -43,11 +41,11 @@
 | Компонент | Роль |
 |-----------|------|
 | Frontend (React) | Workbook UI |
-| Backend (FastAPI) | REST, sync, PPTX, org, YouJail |
+| Backend (FastAPI) | REST, sync, PPTX, org |
 | PostgreSQL | Все доменные данные |
-| MinIO | Фото сотрудников (`photos`) |
-| youjail workspace | Вложения доски |
+| MinIO | Фото сотрудников (`photos`, private) |
 | nginx + TLS | Production HTTPS |
+| Auth | Сессии + page ACL; SSO Voice/Симметрика (postMessage) |
 
 ---
 
@@ -57,13 +55,11 @@
 
 | Группа | Возможности |
 |--------|-------------|
-| Вход / профиль | PAT или email; кабинет, фото, офис |
+| Вход / профиль | Email/пароль; кабинет, фото, офис |
 | ЗНИ | Дашборд, sync TFS, CSV, выбор доски |
 | B2B | Статус, новости, генерация PPTX |
 | Планы | Roadmap Digital |
-| Доска | Kanban YouJail, связь с ЗНИ |
 | Staffing | Отпуск, бронь, офис, пирамида, фото → MinIO |
-| Диаграммы | Конструктор в UI |
 | BI | Время в статусах / бэклог (views → FineBI) |
 
 ---
@@ -78,7 +74,6 @@
 |-------|-------------------|
 | Задачи / TFS | `task`, `sync_run`, `auth_session` |
 | Staffing | `employee`, `workspace_booking`, `employee_time_off_day` |
-| YouJail | `youjail_board`, `youjail_card`, `youjail_card_zni` |
 | B2B | `b2b_product_status_*`, `b2b_news_*` |
 | Активности по выручкам | `revenue_activity_*` |
 
@@ -94,7 +89,6 @@
            └─ API → backend  :8000
                       ├─ PostgreSQL
                       ├─ MinIO (photos)
-                      └─ youjail workspace
 ```
 
 Запуск: `scripts/production.sh` (Docker + nginx + certbot).

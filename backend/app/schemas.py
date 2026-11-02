@@ -341,6 +341,34 @@ class ProductStatusOfficeAccessIn(BaseModel):
     skipLockUntil: str | None = None
 
 
+class ProductStatusOfficeProjectOut(BaseModel):
+    id: int
+    name: str
+    sortOrder: int
+    rangeFrom: int
+    rangeTo: int
+    isActive: bool = True
+
+
+class ProductStatusOfficeProjectIn(BaseModel):
+    id: int | None = None
+    name: str = Field(..., min_length=1)
+    sortOrder: int = 0
+    rangeFrom: int = Field(..., ge=1)
+    rangeTo: int = Field(..., ge=1)
+    isActive: bool = True
+
+
+class ProductStatusOfficeProjectsOut(BaseModel):
+    gid: str
+    name: str
+    projects: list[ProductStatusOfficeProjectOut] = Field(default_factory=list)
+
+
+class ProductStatusOfficeProjectsIn(BaseModel):
+    projects: list[ProductStatusOfficeProjectIn] = Field(default_factory=list)
+
+
 class ProductStatusScheduleOut(BaseModel):
     reminder: ProductStatusScheduleSlotOut
 

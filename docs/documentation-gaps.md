@@ -6,13 +6,15 @@
 
 | Документ | Статус |
 |----------|--------|
-| [glossary.md](glossary.md) | Хорошо по БД и TFS; устарели REST API и права |
-| [database-overview.md](database-overview.md) | Обзор таблиц OK; REST и счётчик таблиц — неверны |
-| [data-dictionary.md](data-dictionary.md) | Краткая выжимка; нет org/B2B/Roadmap полей |
-| [docker.md](docker.md) | Dev/prod/MinIO OK; не все env и скрипты |
+| [glossary.md](glossary.md) | БД/TFS OK; auth/ACL/SSO актуализированы |
+| [database-overview.md](database-overview.md) | Обзор таблиц + ссылка auth; полный REST — всё ещё в backlog |
+| [data-dictionary.md](data-dictionary.md) | Auth payload/TTL и simmetrika_* обновлены |
+| [docker.md](docker.md) | MinIO private, Auth/SSO env, CS_DATABASE_URL |
+| [auth-and-roles.md](auth-and-roles.md) | **Актуален** — роли, page ACL, SSO, фото, rate limit |
+| [admin-guide.md](admin-guide.md) | **Актуален** — что/куда для админа (UI / `.env` / SQL) |
 | [teams.md](teams.md) | Актуален |
-| [diagrams.md](diagrams.md) | Обновлено: architecture / use case / ER включают Staffing, YouJail, B2B+PPTX, Планы, Диаграммы |
-| [README.md](../README.md) | Обновлено: полный workbook |
+| [diagrams.md](diagrams.md) | MinIO private + ссылка auth |
+| [README.md](../README.md) | Ссылки на auth-and-roles и INTEGRATION |
 
 ---
 
@@ -30,9 +32,9 @@
 
 ### 1. README / диаграммы — ранее устаревшие, обновлены
 
-Workbook (ЗНИ, B2B, Планы, Доска, Staffing, Диаграммы) отражён в [README.md](../README.md) и [diagrams.md](diagrams.md). Осталось: полный каталог API (`docs/api.md`), матрица ролей.
+Workbook (ЗНИ, B2B, Staffing, Планирование, Voice) отражён в [README.md](../README.md) и [diagrams.md](diagrams.md). Матрица ролей — [auth-and-roles.md](auth-and-roles.md). Осталось: полный каталог API (`docs/api.md`).
 
-~~**Действие:** переписать разделы «Текущий этап», «Возможности»~~ — **сделано** (июль 2026). Остаточное: личный кабинет и роли — см. п. 3.
+~~**Действие:** переписать разделы «Текущий этап», «Возможности»~~ — **сделано**. Роли — п. 3 (частично закрыто).
 
 ---
 
@@ -61,7 +63,7 @@ Workbook (ЗНИ, B2B, Планы, Доска, Staffing, Диаграммы) о�
 - Обычные `org_user` (role=10) и пользователи `APP_AUTH_*` **не** получают `canSyncTfs`, хотя PAT на сервере может быть.
 - Роль `roadmap` видит вкладки **Планы + Staffing**, не только Планы (`WorkbookApp.tsx`).
 
-**Действие:** новый файл `docs/auth-and-roles.md` — матрица ролей, `canSyncTfs`, `canManageOrg`, `require_full_app_access`; исправить glossary § `APP_AUTH_ROADMAP_USERS`.
+**Сделано:** [auth-and-roles.md](auth-and-roles.md) — матрица ролей, page ACL, SSO, сессии/TTL, MinIO фото, rate limit. Glossary § `auth_session` / `must_change_password` / Voice SSO обновлены. Уточнить в коде/доках расхождение «roadmap видит Staffing» vs «только Планы», если UI всё ещё показывает Staffing roadmap-пользователям.
 
 ---
 
@@ -181,7 +183,8 @@ Workbook (ЗНИ, B2B, Планы, Доска, Staffing, Диаграммы) о�
 | Файл | Содержание | Приоритет |
 |------|------------|-----------|
 | **`docs/api.md`** | Полный REST: auth, dashboard params, sync, export, tasks, product-status, b2b-news, org, profile | Critical |
-| **`docs/auth-and-roles.md`** | PAT / APP_AUTH / org_user / admin; `canSyncTfs`, `canManageOrg`, `app_role` | Critical |
+| **`docs/auth-and-roles.md`** | ~~создан~~ — сессии, page ACL, SSO, MinIO фото, rate limit; дополнять `canSyncTfs` деталями при расхождениях | Done (поддерживать) |
+| **`docs/admin-guide.md`** | ~~создан~~ — что/куда: пользователи, ACL, TFS, B2B, Voice/Симметрика, prod-чеклист | Done (поддерживать) |
 | **`docs/org-module.md`** | Staffing (7 подвкладок), права, MinIO фото, оргсхема, отпуска/бронь/присутствие | Important |
 | **`docs/product-status-b2b.md`** | UI, Google Sheets, Excel/PPTX, env, кеш | Important |
 | **`docs/roadmap.md`** | Вкладка Планы: kanban, локальные поля, ограничения roadmap-role | Important |
@@ -192,17 +195,18 @@ Workbook (ЗНИ, B2B, Планы, Доска, Staffing, Диаграммы) о�
 
 ### Быстрые правки (1–2 часа)
 
-- [ ] README: актуальные вкладки, auth, MinIO, ссылка на этот файл
-- [ ] glossary + database-overview: `/api/export`, `/api/sync/{sync_id}`, login/password
-- [ ] database-overview: «34 таблицы + 4 views»
-- [ ] glossary: исправить § `APP_AUTH_ROADMAP_USERS` и sync-права
+- [x] README: ссылка на auth-and-roles, MinIO private
+- [x] glossary / database-overview / docker: сессии, ACL, SSO, фото
+- [ ] database-overview: актуальный счётчик таблиц + views
 - [ ] glossary + data-dictionary: `ect_acceptance`, `TFS_ECT_ACCEPTANCE_TYPE_VALUES`
+- [ ] сверить UI roadmap (Staffing) с [auth-and-roles.md](auth-and-roles.md)
 
 ### Средний объём (полдня)
 
 - [ ] `docs/api.md` — каталог endpoint'ов
-- [ ] `docs/auth-and-roles.md`
-- [ ] data-dictionary: ключи `extra_json`, auth payload, org-таблицы
+- [x] `docs/auth-and-roles.md`
+- [x] `docs/admin-guide.md`
+- [x] data-dictionary: auth payload / TTL (частично)
 - [ ] diagrams.md + plantuml: org-таблицы в ER
 
 ### Крупные разделы (1+ день)

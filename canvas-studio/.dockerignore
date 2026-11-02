@@ -1,0 +1,8 @@
+.git
+data
+dist
+.tmp-pptx
+**/.DS_Store
+**/*.log
+README.md
+docs/BUGS.md

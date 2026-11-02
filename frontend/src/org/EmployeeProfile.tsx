@@ -12,10 +12,9 @@ const APP_PAGE_LABELS: Record<string, string> = {
   products: 'Продукты',
   'product-status-b2b': 'Статус продукта B2B',
   'gov-initiatives': 'Госинициативы',
+  'canvas-studio': 'Симметрика',
   roadmap: 'Планы Digital',
-  'youjail-board': 'Доска',
   departments: 'Staffing',
-  diagrams: 'Диаграммы',
   planning: 'Планирование',
   voice: 'Voice',
 }

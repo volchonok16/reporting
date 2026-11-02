@@ -298,32 +298,6 @@ package "Staffing / Org" #E8FCE8 {
   }
 }
 
-package "YouJail (Доска)" #FFF0E0 {
-  class youjail_board <<table>> {
-    +id : bigserial PK
-    slug : varchar
-    owner_employee_id : FK
-  }
-
-  class youjail_column <<table>> {
-    +id : bigserial PK
-    board_id : FK
-    name : varchar
-  }
-
-  class youjail_card <<table>> {
-    +id : bigserial PK
-    board_id : FK
-    column_id : FK
-    title : varchar
-  }
-
-  class youjail_card_zni <<table>> {
-    card_id : FK
-    task_id : FK
-  }
-}
-
 package "Статус продукта B2B" #E0F0FF {
   class b2b_product_status_office <<table>> {
     +id : bigserial PK
@@ -438,12 +412,6 @@ employee "1" -- "0..*" workspace_booking
 employee "1" -- "0..*" employee_office_day
 workspace_place "1" -- "0..*" workspace_booking
 department "0..1" -- "0..*" org_chart_layout
-
-youjail_board "1" -- "0..*" youjail_column
-youjail_board "1" -- "0..*" youjail_card
-youjail_column "1" -- "0..*" youjail_card
-youjail_card "1" -- "0..*" youjail_card_zni
-task "1" -- "0..*" youjail_card_zni
 
 b2b_product_status_office "1" -- "0..*" b2b_product_status_row
 b2b_product_status_office "1" -- "0..*" b2b_product_status_project

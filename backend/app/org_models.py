@@ -230,6 +230,23 @@ class VacationPlanningUnlock(Base):
     unlocked_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class VacationOverlapBlock(Base):
+    """Неупорядоченная пара сотрудников: отпуска не должны пересекаться."""
+
+    __tablename__ = "vacation_overlap_block"
+
+    employee_id_a: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("employee.id", ondelete="CASCADE"), primary_key=True
+    )
+    employee_id_b: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("employee.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_by_org_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("org_user.id", ondelete="SET NULL")
+    )
+
+
 class EmployeeOfficeDay(Base):
     __tablename__ = "employee_office_day"
 

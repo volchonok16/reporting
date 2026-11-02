@@ -2,11 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch, clearSessionId, getJson } from './api'
 import Dashboard from './Dashboard'
 import Products from './Products'
-import DiagramBuilder from './DiagramBuilder'
 import ProductStatusB2B from './ProductStatusB2B'
 import GovInitiatives from './GovInitiatives'
+import CanvasStudio from './CanvasStudio'
 import Roadmap from './Roadmap'
-import YouJailBoard from './YouJailBoard'
 import Departments from './org/Departments'
 import Planning from './planning/Planning'
 import Voice from './Voice'
@@ -30,9 +29,8 @@ const SHEETS: SheetTab[] = [
   { id: 'products', label: 'Продукты' },
   { id: 'product-status-b2b', label: 'Статус продукта B2B' },
   { id: 'gov-initiatives', label: 'Госинициативы' },
-  { id: 'youjail-board', label: 'Доска' },
+  { id: 'canvas-studio', label: 'Симметрика' },
   { id: 'departments', label: 'Staffing' },
-  { id: 'diagrams', label: 'Диаграммы' },
   { id: 'planning', label: 'Планирование' },
   { id: 'voice', label: 'Voice' },
 ]
@@ -85,12 +83,7 @@ export default function WorkbookApp({
     }
     let sheets =
       appRole === 'roadmap'
-        ? SHEETS.filter(
-            (sheet) =>
-              sheet.id === 'youjail-board' ||
-              sheet.id === 'departments' ||
-              sheet.id === 'voice',
-          )
+        ? SHEETS.filter((sheet) => sheet.id === 'departments' || sheet.id === 'voice')
         : SHEETS
     // Планирование — только при явном доступе к вкладке (или админ).
     if (!planningAccess) {
@@ -122,8 +115,7 @@ export default function WorkbookApp({
     if (voiceOnly) {
       candidate = 'voice'
     } else if (appRole === 'roadmap') {
-      candidate =
-        saved === 'departments' || saved === 'youjail-board' || saved === 'voice' ? saved : 'youjail-board'
+      candidate = saved === 'departments' || saved === 'voice' ? saved : 'departments'
     } else {
       candidate = saved === 'roadmap' ? 'zni' : saved
     }
@@ -261,10 +253,6 @@ export default function WorkbookApp({
               canEditBusinessValue={appRole === 'full'}
             />
           </div>
-        ) : activeSheet === 'youjail-board' ? (
-          <div className="app">
-            <YouJailBoard canManageOrg={canManageOrg} orgEmployeeId={orgEmployeeId} />
-          </div>
         ) : activeSheet === 'departments' ? (
           <div className="app">
             <Departments
@@ -273,12 +261,12 @@ export default function WorkbookApp({
               orgEmployeeId={orgEmployeeId}
             />
           </div>
-        ) : activeSheet === 'diagrams' ? (
-          <DiagramBuilder />
         ) : activeSheet === 'gov-initiatives' ? (
           <div className="app">
             <GovInitiatives canManageOrg={canManageOrg} />
           </div>
+        ) : activeSheet === 'canvas-studio' ? (
+          <CanvasStudio />
         ) : activeSheet === 'planning' ? (
           <div className="app">
             <Planning

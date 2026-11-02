@@ -211,9 +211,9 @@ sudo bash scripts/production.sh
 
 Если nginx работает, а сайт 502 — контейнеры не поднялись: `docker-compose ... logs backend`.
 
-### Загрузка файлов (YouJail)
+### Загрузка файлов
 
-Лимит вложений: **50 МБ** на файл (`client_max_body_size` в nginx и `YOUJAIL_MAX_ATTACHMENT_BYTES` в backend).
+Лимит вложений: **50 МБ** на файл (`client_max_body_size` в nginx).
 
 После обновления конфига nginx на сервере:
 

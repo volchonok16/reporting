@@ -24,6 +24,7 @@ const WARNING_MESSAGE_PATTERNS = [
   /нет изменений/i,
   /нет данных для сохранения/i,
   /превышена доступная загрузка/i,
+  /пересечение отпуска/i,
 ]
 
 export function isWarningMessage(message: string): boolean {

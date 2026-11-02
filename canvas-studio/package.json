@@ -1,0 +1,30 @@
+{
+  "name": "canvas-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Платформа совместного проектирования интерфейсов. Собственный код без внешних зависимостей.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "imports": {
+    "#core": "./packages/core/src/index.ts",
+    "#geometry": "./packages/geometry/src/index.ts",
+    "#layout": "./packages/layout/src/index.ts",
+    "#components": "./packages/components/src/index.ts",
+    "#render": "./packages/render/src/index.ts",
+    "#editor": "./packages/editor/src/index.ts",
+    "#server": "./packages/server/src/server.ts"
+  },
+  "scripts": {
+    "dev": "node --disable-warning=ExperimentalWarning tools/serve.mjs",
+    "build": "node --disable-warning=ExperimentalWarning tools/build.mjs",
+    "preview": "node tools/serve.mjs --dist",
+    "test": "node --test --test-reporter=spec \"packages/*/test/*.test.ts\"",
+    "typecheck": "node tools/typecheck.mjs",
+    "check": "npm run typecheck && npm test",
+    "server": "node --disable-warning=ExperimentalWarning apps/server/src/main.ts",
+    "server:dev": "node --disable-warning=ExperimentalWarning apps/server/src/main.ts --dev --port 8080"
+  }
+}

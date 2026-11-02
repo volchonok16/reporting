@@ -35,6 +35,7 @@ from app.org_models import (
 )
 from app.org_password import hash_password, verify_password
 from app.org_photo_service import delete_photo_file, photo_public_url, save_employee_photo
+from app.org_vacation_overlap import list_blocked_partner_ids, load_blocked_partner_ids_map, replace_blocked_partners
 from app.org_schemas import (
     DepartmentIn,
     DepartmentMemberIn,
@@ -131,7 +132,12 @@ def resolve_employee(db: Session, employee_ref: str) -> Employee:
     return emp
 
 
-def _employee_out(db: Session, emp: Employee) -> EmployeeOut:
+def _employee_out(
+    db: Session,
+    emp: Employee,
+    *,
+    vacation_overlap_employee_ids: list[int] | None = None,
+) -> EmployeeOut:
     manager_name = None
     manager_public_id = None
     if emp.manager_id:
@@ -174,6 +180,11 @@ def _employee_out(db: Session, emp: Employee) -> EmployeeOut:
         )
         for m in sorted(emp.department_members, key=lambda item: (item.sort_order, item.id))
     ] if emp.department_members else []
+    overlap_ids = (
+        vacation_overlap_employee_ids
+        if vacation_overlap_employee_ids is not None
+        else list_blocked_partner_ids(db, emp.id)
+    )
     return EmployeeOut(
         id=emp.id,
         publicId=str(emp.public_id),
@@ -191,6 +202,7 @@ def _employee_out(db: Session, emp: Employee) -> EmployeeOut:
         isOrganizationHead=emp.is_organization_head,
         hideFromPyramid=bool(emp.hide_from_pyramid),
         allowedPageKeys=allowed_page_keys,
+        vacationOverlapEmployeeIds=overlap_ids,
         user=user_out,
         expertises=expertises,
         departments=departments,
@@ -444,7 +456,11 @@ def list_employees(db: Session) -> list[EmployeeOut]:
         )
         .order_by(Employee.full_name)
     ).unique().all()
-    return [_employee_out(db, r) for r in rows]
+    overlap_map = load_blocked_partner_ids_map(db, [r.id for r in rows])
+    return [
+        _employee_out(db, r, vacation_overlap_employee_ids=overlap_map.get(r.id, []))
+        for r in rows
+    ]
 
 
 def get_employee(db: Session, employee_ref: str) -> EmployeeDetailOut:
@@ -517,6 +533,7 @@ def create_employee(
     data: EmployeeIn,
     *,
     allow_full_page_acl: bool = False,
+    actor_org_user_id: int | None = None,
 ) -> EmployeeOut:
     _validate_manager_cycle(db, 0, data.managerId)
     emp = Employee(
@@ -557,6 +574,13 @@ def create_employee(
         set_user_page_access(db, user.id, page_keys)
     if data.departmentIds:
         _sync_employee_departments(db, emp.id, data.departmentIds)
+    if data.vacationOverlapEmployeeIds is not None:
+        replace_blocked_partners(
+            db,
+            emp.id,
+            data.vacationOverlapEmployeeIds,
+            actor_org_user_id=actor_org_user_id,
+        )
     db.commit()
     return get_employee(db, str(emp.public_id))
 
@@ -567,6 +591,7 @@ def update_employee(
     data: EmployeeUpdateIn,
     *,
     allow_full_page_acl: bool = False,
+    actor_org_user_id: int | None = None,
 ) -> EmployeeOut:
     emp = resolve_employee(db, employee_ref)
     employee_id = emp.id
@@ -662,6 +687,13 @@ def update_employee(
     _sync_position_name(db, emp)
     if data.departmentIds is not None:
         _sync_employee_departments(db, employee_id, data.departmentIds)
+    if data.vacationOverlapEmployeeIds is not None:
+        replace_blocked_partners(
+            db,
+            employee_id,
+            data.vacationOverlapEmployeeIds,
+            actor_org_user_id=actor_org_user_id,
+        )
     db.commit()
     return get_employee(db, str(emp.public_id))
 

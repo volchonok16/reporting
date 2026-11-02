@@ -26,8 +26,8 @@
 
 ## Архитектура
 
-Workbench: **ЗНИ**, **Статус продукта B2B** (+ PPTX), **Доска YouJail**, **Staffing**, **Диаграммы**. Вкладка «Планы Digital» скрыта.  
-Инфраструктура Compose: **PostgreSQL**, **MinIO** (фото), диск **YOUJAIL_WORKSPACE_DIR**, шаблон **Status.pptx**.
+Workbench: **ЗНИ**, **Статус продукта B2B** (+ PPTX), **Staffing**, **Планирование**, **Voice**.  
+Инфраструктура Compose: **PostgreSQL**, **MinIO** (фото), шаблон **Status.pptx**.
 
 ```mermaid
 flowchart TB
@@ -46,7 +46,6 @@ flowchart TB
         PG[(PostgreSQL :5432\nreporting_pgdata)]
         MinIO[(MinIO :9000 / :9001\nbucket photos\nreporting_miniodata)]
         MinInit[minio-init\nmc mb + public read]
-        YJFS[("YOUJAIL_WORKSPACE_DIR\nвложения")]
         Uploads[("ORG_UPLOADS_DIR\nfallback фото")]
         Tpl[("assets/Status.pptx")]
     end
@@ -59,7 +58,6 @@ flowchart TB
     API --> PG
     API --> TFS
     API --> MinIO
-    API --> YJFS
     API --> Uploads
     API --> Tpl
     MinInit --> MinIO
@@ -68,7 +66,6 @@ flowchart TB
     subgraph Modules["Модули backend"]
         Sync[TFS Sync]
         Org[Org / Staffing + фото]
-        YJ[YouJail]
         B2B[B2B Status + PPTX]
         Road[Roadmap]
         Auth[Auth PAT / org_user]
@@ -77,17 +74,15 @@ flowchart TB
     API --- Modules
     Org --> MinIO
     Org --> Uploads
-    YJ --> YJFS
     B2B --> Tpl
     Sync --> TFS
 
     subgraph Tabs["Вкладки UI"]
         S1[ЗНИ]
         S2[Статус B2B / новости]
-        S3[Планы Digital]
-        S4[Доска YouJail]
         S5[Staffing]
-        S6[Диаграммы]
+        S8[Планирование]
+        S9[Voice]
         S7[Профиль]
     end
 
@@ -96,11 +91,11 @@ flowchart TB
 
 | Компонент | Назначение |
 |-----------|------------|
-| PostgreSQL | Все доменные таблицы (ЗНИ, org, YouJail, B2B), `auth_session`, sync |
-| MinIO | S3-совместимое хранилище фото (`MINIO_BUCKET=photos`) |
-| minio-init | Создаёт bucket и anonymous download |
-| `YOUJAIL_WORKSPACE_DIR` | Файлы/вложения/worktree доски |
+| PostgreSQL | Все доменные таблицы (ЗНИ, org, B2B), `auth_session`, sync |
+| MinIO | S3-совместимое хранилище фото (`MINIO_BUCKET=photos`, без anonymous) |
+| minio-init | Создаёт buckets + `anonymous set none` |
 | `ORG_UPLOADS_DIR` | Локальный fallback, если MinIO недоступен |
+| Auth / ACL | [auth-and-roles.md](auth-and-roles.md) — сессии, page ACL, SSO iframe |
 | `assets/Status.pptx` | Шаблон генерации презентаций B2B |
 | FineBI | Чтение views `v_*` из PostgreSQL |
 
@@ -116,7 +111,6 @@ flowchart LR
     N -->|:8000| BE[backend]
     BE --> PG[(postgres)]
     BE --> M[(MinIO\nphotos)]
-    BE --> YJFS[youjail workspace]
     Cert[certbot] -.->|LE cert| N
 ```
 
@@ -159,7 +153,7 @@ sequenceDiagram
 
 ## ER — база данных
 
-Ядро задач + Staffing + YouJail + B2B (полная PlantUML: [database-er.puml](../plantuml/database-er.puml)).
+Ядро задач + Staffing + B2B (полная PlantUML: [database-er.puml](../plantuml/database-er.puml)).
 
 ```mermaid
 erDiagram
@@ -168,7 +162,6 @@ erDiagram
     team ||--o{ task : assigned
     task |o--o| task : parent_child
     task ||--o{ task_status_duration : time_in_status
-    task ||--o{ youjail_card_zni : linked
     task ||--o| zni_external_data : external
     zni_category ||--o{ zni_external_data : category
 
@@ -184,10 +177,6 @@ erDiagram
     workspace_place ||--o{ workspace_booking : reserved
     employee ||--o{ employee_office_day : present
 
-    youjail_board ||--o{ youjail_column : columns
-    youjail_board ||--o{ youjail_card : cards
-    youjail_column ||--o{ youjail_card : holds
-    youjail_card ||--o{ youjail_card_zni : zni
 
     b2b_product_status_office ||--o{ b2b_product_status_row : rows
     b2b_product_status_office ||--o{ b2b_product_status_project : projects
@@ -232,11 +221,6 @@ erDiagram
         date day
     }
 
-    youjail_card {
-        bigint id PK
-        bigint board_id FK
-        varchar title
-    }
 
     b2b_product_status_row {
         bigint id PK
@@ -262,12 +246,11 @@ flowchart TB
         UC_AUTH((Вход PAT / email))
         UC_DASH((ЗНИ + sync TFS))
         UC_B2B((Статус B2B +\nPPTX))
-        UC_ROAD((Планы))
-        UC_YJ((Доска +\nфайлы на диске))
+        UC_ROAD((Планирование))
         UC_STAFF((Staffing))
         UC_PHOTO((Фото → MinIO))
         UC_ORG((Оргсхема))
-        UC_DIAG((Диаграммы UI))
+        UC_VOICE((Voice))
         UC_PROFILE((Профиль))
     end
 
@@ -279,11 +262,10 @@ flowchart TB
     A1 --> UC_DASH
     A1 --> UC_B2B
     A1 --> UC_ROAD
-    A1 --> UC_YJ
     A1 --> UC_STAFF
     A1 --> UC_PHOTO
     A1 --> UC_ORG
-    A1 --> UC_DIAG
+    A1 --> UC_VOICE
     A1 --> UC_PROFILE
     A2 --> UC_ORG
     A2 --> UC_STAFF
@@ -319,11 +301,6 @@ classDiagram
         +Date day
     }
 
-    class YouJailCard {
-        +Long id
-        +Long boardId
-        +String title
-    }
 
     class B2BStatusRow {
         +Long officeId
@@ -342,7 +319,6 @@ classDiagram
 
     Task "0..1" --> "0..*" Task : parent
     Employee "1" --> "0..*" WorkspaceBooking
-    YouJailCard "0..*" --> "0..*" Task : card_zni
     B2BStatusRow ..> Task : cells.ЗНИ
     SyncRun --> Task : upserts
 ```
@@ -394,14 +370,16 @@ sequenceDiagram
     participant M as MinIO bucket photos
     participant FS as ORG_UPLOADS_DIR
 
-    UI->>API: POST multipart photo
+    UI->>API: POST multipart photo (X-Session-Id)
     alt MinIO доступен
-        API->>M: putObject employees/…
-        API-->>UI: photo_path / URL
+        API->>M: putObject employees/… (private)
+        API-->>UI: /api/org/photos/employees/… (+ sid для img)
     else fallback
         API->>FS: save file
-        API-->>UI: local path
+        API-->>UI: тот же API-путь
     end
+    UI->>API: GET photo (?sid= или заголовок)
+    API->>M: getObject (allowlist employees/)
 ```
 
 ---

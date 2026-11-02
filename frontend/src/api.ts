@@ -50,18 +50,29 @@ export function resolvePhotoUrl(url: string | null | undefined): string | null {
     return trimmed
   }
 
-  const rewriteMinioPath = (path: string) => `${apiBase}/api/org/photos/${path.replace(/^\/+/, '')}`
+  const withSession = (url: string) => {
+    const sid = getSessionId()
+    if (!sid) return url
+    const join = url.includes('?') ? '&' : '?'
+    return `${url}${join}sid=${encodeURIComponent(sid)}`
+  }
+
+  const rewriteMinioPath = (path: string) =>
+    withSession(`${apiBase}/api/org/photos/${path.replace(/^\/+/, '')}`)
 
   if (/^https?:\/\//i.test(trimmed)) {
     const localMinio = trimmed.match(/^https?:\/\/(?:localhost|127\.0\.0\.1|minio)(?::\d+)?\/([^/]+)\/(.+)$/i)
     if (localMinio) {
       return rewriteMinioPath(localMinio[2])
     }
+    // Прямые MinIO URL больше не используем — только через API.
+    const apiPhoto = trimmed.match(/\/(?:photos|reporting)\/(.+)$/i)
+    if (apiPhoto) return rewriteMinioPath(apiPhoto[1])
     return trimmed
   }
 
   if (trimmed.startsWith('/api/')) {
-    return `${apiBase}${trimmed}`
+    return withSession(`${apiBase}${trimmed}`)
   }
 
   return rewriteMinioPath(trimmed)

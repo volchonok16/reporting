@@ -26,6 +26,7 @@ from app.org_schemas import (
     VacationScheduleOut,
     VacationTimeOffDayOut,
 )
+from app.org_vacation_overlap import assert_no_vacation_overlap
 from app.planning_calendar import is_ru_public_holiday
 from app.planning_models import ProductionCalendarDay
 
@@ -462,6 +463,19 @@ def upsert_vacation_range(db: Session, data: VacationRangeIn, meta: dict) -> Vac
             )
 
     db.flush()
+
+    # Запрет пересечения отпусков с заданными парами — всегда (не только unlocked год).
+    if data.kind == "vacation":
+        try:
+            assert_no_vacation_overlap(
+                db,
+                employee_id=employee_id,
+                from_day=start,
+                to_day=end,
+            )
+        except HTTPException:
+            db.rollback()
+            raise
 
     day_from, day_to = _year_bounds(year)
     year_rows = db.scalars(

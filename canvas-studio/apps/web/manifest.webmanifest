@@ -1,0 +1,17 @@
+{
+  "name": "Симметрика",
+  "short_name": "Симметрика",
+  "description": "Совместное проектирование интерфейсов в браузере",
+  "lang": "ru",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#1e1e1e",
+  "theme_color": "#1e1e1e",
+  "icons": [
+    { "src": "/apps/web/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/apps/web/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/apps/web/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/apps/web/icons/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

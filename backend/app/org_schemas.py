@@ -182,6 +182,10 @@ class EmployeeOut(BaseModel):
     isOrganizationHead: bool
     hideFromPyramid: bool = False
     allowedPageKeys: list[str] = Field(default_factory=list)
+    vacationOverlapEmployeeIds: list[int] = Field(
+        default_factory=list,
+        description="Сотрудники, с которыми запрещено пересечение отпусков",
+    )
     user: OrgUserBriefOut | None = None
     expertises: list[EmployeeExpertiseOut] = Field(default_factory=list)
     departments: list[EmployeeDepartmentBriefOut] = Field(default_factory=list)
@@ -233,6 +237,10 @@ class EmployeeIn(BaseModel):
     userVoiceAdmin: bool = False
     userPlanningAccess: bool = False
     departmentIds: list[int] = Field(default_factory=list)
+    vacationOverlapEmployeeIds: list[int] | None = Field(
+        default=None,
+        description="С кем нельзя пересекать отпуск; null — не менять при создании без поля",
+    )
 
 
 class EmployeeUpdateIn(BaseModel):
@@ -253,6 +261,10 @@ class EmployeeUpdateIn(BaseModel):
     userPassword: str | None = None
     userMustChangePassword: bool | None = None
     departmentIds: list[int] | None = None
+    vacationOverlapEmployeeIds: list[int] | None = Field(
+        default=None,
+        description="С кем нельзя пересекать отпуск; null — не менять",
+    )
 
 
 class DepartmentOut(BaseModel):

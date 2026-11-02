@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import '../planning/planning.css'
 
 export type AppPageOption = {
   pageKey: string

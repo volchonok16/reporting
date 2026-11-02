@@ -8,8 +8,9 @@ services:
 
   backend:
     ports:
-      - "8000:8000"
-    entrypoint: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+      - "127.0.0.1:8000:8000"
+    # --reload: иначе новые роуты из смонтированного ./backend/app не видны до restart
+    entrypoint: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     volumes:
       - ./backend/app:/app/app:ro
       - ./backend/assets:/app/assets:ro
@@ -22,13 +23,14 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.dev
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
     environment:
       NPM_CONFIG_UPDATE_NOTIFIER: "false"
       NPM_CONFIG_FUND: "false"
       VITE_API_PROXY_TARGET: http://backend:8000
       VITE_VOICE_WEB_PROXY_TARGET: http://voice-web:3000
       VITE_VOICE_API_PROXY_TARGET: http://backend:8000
+      VITE_CANVAS_STUDIO_URL: ${CANVAS_STUDIO_PUBLIC_URL:-http://localhost:8080}
     command: sh -c "npm ci --no-fund --no-audit && npm run dev -- --host 0.0.0.0"
     volumes:
       - ./frontend:/app
@@ -36,11 +38,17 @@ services:
 
   voice-web:
     ports:
-      - "${VOICE_WEB_PORT:-3100}:3000"
+      - "127.0.0.1:${VOICE_WEB_PORT:-3100}:3000"
     environment:
       VOICE_BASE_PATH: /voice
 
+  canvas-studio:
+    ports:
+      - "127.0.0.1:${CANVAS_STUDIO_PORT:-8080}:8080"
+    environment:
+      CS_FRAME_ANCESTORS: ${CANVAS_STUDIO_FRAME_ANCESTORS:-http://localhost:5173 http://127.0.0.1:5173}
+
   minio:
     ports:
-      - "${MINIO_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - "127.0.0.1:${MINIO_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"

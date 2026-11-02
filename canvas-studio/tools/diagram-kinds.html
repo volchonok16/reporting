@@ -1,0 +1,43 @@
+<!doctype html>
+<!--
+  The pictures of the diagram kinds in «Тип схемы» (apps/web/diagram-kinds/<kind>.webp): each kind's
+  example drawn by the engine, light, fitted into 480×300. Served by tools/serve.mjs, opened in a
+  headless browser with --dump-dom, the data URLs in <pre id="out"> are written to files.
+-->
+<html lang="ru">
+<head><meta charset="utf-8"></head>
+<body>
+<script src="/packages/diagrams/engine.js"></script>
+<script>
+(async () => {
+  const E = window.SimmetrikaDiagrams;
+  const W = 480, H = 300, PAD = 18;
+  const out = {};
+  for (const layout of E.layouts) {
+    const look = E.theme(layout, 'soft');
+    const r = E.render({ text: E.example(layout, 'lr'), layout, theme: look.theme, font: 'system', direction: 'lr', spacing: {}, dark: false });
+    if (!r.svg) continue;
+    document.body.append(r.svg);
+    const x = E.exportSvg(r.svg, { background: '#ffffff', transparent: false });
+    r.svg.remove();
+    const img = new Image();
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(x.svgString);
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, W, H);
+    const k = Math.min((W - PAD * 2) / x.w, (H - PAD * 2) / x.h);
+    ctx.drawImage(img, (W - x.w * k) / 2, (H - x.h * k) / 2, x.w * k, x.h * k);
+    out[layout] = c.toDataURL('image/webp', 0.86);
+  }
+  const pre = document.createElement('pre');
+  pre.id = 'out';
+  pre.textContent = JSON.stringify(out);
+  document.body.append(pre);
+})();
+</script>
+</body>
+</html>

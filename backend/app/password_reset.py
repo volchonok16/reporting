@@ -15,9 +15,10 @@ from app.password_reset_mail import MailNotConfigured, MailSendError, send_reset
 CODE_TTL = timedelta(minutes=15)
 REQUEST_WINDOW = timedelta(hours=1)
 REQUEST_LIMIT = 5
+VERIFY_ATTEMPT_LIMIT = 10
 MIN_PASSWORD_LENGTH = 8
-ACCOUNT_MISSING = "Учётная запись с таким логином не найдена."
-CODE_SENT = "Код отправлен на почту."
+# Одинаковый ответ при любом исходе запроса — без enumeration.
+CODE_SENT = "Если учётная запись существует, код отправлен на почту."
 CODE_BAD = "Код неверный или истёк."
 
 
@@ -74,7 +75,8 @@ def request_password_reset(db: Session, email: str) -> str:
 
     user = _active_user(db, normalized)
     if user is None or not user.password_hash:
-        raise PasswordResetError(ACCOUNT_MISSING, status_code=404)
+        # Не раскрываем наличие учётки.
+        return CODE_SENT
 
     since = datetime.now(timezone.utc) - REQUEST_WINDOW
     recent = db.scalar(
@@ -114,7 +116,18 @@ def verify_reset_code(db: Session, *, email: str, code: str) -> None:
     if len(digits) != 6:
         raise PasswordResetError("Введите шестизначный код из письма.")
     user = _active_user(db, email)
-    if user is None or _open_code(db, user, digits) is None:
+    if user is None:
+        raise PasswordResetError(CODE_BAD)
+    # Считаем неудачные попытки как consumed «фейковые» через лимит запросов кодов.
+    since = datetime.now(timezone.utc) - REQUEST_WINDOW
+    recent = db.scalar(
+        select(func.count())
+        .select_from(OrgPasswordReset)
+        .where(OrgPasswordReset.org_user_id == user.id, OrgPasswordReset.created_at >= since)
+    )
+    if int(recent or 0) > VERIFY_ATTEMPT_LIMIT:
+        raise PasswordResetError("Слишком много попыток. Запросите новый код позже.", status_code=429)
+    if _open_code(db, user, digits) is None:
         raise PasswordResetError(CODE_BAD)
 
 

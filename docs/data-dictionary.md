@@ -172,6 +172,7 @@
 | annual_leave_days | int | Норма дней отпуска в год (28) |
 
 `vacation_planning_unlock` — годы с открытым планированием (`086`).
+`vacation_overlap_block` — пары сотрудников с запретом пересечения отпусков (`094`).
 
 ## org_user — учётные записи
 
@@ -182,7 +183,7 @@
 | role | smallint | 10 user / 100 admin / 1000 superadmin |
 | voice_only | boolean | Только вкладка Voice |
 | voice_admin | boolean | Админ Voice (очистка) |
-| must_change_password | boolean | Блокирующая смена пароля при входе (`075`) |
+| must_change_password | boolean | Блокирующая смена пароля: UI + отказ API (кроме profile/auth status); `075` |
 
 ### org_password_reset
 
@@ -197,11 +198,11 @@
 
 | Колонка | Тип | Описание |
 |---------|-----|----------|
-| id | varchar(64) | sessionId для заголовка `X-Session-Id` |
-| payload | jsonb | `pat`, `base_url`, `project`, `auth_mode` (`pat` / `app_user`), `app_login` |
-| created_at | timestamptz | Время создания |
+| id | varchar(64) | sessionId для `X-Session-Id` / query `sid` (фото) |
+| payload | jsonb | `auth_mode`, `app_login`, `app_role`, `org_user_*`, `voice_*`, `must_change_password`; для `app_user` PAT не хранится (sentinel → `TFS_SYNC_PAT` при sync) |
+| created_at | timestamptz | Создание; TTL = `SESSION_TTL_HOURS` (default 72) |
 
-Переменные окружения: `APP_AUTH_USERS` (полный доступ), `APP_AUTH_ROADMAP_USERS` (только Планы + sync Digital), `TFS_SYNC_PAT` (PAT для входа по логину).
+Переменные: `APP_AUTH_USERS`, `APP_AUTH_ROADMAP_USERS`, `TFS_SYNC_PAT`, `SESSION_TTL_HOURS`, `APP_ENV`. Матрица ACL: [auth-and-roles.md](auth-and-roles.md).
 
 ## project — команда по умолчанию
 
@@ -309,8 +310,8 @@
 | `b2b_product_status_office.skip_lock_until` | timestamptz | До этого момента офис не блокируется по расписанию |
 | `b2b_product_status_row` | `office_id`, `sort_order`, `cells` | Строки таблицы; `cells` — jsonb с колонками и rich-text |
 | `b2b_product_status_attachment` | `row_id`, `filename`, `storage_key`, `size_bytes` | Вложения строки; файлы в MinIO bucket `product-status` |
-| `b2b_product_status_project` | `office_id`, `name`, `sort_order` | Справочник проектов координации (мультиселект) |
-| `b2b_product_status_project_priority` | `project_id`, `name`, `range_from`, `range_to` | Один диапазон на проект; в ячейке — число из диапазона |
+| `b2b_product_status_project` | `office_id`, `name`, `sort_order` | Справочник проектов координации (мультиселект); CRUD суперадмин `…/offices/{gid}/projects` |
+| `b2b_product_status_project_priority` | `project_id`, `name`, `range_from`, `range_to` | Один диапазон на проект офиса; правка вместе со справочником проектов |
 | `b2b_product_status_history` | `office_id`, `row_id`, `action`, `field_name` | Журнал create/update/delete/restore |
 | `b2b_product_status_snapshot` | `office_id`, `rows`, `changed_by` | Снимок всех строк офиса после сохранения |
 
@@ -341,9 +342,19 @@
 | Таблица | Ключевые поля | Назначение |
 |--------|---------------|------------|
 | `gov_initiative_section` | `gid`, `name`, `sort_order` | Вкладка `main` («Госинициативы») |
-| `gov_initiative_row` | `section_id`, `sort_order`, `cells` | Закон / Описание / Дата запуска / Статус / Номер ЗнИ |
+| `gov_initiative_row` | `section_id`, `sort_order`, `cells` | Закон / Описание / Дата запуска / Статус / Номер ЗнИ / Ответственный |
 | `gov_initiative_history` | `section_id`, `row_id`, `action` | Журнал изменений |
 | `gov_initiative_snapshot` | `section_id`, `rows`, `changed_by` | Снимок для отката |
+
+## simmetrika_* — хранилище Симметрики (canvas-studio)
+
+| Таблица | Ключевые поля | Назначение |
+|--------|---------------|------------|
+| `simmetrika_kv` | `bucket`, `id`, `payload` | JSON-записи (users, sessions, files-meta, …) |
+| `simmetrika_blob` | `file_id`, `name`, `content` | Снапшоты, картинки, версии макетов |
+| `simmetrika_secret` | `id`, `value` | Серверный секрет (бывший `data/secret`) |
+
+Миграции `097` / `098` (unique email, sessions by userId). Env: `CS_DATABASE_URL`.
 
 ## schema_migration — журнал SQL-миграций
 
