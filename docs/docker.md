@@ -248,7 +248,7 @@ bash scripts/up.sh prod
 # Все reporting-контейнеры (в т.ч. Voice) — лучше через скрипт:
 bash scripts/compose-up.sh offline
 # или точечно:
-docker rm -f reporting-voice-api reporting-voice-web reporting-backend
+docker rm -f reporting-voice-api reporting-voice-web reporting-canvas-studio reporting-backend
 docker-compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.offline.yml up -d --no-build backend voice-web
 ```
 

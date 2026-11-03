@@ -49,6 +49,7 @@ purge_service() {
     minio-init) purge_containers_by_name "reporting-minio-init" ;;
     voice-api) purge_containers_by_name "reporting-voice-api" ;;
     voice-web) purge_containers_by_name "reporting-voice-web" ;;
+    canvas-studio) purge_containers_by_name "reporting-canvas-studio" ;;
   esac
 }
 

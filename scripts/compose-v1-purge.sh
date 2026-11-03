@@ -22,4 +22,5 @@ purge_reporting_containers_v1() {
   purge_containers_by_name "reporting-minio-init"
   purge_containers_by_name "reporting-voice-api"
   purge_containers_by_name "reporting-voice-web"
+  purge_containers_by_name "reporting-canvas-studio"
 }
