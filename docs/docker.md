@@ -85,6 +85,7 @@ sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-ssl --tunn
 `--with-ssl` без `--t2product` → corp `taskatestovaya.ru`.
 
 DNS для прода HTTP: `t2product.ru`, `www.t2product.ru`, `api.t2product.ru` → IP сервера.  
+Симметрика на HTTP без сертификата — отдельный origin `http://t2product.ru:8080` (проброс в `docker-compose.prod.yml`, не через nginx). В `.env`: `CANVAS_STUDIO_PUBLIC_URL=http://t2product.ru:8080`, `CANVAS_STUDIO_FRAME_ANCESTORS=http://t2product.ru http://www.t2product.ru`, `CS_SECURE=0`. Адрес зашивается во фронтенд при `offline-bundle.sh` (`CANVAS_STUDIO_PUBLIC_URL`), поэтому смена `.env` на сервере без нового tar вкладку не переключает.  
 DNS для тестового HTTP: `my-testing.ru`, `www.my-testing.ru`, `api.my-testing.ru` → IP сервера (или `--any-host`).  
 UI ходит в API same-origin (`/api/…`); Voice — `/voice/` и `/voice-api/`.
 
@@ -389,7 +390,7 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 | `VOICE_SSO_SECRET` | (dev placeholder) | HMAC SSO Voice |
 | `CANVAS_STUDIO_SSO_SECRET` | (dev placeholder) | HMAC SSO Симметрики (= `CS_REPORTING_SSO_SECRET` в canvas) |
 | `CS_DATABASE_URL` | `postgresql://…@postgres:5432/reporting` | PG-хранилище Симметрики |
-| `CS_SECURE` | — | `1` за HTTPS (Secure cookie Симметрики) |
+| `CS_SECURE` | `0` | `1` только за HTTPS. На HTTP (`t2product.ru` без сертификата) оставить `0`, иначе cookie Симметрики не сохранится |
 | `TFS_SYNC_PAT` | — | Серверный PAT для sync (клиентский PAT на вход не принимается) |
 
 Матрица ролей и page ACL: [auth-and-roles.md](auth-and-roles.md).
