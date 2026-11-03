@@ -22,6 +22,7 @@ from app.b2b_product_status_db import (
     _row_has_content,
     build_news_summary_rows,
     build_summary_rows,
+    join_summary_sections,
     save_b2b_product_status_to_db,
     set_b2b_product_status_office_editing_locked,
 )
@@ -83,6 +84,15 @@ def test_build_news_summary_rows_puts_heading_then_news_and_launches() -> None:
         ]
     )
     assert rows[0]["__summaryRowKind"] == "news-heading"
+    joined = join_summary_sections(rows, [{"Офис": "SMS", "Статус": "текст", "Зачем и для чего делаем": ""}])
+    assert [row.get("__summaryRowKind") for row in joined] == [
+        "news-heading",
+        "news-item",
+        "news-item",
+        "status-heading",
+        None,
+    ]
+    assert joined[3]["Офис"] == "Статус"
     assert rows[0]["Офис"] == "Новости и запуски"
     assert [(row["Офис"], row["Статус"], row["Зачем и для чего делаем"]) for row in rows[1:]] == [
         ("14.10", "Запуск тарифа", "Коротко"),

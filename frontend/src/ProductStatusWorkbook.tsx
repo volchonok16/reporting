@@ -1978,13 +1978,14 @@ export default function ProductStatusWorkbook({
     let officeStripe = 0
     for (const { row, rowIndex } of visibleRows) {
       const summaryKind = row['__summaryRowKind'] ?? ''
-      if (summaryKind === 'news-heading' || summaryKind === 'news-item') {
-        byRowIndex.set(
-          rowIndex,
+      if (summaryKind === 'news-heading' || summaryKind === 'news-item' || summaryKind === 'status-heading') {
+        const kindClass =
           summaryKind === 'news-heading'
             ? 'product-status-row--summary-news-heading'
-            : 'product-status-row--summary-news',
-        )
+            : summaryKind === 'status-heading'
+              ? 'product-status-row--summary-status-heading'
+              : 'product-status-row--summary-news'
+        byRowIndex.set(rowIndex, kindClass)
         continue
       }
       const office = displayCellText(row['Офис'] ?? '').trim()

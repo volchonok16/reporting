@@ -49,6 +49,7 @@ SUMMARY_STATUS_COLUMN = "Статус"
 SUMMARY_PROJECT_TITLE_KEY = "__summaryTitle"
 SUMMARY_ROW_KIND_KEY = "__summaryRowKind"
 NEWS_SUMMARY_HEADING = "Новости и запуски"
+STATUS_SUMMARY_HEADING = "Статус"
 SUMMARY_COLUMNS: tuple[str, ...] = (
     SUMMARY_OFFICE_COLUMN,
     SUMMARY_STATUS_COLUMN,
@@ -308,6 +309,23 @@ def build_news_summary_rows(
     return [heading, *items]
 
 
+def join_summary_sections(
+    news_rows: list[dict[str, str]],
+    status_rows: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    """Новости и статус в одной таблице, с заголовком «Статус» между ними."""
+    if not news_rows or not status_rows:
+        return [*news_rows, *status_rows]
+    divider = {
+        SUMMARY_OFFICE_COLUMN: STATUS_SUMMARY_HEADING,
+        SUMMARY_STATUS_COLUMN: "",
+        WHY_COLUMN: "",
+        SUMMARY_ROW_KIND_KEY: "status-heading",
+        ROW_ID_KEY: f"{SUMMARY_GID}-status-heading",
+    }
+    return [*news_rows, divider, *status_rows]
+
+
 def build_summary_rows(
     offices_with_rows: list[tuple[dict[str, Any], list[dict[str, Any]]]],
     *,
@@ -370,7 +388,7 @@ def _load_summary_sheet(db: Session, *, offices: list[dict[str, Any]], meta_only
     except Exception:
         news_rows = []
     status_rows = build_summary_rows(packed, attachments_by_row=attachments_by_row)
-    return _summary_sheet([*news_rows, *status_rows])
+    return _summary_sheet(join_summary_sections(news_rows, status_rows))
 
 
 def _load_offices(db: Session) -> list[dict[str, Any]]:

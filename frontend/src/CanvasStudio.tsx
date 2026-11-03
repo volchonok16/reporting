@@ -48,6 +48,13 @@ function buildCanvasSrc(base: string, theme: Theme): string {
   const url = new URL(base.endsWith('/') ? base : `${base}/`)
   url.searchParams.set('embed', '1')
   url.searchParams.set('theme', theme)
+  if (typeof window !== 'undefined') {
+    const page = new URLSearchParams(window.location.search)
+    for (const key of ['file', 'comment', 'node'] as const) {
+      const value = page.get(key)?.trim()
+      if (value) url.searchParams.set(key, value)
+    }
+  }
   return url.toString()
 }
 

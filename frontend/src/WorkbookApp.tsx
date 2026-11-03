@@ -110,6 +110,9 @@ export default function WorkbookApp({
       saveB2bPanel('status')
       return 'product-status-b2b'
     }
+    if (fromUrl === 'canvas-studio' && !voiceOnly) {
+      return 'canvas-studio'
+    }
     const saved = loadActiveSheet()
     let candidate: SheetId
     if (voiceOnly) {

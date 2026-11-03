@@ -243,9 +243,10 @@ function ProductStatusTableRow({
           {rowNumber ?? ''}
         </td>
       ) : null}
-      {row[PRODUCT_STATUS_SUMMARY_ROW_KIND_KEY] === 'news-heading' ? (
+      {row[PRODUCT_STATUS_SUMMARY_ROW_KIND_KEY] === 'news-heading' ||
+      row[PRODUCT_STATUS_SUMMARY_ROW_KIND_KEY] === 'status-heading' ? (
         <td className="product-status-summary-news-heading" colSpan={columns.length}>
-          {row['Офис'] || 'Новости и запуски'}
+          {row['Офис'] || (row[PRODUCT_STATUS_SUMMARY_ROW_KIND_KEY] === 'status-heading' ? 'Статус' : 'Новости и запуски')}
         </td>
       ) : columns.map((column) => {
         const isActive = rowActive && activeCell?.column === column

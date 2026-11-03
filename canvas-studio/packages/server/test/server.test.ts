@@ -410,7 +410,7 @@ test('sharing: roles decide who may open, save, rename, move and delete', async 
     const inv = await owner('POST', '/api/files/fShared001/share/invite', { email: 'ed@example.com', role: 'editor' });
     assert.equal(inv.status, 200);
     assert.deepEqual(inv.body!.members.map((m: { email: string; role: string }) => [m.email, m.role]), [['ed@example.com', 'editor']]);
-    assert.match(letters.at(-1)!.subject, /Оля открыл\(а\) вам доступ к «Макет»/);
+    assert.match(letters.at(-1)!.subject, /Вам предоставлен доступ к «Макет»/);
     assert.match(letters.at(-1)!.html, /\?file=fShared001/);
     await owner('POST', '/api/files/fShared001/share/invite', { email: 'vi@example.com', role: 'viewer' });
 

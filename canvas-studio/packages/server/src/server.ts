@@ -26,6 +26,8 @@ export interface ServerOptions {
   mailer?: Mailer;
   /** Public address of the app, shown in letters. */
   appUrl?: string;
+  /** Reporting site (APP_PUBLIC_URL): links in letters open the Симметрика tab there. */
+  publicUrl?: string;
   /** Log requests and errors. */
   log?: (line: string) => void;
   /** How Google Fonts is reached (tests pass their own). */
@@ -90,6 +92,7 @@ export async function createCanvasServer(options: ServerOptions): Promise<Canvas
       openRegistration: options.openRegistration,
       mailer: options.mailer ?? logMailer(log),
       appUrl: options.appUrl,
+      publicUrl: options.publicUrl,
       log,
       fontsFetch: options.fontsFetch,
       linkGet: options.linkGet,

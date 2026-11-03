@@ -260,31 +260,43 @@ export function codeLetter(options: { to: string; name: string; code: string; pu
 
 const SHARE_ROLES: Record<string, string> = { editor: 'редактировать', commenter: 'смотреть и комментировать', viewer: 'смотреть' };
 
-/** "You have access to this resource": the name and a link that opens it. */
+/** "You have access to this resource": the name and a link that opens it on the reporting site. */
 export function shareLetter(options: { to: string; inviter: string; fileName: string; role: string; url: string; needsAccount: boolean; appUrl?: string }): Letter {
   const subject = `Вам предоставлен доступ к «${options.fileName}»`;
   const can = SHARE_ROLES[options.role] ?? 'смотреть';
-  const signUp = options.needsAccount ? `Чтобы открыть ресурс, войдите в Симметрику с адресом ${options.to}. Приглашение действует 30 дней.` : '';
-  const html = frame(
-    subject,
-    `    <tr><td style="padding:22px 28px 0;font-size:14px;line-height:1.5;color:#1e1e1e;">
-      Вам предоставлен доступ к ресурсу <strong>${escapeHtml(options.fileName)}</strong>.
+  const signUp = options.needsAccount ? `Чтобы открыть ресурс, войдите на сайт с адресом ${options.to}. Приглашение действует 30 дней.` : 'Ресурс появится на вкладке «Симметрика» в разделе «Доступные мне».';
+  const href = escapeHtml(options.url);
+  const html = `<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(subject)}</title></head>
+<body style="margin:0;padding:0;background:#ffffff;color:#000000;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;">
+    <tr><td align="center" style="padding:32px 16px;">
+      <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;background:#ffffff;border:1px solid #e6e6e6;">
+        <tr><td style="padding:24px 28px 16px;font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;letter-spacing:0.04em;color:#000000;">t2</td></tr>
+        <tr><td style="height:4px;background:#16D5DF;font-size:0;line-height:0;">&nbsp;</td></tr>
+        <tr><td style="padding:28px 28px 8px;font-family:Arial,Helvetica,sans-serif;font-size:22px;line-height:1.25;font-weight:700;color:#000000;">Вам предоставлен доступ</td></tr>
+        <tr><td style="padding:8px 28px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#000000;">
+          ${escapeHtml(options.inviter)} открыл доступ к ресурсу. Вы можете ${escapeHtml(can)}.
+        </td></tr>
+        <tr><td style="padding:18px 28px 0;">
+          <div style="padding:16px 18px;border:1px solid #000000;background:#ffffff;">
+            <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#000000;">Ресурс</div>
+            <div style="padding-top:6px;font-family:Arial,Helvetica,sans-serif;font-size:18px;font-weight:700;line-height:1.3;color:#000000;">${escapeHtml(options.fileName)}</div>
+          </div>
+        </td></tr>
+        <tr><td align="center" style="padding:22px 28px 8px;text-align:center;">
+          <a href="${href}" style="display:inline-block;height:32px;line-height:32px;padding:0 16px;background:#000000;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;text-decoration:none;border-radius:999px;">Открыть</a>
+        </td></tr>
+        <tr><td style="padding:8px 28px 18px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:#000000;">
+          <a href="${href}" style="color:#000000;">${href}</a>
+        </td></tr>
+        <tr><td style="padding:0 28px 22px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:#000000;">${escapeHtml(signUp)}</td></tr>
+        <tr><td style="height:4px;background:#FF3495;font-size:0;line-height:0;">&nbsp;</td></tr>
+      </table>
     </td></tr>
-    <tr><td style="padding:8px 28px 0;font-size:13px;line-height:1.5;color:#6b6b6b;">
-      ${escapeHtml(options.inviter)} открыл доступ. Вы можете ${escapeHtml(can)}.
-    </td></tr>
-    <tr><td style="padding:18px 28px 0;">
-      <a href="${escapeHtml(options.url)}" style="display:inline-block;padding:10px 18px;border-radius:6px;background:#4f5bd5;color:#ffffff;font-size:13px;font-weight:600;text-decoration:none;">Открыть</a>
-    </td></tr>
-    <tr><td style="padding:12px 28px 0;font-size:12px;line-height:1.5;color:#6b6b6b;">
-      <a href="${escapeHtml(options.url)}" style="color:#1e1e1e;">${escapeHtml(options.url)}</a>
-    </td></tr>
-    <tr><td style="padding:16px 28px 22px;font-size:12px;line-height:1.5;color:#6b6b6b;">
-      ${escapeHtml(signUp || 'Ресурс появится на главной странице Симметрики в разделе «Доступные мне».')}
-    </td></tr>`,
-    options.appUrl,
-  );
-  const text = `Вам предоставлен доступ к ресурсу «${options.fileName}».\n\n${options.url}\n\n${options.inviter} открыл доступ. Вы можете ${can}.\n\n${signUp || 'Ресурс появится на главной странице Симметрики в разделе «Доступные мне».'}\n\nСимметрика${options.appUrl ? ` — ${options.appUrl}` : ''}`;
+  </table>
+</body></html>`;
+  const text = `Вам предоставлен доступ к ресурсу «${options.fileName}».\n\nОткрыть: ${options.url}\n\n${options.inviter} открыл доступ. Вы можете ${can}.\n\n${signUp}\n`;
   return { to: options.to, subject, html, text };
 }
 

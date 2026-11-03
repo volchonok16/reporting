@@ -139,6 +139,8 @@ export interface ApiOptions {
   mailer: Mailer;
   /** Public address of the app, shown in letters. */
   appUrl?: string;
+  /** Адрес reporting (APP_PUBLIC_URL). Ссылки в письмах ведут сюда, не на порт Симметрики. */
+  publicUrl?: string;
   log?: (line: string) => void;
   /** How Google Fonts is reached (tests pass their own). */
   fontsFetch?: typeof fetch;
@@ -1135,7 +1137,22 @@ export class Api {
   }
 
   private branchUrl(id: string): string {
-    return `${(this.options.appUrl ?? '').replace(/\/+$/, '')}/?file=${encodeURIComponent(id)}`;
+    return this.shareUrl(id);
+  }
+
+  /** Ссылка на файл: вкладка Симметрики на сайте reporting, иначе прямой адрес canvas. */
+  private shareUrl(id: string, extra: Record<string, string> = {}): string {
+    const reporting = (this.options.publicUrl ?? '').trim().replace(/\/+$/, '');
+    if (reporting) {
+      const url = new URL(reporting.includes('://') ? reporting : `http://${reporting}`);
+      url.searchParams.set('sheet', 'canvas-studio');
+      url.searchParams.set('file', id);
+      for (const [key, value] of Object.entries(extra)) url.searchParams.set(key, value);
+      return url.toString();
+    }
+    const base = (this.options.appUrl ?? '').replace(/\/+$/, '');
+    const params = new URLSearchParams({ file: id, ...extra });
+    return `${base}/?${params.toString()}`;
   }
 
   /** Asks people of the main file to look at the branch; a letter goes to each (a new request replaces the old one). */
@@ -1498,10 +1515,9 @@ export class Api {
       return { ...cur, invites };
     });
     await this.live?.accessChanged(meta.id);
-    const base = (this.options.appUrl ?? '').replace(/\/+$/, '');
     try {
       await this.options.mailer(
-        shareLetter({ to: email, inviter: user!.name || user!.email, fileName: meta.name, role, url: `${base}/?file=${encodeURIComponent(meta.id)}`, needsAccount: !registered, appUrl: this.options.appUrl }),
+        shareLetter({ to: email, inviter: user!.name || user!.email, fileName: meta.name, role, url: this.shareUrl(meta.id), needsAccount: !registered, appUrl: this.options.publicUrl || this.options.appUrl }),
       );
     } catch (error) {
       // Access is given anyway: the letter is a courtesy, the link can be sent by hand.
@@ -1718,8 +1734,7 @@ export class Api {
     void (async () => {
       const meta = await this.files.get(fileId);
       if (!meta) return;
-      const base = (this.options.appUrl ?? '').replace(/\/+$/, '');
-      const url = `${base}/?file=${encodeURIComponent(fileId)}&comment=${encodeURIComponent(thread.id)}`;
+      const url = this.shareUrl(fileId, { comment: thread.id });
       const first = thread.comments[0]?.id === entry.id;
       const team = await this.teamOfFile(meta);
       for (const { userId, mention } of mailRecipients(thread, entry, meta.ownerId)) {
@@ -1868,8 +1883,7 @@ export class Api {
     if (!this.mentionsByUser.allow(user.id)) throw new HttpError(429, 'Слишком много упоминаний. Попробуйте позже.', 'rate_limited');
     const to = await this.users.get(userId);
     if (!to || commentMailPref(to.prefs?.['cs.mail-comments']) === 'none' || !this.commentMailsTo.allow(userId)) return { sent: false };
-    const base = (this.options.appUrl ?? '').replace(/\/+$/, '');
-    const url = `${base}/?file=${encodeURIComponent(meta.id)}&node=${encodeURIComponent(nodeId)}`;
+    const url = this.shareUrl(meta.id, { node: nodeId });
     try {
       await this.options.mailer(commentLetter({ to: to.email, author: user.name || user.email, fileName: meta.name, text, url, kind: 'board', appUrl: this.options.appUrl }));
     } catch (error) {
@@ -2212,10 +2226,13 @@ export class Api {
     const registered = !!target && target.verified !== false;
     const saved = await this.teams.update(team.id, (cur) => (cur ? (registered ? addTeamMember(cur, target!.id, role) : addTeamInvite(cur, email, role, user.id)) : undefined));
     if (registered) await this.teamAccessChanged(team.id);
-    const base = (this.options.appUrl ?? '').replace(/\/+$/, '');
+    const reporting = (this.options.publicUrl ?? '').trim().replace(/\/+$/, '');
+    const teamUrl = reporting
+      ? `${new URL(reporting.includes('://') ? reporting : `http://${reporting}`).origin}/?sheet=canvas-studio`
+      : `${(this.options.appUrl ?? '').replace(/\/+$/, '')}/`;
     const view = await this.teamView(saved ?? team, myRole);
     try {
-      await this.options.mailer(teamLetter({ to: email, inviter: user.name || user.email, teamName: team.name, role, url: `${base}/`, needsAccount: !registered, appUrl: this.options.appUrl }));
+      await this.options.mailer(teamLetter({ to: email, inviter: user.name || user.email, teamName: team.name, role, url: teamUrl, needsAccount: !registered, appUrl: this.options.publicUrl || this.options.appUrl }));
     } catch (error) {
       // The person is in the team anyway: the letter is a courtesy.
       this.options.log?.(`приглашение в команду для ${email} не отправлено: ${error instanceof Error ? error.message : String(error)}`);

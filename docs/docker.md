@@ -392,6 +392,7 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 | `CS_DATABASE_URL` | `postgresql://…@postgres:5432/reporting` | PG-хранилище Симметрики |
 | `CS_SECURE` | `0` | `1` только за HTTPS. На HTTP (`t2product.ru` без сертификата) оставить `0`, иначе cookie Симметрики не сохранится |
 | `CS_REPORTING_MAIL_URL` | `http://backend:8000/api/internal/canvas-mail` | Письмо «вам предоставлен доступ» уходит через SMTP reporting (`SMTP_*`), отдельный ящик Симметрики не нужен |
+| `CS_PUBLIC_APP_URL` | `APP_PUBLIC_URL` | Ссылка в письме: `{APP_PUBLIC_URL}/?sheet=canvas-studio&file=…`, не порт 8080 |
 | `TFS_SYNC_PAT` | — | Серверный PAT для sync (клиентский PAT на вход не принимается) |
 
 Матрица ролей и page ACL: [auth-and-roles.md](auth-and-roles.md).

@@ -53,6 +53,7 @@ const { server, live } = await createCanvasServer({
   openRegistration: reportingAuthOnly ? false : env.CS_OPEN_REGISTRATION !== '0',
   mailer: reportingMailUrl && reportingSsoSecret ? reportingMailer(reportingMailUrl, reportingSsoSecret) : smtp ? smtpMailer(smtp) : undefined,
   appUrl: env.CS_APP_URL,
+  publicUrl: (env.CS_PUBLIC_APP_URL ?? '').trim() || undefined,
   ai,
   reportingSsoSecret,
   reportingAuthOnly,
