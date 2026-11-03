@@ -21,6 +21,12 @@ services:
       context: ./frontend
       args:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+        VITE_CANVAS_STUDIO_URL: ${CANVAS_STUDIO_PUBLIC_URL:-http://localhost:8080}
+
+  canvas-studio:
+    image: reporting/canvas-studio:offline
+    build:
+      context: ./canvas-studio
 
   minio:
     image: reporting/minio:2025-04-22
