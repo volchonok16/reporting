@@ -85,7 +85,7 @@ sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-ssl --tunn
 `--with-ssl` без `--t2product` → corp `taskatestovaya.ru`.
 
 DNS для прода HTTP: `t2product.ru`, `www.t2product.ru`, `api.t2product.ru` → IP сервера.  
-Симметрика на HTTP без сертификата — отдельный origin `http://t2product.ru:8080` (проброс в `docker-compose.prod.yml`, не через nginx). В `.env`: `CANVAS_STUDIO_PUBLIC_URL=http://t2product.ru:8080`, `CANVAS_STUDIO_FRAME_ANCESTORS=http://t2product.ru http://www.t2product.ru`, `CS_SECURE=0`. Адрес зашивается во фронтенд при `offline-bundle.sh` (`CANVAS_STUDIO_PUBLIC_URL`), поэтому смена `.env` на сервере без нового tar вкладку не переключает.  
+Симметрика на HTTP без сертификата — отдельный origin `http://t2product.ru:8080` (проброс в `docker-compose.prod.yml`, не через nginx). В `.env`: `CANVAS_STUDIO_PUBLIC_URL=http://t2product.ru:8080`, `CANVAS_STUDIO_FRAME_ANCESTORS=http://t2product.ru http://www.t2product.ru`, `CS_SECURE=0`. Адрес зашивается во фронтенд при `offline-bundle.sh` (`CANVAS_STUDIO_PUBLIC_URL`). Если в образ попал `localhost:8080`, вкладка на `t2product.ru` всё равно открывает `http://t2product.ru:8080`, а не ноутбук пользователя.  
 DNS для тестового HTTP: `my-testing.ru`, `www.my-testing.ru`, `api.my-testing.ru` → IP сервера (или `--any-host`).  
 UI ходит в API same-origin (`/api/…`); Voice — `/voice/` и `/voice-api/`.
 
@@ -307,7 +307,7 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 
 Для ручной оргсхемы добавлена миграция `db/migrations/010_org_chart_layout.sql`: таблица `org_chart_layout` хранит координаты карточек и линии вкладки «Пирамида».
 
-Вкладки «Доска» (YouJail) и «Диаграммы» удалены из продукта. Миграция `db/migrations/095_drop_youjail.sql` снимает таблицы `youjail_*` и деактивирует page keys.
+YouJail снят миграцией `db/migrations/095_drop_youjail.sql` (таблицы `youjail_*`). Вкладка **«Доска»** — DocPlan на том же origin (`/docplan/`, API `/docplan/api/`). Сессия та же, что у reporting (`X-Session-Id`); люди — `org_user.id` и `employee.id`, проекты и задачи хранят свои id в `docplan_board.state` / `docplan_user_state`. Миграция `db/migrations/099_docplan_boards.sql`.
 
 Хранилище Симметрики в PostgreSQL — `db/migrations/097_simmetrika_storage.sql`: таблицы `simmetrika_kv`, `simmetrika_blob`, `simmetrika_secret`. Индексы email/sessions + GRANT — `098_simmetrika_indexes.sql`. Контейнер `canvas-studio` подключается через `CS_DATABASE_URL` (по умолчанию `postgresql://alex:alex@postgres:5432/reporting`). Health: `GET /api/health` проверяет PostgreSQL.
 

@@ -19,18 +19,25 @@ function resolveCanvasBaseUrl(): string {
   const fromEnv = (import.meta.env.VITE_CANVAS_STUDIO_URL as string | undefined)?.trim()
   if (typeof window !== 'undefined') {
     const host = window.location.hostname || 'localhost'
+    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:'
     if (fromEnv) {
       try {
         const url = new URL(fromEnv)
-        if (isLocalHostname(host) && isLocalHostname(url.hostname)) {
+        const envIsLocal = isLocalHostname(url.hostname)
+        const pageIsLocal = isLocalHostname(host)
+        if (envIsLocal && pageIsLocal) {
           url.hostname = host
+        } else if (envIsLocal && !pageIsLocal) {
+          // Дефолт сборки localhost:8080 не должен уводить прод на ноутбук пользователя.
+          url.protocol = protocol
+          url.hostname = host
+          if (!url.port) url.port = String(DEFAULT_CANVAS_PORT)
         }
         return url.origin
       } catch {
         /* fall through */
       }
     }
-    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:'
     return `${protocol}//${host}:${DEFAULT_CANVAS_PORT}`
   }
   if (fromEnv) return fromEnv.replace(/\/$/, '')
