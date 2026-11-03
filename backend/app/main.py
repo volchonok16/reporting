@@ -1,8 +1,10 @@
 import logging
 from datetime import date
 import asyncio
+import hmac
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
+from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
@@ -148,6 +150,7 @@ from app.password_reset import (
     verify_reset_code,
 )
 from app.canvas_studio_sso import issue_canvas_studio_sso_token
+from app.password_reset_mail import MailNotConfigured, MailSendError, send_html_mail
 from app.rate_limit import login_by_ip, login_by_user, reset_verify_by_ip
 from app.voice_sso import issue_voice_sso_token
 from app.sync_service import run_sync
@@ -381,6 +384,35 @@ def canvas_studio_sso_token(
         is_admin=bool(is_admin),
     )
     return VoiceSsoTokenOut(token=token, expiresIn=120)
+
+
+class CanvasMailIn(BaseModel):
+    to: str = Field(min_length=3, max_length=255)
+    subject: str = Field(min_length=1, max_length=200)
+    html: str = Field(min_length=1, max_length=200_000)
+    text: str = Field(min_length=1, max_length=50_000)
+
+
+@app.post("/api/internal/canvas-mail")
+def canvas_mail(
+    body: CanvasMailIn,
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+) -> dict[str, bool]:
+    """Письмо Симметрики через SMTP reporting. Вызывает только контейнер canvas-studio."""
+    expected = settings.canvas_studio_sso_secret.strip()
+    token = (x_internal_token or "").strip()
+    if not expected or not token or not hmac.compare_digest(token, expected):
+        raise HTTPException(status_code=401, detail="Нет доступа")
+    email = body.to.strip().lower()
+    if "@" not in email or email.startswith("@") or email.endswith("@"):
+        raise HTTPException(status_code=400, detail="Проверьте email")
+    try:
+        send_html_mail(to_email=email, subject=body.subject.strip(), html=body.html, text=body.text)
+    except MailNotConfigured as exc:
+        raise HTTPException(status_code=503, detail="SMTP не настроен") from exc
+    except MailSendError as exc:
+        raise HTTPException(status_code=502, detail="Не удалось отправить письмо") from exc
+    return {"ok": True}
 
 
 def _maintenance_public_fields(db: Session) -> dict:

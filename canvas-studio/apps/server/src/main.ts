@@ -14,7 +14,7 @@
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createCanvasServer } from '../../../packages/server/src/server.ts';
-import { smtpConfigFromEnv, smtpMailer } from '../../../packages/server/src/mail.ts';
+import { reportingMailer, smtpConfigFromEnv, smtpMailer } from '../../../packages/server/src/mail.ts';
 import { aiConfigFromEnv } from '../../../packages/server/src/ai-layout.ts';
 import type { Transform } from '../../../packages/server/src/static.ts';
 
@@ -36,6 +36,7 @@ const transformModule = '../../../tools/transform.mjs';
 const dev: Transform | null = devMode ? ((await import(transformModule)) as Transform) : null;
 
 const smtp = smtpConfigFromEnv(env);
+const reportingMailUrl = (env.CS_REPORTING_MAIL_URL ?? '').trim();
 const ai = aiConfigFromEnv(env);
 const reportingSsoSecret = (env.CS_REPORTING_SSO_SECRET ?? '').trim() || undefined;
 // По умолчанию при наличии секрета — только SSO reporting (отдельный логин не нужен).
@@ -50,7 +51,7 @@ const { server, live } = await createCanvasServer({
   heavy: resolve(env.CS_HEAVY ?? `${root}/apps/web/heavy`),
   trustProxy: env.CS_TRUST_PROXY === '1',
   openRegistration: reportingAuthOnly ? false : env.CS_OPEN_REGISTRATION !== '0',
-  mailer: smtp ? smtpMailer(smtp) : undefined,
+  mailer: reportingMailUrl && reportingSsoSecret ? reportingMailer(reportingMailUrl, reportingSsoSecret) : smtp ? smtpMailer(smtp) : undefined,
   appUrl: env.CS_APP_URL,
   ai,
   reportingSsoSecret,
@@ -62,7 +63,13 @@ const { server, live } = await createCanvasServer({
 server.listen(port, host, () => {
   const where = databaseUrl ? 'PostgreSQL (simmetrika_*)' : dataDir;
   console.log(`Симметрика: http://${host}:${port}  (данные: ${where}${devMode ? ', разработка' : ''})`);
-  console.log(smtp ? `Почта: ${smtp.from} через ${smtp.host}:${smtp.port}` : 'Почта не настроена (CS_SMTP_HOST) — письма пишутся в журнал');
+  console.log(
+    reportingMailUrl && reportingSsoSecret
+      ? `Почта: через reporting (${reportingMailUrl})`
+      : smtp
+        ? `Почта: ${smtp.from} через ${smtp.host}:${smtp.port}`
+        : 'Почта не настроена — письма пишутся в журнал',
+  );
   console.log(ai ? `Макеты по описанию: ${ai.model}` : 'Макеты по описанию выключены (CS_AI_KEY)');
   console.log(
     reportingSsoSecret

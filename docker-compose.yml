@@ -176,6 +176,8 @@ services:
       CS_FRAME_ANCESTORS: ${CANVAS_STUDIO_FRAME_ANCESTORS:-http://localhost:5173 http://127.0.0.1:5173}
       CS_APP_URL: ${CANVAS_STUDIO_PUBLIC_URL:-http://localhost:8080}
       CS_SECURE: ${CS_SECURE:-0}
+      # Письма о доступе — через SMTP reporting, не отдельный ящик Симметрики.
+      CS_REPORTING_MAIL_URL: http://backend:8000/api/internal/canvas-mail
       # Пользователи/макеты/блобы в PostgreSQL (simmetrika_*), не в JSON на диске.
       CS_DATABASE_URL: ${CS_DATABASE_URL:-postgresql://alex:alex@postgres:5432/reporting}
     volumes:

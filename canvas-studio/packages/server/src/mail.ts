@@ -47,6 +47,21 @@ export function logMailer(log: (line: string) => void): Mailer {
   return async (letter) => log(`письмо для ${letter.to}: ${letter.subject}\n${letter.text}`);
 }
 
+/** Письма через почту reporting (тот же SMTP, что у статуса и сброса пароля). */
+export function reportingMailer(url: string, secret: string): Mailer {
+  return async (letter) => {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Internal-Token': secret },
+      body: JSON.stringify({ to: letter.to, subject: letter.subject, html: letter.html, text: letter.text }),
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new Error(`почта reporting: HTTP ${response.status} ${detail.slice(0, 200)}`);
+    }
+  };
+}
+
 const encodeWord = (s: string) => `=?UTF-8?B?${Buffer.from(s, 'utf8').toString('base64')}?=`;
 const wrap76 = (s: string) => s.replace(/.{1,76}/g, '$&\r\n');
 
@@ -245,31 +260,31 @@ export function codeLetter(options: { to: string; name: string; code: string; pu
 
 const SHARE_ROLES: Record<string, string> = { editor: 'редактировать', commenter: 'смотреть и комментировать', viewer: 'смотреть' };
 
-/** "N shared a file with you": with a button to open it (and a word about signing up, if needed). */
+/** "You have access to this resource": the name and a link that opens it. */
 export function shareLetter(options: { to: string; inviter: string; fileName: string; role: string; url: string; needsAccount: boolean; appUrl?: string }): Letter {
-  const subject = `${options.inviter} открыл(а) вам доступ к «${options.fileName}» — Симметрика`;
+  const subject = `Вам предоставлен доступ к «${options.fileName}»`;
   const can = SHARE_ROLES[options.role] ?? 'смотреть';
-  const signUp = options.needsAccount ? `Чтобы открыть файл, зарегистрируйтесь в Симметрике с этим адресом (${options.to}) — доступ появится сам. Приглашение действует 30 дней.` : '';
+  const signUp = options.needsAccount ? `Чтобы открыть ресурс, войдите в Симметрику с адресом ${options.to}. Приглашение действует 30 дней.` : '';
   const html = frame(
     subject,
     `    <tr><td style="padding:22px 28px 0;font-size:14px;line-height:1.5;color:#1e1e1e;">
-      <strong>${escapeHtml(options.inviter)}</strong> пригласил(а) вас в файл
+      Вам предоставлен доступ к ресурсу <strong>${escapeHtml(options.fileName)}</strong>.
     </td></tr>
-    <tr><td style="padding:14px 28px 0;">
-      <div style="padding:14px 16px;border:1px solid #e6e6e6;border-radius:8px;background:#f5f5f5;">
-        <div style="font-size:15px;font-weight:600;color:#1e1e1e;">${escapeHtml(options.fileName)}</div>
-        <div style="padding-top:4px;font-size:12px;color:#6b6b6b;">Вы можете ${escapeHtml(can)}</div>
-      </div>
+    <tr><td style="padding:8px 28px 0;font-size:13px;line-height:1.5;color:#6b6b6b;">
+      ${escapeHtml(options.inviter)} открыл доступ. Вы можете ${escapeHtml(can)}.
     </td></tr>
     <tr><td style="padding:18px 28px 0;">
-      <a href="${escapeHtml(options.url)}" style="display:inline-block;padding:10px 18px;border-radius:6px;background:#4f5bd5;color:#ffffff;font-size:13px;font-weight:600;text-decoration:none;">Открыть файл</a>
+      <a href="${escapeHtml(options.url)}" style="display:inline-block;padding:10px 18px;border-radius:6px;background:#4f5bd5;color:#ffffff;font-size:13px;font-weight:600;text-decoration:none;">Открыть</a>
+    </td></tr>
+    <tr><td style="padding:12px 28px 0;font-size:12px;line-height:1.5;color:#6b6b6b;">
+      <a href="${escapeHtml(options.url)}" style="color:#1e1e1e;">${escapeHtml(options.url)}</a>
     </td></tr>
     <tr><td style="padding:16px 28px 22px;font-size:12px;line-height:1.5;color:#6b6b6b;">
-      ${escapeHtml(signUp || 'Файл появится на главной странице Симметрики в разделе «Доступные мне».')}
+      ${escapeHtml(signUp || 'Ресурс появится на главной странице Симметрики в разделе «Доступные мне».')}
     </td></tr>`,
     options.appUrl,
   );
-  const text = `${options.inviter} пригласил(а) вас в файл «${options.fileName}» — вы можете ${can}.\n\nОткрыть: ${options.url}\n\n${signUp || 'Файл появится на главной странице Симметрики в разделе «Доступные мне».'}\n\nСимметрика${options.appUrl ? ` — ${options.appUrl}` : ''}`;
+  const text = `Вам предоставлен доступ к ресурсу «${options.fileName}».\n\n${options.url}\n\n${options.inviter} открыл доступ. Вы можете ${can}.\n\n${signUp || 'Ресурс появится на главной странице Симметрики в разделе «Доступные мне».'}\n\nСимметрика${options.appUrl ? ` — ${options.appUrl}` : ''}`;
   return { to: options.to, subject, html, text };
 }
 
