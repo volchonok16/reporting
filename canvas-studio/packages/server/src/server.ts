@@ -64,7 +64,7 @@ export async function createCanvasServer(options: ServerOptions): Promise<Canvas
 
   let storage: ConstructorParameters<typeof Api>[1];
   if (options.databaseUrl) {
-    const { openPgStorage, pgHealthCheck } = await import('./pg-storage.ts');
+    const { openPgStorage, pgHealthCheck, searchColleagues } = await import('./pg-storage.ts');
     const pg = await openPgStorage(options.databaseUrl, options.dataDir);
     storage = {
       users: pg.users as never,
@@ -76,6 +76,7 @@ export async function createCanvasServer(options: ServerOptions): Promise<Canvas
       blobs: pg.blobs,
       secretLoader: pg.secretLoader,
       healthCheck: () => pgHealthCheck(pg.pool),
+      colleagues: (q: string) => searchColleagues(pg.pool, q),
     };
     log('хранилище Симметрики: PostgreSQL (simmetrika_*)');
   } else {

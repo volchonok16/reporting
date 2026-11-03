@@ -7,7 +7,7 @@ cp .env.example .env
 bash scripts/dev.sh
 ```
 
-Вкладка **Симметрика** (`canvas-studio/`): контейнер `reporting-canvas-studio` на `:8080`, iframe из workbook. Данные макетов — в PostgreSQL (`simmetrika_*`, миграция `097`, `CS_DATABASE_URL`). Том `canvas-studio/data` — кэш шрифтов. Подробнее: [canvas-studio/INTEGRATION.md](../canvas-studio/INTEGRATION.md).
+Вкладка **Симметрика** (`canvas-studio/`): контейнер `reporting-canvas-studio` на `:8080`, iframe из workbook. Данные макетов — в PostgreSQL (`simmetrika_*`, миграция `097`, `CS_DATABASE_URL`). Том `canvas-studio/data` — кэш шрифтов Google. Шрифты айдентики T2 Rooftop и T2 Halvar Breit лежат в образе (`apps/web/fonts/t2`) и подключаются в браузере, без установки на компьютер. Подробнее: [canvas-studio/INTEGRATION.md](../canvas-studio/INTEGRATION.md).
 
 **Безопасность:** см. [auth-and-roles.md](auth-and-roles.md). Операции админа (что/куда): [admin-guide.md](admin-guide.md). Кратко:
 

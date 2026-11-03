@@ -5,6 +5,7 @@
 // ?new=1[&project=<id>].
 
 import { brand, tr } from '#core';
+import { loadBrandFonts } from '../t2-fonts.ts';
 import { cloud, CloudError, teams as teamApi, type CloudUser, type FileBackend, type TeamInfo } from '../cloud.ts';
 import { switchLayout } from '../keyboard.ts';
 import type { FileMeta, ProjectMeta } from '../storage.ts';
@@ -81,6 +82,8 @@ export interface HomeOptions {
   duplicate(id: string): Promise<void>;
   /** Opens a .csdoc.json file from disk as a new file. */
   importFromDisk(): void;
+  /** Загружает .pptx как презентацию, без ручной перерисовки слайдов. */
+  uploadPresentation(): void;
 }
 
 const SECTION_KEY = 'cs.home.section';
@@ -121,6 +124,7 @@ export class Home {
 
   constructor(root: HTMLElement, options: HomeOptions) {
     this.options = options;
+    loadBrandFonts();
     this.menu = new ContextMenu(document.body);
     try {
       const saved = JSON.parse(sessionStorage.getItem(SECTION_KEY) ?? 'null') as Section | null;
@@ -445,6 +449,7 @@ export class Home {
       team && canEditTeam(team) && !phone ? h('button', { class: 'text-button primary home-new', type: 'button', onclick: () => void this.createProject(undefined, team) }, icon('plus', 14), h('span', {}, tr('Новый проект'))) : '',
       // On a phone files are only viewed: nothing to create there.
       // One button; what kind of file — a design or a board — is chosen under it.
+      phone || !canCreate ? '' : h('button', { class: 'text-button home-new', type: 'button', title: tr('Файл PowerPoint станет презентацией: слайды, тексты и картинки переносятся как есть'), onclick: () => this.options.uploadPresentation() }, h('span', {}, tr('Загрузить презентацию'))),
       phone || !canCreate ? '' : this.newFileButton(target, project ? tr('Новый файл в проекте') : tr('Новый файл')),
     );
     this.main.append(header);

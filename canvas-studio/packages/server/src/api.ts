@@ -241,6 +241,7 @@ export class Api {
   readonly blobs: import('./storage.ts').BlobStore;
   private secretLoader: (() => Promise<Uint8Array>) | null = null;
   private healthCheck: (() => Promise<{ ok: true; storage: string }>) | null = null;
+  private colleagues: ((q: string) => Promise<{ name: string; email: string }[]>) | null = null;
   readonly versions: Versions;
   /** Documents on disk: pictures apart from the rest (documents.ts). */
   readonly documents: Documents;
@@ -291,6 +292,7 @@ export class Api {
     blobs: import('./storage.ts').BlobStore;
     secretLoader?: () => Promise<Uint8Array>;
     healthCheck?: () => Promise<{ ok: true; storage: string }>;
+    colleagues?: (q: string) => Promise<{ name: string; email: string }[]>;
   }) {
     this.options = options;
     if (storage) {
@@ -303,6 +305,7 @@ export class Api {
       this.blobs = storage.blobs;
       this.secretLoader = storage.secretLoader ?? null;
       this.healthCheck = storage.healthCheck ?? null;
+      this.colleagues = storage.colleagues ?? null;
     } else {
       this.users = new JsonStore<User>(`${options.dataDir}/users`);
       this.sessions = new JsonStore<Session>(`${options.dataDir}/sessions`);
@@ -334,6 +337,7 @@ export class Api {
     r.on('POST', '/api/auth/resend', (c) => this.resend(c));
     r.on('POST', '/api/auth/forgot', (c) => this.forgot(c));
     r.on('POST', '/api/auth/reset', (c) => this.reset(c));
+    r.on('GET', '/api/directory', (c) => this.directory(c));
     r.on('GET', '/api/me', async (c) => {
       const user = await this.requireUser(c);
       return { user: publicUser(user), prefs: user.prefs ?? {} };
@@ -863,6 +867,14 @@ export class Api {
     }
     const user = await this.users.get(session.userId);
     return user && user.verified !== false ? user : null;
+  }
+
+  /** Сотрудники reporting по фамилии или почте — для приглашения в файл. */
+  async directory(c: Ctx): Promise<{ people: { name: string; email: string }[] }> {
+    await this.requireUser(c);
+    const q = c.url.searchParams.get('q') ?? '';
+    if (!this.colleagues) return { people: [] };
+    return { people: await this.colleagues(q) };
   }
 
   async requireUser(c: Ctx): Promise<User> {

@@ -38,6 +38,7 @@ import { BoardOptions } from './ui/board-options.ts';
 import { IconsPanel } from './ui/icons-panel.ts';
 import { ContentPanel } from './ui/content-panel.ts';
 import { loadCjkFonts } from './cjk-fonts.ts';
+import { loadBrandFonts } from './t2-fonts.ts';
 import { padFace, tearOff } from './ui/sticky-pad.ts';
 import { FramePresets } from './ui/frame-presets.ts';
 import { DeviceMockups } from './ui/device-mockups.ts';
@@ -746,6 +747,10 @@ export class App {
     this.editor.events.on('change', fonts);
     this.editor.events.on('document', fonts);
     // Chinese, Japanese and Korean texts: Noto Sans of their script, loaded when a text needs it.
+    loadBrandFonts((added) => {
+      fontsChanged(added);
+      this.remeasureText();
+    });
     const cjk = () =>
       loadCjkFonts(this.editor.doc, (added) => {
         fontsChanged(added);
@@ -980,6 +985,28 @@ export class App {
             } else doc = deserialize(await file.text());
             const id = backend.kind === 'cloud' ? newCloudId() : newFileId();
             await backend.save({ id, name: doc.get(doc.rootId, 'name'), snapshot: serialize(doc), savedAt: Date.now() });
+            location.assign(fileUrl(id));
+          } catch (error) {
+            home.clearToasts();
+            await showMessage({ title: tr('Не удалось открыть файл'), message: error instanceof Error ? error.message : String(error) });
+          }
+        });
+      },
+      uploadPresentation: () => {
+        void pickFiles('.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation').then(async ([file]) => {
+          if (!file || !/\.pptx$/i.test(file.name)) return;
+          try {
+            home.toast(tr('Загружаю презентацию «{0}»…', file.name), 60_000);
+            const { pptxToDocument } = await import('./pptx/import-run.ts');
+            const result = await pptxToDocument(file, new CanvasTextMeasurer());
+            try {
+              sessionStorage.setItem(IMPORT_NOTE, result.note);
+            } catch {
+              // the note is a courtesy
+            }
+            const doc = result.doc;
+            const id = backend.kind === 'cloud' ? newCloudId() : newFileId();
+            await backend.save({ id, name: doc.get(doc.rootId, 'name') || file.name.replace(/\.pptx$/i, ''), snapshot: serialize(doc), savedAt: Date.now() });
             location.assign(fileUrl(id));
           } catch (error) {
             home.clearToasts();

@@ -9,6 +9,7 @@ import type { Editor } from '../editor.ts';
 import { safeName } from '../exporter.ts';
 import { clear, download, h, icon } from '../ui/dom.ts';
 import { collectSlides, slideTargets, type CollectEnv } from './collect.ts';
+import { BRAND_FACES } from '../t2-fonts.ts';
 import { documentFaces, localFaces, useOfficeFonts } from './fonts.ts';
 import { buildPptx, PPTX_MIME, type Image } from './writer.ts';
 
@@ -230,7 +231,13 @@ export class PptxExportDialog {
           this.setProgress((done / total) * 0.9);
         },
       );
-      const fonts = await useOfficeFonts(collected.slides, [...documentFaces(this.editor.doc), ...(await local)]);
+      const brand = BRAND_FACES.map((face) => ({
+        family: face.family,
+        weight: Number(face.weight),
+        italic: false,
+        bytes: async () => new Uint8Array(await (await fetch(face.url)).arrayBuffer()),
+      }));
+      const fonts = await useOfficeFonts(collected.slides, [...documentFaces(this.editor.doc), ...brand, ...(await local)]);
       this.setStatus(tr('Упаковываю файл…'));
       const name = safeName(this.fileName.value.replace(/\.pptx$/i, '')) || tr('Презентация');
       const files = buildPptx(collected.slides, collected.images, { size: this.size.value === 'px' ? 'px' : 'standard', title: name });

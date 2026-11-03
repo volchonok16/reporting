@@ -301,6 +301,11 @@ export interface ShareInfo {
   mailFailed?: boolean;
 }
 
+/** Сотрудники reporting: фамилия или почта. */
+export const directory = {
+  search: (q: string) => request<{ people: { name: string; email: string }[] }>('GET', `/api/directory?q=${encodeURIComponent(q)}`),
+};
+
 /** Sharing a server file (the "Share" dialog). */
 export const sharing = {
   get: (id: string) => request<ShareInfo>('GET', `/api/files/${encodeURIComponent(id)}/share`, undefined, linkHeaders(id)),

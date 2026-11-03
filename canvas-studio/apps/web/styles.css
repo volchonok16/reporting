@@ -4990,9 +4990,56 @@ a.home-brand:hover {
   display: flex;
   gap: 6px;
 }
-.share-email {
+.share-email-wrap {
+  position: relative;
   flex: 1;
   min-width: 0;
+}
+.share-email {
+  width: 100%;
+  min-width: 0;
+}
+.share-suggest {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  max-height: 220px;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+.share-suggest[hidden] {
+  display: none;
+}
+.share-suggest button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.share-suggest button strong {
+  font-weight: 600;
+}
+.share-suggest button small {
+  color: var(--muted, #666);
+  font-size: 11px;
+}
+.share-suggest button:hover,
+.share-suggest button.active {
+  background: var(--hover, #f4f4f4);
 }
 .share-select {
   height: 32px;

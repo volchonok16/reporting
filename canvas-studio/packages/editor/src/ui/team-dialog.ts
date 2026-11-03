@@ -4,6 +4,7 @@
 
 import { locale, tr } from '#core';
 import { CloudError, teams, type TeamInfo, type TeamRole } from '../cloud.ts';
+import { colleagueEmailField } from './colleague-picker.ts';
 import { askConfirm } from './dialog.ts';
 import { clear, h, icon } from './dom.ts';
 
@@ -109,18 +110,18 @@ export class TeamDialog {
     let form: HTMLElement | string = '';
     let email: HTMLInputElement | null = null;
     if (admin) {
-      const field = h('input', { class: 'dialog-input share-email', type: 'email', placeholder: tr('Email коллеги'), 'aria-label': 'Email', autocomplete: 'off', spellcheck: false });
-      email = field;
+      const who = colleagueEmailField(tr('Фамилия или email'), tr('Фамилия или email'));
+      email = who.input;
       let role: TeamRole = 'editor';
       const inviteRole = roleSelect(role, (r) => (role = r), tr('Роль для приглашения'));
       const invite = h('button', { class: 'text-button primary', type: 'submit' }, tr('Пригласить'));
-      form = h('form', { class: 'share-invite', novalidate: true }, field, inviteRole, invite);
+      form = h('form', { class: 'share-invite', novalidate: true }, who.wrap, inviteRole, invite);
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const value = field.value.trim();
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)) {
-          this.error.textContent = tr('Проверьте email');
-          field.focus();
+        const value = who.email();
+        if (!value) {
+          this.error.textContent = tr('Выберите коллегу из списка или введите email');
+          who.input.focus();
           return;
         }
         invite.disabled = true;

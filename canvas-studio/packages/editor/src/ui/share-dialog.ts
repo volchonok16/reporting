@@ -6,6 +6,7 @@
 
 import { locale, tr } from '#core';
 import { CloudError, sharing, type GrantRole, type LinkMode, type ShareInfo } from '../cloud.ts';
+import { colleagueEmailField } from './colleague-picker.ts';
 import { askConfirm } from './dialog.ts';
 import { clear, h, icon, skeletonRows } from './dom.ts';
 
@@ -99,17 +100,17 @@ export class ShareDialog {
     clear(this.body);
 
     // Invite by email.
-    const email = h('input', { class: 'dialog-input share-email', type: 'email', placeholder: tr('Email коллеги'), 'aria-label': 'Email', autocomplete: 'off', spellcheck: false });
+    const who = colleagueEmailField(tr('Фамилия или email'), tr('Фамилия или email'));
     let role: GrantRole = 'editor';
     const inviteRole = roleSelect(role, (r) => (role = r), tr('Роль для приглашения'));
     const invite = h('button', { class: 'text-button primary', type: 'submit' }, tr('Пригласить'));
-    const form = h('form', { class: 'share-invite', novalidate: true }, email, inviteRole, invite);
+    const form = h('form', { class: 'share-invite', novalidate: true }, who.wrap, inviteRole, invite);
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const value = email.value.trim();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)) {
-        this.error.textContent = tr('Проверьте email');
-        email.focus();
+      const value = who.email();
+      if (!value) {
+        this.error.textContent = tr('Выберите коллегу из списка или введите email');
+        who.input.focus();
         return;
       }
       invite.disabled = true;

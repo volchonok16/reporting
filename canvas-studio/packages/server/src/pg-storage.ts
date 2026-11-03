@@ -308,6 +308,45 @@ export async function loadOrCreatePgSecret(pool: PgPool, makeKey: (n: number) =>
   return key;
 }
 
+export interface Colleague {
+  name: string;
+  email: string;
+}
+
+/** Сотрудники reporting: фамилия или почта. Пустой список, если таблиц ещё нет. */
+export async function searchColleagues(pool: PgPool, raw: string): Promise<Colleague[]> {
+  const q = raw.trim().slice(0, 80);
+  if (q.length < 2) return [];
+  const like = `%${q.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+  try {
+    const { rows } = await pool.query(
+      `SELECT name, email FROM (
+         SELECT DISTINCT ON (lower(email)) name, email
+         FROM (
+           SELECT btrim(e.full_name) AS name, lower(btrim(e.email)) AS email
+           FROM employee e
+           WHERE e.is_active IS TRUE AND e.email IS NOT NULL AND btrim(e.email) <> ''
+           UNION ALL
+           SELECT COALESCE(NULLIF(btrim(e.full_name), ''), u.email) AS name, lower(btrim(u.email)) AS email
+           FROM org_user u
+           LEFT JOIN employee e ON e.user_id = u.id
+           WHERE u.status = 10 AND u.email IS NOT NULL AND btrim(u.email) <> ''
+         ) people
+         WHERE email LIKE $1 ESCAPE '\\' OR name ILIKE $1 ESCAPE '\\'
+         ORDER BY lower(email), length(name) DESC
+       ) picked
+       ORDER BY name
+       LIMIT 15`,
+      [like],
+    );
+    return rows
+      .map((row) => ({ name: String(row.name ?? ''), email: String(row.email ?? '') }))
+      .filter((row) => row.email.includes('@'));
+  } catch {
+    return [];
+  }
+}
+
 export type PgStorageBundle = {
   pool: PgPool;
   users: PgJsonStore<unknown>;
