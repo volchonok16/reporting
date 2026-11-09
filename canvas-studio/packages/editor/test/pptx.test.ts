@@ -306,11 +306,12 @@ test('pptx import (FEAT-168): a PowerPoint table becomes a real table — grid c
   const frame = editor.commit('setup', (tx) => tx.create('FRAME', page, { name: 'Слайд', x: 0, y: 0, width: 960, height: 540 }));
   const res = await collectSlides(editor.doc, [frame], env(editor), { mode: 'editable', scale: 2, svg: true, groups: false });
   const files = buildPptx(res.slides, res.images, { title: 'Таблица' });
-  const cell = (text: string, attrs = '') => `<a:tc${attrs}><a:txBody><a:bodyPr/><a:p><a:r><a:rPr lang="ru-RU" sz="1800"/><a:t>${text}</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc>`;
+  const cell = (text: string, attrs = '', pr = '') => `<a:tc${attrs}><a:txBody><a:bodyPr/><a:p><a:r><a:rPr lang="ru-RU" sz="1800"/><a:t>${text}</a:t></a:r></a:p></a:txBody><a:tcPr>${pr}</a:tcPr></a:tc>`;
   const merged = '<a:tc hMerge="1"><a:txBody><a:bodyPr/><a:p/></a:txBody><a:tcPr/></a:tc>';
   const frameXml = `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="9" name="Таблица 1"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="914400" y="914400"/><a:ext cx="5486400" cy="1463040"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblGrid><a:gridCol w="1828800"/><a:gridCol w="1828800"/><a:gridCol w="1828800"/></a:tblGrid>`
     + `<a:tr h="365760">${cell('Город')}${cell('Итог', ' gridSpan="2"')}${merged}</a:tr>`
-    + `<a:tr h="365760">${cell('Казань')}${cell('10')}${cell('20')}</a:tr></a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+    + `<a:tr h="365760">${cell('Казань')}${cell('10')}${cell('20')}</a:tr>`
+    + `<a:tr h="365760">${cell('Прозрачная', '', '<a:noFill/>')}${cell('')}${cell('')}</a:tr></a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
   const slide = files.find((f) => f.name === 'ppt/slides/slide1.xml')!;
   const xml = new TextDecoder().decode(slide.data).replace('</p:spTree>', `${frameXml}</p:spTree>`);
   slide.data = new TextEncoder().encode(xml);
@@ -326,8 +327,11 @@ test('pptx import (FEAT-168): a PowerPoint table becomes a real table — grid c
   assert.ok(table, 'a table, not a group of rectangles');
   assert.equal(doc.get(table, 'layoutMode'), 'GRID');
   const shape = tableShape(doc, table);
-  assert.deepEqual([shape.rows, shape.cols], [2, 3]);
-  assert.deepEqual(tableTexts(doc, table), [['Город', 'Итог', ''], ['Казань', '10', '20']]);
+  assert.deepEqual([shape.rows, shape.cols], [3, 3]);
+  assert.deepEqual(tableTexts(doc, table), [['Город', 'Итог', ''], ['Казань', '10', '20'], ['Прозрачная', '', '']]);
+  const fillOf = (id: typeof shape.cells[number]) => doc.get(id!, 'fills')[0]!;
+  assert.equal(fillOf(shape.cells[0]).type === 'SOLID' && fillOf(shape.cells[0]).opacity, 1, 'a cell without a fill stays white');
+  assert.equal(fillOf(shape.cells[6]).type === 'SOLID' && fillOf(shape.cells[6]).opacity, 0, 'an explicit noFill stays transparent');
   assert.deepEqual(tableMerges(doc, table).map((m) => [m.row, m.col, m.rows, m.cols]), [[0, 1, 1, 2]]);
   assert.equal(doc.get(shape.cells[2]!, 'visible'), false, 'the place under the merged cell is hidden');
 });

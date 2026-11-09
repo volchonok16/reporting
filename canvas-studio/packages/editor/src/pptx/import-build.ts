@@ -203,8 +203,9 @@ export function buildDeck(editor: Editor, tx: Transaction, deck: ImDeck, media: 
         e.rows.forEach((row) => {
           e.cols.forEach((_, i) => {
             const cell = row.cells[i] ?? null;
+            const painted = cell && cell.fill !== undefined ? paintOf(cell.fill) : null;
             const frame = bareCell(tx, table, {
-              fill: (cell && paintOf(cell.fill)) || solidOf({ r: 1, g: 1, b: 1, a: 1 }),
+              fill: painted ?? solidOf(cell?.fill === null ? { r: 0, g: 0, b: 0, a: 0 } : { r: 1, g: 1, b: 1, a: 1 }),
               colSpan: cell?.span ?? 1,
               rowSpan: cell?.rowSpan ?? 1,
               minHeight: cell ? row.h : 0,

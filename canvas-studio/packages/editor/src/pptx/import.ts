@@ -74,7 +74,7 @@ export type ImElement =
   | ({ k: 'pic'; name: string; path: string; crop: Crop | null; geom: string; stroke: ImStroke | null } & Box)
   | ({ k: 'line'; name: string; x1: number; y1: number; x2: number; y2: number; stroke: ImStroke })
   | { k: 'group'; name: string; children: ImElement[] }
-  | { k: 'table'; name: string; x: number; y: number; cols: number[]; rows: { h: number; cells: ({ fill: ImFill; stroke: ImStroke | null; text: ImText; span: number; rowSpan: number } | null)[] }[] }
+  | { k: 'table'; name: string; x: number; y: number; cols: number[]; rows: { h: number; cells: ({ fill: ImFill | undefined; stroke: ImStroke | null; text: ImText; span: number; rowSpan: number } | null)[] }[] }
   | ({ k: 'missing'; name: string; what: string } & Box)
   /** A Windows metafile read as vectors (emf.ts). */
   | ({ k: 'vector'; name: string; svg: string } & Box);
@@ -676,7 +676,8 @@ function readGraphicFrame(ctx: Ctx, gf: XmlNode, t: Xform): ImElement | null {
         const cellBox: Box = { x: cx, y: 0, w: width, h: hgt, rot: 0, flipH: false, flipV: false };
         const text = textOf(ctx, kid(tc, 'txBody'), ctx.txStyles.other, cellBox, ctx.theme.colors[ctx.clrMap.tx1 ?? 'dk1'] ?? hex('000000')) ?? { x: cx, y: 0, w: width, h: hgt, anchor: 'TOP' as const, paragraphs: [] };
         const border = ['lnB', 'lnT', 'lnL', 'lnR'].map((k) => stroke(ctx, kid(tcPr, k))).find(Boolean) ?? null;
-        return { fill: fill(ctx, tcPr, ctx.part) ?? null, stroke: border, text, span, rowSpan: Math.max(1, num(tc.attrs.rowSpan, 1)) };
+        // undefined: PowerPoint's default white cell. null: an explicit noFill, which must stay transparent.
+        return { fill: fill(ctx, tcPr, ctx.part), stroke: border, text, span, rowSpan: Math.max(1, num(tc.attrs.rowSpan, 1)) };
       });
       return { h: hgt, cells };
     });
