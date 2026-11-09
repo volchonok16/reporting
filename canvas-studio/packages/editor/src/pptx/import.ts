@@ -51,6 +51,8 @@ export interface ImParagraph {
 export interface ImText {
   /** «Не переносить» in PowerPoint: the text keeps its lines however long. */
   noWrap?: boolean;
+  /** PowerPoint bodyPr vert: the text runs along the tall side of the box. */
+  vert?: 'vert' | 'vert270';
   x: number;
   y: number;
   w: number;
@@ -504,6 +506,7 @@ function textOf(ctx: Ctx, txBody: XmlNode | undefined, chain: XmlNode[], b: Box,
     };
   });
   const anchor = body?.attrs.anchor;
+  const vert = body?.attrs.vert === 'vert' || body?.attrs.vert === 'vert270' ? body.attrs.vert : undefined;
   const l = ins('lIns', 91440);
   const t = ins('tIns', 45720);
   return {
@@ -514,6 +517,7 @@ function textOf(ctx: Ctx, txBody: XmlNode | undefined, chain: XmlNode[], b: Box,
     anchor: anchor === 'ctr' ? 'CENTER' : anchor === 'b' ? 'BOTTOM' : 'TOP',
     paragraphs,
     ...(body?.attrs.wrap === 'none' ? { noWrap: true } : {}),
+    ...(vert ? { vert } : {}),
   };
 }
 

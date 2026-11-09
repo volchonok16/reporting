@@ -116,9 +116,9 @@ class Settings(BaseSettings):
         description="development | production. В production дефолтные SSO/MinIO-секреты запрещены.",
     )
     session_ttl_hours: int = Field(
-        default=72,
+        default=720,
         alias="SESSION_TTL_HOURS",
-        description="Срок жизни сессии reporting (часов) с момента создания.",
+        description="Срок жизни сессии reporting (часов) с последней активности. По умолчанию 30 суток.",
     )
     tfs_sync_pat: str = Field(
         default="",

@@ -20,6 +20,21 @@ export function slideTemplates(): SlideTemplate[] {
   ];
 }
 
+let identityFile: Promise<File> | null = null;
+
+/** The identity deck, fetched once. Slide names are the titles inside the file. */
+export async function identitySlides(): Promise<{ name: string }[]> {
+  const { readPptxFile } = await import('./pptx/import.ts');
+  const file = await cachedIdentityFile();
+  const deck = await readPptxFile(new Uint8Array(await file.arrayBuffer()));
+  return deck.slides.map((slide, index) => ({ name: slide.name || tr('Слайд {0}', index + 1) }));
+}
+
+export function cachedIdentityFile(): Promise<File> {
+  identityFile ??= loadSlideTemplate('identity');
+  return identityFile;
+}
+
 export async function loadSlideTemplate(id: string): Promise<File> {
   const template = slideTemplates().find((item) => item.id === id);
   if (!template) throw new Error(tr('Нет такого шаблона'));

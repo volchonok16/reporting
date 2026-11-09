@@ -200,7 +200,7 @@
 |---------|-----|----------|
 | id | varchar(64) | sessionId для `X-Session-Id` / query `sid` (фото) |
 | payload | jsonb | `auth_mode`, `app_login`, `app_role`, `org_user_*`, `voice_*`, `must_change_password`; для `app_user` PAT не хранится (sentinel → `TFS_SYNC_PAT` при sync) |
-| created_at | timestamptz | Создание; TTL = `SESSION_TTL_HOURS` (default 72) |
+| created_at | timestamptz | Последняя активность сессии (сдвигается не чаще раза в час); TTL = `SESSION_TTL_HOURS` (default 720) |
 
 Переменные: `APP_AUTH_USERS`, `APP_AUTH_ROADMAP_USERS`, `TFS_SYNC_PAT`, `SESSION_TTL_HOURS`, `APP_ENV`. Матрица ACL: [auth-and-roles.md](auth-and-roles.md).
 

@@ -67,7 +67,6 @@ export class SlidesPanel {
         { kind: 'action', label: tr('PowerPoint (PPTX)…'), run: () => this.onExport?.('pptx') },
         { kind: 'separator' },
         { kind: 'action', label: tr('Импорт PowerPoint: слайды после текущего…'), disabled: this.editor.doc.readOnly, run: () => this.onImport?.() },
-        { kind: 'action', label: tr('Шаблон «Новая айдентика»'), disabled: this.editor.doc.readOnly, run: () => void this.insertIdentity() },
       ]);
     });
     this.themeButton = h('button', { class: 'text-button sl-theme', type: 'button' });
@@ -417,18 +416,18 @@ export class SlidesPanel {
     };
   }
 
-  private async insertIdentity(): Promise<void> {
+  private async insertIdentitySlide(index: number): Promise<void> {
     if (this.editor.doc.readOnly) return;
     this.closePopover();
-    this.editor.toast(tr('Добавляю шаблон «Новая айдентика»…'));
+    this.editor.toast(tr('Добавляю слайд…'));
     try {
-      const { loadSlideTemplate } = await import('../slide-templates.ts');
+      const { cachedIdentityFile } = await import('../slide-templates.ts');
       const { importPptxInto } = await import('../pptx/import-run.ts');
-      const file = await loadSlideTemplate('identity');
-      const { note } = await importPptxInto(this.editor, file, this.currentSlide());
+      const file = await cachedIdentityFile();
+      const { note } = await importPptxInto(this.editor, file, this.currentSlide(), index);
       this.editor.toast(note);
     } catch (error) {
-      this.editor.toast(error instanceof Error ? error.message : tr('Не удалось добавить шаблон'), 'error');
+      this.editor.toast(error instanceof Error ? error.message : tr('Не удалось добавить слайд'), 'error');
     }
   }
 
@@ -447,7 +446,28 @@ export class SlidesPanel {
         return b;
       }),
     );
-    this.openPopover(anchor, h('div', {}, h('div', { class: 'new-kind-title' }, tr('Новый слайд')), grid));
+    const identity = h('div', { class: 'sl-layouts', role: 'menu', 'aria-label': tr('Новая айдентика') });
+    identity.append(h('div', { class: 'sl-layout-note' }, tr('Загружаю шаблоны…')));
+    this.openPopover(anchor, h('div', {}, h('div', { class: 'new-kind-title' }, tr('Новый слайд')), grid, h('div', { class: 'new-kind-title' }, tr('Новая айдентика')), identity));
+    void this.fillIdentityLayouts(identity);
+  }
+
+  private async fillIdentityLayouts(host: HTMLElement): Promise<void> {
+    try {
+      const { identitySlides } = await import('../slide-templates.ts');
+      const slides = await identitySlides();
+      if (!host.isConnected) return;
+      host.replaceChildren(
+        ...slides.map((slide, index) => {
+          const b = h('button', { class: 'sl-layout', type: 'button', role: 'menuitem' }, h('span', {}, slide.name));
+          b.addEventListener('click', () => void this.insertIdentitySlide(index));
+          return b;
+        }),
+      );
+    } catch (error) {
+      if (!host.isConnected) return;
+      host.replaceChildren(h('div', { class: 'sl-layout-note' }, error instanceof Error ? error.message : tr('Не удалось открыть шаблон')));
+    }
   }
 
   private openFormats(anchor: HTMLElement): void {

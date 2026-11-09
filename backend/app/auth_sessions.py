@@ -100,8 +100,16 @@ def _session_meta_from_payload(payload: dict) -> dict:
 
 
 def _session_ttl() -> timedelta:
-    hours = max(1, int(getattr(settings, "session_ttl_hours", 72) or 72))
+    hours = max(1, int(getattr(settings, "session_ttl_hours", 720) or 720))
     return timedelta(hours=hours)
+
+
+def _touch_session(db, row: AuthSession, created: datetime) -> None:
+    """Продлевает сессию по активности, но не чаще раза в час."""
+    if datetime.now(timezone.utc) - created < timedelta(hours=1):
+        return
+    row.created_at = datetime.now(timezone.utc)
+    db.commit()
 
 
 def _load_session_row(session_id: str | None) -> tuple[AuthSession | None, dict | None]:
@@ -120,6 +128,7 @@ def _load_session_row(session_id: str | None) -> tuple[AuthSession | None, dict 
                 db.execute(delete(AuthSession).where(AuthSession.id == session_id))
                 db.commit()
                 return None, None
+            _touch_session(db, row, created)
         return row, dict(row.payload)
     finally:
         db.close()

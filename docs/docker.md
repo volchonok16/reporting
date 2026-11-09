@@ -14,7 +14,7 @@ bash scripts/dev.sh
 - Dev-порты (`docker-compose.dev.yml`): `127.0.0.1` для backend, frontend, canvas-studio, voice-web, MinIO.
 - MinIO `photos` / `product-status`: без anonymous download; фото — `GET /api/org/photos/…` с сессией.
 - `APP_ENV=production` — запрет дефолтных/коротких `VOICE_SSO_SECRET` и `CANVAS_STUDIO_SSO_SECRET`.
-- Сессии reporting: `SESSION_TTL_HOURS` (по умолчанию 72); за HTTPS у Симметрики — `CS_SECURE=1`.
+- Сессии reporting: `SESSION_TTL_HOURS` (по умолчанию 720, 30 суток с последней активности); за HTTPS у Симметрики — `CS_SECURE=1`.
 
 ## Production (nginx + certbot)
 
@@ -386,7 +386,7 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 | Переменная | По умолчанию | Назначение |
 |------------|--------------|------------|
 | `APP_ENV` | `development` | В `production` — отказ старта при дефолтных/коротких SSO-секретах |
-| `SESSION_TTL_HOURS` | `72` | TTL `auth_session` от `created_at` |
+| `SESSION_TTL_HOURS` | `720` | TTL `auth_session` от последней активности (`created_at` сдвигается раз в час) |
 | `VOICE_SSO_SECRET` | (dev placeholder) | HMAC SSO Voice |
 | `CANVAS_STUDIO_SSO_SECRET` | (dev placeholder) | HMAC SSO Симметрики (= `CS_REPORTING_SSO_SECRET` в canvas) |
 | `CS_DATABASE_URL` | `postgresql://…@postgres:5432/reporting` | PG-хранилище Симметрики |

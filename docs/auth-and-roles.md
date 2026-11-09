@@ -13,7 +13,7 @@
 
 | Параметр | Назначение |
 |----------|------------|
-| `SESSION_TTL_HOURS` | Срок жизни сессии с `created_at` (по умолчанию **72**). Просроченные строки удаляются при обращении |
+| `SESSION_TTL_HOURS` | Срок жизни сессии с последней активности (по умолчанию **720** часов, 30 суток). Просроченные строки удаляются при обращении |
 | `APP_ENV` | `development` (default) / `production`. В **production** старт backend падает, если SSO-секреты дефолтные или короче 24 символов |
 | `VOICE_SSO_SECRET` / `CANVAS_STUDIO_SSO_SECRET` | HMAC для iframe SSO; в dev допустимы placeholder’ы (в лог — warning) |
 

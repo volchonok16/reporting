@@ -200,12 +200,17 @@ export function buildDeck(editor: Editor, tx: Transaction, deck: ImDeck, media: 
         // A real table (FEAT-168): a grid of cells whose rows grow with their texts, merged cells kept.
         const line = e.rows.flatMap((r) => r.cells).find((c) => c?.stroke)?.stroke;
         const table = tableFrame(tx, parent, { name: e.name, x: e.x, y: e.y, widths: e.cols, rows: e.rows.length, line: solidOf(line?.color ?? { r: 0.8, g: 0.8, b: 0.82, a: 1 }) });
+        // Gaps use the line colour. An opaque sheet here shows through cells with no fill
+        // and turns a dark slide into a white table with invisible white text.
+        tx.update(table, { fills: [] });
         e.rows.forEach((row) => {
           e.cols.forEach((_, i) => {
             const cell = row.cells[i] ?? null;
             const painted = cell && cell.fill !== undefined ? paintOf(cell.fill) : null;
             const frame = bareCell(tx, table, {
               fill: painted ?? solidOf(cell?.fill === null ? { r: 0, g: 0, b: 0, a: 0 } : { r: 1, g: 1, b: 1, a: 1 }),
+              stroke: cell?.stroke ? solidOf(cell.stroke.color) : null,
+              strokeWeight: cell?.stroke ? round(cell.stroke.width) : 0,
               colSpan: cell?.span ?? 1,
               rowSpan: cell?.rowSpan ?? 1,
               minHeight: cell ? row.h : 0,
@@ -270,7 +275,12 @@ export function buildDeck(editor: Editor, tx: Transaction, deck: ImDeck, media: 
           else if (e.geom === 'star5') tx.create('STAR', holder, { ...common, pointCount: 5 });
           else tx.create('RECTANGLE', holder, { ...common, cornerRadius: round(e.radius) });
         }
-        if (e.text) text(holder, e.text, e.name, e.rot, { x: e.x + e.w / 2, y: e.y + e.h / 2 });
+        if (e.text?.vert) {
+          const cx = e.x + e.w / 2;
+          const cy = e.y + e.h / 2;
+          const upright = { ...e.text, w: e.text.h, h: e.text.w, x: cx - e.text.h / 2, y: cy - e.text.w / 2 };
+          text(holder, upright, e.name, e.text.vert === 'vert' ? 90 : 270, { x: cx, y: cy });
+        } else if (e.text) text(holder, e.text, e.name, e.rot, { x: e.x + e.w / 2, y: e.y + e.h / 2 });
         if (both && tx.doc.children(holder).length === 0) tx.delete(holder);
         return;
       }

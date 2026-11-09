@@ -809,22 +809,7 @@ export class App {
             : kind === 'board'
               ? createBoardDocument(example ? tr('Пример: доска') : tr('Без названия'))
               : Document.createEmpty(example ? tr('Пример: {0}', brand()) : tr('Без названия'), undefined, { backgroundColor: themePageBackground() });
-      let templateError = '';
-      if (kind === 'slides' && route.create.template === 'identity' && !example) {
-        try {
-          const { loadSlideTemplate } = await import('./slide-templates.ts');
-          const { pptxToDocument } = await import('./pptx/import-run.ts');
-          const file = await loadSlideTemplate('identity');
-          const result = await pptxToDocument(file, new CanvasTextMeasurer());
-          result.doc.transact((tx) => tx.update(result.doc.rootId, { name: tr('Новая айдентика') }));
-          result.doc.clearHistory();
-          created = result.doc;
-        } catch (error) {
-          templateError = error instanceof Error ? error.message : tr('Не удалось открыть шаблон');
-        }
-      }
       const app = new App(root, created, backend, choice.server, id);
-      if (templateError) setTimeout(() => app.toast(templateError), 400);
       app.newFileProject = route.create.projectId;
       // A diagram's example is its kind's own text, shown until edited: nothing to build.
       if (example && kind !== 'diagram') {

@@ -30,9 +30,14 @@ export async function pptxToDocument(file: File, measurer: TextMeasurer): Promis
   return { doc, note: [tr('Импортировано слайдов: {0}.', deck.slides.length), note].filter(Boolean).join(' ') };
 }
 
-/** The slides of a .pptx into the open presentation after `after`; one undo step. */
-export async function importPptxInto(editor: Editor, file: File, after: NodeId | null): Promise<{ slides: NodeId[]; note: string }> {
+/** The slides of a .pptx into the open presentation after `after`; one undo step. `only` inserts that one slide. */
+export async function importPptxInto(editor: Editor, file: File, after: NodeId | null, only?: number): Promise<{ slides: NodeId[]; note: string }> {
   const { deck, media, note } = await read(file);
+  if (only !== undefined) {
+    const slide = deck.slides[only];
+    if (!slide) throw new Error(tr('В шаблоне нет такого слайда'));
+    deck.slides = [slide];
+  }
   let slides: NodeId[] = [];
   editor.commit(tr('Импорт PowerPoint'), (tx) => {
     slides = buildDeck(editor, tx, deck, media, after);

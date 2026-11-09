@@ -316,7 +316,7 @@ export function tableFrame(tx: Transaction, parent: NodeId, o: { name: string; x
 }
 
 /** A cell of `tableFrame`: its fill, spans and least height; hidden when a merged cell covers its place. Its text goes in after. */
-export function bareCell(tx: Transaction, table: NodeId, o: { fill: Paint; colSpan: number; rowSpan: number; minHeight: number; hidden: boolean; padX: number; padY: number }): NodeId {
+export function bareCell(tx: Transaction, table: NodeId, o: { fill: Paint; colSpan: number; rowSpan: number; minHeight: number; hidden: boolean; padX: number; padY: number; stroke?: Paint | null; strokeWeight?: number }): NodeId {
   return tx.create('FRAME', table, {
     name: tr('Ячейка'),
     layoutMode: 'VERTICAL',
@@ -332,6 +332,7 @@ export function bareCell(tx: Transaction, table: NodeId, o: { fill: Paint; colSp
     visible: !o.hidden,
     clipsContent: false,
     fills: [o.fill],
+    ...(o.stroke ? { strokes: [o.stroke], strokeWeight: o.strokeWeight ?? 1, strokeAlign: 'CENTER' as const } : {}),
   });
 }
 

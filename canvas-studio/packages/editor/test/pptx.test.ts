@@ -332,6 +332,7 @@ test('pptx import (FEAT-168): a PowerPoint table becomes a real table — grid c
   const fillOf = (id: typeof shape.cells[number]) => doc.get(id!, 'fills')[0]!;
   assert.equal(fillOf(shape.cells[0]).type === 'SOLID' && fillOf(shape.cells[0]).opacity, 1, 'a cell without a fill stays white');
   assert.equal(fillOf(shape.cells[6]).type === 'SOLID' && fillOf(shape.cells[6]).opacity, 0, 'an explicit noFill stays transparent');
+  assert.equal(doc.get(table, 'fills').length, 0, 'the table itself is not a white sheet');
   assert.deepEqual(tableMerges(doc, table).map((m) => [m.row, m.col, m.rows, m.cols]), [[0, 1, 1, 2]]);
   assert.equal(doc.get(shape.cells[2]!, 'visible'), false, 'the place under the merged cell is hidden');
 });

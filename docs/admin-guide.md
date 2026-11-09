@@ -67,7 +67,7 @@ UPDATE org_user SET role = 10  WHERE email = '…';  -- user
 | Включить/выключить обслуживание, текст сообщения | **UI** шапка → **Обслуживание** (`app_maintenance`) |
 | Разрешить вход только админам при обслуживании | там же / поле `allow_admin` |
 | Массовый logout | **UI** Обслуживание → revoke sessions **или** API `POST /api/admin/sessions/revoke-all` |
-| Срок жизни сессии | **`.env`**: `SESSION_TTL_HOURS` (по умолчанию 72) |
+| Срок жизни сессии | **`.env`**: `SESSION_TTL_HOURS` (по умолчанию 720, 30 суток с последней активности) |
 | Окружение (проверка SSO-секретов) | **`.env`**: `APP_ENV=production` \| `development` |
 
 Нужен `canManageOrg`.
