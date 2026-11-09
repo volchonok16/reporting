@@ -1105,7 +1105,7 @@ body {
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 24px;
 }
@@ -1143,6 +1143,19 @@ body {
 .metric-total {
   background: var(--t2-mint);
   color: #000000;
+}
+
+.metric-clean {
+  background: var(--surface);
+  color: var(--text-primary);
+  border-color: var(--text-primary);
+}
+
+.metric-clean.metric-card-active {
+  background: #16d5df;
+  color: #000;
+  border-color: #16d5df;
+  box-shadow: none;
 }
 
 .metric-in-progress {

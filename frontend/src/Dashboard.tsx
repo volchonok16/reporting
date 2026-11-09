@@ -102,6 +102,7 @@ type DashboardData = {
   allBoards: boolean
   metrics: {
     totalTasks: number
+    tasksWithoutErrors: number
     inProgress: number
     launchingSoon: number
     launched: number
@@ -884,10 +885,11 @@ function rowHasExpandDetails(item: ChangeRequest): boolean {
   return Boolean(item.customerName?.trim() || hasPlannedDate(item) || hasLinkedEnvironments)
 }
 
-type MetricFilter = '' | 'in_progress' | 'launching_soon' | 'launched' | 'completed' | 'errors'
+type MetricFilter = '' | 'without_errors' | 'in_progress' | 'launching_soon' | 'launched' | 'completed' | 'errors'
 
 const METRIC_LABELS: Record<MetricFilter, string> = {
   '': 'Все задачи',
+  without_errors: 'Задачи без ошибок',
   in_progress: 'В работе',
   launching_soon: 'Скоро запуск',
   launched: 'Запущено',
@@ -943,6 +945,7 @@ const ECT_FILTER_OPTIONS: ColumnMenuOption[] = [
 function isMetricFilter(value: string | undefined): value is MetricFilter {
   return (
     value === ''
+    || value === 'without_errors'
     || value === 'in_progress'
     || value === 'launching_soon'
     || value === 'launched'
@@ -1599,6 +1602,14 @@ export default function Dashboard({ canSyncTfs = false, canManageOrg = false }: 
         >
           <span className="metric-label">Всего задач</span>
           <strong className="metric-value">{data?.metrics.totalTasks ?? '—'}</strong>
+        </button>
+        <button
+          type="button"
+          className={`metric-card metric-clean${metricFilter === 'without_errors' ? ' metric-card-active' : ''}`}
+          onClick={() => toggleMetricFilter('without_errors')}
+        >
+          <span className="metric-label">Задачи без ошибок</span>
+          <strong className="metric-value">{data?.metrics.tasksWithoutErrors ?? '—'}</strong>
         </button>
         <button
           type="button"

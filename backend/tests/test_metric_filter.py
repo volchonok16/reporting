@@ -119,6 +119,37 @@ def test_metric_filter_errors() -> None:
     )
 
 
+def test_metric_filter_without_errors() -> None:
+    clean = _zni()
+    clean.id = 1
+    parent = _zni(external_id="2")
+    parent.id = 10
+    error = Task(
+        source_system_id=1,
+        project_id=1,
+        external_id="99",
+        title="Err",
+        task_type="error",
+        source_team="Digital Streams B2b",
+        parent_task_id=10,
+    )
+    errors_by_parent = {10: [error]}
+    assert _matches_metric_filter(
+        clean,
+        "without_errors",
+        errors_by_parent=errors_by_parent,
+        date_from=None,
+        date_to=None,
+    )
+    assert not _matches_metric_filter(
+        parent,
+        "without_errors",
+        errors_by_parent=errors_by_parent,
+        date_from=None,
+        date_to=None,
+    )
+
+
 def test_metric_filter_ignores_closed_errors() -> None:
     parent = _zni()
     parent.id = 10

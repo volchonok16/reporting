@@ -76,6 +76,7 @@
 | Карточка | Источник | Примечание |
 |----------|----------|------------|
 | Всего задач | `task` где `task_type = change_request` | По выбранной доске |
+| Задачи без ошибок | Те же ЗНИ без открытой привязанной ошибки | Клик по карточке — фильтр таблицы |
 | Скоро запуск | Digital, Продукты и B2B Product (*): `UAT`; BE Analytics / ESB: `UAT Prod`, `Implementation Prod` или Triage `в Работе` | `System.State` / `Triage` |
 | Запущено | Digital, Продукты и B2B Product (*): `Pilot`; BE Analytics / ESB: `Closed` | workflow |
 | Ошибки | ЗНИ с привязанными `error` (без Closed) | Клик по карточке — фильтр таблицы |

@@ -99,6 +99,7 @@ def _boards_task_clause(boards: list[BoardConfig]):
 def _empty_metrics() -> DashboardMetricsOut:
     return DashboardMetricsOut(
         totalTasks=0,
+        tasksWithoutErrors=0,
         inProgress=0,
         launchingSoon=0,
         launched=0,
@@ -734,6 +735,8 @@ def _matches_metric_filter(
         return is_completed(row, date_from=date_from, date_to=date_to)
     if metric == "errors":
         return has_linked_errors(row, errors_by_parent)
+    if metric == "without_errors":
+        return not has_linked_errors(row, errors_by_parent)
     return True
 
 
@@ -799,6 +802,20 @@ def _compute_metrics(
             1
             for row in rows
             if not _is_closed_zni(row)
+            and _matches_dashboard_row(
+                row,
+                None,
+                board_code=board_code,
+                errors_by_parent=errors_by_parent,
+                date_from=date_from,
+                date_to=date_to,
+            )
+        ),
+        tasksWithoutErrors=sum(
+            1
+            for row in rows
+            if not _is_closed_zni(row)
+            and not has_linked_errors(row, errors_by_parent)
             and _matches_dashboard_row(
                 row,
                 None,

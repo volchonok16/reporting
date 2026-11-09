@@ -191,6 +191,7 @@ class ChangeRequestOut(BaseModel):
 
 class DashboardMetricsOut(BaseModel):
     totalTasks: int
+    tasksWithoutErrors: int = 0
     inProgress: int
     launchingSoon: int
     launched: int
