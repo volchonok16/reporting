@@ -43,7 +43,7 @@ void bootstrapReportingSso()
       : fileId
         ? App.start(root, { fileId, link: q.get('t'), page: q.get('page'), node: q.get('node'), comment: q.get('comment') })
         : q.has('new')
-          ? App.start(root, { create: { projectId: q.get('project'), example: q.has('example'), board: q.has('board'), diagram: q.has('diagram'), diagramKind: q.get('diagram'), slides: q.has('slides') } })
+          ? App.start(root, { create: { projectId: q.get('project'), example: q.has('example'), board: q.has('board'), diagram: q.has('diagram'), diagramKind: q.get('diagram'), slides: q.has('slides'), template: q.get('template') } })
           : App.home(root);
     return started;
   })

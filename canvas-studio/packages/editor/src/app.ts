@@ -97,7 +97,7 @@ function lastFileId(backend: FileBackend): string {
 }
 
 /** What the editor was asked to open (from the address: ?file=<id> or ?new=1&project=<id>). */
-export type EditorRoute = { fileId: string; link?: string | null; page?: string | null; node?: string | null; comment?: string | null } | { create: { projectId: string | null; example?: boolean; board?: boolean; diagram?: boolean; diagramKind?: string | null; slides?: boolean } };
+export type EditorRoute = { fileId: string; link?: string | null; page?: string | null; node?: string | null; comment?: string | null } | { create: { projectId: string | null; example?: boolean; board?: boolean; diagram?: boolean; diagramKind?: string | null; slides?: boolean; template?: string | null } };
 
 /** Previews are redrawn at most this often while editing (and always on leaving the file). */
 const THUMBNAIL_EVERY = 20_000;
@@ -801,7 +801,7 @@ export class App {
       const id = backend.kind === 'cloud' ? newCloudId() : newFileId();
       // Each kind has its example (29 October): a design tour, a filled board, a deck, a mind map.
       const kind = route.create.slides ? 'slides' : route.create.diagram ? 'diagram' : route.create.board ? 'board' : 'design';
-      const created =
+      let created =
         kind === 'slides'
           ? createSlidesDocument(example ? tr('Пример: презентация') : tr('Без названия'))
           : kind === 'diagram'
@@ -809,7 +809,22 @@ export class App {
             : kind === 'board'
               ? createBoardDocument(example ? tr('Пример: доска') : tr('Без названия'))
               : Document.createEmpty(example ? tr('Пример: {0}', brand()) : tr('Без названия'), undefined, { backgroundColor: themePageBackground() });
+      let templateError = '';
+      if (kind === 'slides' && route.create.template === 'identity' && !example) {
+        try {
+          const { loadSlideTemplate } = await import('./slide-templates.ts');
+          const { pptxToDocument } = await import('./pptx/import-run.ts');
+          const file = await loadSlideTemplate('identity');
+          const result = await pptxToDocument(file, new CanvasTextMeasurer());
+          result.doc.transact((tx) => tx.update(result.doc.rootId, { name: tr('Новая айдентика') }));
+          result.doc.clearHistory();
+          created = result.doc;
+        } catch (error) {
+          templateError = error instanceof Error ? error.message : tr('Не удалось открыть шаблон');
+        }
+      }
       const app = new App(root, created, backend, choice.server, id);
+      if (templateError) setTimeout(() => app.toast(templateError), 400);
       app.newFileProject = route.create.projectId;
       // A diagram's example is its kind's own text, shown until edited: nothing to build.
       if (example && kind !== 'diagram') {
@@ -1624,16 +1639,19 @@ export class App {
       // A dialog (variables table, files) handled it already.
       if (e.defaultPrevented || this.variables.isOpen || this.files.isOpen || this.player) return;
       if (isTyping(e.target) || this.editor.editingText) return;
-      // Images from the clipboard (screenshots, copied pictures) become image layers.
-      const files = [...(e.clipboardData?.files ?? [])].filter(isImageFile);
-      if (files.length > 0) {
-        e.preventDefault();
-        void this.insertImageFiles(files);
-        return;
-      }
-      // Our layers come in the HTML flavour; plain text is everything else (and older copies).
+      // Свой формат важнее картинки: иначе слайд Симметрики, если рядом лежит превью, встанет картинкой.
       const html = e.clipboardData?.getData('text/html') ?? '';
       const text = e.clipboardData?.getData('text/plain') ?? null;
+      const ownLayers = Boolean(html && parseClipboard(html));
+      const files = [...(e.clipboardData?.files ?? [])].filter(isImageFile);
+      if (!ownLayers && files.length > 0) {
+        e.preventDefault();
+        void this.insertImageFiles(files);
+        if (this.slidesFile) {
+          this.toast(tr('PowerPoint отдаёт слайд картинкой, текст в ней не правится. Чтобы менять значения, загрузите файл .pptx: в панели слайдов «Экспорт» → «Импорт PowerPoint».'));
+        }
+        return;
+      }
       e.preventDefault();
       if (this.editor.pastePropertyText(text)) return;
       const inPlace = this.pasteInPlace;

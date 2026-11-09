@@ -67,6 +67,7 @@ export class SlidesPanel {
         { kind: 'action', label: tr('PowerPoint (PPTX)…'), run: () => this.onExport?.('pptx') },
         { kind: 'separator' },
         { kind: 'action', label: tr('Импорт PowerPoint: слайды после текущего…'), disabled: this.editor.doc.readOnly, run: () => this.onImport?.() },
+        { kind: 'action', label: tr('Шаблон «Новая айдентика»'), disabled: this.editor.doc.readOnly, run: () => void this.insertIdentity() },
       ]);
     });
     this.themeButton = h('button', { class: 'text-button sl-theme', type: 'button' });
@@ -327,6 +328,12 @@ export class SlidesPanel {
     if (made) requestAnimationFrame(() => this.show(made));
   }
 
+  copySlide(id: NodeId): void {
+    this.editor.setSelection([id]);
+    document.execCommand('copy');
+    this.editor.toast(tr('Слайд скопирован. В другой презентации вставьте его: ⌘V'));
+  }
+
   duplicate(id: NodeId): void {
     const editor = this.editor;
     const [copy] = editor.duplicate([id]);
@@ -353,6 +360,7 @@ export class SlidesPanel {
       { kind: 'action' as const, label: tr('Показ с этого слайда'), run: () => this.onPresent?.(id) },
       { kind: 'separator' as const },
       { kind: 'submenu' as const, label: tr('Новый слайд после'), disabled: ro, items: slideLayouts().map((l) => ({ kind: 'action' as const, label: l.name, run: () => this.addSlide(l.id) })) },
+      { kind: 'action' as const, label: tr('Копировать слайд'), shortcut: '⌘C', run: () => this.copySlide(id) },
       { kind: 'action' as const, label: tr('Дублировать'), shortcut: '⌘D', disabled: ro, run: () => this.duplicate(id) },
       { kind: 'action' as const, label: info.skip ? tr('Показывать при показе') : tr('Пропускать при показе'), disabled: ro, run: () => this.toggleSkip(id) },
       { kind: 'separator' as const },
@@ -407,6 +415,21 @@ export class SlidesPanel {
       removeEventListener('pointerdown', outside, true);
       removeEventListener('keydown', onKey, true);
     };
+  }
+
+  private async insertIdentity(): Promise<void> {
+    if (this.editor.doc.readOnly) return;
+    this.closePopover();
+    this.editor.toast(tr('Добавляю шаблон «Новая айдентика»…'));
+    try {
+      const { loadSlideTemplate } = await import('../slide-templates.ts');
+      const { importPptxInto } = await import('../pptx/import-run.ts');
+      const file = await loadSlideTemplate('identity');
+      const { note } = await importPptxInto(this.editor, file, this.currentSlide());
+      this.editor.toast(note);
+    } catch (error) {
+      this.editor.toast(error instanceof Error ? error.message : tr('Не удалось добавить шаблон'), 'error');
+    }
   }
 
   private openLayouts(anchor: HTMLElement): void {

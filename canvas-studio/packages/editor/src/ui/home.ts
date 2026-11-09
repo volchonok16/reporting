@@ -23,9 +23,9 @@ export function fileUrl(id: string): string {
 
 export type NewKind = 'design' | 'board' | 'diagram' | 'slides';
 
-export function newFileUrl(projectId: string | null, kind: NewKind | boolean = 'design'): string {
+export function newFileUrl(projectId: string | null, kind: NewKind | boolean = 'design', template?: string): string {
   const k = kind === true ? 'board' : kind === false ? 'design' : kind;
-  return `./?new=1${k === 'board' ? '&board=1' : k === 'diagram' ? '&diagram=1' : k === 'slides' ? '&slides=1' : ''}${projectId ? `&project=${encodeURIComponent(projectId)}` : ''}`;
+  return `./?new=1${k === 'board' ? '&board=1' : k === 'diagram' ? '&diagram=1' : k === 'slides' ? '&slides=1' : ''}${template ? `&template=${encodeURIComponent(template)}` : ''}${projectId ? `&project=${encodeURIComponent(projectId)}` : ''}`;
 }
 
 const KIND_HINTS: Record<NewKind, string> = {
@@ -47,6 +47,16 @@ const KIND_PICTURES: Record<NewKind, string> = {
   diagram:
     '<path d="M18 22h10M36 22l6-8M36 22l6 8" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="6" y="16" width="14" height="12" rx="3" fill="#fff" stroke="currentColor" stroke-width="1.5"/><rect x="27" y="16" width="10" height="12" rx="6" fill="currentColor"/><rect x="42" y="8" width="16" height="10" rx="2" fill="#fff" stroke="currentColor" stroke-width="1.5"/><rect x="42" y="26" width="16" height="10" rx="2" fill="#fff" stroke="currentColor" stroke-width="1.5"/>',
 };
+
+function identityOption(target: string | null): HTMLElement {
+  return h(
+    'a',
+    { class: 'new-kind-option slides', role: 'menuitem', href: newFileUrl(target, 'slides', 'identity') },
+    h('span', { class: 'new-kind-picture' }, icon('slides', 22)),
+    h('span', { class: 'new-kind-text' }, h('strong', {}, tr('Новая айдентика')), h('span', {}, tr('Шаблон презентации репрайса'))),
+    h('span', { class: 'new-kind-go', 'aria-hidden': 'true' }, icon('chevronRight', 14)),
+  );
+}
 
 function kindOption(target: string | null, kind: NewKind): HTMLElement {
   const look = kindLook(kind === 'design' ? null : kind);
@@ -463,7 +473,7 @@ export class Home {
             ? ''
             : phone
               ? h('p', {}, tr('Создавать и править файлы можно на компьютере или планшете.'))
-              : h('div', { class: 'home-empty-actions new-kind-list' }, kindOption(target, 'design'), kindOption(target, 'slides'), kindOption(target, 'board'), kindOption(target, 'diagram')),
+              : h('div', { class: 'home-empty-actions new-kind-list' }, kindOption(target, 'design'), kindOption(target, 'slides'), identityOption(target), kindOption(target, 'board'), kindOption(target, 'diagram')),
         ),
       );
       return;
@@ -535,7 +545,7 @@ export class Home {
         this.closeChooser();
         return;
       }
-      const pop = h('div', { class: 'new-kind-popover new-kind-list', role: 'menu', 'aria-label': label }, h('div', { class: 'new-kind-title' }, label), kindOption(target, 'design'), kindOption(target, 'slides'), kindOption(target, 'board'), kindOption(target, 'diagram'));
+      const pop = h('div', { class: 'new-kind-popover new-kind-list', role: 'menu', 'aria-label': label }, h('div', { class: 'new-kind-title' }, label), kindOption(target, 'design'), kindOption(target, 'slides'), identityOption(target), kindOption(target, 'board'), kindOption(target, 'diagram'));
       document.body.append(pop);
       const r = button.getBoundingClientRect();
       pop.style.top = `${r.bottom + 6}px`;

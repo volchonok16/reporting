@@ -22,6 +22,8 @@ export interface ClipboardData {
   /** Variables the layers and styles use (with alias targets) and their collections. */
   variables?: { id: NodeId; collection: NodeId; props: Partial<NodeProps> }[];
   collections?: { id: NodeId; name: string; modes: VariableMode[] }[];
+  /** Картинки слоёв: в другом файле их хешей нет, без байтов вставка становится пустой. */
+  blobs?: { hash: string; mime: string; data: string }[];
 }
 
 const BINDING_KEYS = ['fillStyleId', 'strokeStyleId', 'effectStyleId', 'textStyleId', 'gridStyleId'] as const;
@@ -172,8 +174,36 @@ export function copySubtree(doc: Document, id: NodeId): ClipNode {
   };
 }
 
+function imageHashes(node: ClipNode, out: Set<string>): void {
+  for (const key of ['fills', 'strokes'] as const) {
+    const paints = node.props[key];
+    if (!Array.isArray(paints)) continue;
+    for (const paint of paints) {
+      if (paint && typeof paint === 'object' && (paint as { type?: string }).type === 'IMAGE') {
+        const hash = (paint as { imageHash?: string }).imageHash;
+        if (hash) out.add(hash);
+      }
+    }
+  }
+  for (const child of node.children) imageHashes(child, out);
+}
+
+/** Кладёт байты картинок в файл, куда вставляют, если их там ещё нет. */
+export function restoreClipboardBlobs(tx: Transaction, doc: Document, data: ClipboardData): void {
+  for (const blob of data.blobs ?? []) {
+    if (doc.store.blobs.has(blob.hash)) continue;
+    tx.addBlob(base64ToBytes(blob.data), blob.mime);
+  }
+}
+
 export function toClipboard(doc: Document, ids: readonly NodeId[]): ClipboardData {
   const nodes = ids.map((id) => copySubtree(doc, id));
+  const hashes = new Set<string>();
+  for (const node of nodes) imageHashes(node, hashes);
+  const blobs = [...hashes].flatMap((hash) => {
+    const blob = doc.store.blobs.get(hash);
+    return blob ? [{ hash, mime: blob.mime, data: blob.data }] : [];
+  });
   const styles = new Map<NodeId, Partial<NodeProps>>();
   collectStyles(doc, nodes, styles);
   const variables = collectVariables(doc, [...allBindings(nodes), ...[...styles.values()].map((p) => p.boundVariables)]);
@@ -190,6 +220,7 @@ export function toClipboard(doc: Document, ids: readonly NodeId[]): ClipboardDat
           collections: [...collections].map((id) => ({ id, name: doc.get(id, 'name'), modes: doc.get(id, 'modes') })),
         }
       : {}),
+    ...(blobs.length > 0 ? { blobs } : {}),
   };
 }
 

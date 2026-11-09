@@ -48,7 +48,7 @@ import {
   wouldCreateCycle,
 } from '#components';
 import { SceneGraph, Viewport } from '#render';
-import { clipboardHtml, clipboardPlainText, copySubtree, parseClipboard, pasteSubtree, resolvePastedStyles, toClipboard, type ClipboardData } from './clipboard.ts';
+import { clipboardHtml, clipboardPlainText, copySubtree, parseClipboard, pasteSubtree, resolvePastedStyles, restoreClipboardBlobs, toClipboard, type ClipboardData } from './clipboard.ts';
 import { Emitter } from './emitter.ts';
 import { play } from './sounds.ts';
 import { typographRuns } from './typograph.ts';
@@ -1141,8 +1141,16 @@ export class Editor {
   }
 
   /** Copies the selection to the internal clipboard and returns it as text for the system clipboard. */
-  copyText(): string | null {
+  /** Выделение, либо текущий слайд, если в режиме «Слайд» ничего не выделено. */
+  private copyIds(): NodeId[] {
     const ids = this.topLevelSelection();
+    if (ids.length > 0) return ids;
+    const slide = this.slideStage?.current();
+    return slide ? [slide] : [];
+  }
+
+  copyText(): string | null {
+    const ids = this.copyIds();
     if (ids.length === 0) return null;
     this.clipboard = toClipboard(this.doc, ids);
     return JSON.stringify(this.clipboard);
@@ -1150,8 +1158,10 @@ export class Editor {
 
   /** What goes to the system clipboard: layers hidden in HTML, their text as plain text. */
   copyFlavours(): { html: string; text: string } | null {
-    const json = this.copyText();
-    return json ? { html: clipboardHtml(json), text: clipboardPlainText(this.doc, this.topLevelSelection()) } : null;
+    const ids = this.copyIds();
+    if (ids.length === 0) return null;
+    this.clipboard = toClipboard(this.doc, ids);
+    return { html: clipboardHtml(JSON.stringify(this.clipboard)), text: clipboardPlainText(this.doc, ids) };
   }
 
   /** Copy from the command palette: no clipboard event is available, so the async API is used. */
@@ -1222,6 +1232,7 @@ export class Editor {
     const width = Math.max(...data.nodes.map((n) => (n.props.x ?? 0) + (n.props.width ?? 0))) - left;
     const height = Math.max(...data.nodes.map((n) => (n.props.y ?? 0) + (n.props.height ?? 0))) - top;
     this.commit(tr('Вставить с заменой'), (tx) => {
+      restoreClipboardBlobs(tx, this.doc, data);
       const nodes = resolvePastedStyles(tx, this.doc, data);
       this.pendingSelection = doomed.flatMap((old) => {
         const parent = this.doc.parent(old)!;
@@ -1249,11 +1260,26 @@ export class Editor {
     let target = at ? this.containerAt(at) : this.pasteTarget();
     let dx = inPlace ? 0 : 10;
     let dy = dx;
+    // Слайд из этой или другой презентации встаёт на страницу после текущего, а не внутрь слайда.
+    const pastedSlides = !at && this.doc.get(this.doc.rootId, 'fileKind') === 'SLIDES' && data.nodes.every((node) => node.type === 'FRAME' && node.props.slide);
+    const sources = pastedSlides ? [] : (data.sources ?? []).filter((id) => this.doc.store.isAlive(id));
+    let after: NodeId | null = null;
+    if (pastedSlides) {
+      target = this.pageId;
+      const slides = this.doc.children(this.pageId).filter((id) => this.doc.type(id) === 'FRAME');
+      const selected = this.selection
+        .map((id) => {
+          let cur: NodeId | null = id;
+          while (cur && this.doc.parent(cur) !== this.pageId) cur = this.doc.parent(cur);
+          return cur && this.isSlide(cur) ? cur : null;
+        })
+        .find((id): id is NodeId => !!id);
+      after = selected ?? this.slideStage?.current() ?? slides[slides.length - 1] ?? null;
+      dx = 0;
+      dy = 0;
+    } else if (!at && sources.length > 0 && sources.some((src) => this.selection.includes(src) || this.isSelfOrAncestor(src, target))) {
     // Pasting onto the very layer that was copied (it is still selected): the copy goes next to it,
     // never inside it — inside an auto layout card it would become one of its rows and reflow it.
-    const sources = (data.sources ?? []).filter((id) => this.doc.store.isAlive(id));
-    let after: NodeId | null = null;
-    if (!at && sources.length > 0 && sources.some((src) => this.selection.includes(src) || this.isSelfOrAncestor(src, target))) {
       const first = sources[0]!;
       target = this.doc.parent(first) ?? this.pageId;
       const siblings = sources.filter((id) => this.doc.parent(id) === target);
@@ -1295,6 +1321,7 @@ export class Editor {
         ? [...this.selection]
         : null;
     this.commit(tr('Вставить'), (tx) => {
+      restoreClipboardBlobs(tx, this.doc, data);
       const nodes = resolvePastedStyles(tx, this.doc, data);
       this.pendingSelection = (frames ?? [target]).flatMap((into) =>
         nodes.map((node) => {
