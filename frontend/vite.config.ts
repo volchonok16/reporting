@@ -40,6 +40,10 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      '/docplan/api': {
+        target: apiProxyTarget,
+        changeOrigin: true,
+      },
       '/voice-api': {
         target: process.env.VITE_VOICE_API_PROXY_TARGET ?? apiProxyTarget,
         changeOrigin: true,

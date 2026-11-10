@@ -346,6 +346,18 @@
 | `gov_initiative_history` | `section_id`, `row_id`, `action` | Журнал изменений |
 | `gov_initiative_snapshot` | `section_id`, `rows`, `changed_by` | Снимок для отката |
 
+## docplan_* — вкладка «Доска»
+
+| Таблица | Ключевые поля | Назначение |
+|--------|---------------|------------|
+| `docplan_board` | `owner_id`, `title`, `state` | Общая доска, состояние в JSON |
+| `docplan_board_member` | `board_id`, `user_id`, `role` | Кто видит доску |
+| `docplan_user_state` | `user_id`, `state` | Личная доска |
+| `docplan_user_kv` | `user_id`, `data_key` | Прочие ключи клиента |
+| `docplan_document` | `board_id`, `doc_id`, `payload` | Документ доски |
+
+Миграция `099_docplan_boards.sql`. API: `/docplan/api/`. Внешних ключей на ЗНИ и Симметрику нет.
+
 ## simmetrika_* — хранилище Симметрики (canvas-studio)
 
 | Таблица | Ключевые поля | Назначение |

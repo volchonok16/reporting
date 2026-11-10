@@ -63,6 +63,7 @@
 | `departments` | `/api/org/*` (через `_load_session_meta`) |
 | `planning` | `/api/planning/*` |
 | `canvas-studio` | `POST /api/canvas-studio/sso-token` |
+| `docplan` | `/docplan/api/*` |
 | `voice` | `POST /api/voice/sso-token` |
 
 **Планы Digital** (`/api/digital-plan`, `digital-plan-uc`, `roadmap-comment`): `require_digital_plan_access` — либо page `zni`, либо `app_role=roadmap`.

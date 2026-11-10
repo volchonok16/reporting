@@ -150,6 +150,7 @@ from app.password_reset import (
     verify_reset_code,
 )
 from app.canvas_studio_sso import issue_canvas_studio_sso_token, person_name
+from app.docplan_routes import router as docplan_router
 from app.password_reset_mail import MailNotConfigured, MailSendError, send_html_mail
 from app.rate_limit import login_by_ip, login_by_user, reset_verify_by_ip
 from app.voice_sso import issue_voice_sso_token
@@ -223,6 +224,7 @@ async def shutdown() -> None:
     stop_status_office_schedule()
 
 
+app.include_router(docplan_router)
 app.include_router(org_router)
 app.include_router(profile_router)
 app.include_router(users_router)

@@ -7,6 +7,7 @@ export type SheetId =
   | 'revenue-activities'
   | 'gov-initiatives'
   | 'canvas-studio'
+  | 'docplan'
   | 'roadmap'
   | 'departments'
   | 'planning'
@@ -98,6 +99,7 @@ const WORKBOOK_SHEETS: SheetId[] = [
   'revenue-activities',
   'gov-initiatives',
   'canvas-studio',
+  'docplan',
   'roadmap',
   'departments',
   'planning',

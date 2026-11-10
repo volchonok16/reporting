@@ -95,7 +95,7 @@
 | * | `/api/org/*` | Staffing: отпуска, бронь, офис, сотрудники |
 Диаграммы: [diagrams.md](diagrams.md) · глоссарий API подробнее: [glossary.md](glossary.md).
 
-## Таблицы (37) + представления (4)
+## Таблицы (42) + представления (4)
 
 ### Справочники и маппинг
 
@@ -112,7 +112,12 @@
 | `app_maintenance` | Singleton: режим обслуживания (`enabled`, `message`, `allow_admin`) + массовый logout через очистку `auth_session` |
 | `org_user` | Учётные записи сотрудников (email/пароль; `voice_only` — только вкладка Voice; `must_change_password` — обязательная смена пароля при входе) |
 | `org_password_reset` | Одноразовые коды самостоятельного сброса пароля (хеш, 15 минут) |
-| `app_page` | Справочник вкладок reporting (`page_key` = `SheetId`) |
+| `app_page` | Справочник вкладок reporting (`page_key` = `SheetId`, в том числе `docplan` — «Доска») |
+| `docplan_board` | Общая доска вкладки «Доска»; `owner_id` → `org_user` |
+| `docplan_board_member` | Участник доски (`editor` / другая роль) |
+| `docplan_user_state` | Личная доска пользователя |
+| `docplan_user_kv` | Ключи личного состояния доски |
+| `docplan_document` | Документ внутри доски |
 | `org_user_page_access` | Разрешённые вкладки для «других пользователей» (`employee.hide_from_pyramid`) |
 | `job_position` | Справочник должностей |
 | `team_role` | Роли в составе отдела |

@@ -5,6 +5,7 @@ import Products from './Products'
 import ProductStatusB2B from './ProductStatusB2B'
 import GovInitiatives from './GovInitiatives'
 import CanvasStudio from './CanvasStudio'
+import DocPlan from './DocPlan'
 import Roadmap from './Roadmap'
 import Departments from './org/Departments'
 import Planning from './planning/Planning'
@@ -30,6 +31,7 @@ const SHEETS: SheetTab[] = [
   { id: 'product-status-b2b', label: 'Статус продукта B2B' },
   { id: 'gov-initiatives', label: 'Госинициативы' },
   { id: 'canvas-studio', label: 'Симметрика' },
+  { id: 'docplan', label: 'Доска' },
   { id: 'departments', label: 'Staffing' },
   { id: 'planning', label: 'Планирование' },
   { id: 'voice', label: 'Voice' },
@@ -112,6 +114,9 @@ export default function WorkbookApp({
     }
     if (fromUrl === 'canvas-studio' && !voiceOnly) {
       return 'canvas-studio'
+    }
+    if (fromUrl === 'docplan' && !voiceOnly) {
+      return 'docplan'
     }
     const saved = loadActiveSheet()
     let candidate: SheetId
@@ -270,6 +275,8 @@ export default function WorkbookApp({
           </div>
         ) : activeSheet === 'canvas-studio' ? (
           <CanvasStudio />
+        ) : activeSheet === 'docplan' ? (
+          <DocPlan />
         ) : activeSheet === 'planning' ? (
           <div className="app">
             <Planning

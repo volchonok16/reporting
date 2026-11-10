@@ -699,7 +699,7 @@
 
 Дашборд-workbook: FastAPI + Vite; production — nginx + HTTPS (хосты в `.env` / `CERTBOT_DOMAINS`, см. [deploy/DEPLOY.md](../deploy/DEPLOY.md)).
 
-**Вкладки UI:** ЗНИ · Продукты · Статус продукта B2B · Госинициативы · Симметрика · Staffing · Планирование · Voice (+ личный кабинет).
+**Вкладки UI:** ЗНИ · Продукты · Статус продукта B2B · Госинициативы · Симметрика · Доска · Staffing · Планирование · Voice (+ личный кабинет).
 
 | Компонент | Путь / URL | Назначение |
 |-----------|------------|------------|
@@ -837,7 +837,21 @@ API (только `canManageOrg`): `GET/PATCH /api/admin/maintenance`, `POST /ap
 | `is_active` | boolean | `false` — страница удалена из кода, но ключ сохранён в БД |
 | `created_at`, `updated_at` | timestamptz | Метки времени |
 
-Миграция: `060_app_pages.sql`.
+Миграция: `060_app_pages.sql`. Ключ `docplan` — вкладка **Доска** (DocPlan), миграция `099_docplan_boards.sql`.
+
+## docplan_board — общая доска вкладки «Доска»
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | bigserial | PK |
+| `title` | varchar(190) | Название доски |
+| `owner_id` | bigint | FK → `org_user`. Владелец |
+| `state` | jsonb | Проекты, задачи и прочее состояние клиента |
+| `revision` | bigint | Номер правки |
+| `updated_by` | bigint | Кто последний сохранил |
+| `created_at`, `updated_at` | timestamptz | Метки времени |
+
+`docplan_board_member` — участник (`board_id`, `user_id`, `role`). `docplan_user_state` — личная доска одного `org_user`. `docplan_user_kv` — произвольные ключи того же пользователя. `docplan_document` — документ доски (`board_id`, `doc_id`, `payload`). API `/docplan/api/`, страница `page_key = docplan`. Связей с задачами ЗНИ и файлами Симметрики нет.
 
 ---
 
