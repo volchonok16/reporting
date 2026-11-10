@@ -7,7 +7,7 @@ from app.app_access import ensure_page_access
 from app.app_page_service import list_app_pages
 from app.auth_sessions import get_session_with_meta
 from app.db import get_db
-from app.org_photo_service import load_photo_content
+from app.org_photo_service import load_photo_content, photo_signature_ok
 from app.org_schemas import (
     AppPageOut,
     DepartmentIn,
@@ -571,11 +571,15 @@ def api_serve_photo(
     photo_path: str,
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
     sid: str | None = Query(default=None, description="Сессия для <img src> (без custom headers)"),
+    exp: int | None = Query(default=None),
+    sig: str | None = Query(default=None),
 ) -> Response:
-    # img не шлёт X-Session-Id — допускаем ?sid= (тот же одноразовый session id).
-    auth, _meta = get_session_with_meta(x_session_id or sid)
-    if auth is None:
-        raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
+    # img не шлёт X-Session-Id — допускаем ?sid= или подписанную ссылку Симметрики.
+    signed = exp is not None and bool(sig) and photo_signature_ok(photo_path, exp, sig or "")
+    if not signed:
+        auth, _meta = get_session_with_meta(x_session_id or sid)
+        if auth is None:
+            raise HTTPException(status_code=401, detail="Сессия отсутствует. Войдите в систему.")
     loaded = load_photo_content(photo_path)
     if loaded is None:
         raise HTTPException(status_code=404, detail="Фото не найдено.")

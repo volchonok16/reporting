@@ -835,11 +835,19 @@ export interface SlideTransition {
   duration: number;
 }
 
+/** A file kept on a slide: click opens it or downloads it. The bytes live in the document. */
+export interface SlideFile {
+  name: string;
+  hash: string;
+  mime: string;
+}
+
 /** A slide of a presentation (a top-level frame): the speaker's notes, how it comes in, skipped in the show. */
 export interface SlideInfo {
   notes: string;
   transition?: SlideTransition;
   skip?: boolean;
+  files?: SlideFile[];
 }
 
 /** A table (FEAT-167): a grid frame of cells, each a frame with a text; the first row may be the header. */

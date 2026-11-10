@@ -484,6 +484,7 @@ export class Api {
     const email = normalizeEmail(claims.email);
     if (!validEmail(email)) throw new HttpError(400, 'Проверьте email', 'bad_email');
     const name = (claims.name ?? '').trim().slice(0, 80);
+    const avatar = claims.avatar ?? undefined;
     const reportingAdmin = Boolean(claims.admin);
     const index = await this.emailIndex();
     const existingId = await this.userIdByEmail(email);
@@ -493,6 +494,7 @@ export class Api {
         id: newId('u'),
         email,
         name,
+        ...(avatar ? { avatar } : {}),
         password: SSO_PASSWORD_MARKER,
         createdAt: Date.now(),
         verified: true,
@@ -517,6 +519,7 @@ export class Api {
           ? {
               ...cur,
               name: nextName,
+              avatar,
               verified: true,
               reportingAdmin,
               // Keep SSO marker for accounts created via reporting; leave real passwords alone.
@@ -1637,15 +1640,20 @@ export class Api {
   // ---------- comments ----------
 
   /** Names of the people in the threads, for display (`reveal` — addresses of those without a name, for people of the file). */
-  private async authorNames(threads: Thread[], reveal = true): Promise<Map<string, string>> {
-    const names = new Map<string, string>();
+  private async authorNames(threads: Thread[], reveal = true): Promise<Map<string, { name: string; avatar?: string }>> {
+    const names = new Map<string, { name: string; avatar?: string }>();
     for (const t of threads) {
       for (const id of [...t.comments.flatMap((x) => [x.authorId, ...(x.mentions ?? [])]), t.resolvedBy ?? '']) {
         if (!id || names.has(id)) continue;
-        names.set(id, this.shownName(await this.users.get(id), reveal));
+        names.set(id, this.shownFace(await this.users.get(id), reveal));
       }
     }
     return names;
+  }
+
+  private shownFace(u: User | null | undefined, reveal: boolean): { name: string; avatar?: string } {
+    const avatar = u?.avatar && /^https?:\/\//i.test(u.avatar) ? u.avatar : undefined;
+    return { name: this.shownName(u, reveal), ...(avatar ? { avatar } : {}) };
   }
 
   /** A person as someone sees them: the name; without one — the address for people of the file, else HIDDEN_NAME (BUG-159). */

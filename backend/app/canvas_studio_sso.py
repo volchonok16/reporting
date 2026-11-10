@@ -20,10 +20,21 @@ def _b64url_decode(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + padding)
 
 
+def person_name(full_name: str | None, fallback: str) -> str:
+    """«Фамилия Имя Отчество» → «Имя Фамилия». Одно слово остаётся как есть."""
+    parts = [part for part in (full_name or "").split() if part]
+    if len(parts) >= 2:
+        return f"{parts[1]} {parts[0]}"[:80]
+    if parts:
+        return parts[0][:80]
+    return fallback[:80]
+
+
 def issue_canvas_studio_sso_token(
     *,
     email: str,
     display_name: str | None = None,
+    avatar: str | None = None,
     is_admin: bool = False,
     ttl_seconds: int = 120,
 ) -> str:
@@ -33,6 +44,7 @@ def issue_canvas_studio_sso_token(
         "v": 1,
         "email": email.strip().lower(),
         "name": (display_name or "").strip() or None,
+        "avatar": (avatar or "").strip() or None,
         "admin": bool(is_admin),
         "iat": now,
         "exp": now + max(30, ttl_seconds),
@@ -62,5 +74,6 @@ def verify_canvas_studio_sso_token(token: str) -> dict:
     return {
         "email": email,
         "name": payload.get("name"),
+        "avatar": payload.get("avatar"),
         "admin": bool(payload.get("admin")),
     }

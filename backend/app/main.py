@@ -149,7 +149,7 @@ from app.password_reset import (
     request_password_reset,
     verify_reset_code,
 )
-from app.canvas_studio_sso import issue_canvas_studio_sso_token
+from app.canvas_studio_sso import issue_canvas_studio_sso_token, person_name
 from app.password_reset_mail import MailNotConfigured, MailSendError, send_html_mail
 from app.rate_limit import login_by_ip, login_by_user, reset_verify_by_ip
 from app.voice_sso import issue_voice_sso_token
@@ -377,10 +377,21 @@ def canvas_studio_sso_token(
     if "@" not in login:
         login = f"{login}@reporting.local"
     is_admin = meta.get("org_user_role") in {"admin", "superadmin"} or meta.get("auth_mode") == "pat"
+    from app.org_photo_service import photo_signed_url
+    from app.org_service import get_employee_for_org_user
+
     display_name = (meta.get("display_name") or meta.get("app_login") or login).strip() or login
+    avatar = None
+    org_user_id = meta.get("org_user_id")
+    if org_user_id:
+        emp = get_employee_for_org_user(db, int(org_user_id))
+        if emp is not None:
+            display_name = person_name(emp.full_name, display_name)
+            avatar = photo_signed_url(emp.photo_path)
     token = issue_canvas_studio_sso_token(
         email=login,
         display_name=display_name,
+        avatar=avatar,
         is_admin=bool(is_admin),
     )
     return VoiceSsoTokenOut(token=token, expiresIn=120)

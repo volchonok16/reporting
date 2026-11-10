@@ -25,6 +25,8 @@ export interface User {
   consent?: { at: number; edition: string };
   /** Reporting admin/PAT from SSO (`claims.admin`) — for UI/capabilities in embed. */
   reportingAdmin?: boolean;
+  /** Portrait from the reporting directory, shown on comments. */
+  avatar?: string;
 }
 
 /** Edition of the consent text at /consent (apps/web/legal/consent.html); change both together. */

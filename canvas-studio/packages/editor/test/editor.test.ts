@@ -3817,6 +3817,9 @@ test('tables (FEAT-167): pasted from Excel (HTML or tab-separated text), laid ou
   assert.deepEqual(tableFromClipboard(null, 'a\tb\n"two\nlines ""q"""\tc\n'), [['a', 'b'], ['two\nlines "q"', 'c']]);
   assert.equal(tableFromClipboard(null, 'just one cell\n'), null, 'one cell stays plain text');
   assert.equal(tableFromClipboard('<p>no table</p>', 'no tabs'), null);
+  // PowerPoint wraps a picture in a one-cell table and puts the real grid after it.
+  const wrapped = '<table><tr><td><img src="x"></td></tr></table><table><tr><td>A</td><td>B</td></tr><tr><td>1</td><td>2</td></tr></table>';
+  assert.deepEqual(tableFromClipboard(wrapped, ''), [['A', 'B'], ['1', '2']]);
 
   const { editor, doc } = setup();
   editor.screenSize = { width: 1200, height: 800 };

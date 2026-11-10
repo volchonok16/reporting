@@ -1,5 +1,8 @@
+import hashlib
+import hmac
 import logging
 import mimetypes
+import time
 from pathlib import Path
 from uuid import uuid4
 
@@ -86,6 +89,31 @@ def photo_public_url(photo_path: str | None) -> str | None:
     if not safe:
         return None
     return f"/api/org/photos/{safe}"
+
+
+def _photo_sig(safe: str, exp: int) -> str:
+    message = f"{safe}|{exp}".encode()
+    secret = settings.canvas_studio_sso_secret.encode("utf-8")
+    return hmac.new(secret, message, hashlib.sha256).hexdigest()
+
+
+def photo_signed_url(photo_path: str | None, ttl_seconds: int = 30 * 24 * 3600) -> str | None:
+    """Ссылка для <img> без заголовка сессии. Подпись живёт ttl_seconds."""
+    safe = _safe_photo_rel(photo_path)
+    if not safe:
+        return None
+    exp = int(time.time()) + max(60, ttl_seconds)
+    sig = _photo_sig(safe, exp)
+    base = settings.app_public_url.rstrip("/")
+    return f"{base}/api/org/photos/{safe}?exp={exp}&sig={sig}"
+
+
+def photo_signature_ok(photo_path: str, exp: int, sig: str) -> bool:
+    safe = _safe_photo_rel(photo_path)
+    if not safe or not sig or exp < int(time.time()):
+        return False
+    expected = _photo_sig(safe, exp)
+    return hmac.compare_digest(expected, sig.strip())
 
 
 def delete_photo_file(photo_path: str | None) -> None:

@@ -170,8 +170,14 @@ export function deleteComment(threads: Thread[], threadId: string, commentId: st
   return { threads: threads.map((x) => (x.id === threadId ? { ...x, comments: x.comments.filter((y) => y.id !== commentId) } : x)), threadGone: false };
 }
 
+export interface CommentFace {
+  name: string;
+  avatar?: string;
+}
+
 /** A thread as it is sent to people: authors with names, no ids beyond what the editor needs. */
-export function publicThread(t: Thread, names: Map<string, string>): Record<string, unknown> {
+export function publicThread(t: Thread, names: Map<string, CommentFace>): Record<string, unknown> {
+  const face = (id: string) => names.get(id);
   return {
     id: t.id,
     pageId: t.pageId,
@@ -180,7 +186,10 @@ export function publicThread(t: Thread, names: Map<string, string>): Record<stri
     y: t.y,
     createdAt: t.createdAt,
     resolved: t.resolved,
-    ...(t.resolved ? { resolvedBy: names.get(t.resolvedBy ?? '') ?? '', resolvedAt: t.resolvedAt } : {}),
-    comments: t.comments.map((c) => ({ id: c.id, authorId: c.authorId, author: names.get(c.authorId) ?? '', text: c.text, createdAt: c.createdAt, ...(c.editedAt ? { editedAt: c.editedAt } : {}), ...(c.mentions?.length ? { mentions: c.mentions.map((id) => ({ id, name: names.get(id) ?? '' })) } : {}) })),
+    ...(t.resolved ? { resolvedBy: face(t.resolvedBy ?? '')?.name ?? '', resolvedAt: t.resolvedAt } : {}),
+    comments: t.comments.map((c) => {
+      const who = face(c.authorId);
+      return { id: c.id, authorId: c.authorId, author: who?.name ?? '', ...(who?.avatar ? { avatar: who.avatar } : {}), text: c.text, createdAt: c.createdAt, ...(c.editedAt ? { editedAt: c.editedAt } : {}), ...(c.mentions?.length ? { mentions: c.mentions.map((id) => ({ id, name: face(id)?.name ?? '' })) } : {}) };
+    }),
   };
 }

@@ -193,6 +193,7 @@ export interface CommentItem {
   id: string;
   authorId: string;
   author: string;
+  avatar?: string;
   text: string;
   createdAt: number;
   editedAt?: number;

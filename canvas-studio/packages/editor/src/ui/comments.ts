@@ -35,6 +35,16 @@ function initial(name: string): string {
   return (name.trim()[0] ?? '?').toUpperCase();
 }
 
+/** Photo when the account has one; the letter stays if the picture does not load. */
+function face(name: string, avatar: string | undefined, pin = false): Node {
+  if (!avatar) return pin ? document.createTextNode(initial(name)) : h('span', { class: 'comment-avatar' }, initial(name));
+  const img = h('img', { class: pin ? '' : 'comment-avatar', src: avatar, alt: '' }) as HTMLImageElement;
+  img.addEventListener('error', () => {
+    img.replaceWith(pin ? document.createTextNode(initial(name)) : h('span', { class: 'comment-avatar' }, initial(name)));
+  });
+  return img;
+}
+
 /** The "@word" being typed right before the caret, or null. */
 export function mentionQuery(text: string, caret: number): { start: number; query: string } | null {
   const m = /(^|\s)@([^\s@]{0,40})$/.exec(text.slice(0, caret));
@@ -420,7 +430,7 @@ export class Comments {
         title: first ? `${first.author}: ${first.text.slice(0, 120)}` : '',
         'aria-label': tr('Обсуждение: {0}', first?.author ?? ''),
       },
-      initial(first?.author ?? '?'),
+      face(first?.author ?? '', first?.avatar, true),
       replies > 0 ? h('span', { class: 'comment-pin-count' }, String(replies)) : null,
     );
     // Click opens; dragging moves the pin (its author or an editor).
@@ -646,7 +656,7 @@ export class Comments {
         h(
           'div',
           { class: 'comment-meta' },
-          h('span', { class: 'comment-avatar' }, initial(c.author)),
+          face(c.author, c.avatar),
           h('span', { class: 'comment-author' }, c.author || tr('Без имени')),
           h('time', { class: 'comment-time', datetime: new Date(c.createdAt).toISOString(), title: new Date(c.createdAt).toLocaleString(locale()) }, when(c.createdAt) + (c.editedAt ? ` · ${tr('изменено')}` : '')),
         ),
@@ -716,6 +726,7 @@ export class Comments {
       const lost = t.nodeId !== null && !this.editor.doc.store.isAlive(t.nodeId);
       const meta = [
         pages.get(t.pageId) ?? tr('Страница удалена'),
+        replies > 0 ? tr('ответил {0}', last.author || tr('Без имени')) : '',
         replies > 0 ? `${replies} ${plural(replies, tr('ответ'), tr('ответа'), tr('ответов'))}` : '',
         lost ? tr('слой удалён') : '',
         t.resolved ? tr('решено') : '',
@@ -723,7 +734,7 @@ export class Comments {
       const row = h(
         'button',
         { class: `comment-row${t.id === this.openId ? ' active' : ''}${t.resolved ? ' resolved' : ''}`, type: 'button', role: 'listitem', onclick: () => this.show(t.id) },
-        h('span', { class: 'comment-avatar' }, initial(first.author)),
+        face(first.author, first.avatar),
         h(
           'span',
           { class: 'comment-row-body' },

@@ -8,6 +8,7 @@ import { deserialize, serialize, tr, type Document, type NodeId, type SlideTrans
 import { invert } from '#geometry';
 import type { TextMeasurer } from '#layout';
 import { Canvas2DRenderer, SceneGraph } from '#render';
+import { openSlideFile } from '../slide-files.ts';
 import { slideIds, slideInfo } from '../slides.ts';
 import { h, icon } from './dom.ts';
 
@@ -40,6 +41,7 @@ export class SlideShow {
   private readonly canvas: HTMLCanvasElement;
   private readonly counter: HTMLElement;
   private readonly bar: HTMLElement;
+  private readonly filesHost: HTMLElement;
   private readonly onClose: (last: NodeId | null) => void;
   private index = 0;
   private anim: { from: number; to: number; start: number; transition: SlideTransition; back: boolean } | null = null;
@@ -76,7 +78,8 @@ export class SlideShow {
       h('button', { class: 'show-text-button', type: 'button', onclick: (e: MouseEvent) => (e.stopPropagation(), this.openPresenter()) }, icon('note', 16), h('span', {}, tr('Окно докладчика'))),
       button('close', tr('Завершить (Esc)'), () => this.close()),
     );
-    this.el = h('div', { class: 'slide-show', role: 'dialog', 'aria-label': tr('Показ презентации'), tabindex: -1 }, this.canvas, this.bar);
+    this.filesHost = h('div', { class: 'show-files' });
+    this.el = h('div', { class: 'slide-show', role: 'dialog', 'aria-label': tr('Показ презентации'), tabindex: -1 }, this.canvas, this.filesHost, this.bar);
     this.el.addEventListener('click', () => this.go(this.index + 1));
     this.el.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -90,7 +93,23 @@ export class SlideShow {
     document.addEventListener('fullscreenchange', this.onResize);
     void this.el.requestFullscreen?.().catch(() => undefined);
     this.showBar();
+    this.paintFiles();
     this.request();
+  }
+
+  private paintFiles(): void {
+    const id = this.black ? null : this.slides[this.index];
+    const files = id ? (slideInfo(this.doc, id).files ?? []) : [];
+    this.filesHost.replaceChildren(
+      ...files.map((file) => {
+        const button = h('button', { class: 'show-file', type: 'button', title: tr('Открыть «{0}»', file.name) }, file.name);
+        button.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (!openSlideFile(this.doc, file, 'open')) return;
+        });
+        return button;
+      }),
+    );
   }
 
   // ---------- moving ----------
@@ -110,6 +129,7 @@ export class SlideShow {
     this.anim = transition.type === 'NONE' || reduce || Math.abs(to - this.index) > 1 ? null : { from: this.index, to, start: performance.now(), transition, back };
     this.index = to;
     this.black = false;
+    this.paintFiles();
     this.request();
     this.drawPresenter();
   }
@@ -128,6 +148,7 @@ export class SlideShow {
       this.typed = '';
     } else if (k === 'b' || k === 'B' || k === 'и' || k === 'И' || k === '.') {
       this.black = !this.black;
+      this.paintFiles();
       this.request();
     } else if (k === 'p' || k === 'P' || k === 'з' || k === 'З') this.openPresenter();
     else return;

@@ -7,6 +7,7 @@ export interface ReportingSsoClaims {
   email: string;
   name: string | null;
   admin: boolean;
+  avatar: string | null;
 }
 
 function b64urlEncode(raw: Buffer | string): string {
@@ -46,5 +47,7 @@ export function verifyReportingSsoToken(token: string, secret: string): Reportin
   if (!email || !email.includes('@')) throw new Error('В SSO-токене нет email');
   const nameRaw = payload.name;
   const name = typeof nameRaw === 'string' && nameRaw.trim() ? nameRaw.trim().slice(0, 80) : null;
-  return { email, name, admin: Boolean(payload.admin) };
+  const avatarRaw = payload.avatar;
+  const avatar = typeof avatarRaw === 'string' && /^https?:\/\//i.test(avatarRaw.trim()) ? avatarRaw.trim().slice(0, 500) : null;
+  return { email, name, admin: Boolean(payload.admin), avatar };
 }

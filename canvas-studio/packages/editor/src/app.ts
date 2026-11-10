@@ -1637,6 +1637,21 @@ export class App {
       const text = e.clipboardData?.getData('text/plain') ?? null;
       const ownLayers = Boolean(html && parseClipboard(html));
       const files = [...(e.clipboardData?.files ?? [])].filter(isImageFile);
+      // Excel and PowerPoint put a picture next to the cells. The cells win: a table, not the picture.
+      const rows = this.editor.doc.readOnly ? null : tableFromClipboard(html, text);
+      const picked = this.editor.selection[0];
+      const into = picked && !this.editor.doc.readOnly ? tableOf(this.editor.doc, picked) : null;
+      if (!ownLayers && into && (rows || text?.trim())) {
+        e.preventDefault();
+        const place = cellPlace(this.editor.doc, picked!);
+        fillCells(this.editor, into, place?.row ?? 0, place?.col ?? 0, rows ?? [[text!.trim()]]);
+        return;
+      }
+      if (!ownLayers && rows) {
+        e.preventDefault();
+        insertTable(this.editor, rows, { header: true });
+        return;
+      }
       if (!ownLayers && files.length > 0) {
         e.preventDefault();
         void this.insertImageFiles(files);
@@ -1650,18 +1665,9 @@ export class App {
       const inPlace = this.pasteInPlace;
       this.pasteInPlace = false;
       if ((html && parseClipboard(html) && this.editor.pasteText(html, inPlace)) || this.editor.pasteText(text, inPlace)) return;
-      // Cells copied from Excel, Google Sheets, Numbers or Word become a table (FEAT-167), on a board too (FEAT-181).
-      const rows = this.editor.doc.readOnly ? null : tableFromClipboard(html, text);
-      // Into a table the selection is in: from the selected cell on (the whole table — from its first), as a spreadsheet does.
-      const picked = this.editor.selection[0];
-      const into = picked && !this.editor.doc.readOnly ? tableOf(this.editor.doc, picked) : null;
-      if (into && (rows || text?.trim())) {
+      if (into && text?.trim()) {
         const place = cellPlace(this.editor.doc, picked!);
-        fillCells(this.editor, into, place?.row ?? 0, place?.col ?? 0, rows ?? [[text!.trim()]]);
-        return;
-      }
-      if (rows) {
-        insertTable(this.editor, rows, { header: true });
+        fillCells(this.editor, into, place?.row ?? 0, place?.col ?? 0, [[text.trim()]]);
         return;
       }
       if (text && /^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*<svg[\s>]/i.test(text)) {
