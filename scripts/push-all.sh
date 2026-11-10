@@ -11,15 +11,35 @@ if [[ "$branch" != "main" ]]; then
   exit 1
 fi
 
+stash_ref=""
+restore_local() {
+  if [[ "$(git branch --show-current 2>/dev/null || true)" != "main" ]]; then
+    git checkout main
+  fi
+  if [[ -n "$stash_ref" ]]; then
+    local ref="$stash_ref"
+    stash_ref=""
+    git stash pop "$ref"
+  fi
+}
+trap 'code=$?; restore_local || true; exit "$code"' EXIT
+
 echo "==> GitHub (main)"
 git push origin main
 
 echo "==> TFS (main → master)"
+# Локальные правки (Доска и прочее) не коммитим, но checkout master их затирает.
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  git stash push -m "push-all: local changes"
+  stash_ref="$(git rev-parse 'stash@{0}')"
+fi
 git fetch tfs
 git checkout master
 git merge main -m "Sync main into master (TFS)"
 git push tfs master
 git checkout main
+restore_local
+trap - EXIT
 
 echo ""
 echo "Готово: GitHub main, TFS master."
