@@ -809,6 +809,14 @@ export class App {
             : kind === 'board'
               ? createBoardDocument(example ? tr('Пример: доска') : tr('Без названия'))
               : Document.createEmpty(example ? tr('Пример: {0}', brand()) : tr('Без названия'), undefined, { backgroundColor: themePageBackground() });
+      if (kind === 'slides' && route.create.template && !example) {
+        const { loadSlideTemplate, slideTemplates, templateSlideNames } = await import('./slide-templates.ts');
+        if (slideTemplates().some((item) => item.id === route.create.template)) {
+          const { pptxToDocument } = await import('./pptx/import-run.ts');
+          const file = await loadSlideTemplate(route.create.template);
+          created = (await pptxToDocument(file, new CanvasTextMeasurer(), { names: templateSlideNames(), title: tr('Презентация') })).doc;
+        }
+      }
       const app = new App(root, created, backend, choice.server, id);
       app.newFileProject = route.create.projectId;
       // A diagram's example is its kind's own text, shown until edited: nothing to build.

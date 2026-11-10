@@ -421,10 +421,10 @@ export class SlidesPanel {
     this.closePopover();
     this.editor.toast(tr('Добавляю слайд…'));
     try {
-      const { cachedIdentityFile } = await import('../slide-templates.ts');
+      const { cachedIdentityFile, templateSlideNames } = await import('../slide-templates.ts');
       const { importPptxInto } = await import('../pptx/import-run.ts');
       const file = await cachedIdentityFile();
-      const { note } = await importPptxInto(this.editor, file, this.currentSlide(), index);
+      const { note } = await importPptxInto(this.editor, file, this.currentSlide(), index, templateSlideNames());
       this.editor.toast(note);
     } catch (error) {
       this.editor.toast(error instanceof Error ? error.message : tr('Не удалось добавить слайд'), 'error');
@@ -446,9 +446,9 @@ export class SlidesPanel {
         return b;
       }),
     );
-    const identity = h('div', { class: 'sl-layouts', role: 'menu', 'aria-label': tr('Новая айдентика') });
+    const identity = h('div', { class: 'sl-layouts sl-template-slides', role: 'menu', 'aria-label': tr('Шаблон T2 B2B') });
     identity.append(h('div', { class: 'sl-layout-note' }, tr('Загружаю шаблоны…')));
-    this.openPopover(anchor, h('div', {}, h('div', { class: 'new-kind-title' }, tr('Новый слайд')), grid, h('div', { class: 'new-kind-title' }, tr('Новая айдентика')), identity));
+    this.openPopover(anchor, h('div', {}, h('div', { class: 'new-kind-title' }, tr('Новый слайд')), grid, h('div', { class: 'new-kind-title' }, tr('Шаблон T2 B2B')), identity));
     void this.fillIdentityLayouts(identity);
   }
 

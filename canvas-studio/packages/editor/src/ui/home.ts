@@ -5,6 +5,7 @@
 // ?new=1[&project=<id>].
 
 import { brand, tr } from '#core';
+import { SLIDE_TEMPLATE_ID } from '../slide-templates.ts';
 import { loadBrandFonts } from '../t2-fonts.ts';
 import { cloud, CloudError, teams as teamApi, type CloudUser, type FileBackend, type TeamInfo } from '../cloud.ts';
 import { switchLayout } from '../keyboard.ts';
@@ -59,6 +60,17 @@ function kindOption(target: string | null, kind: NewKind): HTMLElement {
     { class: `new-kind-option ${look.cls}`, role: 'menuitem', href: newFileUrl(target, kind) },
     h('span', { class: 'new-kind-picture' }, picture),
     h('span', { class: 'new-kind-text' }, h('strong', {}, look.name), h('span', {}, tr(KIND_HINTS[kind]))),
+    h('span', { class: 'new-kind-go', 'aria-hidden': 'true' }, icon('chevronRight', 14)),
+  );
+}
+
+function templateOption(target: string | null): HTMLElement {
+  const look = kindLook('slides');
+  return h(
+    'a',
+    { class: `new-kind-option ${look.cls}`, role: 'menuitem', href: newFileUrl(target, 'slides', SLIDE_TEMPLATE_ID) },
+    h('span', { class: 'new-kind-picture' }, icon('slides', 22)),
+    h('span', { class: 'new-kind-text' }, h('strong', {}, tr('Презентация из шаблона')), h('span', {}, tr('Готовые слайды T2 B2B'))),
     h('span', { class: 'new-kind-go', 'aria-hidden': 'true' }, icon('chevronRight', 14)),
   );
 }
@@ -535,7 +547,7 @@ export class Home {
         this.closeChooser();
         return;
       }
-      const pop = h('div', { class: 'new-kind-popover new-kind-list', role: 'menu', 'aria-label': label }, h('div', { class: 'new-kind-title' }, label), kindOption(target, 'design'), kindOption(target, 'slides'), kindOption(target, 'board'), kindOption(target, 'diagram'));
+      const pop = h('div', { class: 'new-kind-popover new-kind-list', role: 'menu', 'aria-label': label }, h('div', { class: 'new-kind-title' }, label), kindOption(target, 'design'), kindOption(target, 'slides'), templateOption(target), kindOption(target, 'board'), kindOption(target, 'diagram'));
       document.body.append(pop);
       const r = button.getBoundingClientRect();
       pop.style.top = `${r.bottom + 6}px`;
@@ -690,6 +702,8 @@ export class Home {
         label: tr('Новый файл в проекте'),
         items: [
           { kind: 'action', label: tr('Макет'), run: () => location.assign(newFileUrl(p.id)) },
+          { kind: 'action', label: tr('Презентация'), run: () => location.assign(newFileUrl(p.id, 'slides')) },
+          { kind: 'action', label: tr('Презентация из шаблона'), run: () => location.assign(newFileUrl(p.id, 'slides', SLIDE_TEMPLATE_ID)) },
           { kind: 'action', label: tr('Доска'), run: () => location.assign(newFileUrl(p.id, 'board')) },
           { kind: 'action', label: tr('Схема'), run: () => location.assign(newFileUrl(p.id, 'diagram')) },
         ],

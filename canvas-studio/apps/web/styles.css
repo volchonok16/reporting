@@ -12072,6 +12072,11 @@ body.tearing-sticky * {
   grid-template-columns: repeat(3, 120px);
   gap: 6px;
 }
+.sl-template-slides {
+  grid-template-columns: repeat(2, 168px);
+  max-height: 360px;
+  overflow: auto;
+}
 .sl-layout,
 .sl-theme-card {
   display: flex;

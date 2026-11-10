@@ -1,4 +1,4 @@
-// Готовые презентации. «Новая айдентика» — файл репрайса: тексты остаются слоями, не картинкой.
+// Готовые слайды T2 B2B. Тексты остаются слоями, не картинкой.
 
 import { tr } from '#core';
 
@@ -9,29 +9,65 @@ export interface SlideTemplate {
   file: string;
 }
 
+export const SLIDE_TEMPLATE_ID = 't2-b2b';
+
+/** Имена слайдов шаблона, по порядку в файле. В самом pptx названий нет. */
+export const TEMPLATE_SLIDE_NAMES = [
+  'Титульный',
+  'Разделитель, тёмный',
+  'Разделитель, светлый',
+  'Титульный, тёмный',
+  'Цитата',
+  'Оглавление',
+  'Оглавление с подразделами',
+  'Текст и факты',
+  'Текст и факты со сноской',
+  'Две колонки, бирюзовый',
+  'Две колонки, светлый',
+  'Три шага, бирюзовый',
+  'Три шага, светлый',
+  'Карточки, бирюзовые',
+  'Карточки, светлые',
+  'Структура рынка',
+  'Динамика охвата',
+  'Доли рынка',
+  'Таймлайн',
+  'Инвентарь и профиль',
+  'Таблица форматов',
+  'Таблица форматов, вариант 2',
+  'Условия закупки',
+  'Кейсы',
+  'Заголовок и метрики',
+  'Как сейчас и как будет',
+  'Финал, тёмный',
+  'Финал, светлый',
+  'Финал с контактами',
+] as const;
+
 export function slideTemplates(): SlideTemplate[] {
   return [
     {
-      id: 'identity',
-      name: tr('Новая айдентика'),
-      hint: tr('Репрайс: слайды, в которых можно править текст'),
-      file: '/apps/web/templates/novaya-aydentika.pptx',
+      id: SLIDE_TEMPLATE_ID,
+      name: tr('Шаблон T2 B2B'),
+      hint: tr('Титульный, разделы, таблицы и финал'),
+      file: '/apps/web/templates/t2-b2b.pptx',
     },
   ];
 }
 
-let identityFile: Promise<File> | null = null;
-
-/** The identity deck, fetched once. Slide names are the titles inside the file. */
-export async function identitySlides(): Promise<{ name: string }[]> {
-  const { readPptxFile } = await import('./pptx/import.ts');
-  const file = await cachedIdentityFile();
-  const deck = await readPptxFile(new Uint8Array(await file.arrayBuffer()));
-  return deck.slides.map((slide, index) => ({ name: slide.name || tr('Слайд {0}', index + 1) }));
+export function templateSlideNames(): string[] {
+  return TEMPLATE_SLIDE_NAMES.map((name) => tr(name));
 }
 
+/** Слайды шаблона для меню «+ Слайд». Имена заданы здесь, файл для списка не читается. */
+export function identitySlides(): { name: string }[] {
+  return templateSlideNames().map((name) => ({ name }));
+}
+
+let identityFile: Promise<File> | null = null;
+
 export function cachedIdentityFile(): Promise<File> {
-  identityFile ??= loadSlideTemplate('identity');
+  identityFile ??= loadSlideTemplate(SLIDE_TEMPLATE_ID);
   return identityFile;
 }
 
