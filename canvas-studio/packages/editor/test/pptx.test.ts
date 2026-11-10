@@ -424,3 +424,23 @@ test('pptx export (BUG-139): the text of a cell wrapped in frames that paint not
   assert.ok(table.cells[0]![0]!.mar[3] >= 17, 'the wrapper\'s padding stays as the margin');
   assert.deepEqual(els.filter((e) => e.k === 'text').map((e) => e.k === 'text' && e.paras[0]!.runs[0]!.text), ['Новое'], 'only the pill\'s text goes over');
 });
+
+test('PowerPoint clipboard package is an editable slide, not only a picture', async () => {
+  const { readPptx } = await import('../src/pptx/import.ts');
+  const { powerpointClipboardRaw, powerpointPackageBytes } = await import('../src/pptx/clipboard-package.ts');
+  const enc = new TextEncoder();
+  const pres = `<?xml version="1.0"?><p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:sldIdLst><p:sldId r:id="rId1"/></p:sldIdLst><p:sldSz cx="12192000" cy="6858000"/></p:presentation>`;
+  const rels = `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/></Relationships>`;
+  const slide = `<?xml version="1.0"?><p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><p:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></p:xfrm></p:grpSpPr><p:sp><p:nvSpPr><p:cNvPr id="2" name="Title"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100" cy="100"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:p><a:r><a:t>Заголовок</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`;
+  const deck = readPptx(new Map([
+    ['clipboard/presentation.xml', enc.encode(pres)],
+    ['clipboard/_rels/presentation.xml.rels', enc.encode(rels)],
+    ['clipboard/slides/slide1.xml', enc.encode(slide)],
+  ]));
+  assert.equal(deck.slides.length, 1);
+  const json = JSON.stringify({ data: Buffer.from([0x50, 0x4b, 0x03, 0x04]).toString('base64'), isDataCompressed: false });
+  assert.equal(powerpointClipboardRaw(['public.png', 'ppt/slides'], (type) => (type === 'ppt/slides' ? json : '')), json);
+  const bytes = await powerpointPackageBytes(json);
+  assert.equal(bytes?.[0], 0x50);
+  assert.equal(await powerpointPackageBytes('not json'), null);
+});

@@ -788,7 +788,7 @@ const MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg
 
 /** Reads the unpacked package: every slide in the order of the presentation. */
 export function readPptx(files: Map<string, Uint8Array>): ImDeck {
-  const pres = readPart(files, 'ppt/presentation.xml');
+  const pres = readPart(files, 'ppt/presentation.xml') ?? readPart(files, 'clipboard/presentation.xml');
   if (!pres) throw new Error('not a presentation');
   const presRoot = kid(pres.xml, 'presentation');
   const size = kid(presRoot, 'sldSz');

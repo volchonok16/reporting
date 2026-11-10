@@ -49,6 +49,7 @@ const BOARD_NAME_KEY = 'cs.boardName';
 import { boardMentions, branches as cloudBranches, cloud, CloudBackend, CloudError, linkOf, localBackend, newCloudId, rememberLink, sharing, type FileBackend } from './cloud.ts';
 import type { BranchBar, BranchHost } from './ui/branches.ts';
 import { parseClipboard } from './clipboard.ts';
+import { powerpointClipboardRaw, powerpointPackageBytes } from './pptx/clipboard-package.ts';
 import { attachTouchPinch, attachTouchViewing, isPhone, onPhoneChange } from './ui/touch.ts';
 import { LiveSession, type Peer, type Presence } from './live.ts';
 import { Comments } from './ui/comments.ts';
@@ -1652,6 +1653,15 @@ export class App {
         insertTable(this.editor, rows, { header: true });
         return;
       }
+      // A copied PowerPoint slide: the picture is only a preview. ppt/slides is the editable package.
+      const pptSlides = powerpointClipboardRaw([...(e.clipboardData?.types ?? [])], (type) => e.clipboardData?.getData(type) ?? '');
+      const pptItem = pptSlides ? null : [...(e.clipboardData?.items ?? [])].find((item) => item.kind === 'string' && (item.type === 'ppt/slides' || (/powerpoint/i.test(item.type) && /slide/i.test(item.type))));
+      const pptWait = pptItem ? new Promise<string>((resolve) => pptItem.getAsString(resolve)) : null;
+      if (!ownLayers && (pptSlides || pptWait) && this.slidesFile && !this.editor.doc.readOnly) {
+        e.preventDefault();
+        void this.pastePowerPointSlides(pptSlides, pptWait, files);
+        return;
+      }
       if (!ownLayers && files.length > 0) {
         e.preventDefault();
         void this.insertImageFiles(files);
@@ -2025,6 +2035,28 @@ export class App {
       if (big.tiles.length > 1) this.editor.toast(tr('{0} × {1} px, без ужатия: {2} {3} в группе', big.width, big.height, big.tiles.length, plural(big.tiles.length, 'часть', 'части', 'частей')));
     } catch (err) {
       this.editor.toast(err instanceof Error ? err.message : String(err), 'error');
+    }
+  }
+
+  /** A slide copied in desktop PowerPoint: the OOXML package, not the preview picture. */
+  private async pastePowerPointSlides(raw: string, wait: Promise<string> | null, images: File[]): Promise<void> {
+    try {
+      const text = raw || (wait ? await wait : '');
+      const bytes = await powerpointPackageBytes(text);
+      if (!bytes) {
+        if (images.length) {
+          await this.insertImageFiles(images);
+          this.toast(tr('PowerPoint отдал слайд картинкой, текст в ней не правится. Чтобы менять значения, загрузите файл .pptx: в панели слайдов «Экспорт» → «Импорт PowerPoint».'));
+        }
+        return;
+      }
+      const file = new File([bytes as BlobPart], 'slide.pptx', { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+      const pptx = await import('./pptx/import-run.ts');
+      const result = await pptx.importPptxInto(this.editor, file, this.slides?.currentSlide() ?? null);
+      if (result.slides[0]) this.slides?.show(result.slides[0]);
+      this.toast(result.note);
+    } catch (err) {
+      this.toast(err instanceof Error ? err.message : tr('Не удалось вставить слайд'), 'error');
     }
   }
 
