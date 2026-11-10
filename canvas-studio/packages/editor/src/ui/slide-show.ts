@@ -8,7 +8,7 @@ import { deserialize, serialize, tr, type Document, type NodeId, type SlideTrans
 import { invert } from '#geometry';
 import type { TextMeasurer } from '#layout';
 import { Canvas2DRenderer, SceneGraph } from '#render';
-import { openSlideFile } from '../slide-files.ts';
+import { fileAnchor, openSlideFile } from '../slide-files.ts';
 import { slideIds, slideInfo } from '../slides.ts';
 import { h, icon } from './dom.ts';
 
@@ -100,9 +100,13 @@ export class SlideShow {
   private paintFiles(): void {
     const id = this.black ? null : this.slides[this.index];
     const files = id ? (slideInfo(this.doc, id).files ?? []) : [];
+    const height = id ? this.doc.get(id, 'height') : 0;
     this.filesHost.replaceChildren(
-      ...files.map((file) => {
+      ...files.map((file, index) => {
         const button = h('button', { class: 'show-file', type: 'button', title: tr('Открыть «{0}»', file.name) }, file.name);
+        const place = file.x != null && file.y != null ? { x: file.x, y: file.y } : fileAnchor(index, height);
+        button.dataset.x = String(place.x);
+        button.dataset.y = String(place.y);
         button.addEventListener('click', (e) => {
           e.stopPropagation();
           if (!openSlideFile(this.doc, file, 'open')) return;
@@ -110,6 +114,21 @@ export class SlideShow {
         return button;
       }),
     );
+    this.placeFiles();
+  }
+
+  /** Puts each file icon where it was dragged on the slide. */
+  private placeFiles(): void {
+    const id = this.black ? null : this.slides[this.index];
+    if (!id) return;
+    const box = this.fit(id, this.canvas.clientWidth, this.canvas.clientHeight);
+    for (const button of this.filesHost.children) {
+      if (!(button instanceof HTMLElement)) continue;
+      const x = Number(button.dataset.x);
+      const y = Number(button.dataset.y);
+      button.style.left = `${box.x + x * box.scale}px`;
+      button.style.top = `${box.y + y * box.scale}px`;
+    }
   }
 
   // ---------- moving ----------
@@ -245,9 +264,11 @@ export class SlideShow {
       }
       if (raw < 1) this.request();
       else this.anim = null;
+      this.placeFiles();
       return;
     }
     this.drawSlide(ctx, id, this.fit(id, w, hgt), dpr, 0, 0, 1);
+    this.placeFiles();
   }
 
   /** A slide at its box, shifted by (dx, dy), clipped to its own rectangle. */

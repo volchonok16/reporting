@@ -120,7 +120,7 @@ export const offline = {
 };
 
 /** The account last seen signed in here, to start as it without a network. */
-export function rememberUser(user: { id: string; email: string; name: string } | null): void {
+export function rememberUser(user: { id: string; email: string; name: string; avatar?: string } | null): void {
   try {
     if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
     else localStorage.removeItem(USER_KEY);
@@ -129,10 +129,12 @@ export function rememberUser(user: { id: string; email: string; name: string } |
   }
 }
 
-export function rememberedUser(): { id: string; email: string; name: string } | null {
+export function rememberedUser(): { id: string; email: string; name: string; avatar?: string } | null {
   try {
-    const u = JSON.parse(localStorage.getItem(USER_KEY) ?? 'null') as { id?: unknown; email?: unknown; name?: unknown } | null;
-    return u && typeof u.id === 'string' && typeof u.email === 'string' ? { id: u.id, email: u.email, name: String(u.name ?? '') } : null;
+    const u = JSON.parse(localStorage.getItem(USER_KEY) ?? 'null') as { id?: unknown; email?: unknown; name?: unknown; avatar?: unknown } | null;
+    if (!u || typeof u.id !== 'string' || typeof u.email !== 'string') return null;
+    const avatar = typeof u.avatar === 'string' && /^https?:\/\//i.test(u.avatar) ? u.avatar : undefined;
+    return { id: u.id, email: u.email, name: String(u.name ?? ''), ...(avatar ? { avatar } : {}) };
   } catch {
     return null;
   }

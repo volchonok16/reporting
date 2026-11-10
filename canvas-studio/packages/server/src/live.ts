@@ -59,6 +59,8 @@ interface Peer {
   insider: boolean;
   color: string;
   role: Role;
+  /** Employee photo. Sent with the peer list so the avatar is the same picture as in reporting. */
+  avatar?: string;
   /** Last presence, so a newcomer sees everyone's pointer at once. */
   presence: string | null;
   /** Page of the last presence (pointers go only to people on the same page). */
@@ -188,7 +190,7 @@ class Room {
     this.versions.set(version, 0);
   }
 
-  join(conn: WebSocketConnection, who: Pick<Peer, 'userId' | 'session' | 'name' | 'outsideName' | 'insider' | 'role' | 'recheck'>): void {
+  join(conn: WebSocketConnection, who: Pick<Peer, 'userId' | 'session' | 'name' | 'outsideName' | 'insider' | 'role' | 'recheck' | 'avatar'>): void {
     const used = new Set([...this.peers.values()].map((p) => p.color));
     const color = COLORS.find((c) => !used.has(c)) ?? COLORS[this.nextPeer % COLORS.length]!;
     const peer: Peer = { id: `p${++this.nextPeer}`, conn, color, presence: null, page: null, queue: null, emotes: [], ...who };
@@ -435,7 +437,7 @@ class Room {
   }
 
   sendPeers(): void {
-    const list = (insider: boolean) => JSON.stringify({ type: 'peers', peers: [...this.peers.values()].map((p) => ({ id: p.id, userId: p.userId, name: insider ? p.name : p.outsideName, color: p.color, role: p.role })) });
+    const list = (insider: boolean) => JSON.stringify({ type: 'peers', peers: [...this.peers.values()].map((p) => ({ id: p.id, userId: p.userId, name: insider ? p.name : p.outsideName, color: p.color, role: p.role, ...(p.avatar ? { avatar: p.avatar } : {}) })) });
     const inside = list(true);
     const outside = list(false);
     for (const p of this.peers.values()) this.out(p, p.insider ? inside : outside);
@@ -525,6 +527,7 @@ export class LiveHub {
       insider,
       role,
       recheck,
+      avatar: user?.avatar && /^https?:\/\//i.test(user.avatar) ? user.avatar : undefined,
     });
   }
 

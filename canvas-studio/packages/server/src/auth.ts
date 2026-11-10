@@ -61,12 +61,14 @@ export interface Session {
 export const HIDDEN_NAME = 'Участник';
 
 /** What the API shows about a user (never the password hash). */
-export function publicUser(u: User): { id: string; email: string; name: string; admin?: boolean } {
+export function publicUser(u: User): { id: string; email: string; name: string; admin?: boolean; avatar?: string } {
+  const avatar = u.avatar && /^https?:\/\//i.test(u.avatar) ? u.avatar : undefined;
   return {
     id: u.id,
     email: u.email,
     name: u.name,
     ...(u.reportingAdmin ? { admin: true } : {}),
+    ...(avatar ? { avatar } : {}),
   };
 }
 

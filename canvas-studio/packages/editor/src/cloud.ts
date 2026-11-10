@@ -15,6 +15,8 @@ export interface CloudUser {
   id: string;
   email: string;
   name: string;
+  /** Employee photo from reporting. Absent — a letter. */
+  avatar?: string;
 }
 
 export class CloudError extends Error {

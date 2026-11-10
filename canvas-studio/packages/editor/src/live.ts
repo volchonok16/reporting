@@ -14,6 +14,8 @@ export interface Peer {
   name: string;
   color: string;
   role: string;
+  /** Employee photo from reporting, when the account has one. */
+  avatar?: string;
 }
 
 /** What someone sees: centre of the visible part (world), zoom and screen size. */

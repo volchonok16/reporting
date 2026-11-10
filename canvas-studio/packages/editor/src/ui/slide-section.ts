@@ -4,7 +4,7 @@
 
 import { tr, type NodeId, type SlideFile, type SlideTransition } from '#core';
 import type { Editor } from '../editor.ts';
-import { openSlideFile } from '../slide-files.ts';
+import { fileAnchor, openSlideFile } from '../slide-files.ts';
 import { slideInfo } from '../slides.ts';
 import { h } from './dom.ts';
 
@@ -88,9 +88,12 @@ export function buildSlideSection(editor: Editor, section: (title: string, ...ac
       });
     }
     if (!accepted.length) return;
+    const height = d.get(slide, 'height');
     editor.commit(tr('Файл на слайде'), (tx) => {
       const files: SlideFile[] = [...current];
-      for (const item of accepted) files.push({ name: item.name, hash: tx.addBlob(item.bytes, item.mime), mime: item.mime });
+      for (const item of accepted) {
+        files.push({ name: item.name, hash: tx.addBlob(item.bytes, item.mime), mime: item.mime, ...fileAnchor(files.length, height) });
+      }
       tx.set(slide, 'slide', { ...slideInfo(d, slide), files });
     });
     paintFiles();

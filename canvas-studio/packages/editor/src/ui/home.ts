@@ -275,7 +275,16 @@ export class Home {
     const label = user ? user.name || user.email : tr('Без входа');
     // Without a name the email is the label already: the line under it offers to add a name instead.
     const sub = user ? (user.name ? user.email : tr('Без имени')) : tr('Файлы только в этом браузере');
-    const avatar = h('span', { class: `home-avatar${user ? ' signed-in' : ''}` }, (user?.name || user?.email || '·').trim().charAt(0).toUpperCase());
+    const letter = (user?.name || user?.email || '·').trim().charAt(0).toUpperCase();
+    const avatar = h('span', { class: `home-avatar${user ? ' signed-in' : ''}${user?.avatar ? ' has-photo' : ''}` });
+    if (user?.avatar) {
+      const img = h('img', { src: user.avatar, alt: '' }) as HTMLImageElement;
+      img.addEventListener('error', () => {
+        avatar.classList.remove('has-photo');
+        avatar.textContent = letter;
+      });
+      avatar.append(img);
+    } else avatar.textContent = letter;
     const button = h('button', { class: 'home-account', type: 'button', 'aria-haspopup': 'menu' }, avatar, h('span', { class: 'home-account-text' }, h('strong', {}, label), h('small', {}, sub)), icon('chevronDown', 12));
     button.addEventListener('click', () => {
       const r = button.getBoundingClientRect();

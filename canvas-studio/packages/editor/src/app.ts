@@ -53,6 +53,7 @@ import { powerpointClipboardRaw, powerpointPackageBytes } from './pptx/clipboard
 import { attachTouchPinch, attachTouchViewing, isPhone, onPhoneChange } from './ui/touch.ts';
 import { LiveSession, type Peer, type Presence } from './live.ts';
 import { Comments } from './ui/comments.ts';
+import { SlideFilePins } from './ui/slide-file-pins.ts';
 import { Emotes } from './ui/emotes.ts';
 import { TextMentions } from './ui/text-mentions.ts';
 import { FindPanel } from './ui/find-panel.ts';
@@ -575,6 +576,7 @@ export class App {
     });
     this.canvas.element.append(this.peerOverlay.el, this.chat.el, this.emotes.el);
     this.comments.attach(this.canvas.element);
+    new SlideFilePins(this.editor).attach(this.canvas.element);
     this.following = new Following(this.editor, this.canvas.element);
     this.following.onChange = (id) => this.toolbar.setPeers(this.others, id);
     this.following.onStopSpotlight = () => this.toggleSpotlight();

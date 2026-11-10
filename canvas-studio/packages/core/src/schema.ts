@@ -840,6 +840,9 @@ export interface SlideFile {
   name: string;
   hash: string;
   mime: string;
+  /** Where the icon sits on the slide, in the slide's own coordinates. Absent — a default stack. */
+  x?: number;
+  y?: number;
 }
 
 /** A slide of a presentation (a top-level frame): the speaker's notes, how it comes in, skipped in the show. */

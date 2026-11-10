@@ -12,6 +12,22 @@ import { editableZoom } from './zoom-input.ts';
 
 const toolIcon = (tool: { icon: string; emoji?: string }, size: number): Node => (tool.emoji ? h('span', { class: 'tool-emoji', style: { fontSize: `${size - 2}px` } }, tool.emoji) : icon(tool.icon, size));
 
+/** A photo when reporting has one; the letters stay if it does not load. */
+function paintFace(host: HTMLElement, letters: string, avatar: string | undefined): void {
+  host.replaceChildren();
+  if (!avatar) {
+    if (letters) host.textContent = letters;
+    return;
+  }
+  const img = h('img', { src: avatar, alt: '' }) as HTMLImageElement;
+  img.addEventListener('error', () => {
+    host.replaceChildren();
+    if (letters) host.textContent = letters;
+    host.classList.remove('has-photo');
+  });
+  host.append(img);
+}
+
 /** `viewers` — also shown when the file is read-only (moving around and commenting). */
 type ToolEntry = { id: ToolId | null; icon: string; label: string; command: string; viewers?: true; /** Shown instead of the icon (stamps). */ emoji?: string; /** A heading over the entries of a long list (board shapes). */ section?: string; /** A word next to a small icon, for actions no pictogram explains (HTML in, PPTX out). */ text?: string };
 /** A group is either plain buttons or a flyout (one button showing the last used tool + a list). */
@@ -390,11 +406,12 @@ export class Toolbar {
   }
 
   /** Who is signed in (null: files in this browser only). */
-  setAccount(user: { name: string; email: string } | null): void {
+  setAccount(user: { name: string; email: string; avatar?: string } | null): void {
     const initials = user ? (user.name.trim().split(/\s+/).map((w) => w[0] ?? '').join('').slice(0, 2) || user.email[0] || '?').toUpperCase() : '';
-    this.account.textContent = user ? initials : '';
+    paintFace(this.account, user ? initials : '', user?.avatar);
     if (!user) this.account.append(icon('folder', 14));
     this.account.classList.toggle('signed-in', !!user);
+    this.account.classList.toggle('has-photo', !!user?.avatar);
     this.account.title = user ? (user.name ? `${user.name} (${user.email})` : user.email) : tr('Файлы только в этом браузере');
   }
 
@@ -402,7 +419,7 @@ export class Toolbar {
    * Who else is in the file now: up to five avatars in their colours, the rest as "+N".
    * A click follows the person; the one being followed gets a ring.
    */
-  setPeers(peers: { id: string; name: string; color: string; role: string }[], following: string | null = null): void {
+  setPeers(peers: { id: string; name: string; color: string; role: string; avatar?: string }[], following: string | null = null): void {
     clear(this.peers);
     // The person being followed stays visible even when there are many.
     const ordered = [...peers].sort((a, b) => Number(b.id === following) - Number(a.id === following));
@@ -412,7 +429,8 @@ export class Toolbar {
       const role = p.role === 'viewer' || p.role === 'commenter' ? tr(' · смотрит') : '';
       const on = p.id === following;
       const title = `${p.name}${role} — ${on ? tr('перестать наблюдать') : tr('наблюдать')}`;
-      const button = h('button', { class: `peer${on ? ' following' : ''}`, type: 'button', title, 'aria-label': title, 'aria-pressed': String(on), style: { background: p.color, outlineColor: p.color }, onclick: () => this.onPeer(p.id) }, initials);
+      const button = h('button', { class: `peer${on ? ' following' : ''}${p.avatar ? ' has-photo' : ''}`, type: 'button', title, 'aria-label': title, 'aria-pressed': String(on), style: { background: p.avatar ? 'transparent' : p.color, outlineColor: p.color }, onclick: () => this.onPeer(p.id) });
+      paintFace(button, initials, p.avatar);
       this.peers.append(button);
     }
     if (ordered.length > shown.length) {

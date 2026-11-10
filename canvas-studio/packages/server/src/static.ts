@@ -39,7 +39,22 @@ export interface StaticOptions {
   dev: Transform | null;
 }
 
-/** CSP for the app: own scripts only (plus the hashed import map), images from data/blob URLs, WebSockets to itself. */
+/** Employee photos live on the reporting site, not on the Симметрика port. */
+function reportingImageOrigins(): string {
+  const origins = new Set<string>();
+  for (const raw of [process.env.CS_PUBLIC_APP_URL, process.env.APP_PUBLIC_URL]) {
+    const value = (raw ?? '').trim();
+    if (!value) continue;
+    try {
+      origins.add(new URL(value).origin);
+    } catch {
+      // A bad address is ignored: photos then stay letters until the env is fixed.
+    }
+  }
+  return [...origins].join(' ');
+}
+
+/** CSP for the app: own scripts only (plus the hashed import map), images from data/blob URLs and the reporting site, WebSockets to itself. */
 function cspFor(html: string): string {
   const hashes = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
     .filter((m) => m[1]!.trim().length > 0)
@@ -49,7 +64,7 @@ function cspFor(html: string): string {
     // 'wasm-unsafe-eval': WebAssembly may compile (the neural network of «Удалить фон»); no eval of strings.
     `script-src 'self' 'wasm-unsafe-eval' ${hashes.join(' ')}`.trim(),
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    `img-src 'self' data: blob: ${reportingImageOrigins()}`.trim(),
     "font-src 'self' data:",
     // data: — pictures of a file are decoded from it off the main thread (PERF-003); such an address sends nothing anywhere.
     "connect-src 'self' data:",

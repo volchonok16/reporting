@@ -4,6 +4,11 @@ import { base64ToBytes, tr, type Document, type SlideFile } from '#core';
 
 const OPEN_MIME = /^(application\/pdf|text\/|image\/|video\/|audio\/)/i;
 
+/** A first place for a new icon: the open area of the slide, stacked so they don't cover each other. */
+export function fileAnchor(index: number, height: number): { x: number; y: number } {
+  return { x: 72, y: Math.max(72, height - 168 - index * 48) };
+}
+
 export function openSlideFile(doc: Document, file: SlideFile, mode: 'open' | 'download'): boolean {
   const blob = doc.store.blobs.get(file.hash);
   if (!blob) return false;
