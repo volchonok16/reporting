@@ -33,6 +33,18 @@ services:
 
   minio-init:
     image: reporting/minio-mc:2025-04-08
+    # Образ уже содержит mc. Не брать entrypoint из docker-compose.yml:
+    # тот рассчитан на alpine и качает mc с GitHub (на сервере без сети — exit 127).
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        sleep 5 &&
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" &&
+        mc mb "local/$$MINIO_BUCKET" --ignore-existing &&
+        mc anonymous set none "local/$$MINIO_BUCKET" &&
+        mc mb "local/$$MINIO_ATTACHMENTS_BUCKET" --ignore-existing &&
+        mc anonymous set none "local/$$MINIO_ATTACHMENTS_BUCKET"
 
   voice-web:
     image: reporting/voice-web:offline
