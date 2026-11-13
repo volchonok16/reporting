@@ -131,42 +131,13 @@ export default function CanvasStudio() {
 
   useEffect(() => {
     let cancelled = false
-    void (async () => {
-      try {
-        const [, token] = await Promise.all([
-          assertCanvasUpstream(baseUrl),
-          ensureSsoToken().catch(() => ''),
-        ])
-        if (cancelled) return
-        // Soft SSO как у Voice: iframe открываем сразу, токен досылаем postMessage.
-        setIframeSrc(buildCanvasSrc(baseUrl, currentTheme()))
-        setError(null)
-        const send = (sso: string) => {
-          postToCanvas(iframeRef.current?.contentWindow, canvasOrigin, {
-            type: 'reporting-sso',
-            token: sso,
-          })
-        }
-        if (token) {
-          // Iframe ещё может не быть в DOM — дошлём на load и чуть позже.
-          window.setTimeout(() => {
-            if (!cancelled && token) send(token)
-          }, 0)
-        } else {
-          void ensureSsoToken()
-            .then((lateToken) => {
-              if (cancelled) return
-              send(lateToken)
-            })
-            .catch(() => {
-              /* UI уже открыт; iframe сам запросит canvas-auth-required */
-            })
-        }
-      } catch (err) {
-        if (cancelled) return
-        setError(err instanceof Error ? err.message : 'Не удалось открыть Симметрику')
-      }
-    })()
+    // Экран не ждёт ни маркер контейнера, ни токен. Токен уходит в onLoad и по canvas-auth-required.
+    setIframeSrc(buildCanvasSrc(baseUrl, currentTheme()))
+    setError(null)
+    void assertCanvasUpstream(baseUrl).catch((err: unknown) => {
+      if (cancelled) return
+      setError(err instanceof Error ? err.message : 'Не удалось открыть Симметрику')
+    })
     return () => {
       cancelled = true
     }

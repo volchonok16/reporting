@@ -46,7 +46,7 @@ import { BoardSession } from './ui/board-session.ts';
 
 /** A guest's name under their stickies (in this browser); '' — asked, no name. */
 const BOARD_NAME_KEY = 'cs.boardName';
-import { boardMentions, branches as cloudBranches, cloud, CloudBackend, CloudError, linkOf, localBackend, newCloudId, rememberLink, sharing, type FileBackend } from './cloud.ts';
+import { boardMentions, branches as cloudBranches, cloud, CloudBackend, CloudError, linkOf, localBackend, newCloudId, rememberLink, sharing, type CloudUser, type FileBackend, type Probe } from './cloud.ts';
 import type { BranchBar, BranchHost } from './ui/branches.ts';
 import { parseClipboard } from './clipboard.ts';
 import { powerpointClipboardRaw, powerpointPackageBytes } from './pptx/clipboard-package.ts';
@@ -68,7 +68,7 @@ import { PeerOverlay } from './ui/peer-overlay.ts';
 import { colorPickerHost } from './ui/color-picker.ts';
 import { localFilesToUpload, uploadLocalFiles } from './transfer.ts';
 import { showAuthScreen } from './ui/auth-screen.ts';
-import { isReportingEmbed, requestReportingSsoFromParent, waitForReportingSso } from './reporting-embed.ts';
+import { isReportingEmbed, requestReportingSsoFromParent, waitForReportingUser } from './reporting-embed.ts';
 import { askConfirm, askText, showMessage } from './ui/dialog.ts';
 import { ShareDialog } from './ui/share-dialog.ts';
 import { fileUrl, Home } from './ui/home.ts';
@@ -790,8 +790,8 @@ export class App {
   static async start(root: HTMLElement, route: EditorRoute): Promise<App | null> {
     // Read before the address is rewritten to the file's own (setFileId).
     const mergeId = new URLSearchParams(location.search).get('merge');
-    // Bundled fonts must be ready before the first layout, or text is measured with a fallback (BUG-017).
-    await loadBundledFonts();
+    // Шрифты грузятся в фоне. Первый кадр может смерить запасным, fonts.ready пересчитывает текст (BUG-017).
+    void loadBundledFonts();
     if ('fileId' in route && route.link) rememberLink(route.fileId, route.link);
     // A share link opens the file even without an account (for viewing).
     // A visitor without an account sees the landing page first, on a file address too (unless it is a share link).
@@ -1092,11 +1092,51 @@ export class App {
   }
 
   /**
+   * Вкладка reporting: экран не ждёт зависший /api/me. Имя и фото берутся из
+   * пользователя SSO или из успешного probe — и только после этого рисуется список.
+   */
+  private static async chooseReportingBackend(root: HTMLElement, landing: 'home' | 'file' | 'welcome' | 'login' | false): Promise<{ backend: FileBackend; server: boolean }> {
+    requestReportingSsoFromParent();
+    const probePromise = cloud.probe();
+    const userPromise = waitForReportingUser(12_000);
+    const slowTimer = window.setTimeout(() => {
+      root.replaceChildren(h('div', { class: 'home-missing' }, h('p', {}, tr('Входим через reporting…'))));
+    }, 300);
+    const gate = await Promise.race([
+      reportingGate(probePromise, userPromise),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 12_000)),
+    ]);
+    window.clearTimeout(slowTimer);
+    if (gate === 'local') return { backend: localBackend, server: false };
+    if (gate) {
+      if (landing === 'welcome') {
+        const { showLanding } = await import('./ui/landing.ts');
+        const choice = await showLanding(root, { signedIn: true });
+        if (choice === 'new' || choice === 'newBoard' || choice === 'newDiagram' || choice === 'newSlides') {
+          location.assign(choice === 'newBoard' ? '/?new=1&board=1' : choice === 'newDiagram' ? '/?new=1&diagram=1' : choice === 'newSlides' ? '/?new=1&slides=1' : '/?new=1');
+          await new Promise(() => undefined);
+        }
+        history.replaceState(null, '', '/');
+      }
+      return { backend: new CloudBackend(gate), server: true };
+    }
+    const probe = await Promise.race([
+      probePromise,
+      new Promise<Probe>((resolve) => setTimeout(() => resolve({ state: 'signed-out' }), 2000)),
+    ]);
+    if (probe.state === 'signed-in') return { backend: new CloudBackend(probe.user), server: true };
+    if (probe.state === 'no-server') return { backend: localBackend, server: false };
+    root.replaceChildren(h('div', { class: 'home-missing' }, h('p', {}, tr('Не удалось войти через reporting. Обновите вкладку.'))));
+    await new Promise(() => undefined);
+  }
+
+  /**
    * Where files live (stage "Server"): signed in → the server; a server but
    * nobody signed in → the sign-in screen (or this browser, if chosen before);
    * no server at all → this browser, as always.
    */
   private static async chooseBackend(root: HTMLElement, landing: 'home' | 'file' | 'welcome' | 'login' | false = false): Promise<{ backend: FileBackend; server: boolean }> {
+    if (isReportingEmbed()) return App.chooseReportingBackend(root, landing);
     const probe = await cloud.probe();
     if (probe.state === 'no-server') return { backend: localBackend, server: false };
     if (probe.state === 'signed-in') {
@@ -1124,23 +1164,6 @@ export class App {
     // браузере» on it (BUG-048: the remembered choice hid the landing page for good).
     // ?login (a «Войти» button) goes straight to the sign-in screen (BUG-049).
     if (local && landing !== 'welcome' && landing !== 'home' && landing !== 'login') return { backend: localBackend, server: true };
-    // Во вкладке reporting отдельный логин не показываем: ждём SSO от родителя.
-    if (isReportingEmbed()) {
-      // Повторный probe: bootstrap мог уже обменять reportingSso из URL / postMessage.
-      const afterBoot = await cloud.probe();
-      if (afterBoot.state === 'signed-in') return { backend: new CloudBackend(afterBoot.user), server: true };
-      requestReportingSsoFromParent();
-      root.replaceChildren(
-        h('div', { class: 'home-missing' }, h('p', {}, tr('Входим через reporting…'))),
-      );
-      await waitForReportingSso(12_000);
-      const again = await cloud.probe();
-      if (again.state === 'signed-in') return { backend: new CloudBackend(again.user), server: true };
-      root.replaceChildren(
-        h('div', { class: 'home-missing' }, h('p', {}, tr('Не удалось войти через reporting. Обновите вкладку.'))),
-      );
-      await new Promise(() => undefined);
-    }
     const useLocal = (): { backend: FileBackend; server: boolean } => {
       try {
         localStorage.setItem(LOCAL_CHOICE, 'local');
@@ -1517,7 +1540,7 @@ export class App {
 
   /** A separate tab showing only the prototype (?present=<file>&page=…&start=…&src=cloud|local). */
   static async presentStandalone(root: HTMLElement, params: URLSearchParams): Promise<PrototypePlayer> {
-    await loadBundledFonts();
+    void loadBundledFonts();
     let backend: FileBackend = localBackend;
     if (params.get('src') === 'cloud') {
       const probe = await cloud.probe();
@@ -2716,7 +2739,33 @@ function documentColors(doc: Document): Color[] {
   return [...counts.values()].sort((a, b) => b.n - a.n).map((x) => x.color);
 }
 
-/** Loads the fonts that ship with the editor; never blocks start-up for more than a few seconds. */
+/**
+ * Сессия или токен открывают список с именем. Нет сервера — сразу локальные файлы.
+ * Отказ probe не ждёт таймаут токена, зависший probe не ждёт имя из токена.
+ */
+function reportingGate(probePromise: Promise<Probe>, userPromise: Promise<CloudUser | null>): Promise<CloudUser | 'local' | null> {
+  return new Promise((resolve) => {
+    let probe: Probe | undefined;
+    let fromToken: CloudUser | null = null;
+    let tokenSettled = false;
+    let settled = false;
+    const finish = (value: CloudUser | 'local' | null) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const check = () => {
+      if (probe?.state === 'signed-in') return finish(probe.user);
+      if (fromToken) return finish(fromToken);
+      if (probe?.state === 'no-server') return finish('local');
+      if (tokenSettled && probe?.state === 'signed-out') return finish(null);
+    };
+    probePromise.then((next) => { probe = next; check(); }).catch(() => { probe = { state: 'signed-out' }; check(); });
+    userPromise.then((next) => { fromToken = next; tokenSettled = true; check(); }).catch(() => { tokenSettled = true; check(); });
+  });
+}
+
+/** Loads the fonts that ship with the editor. Callers do not wait on this. */
 async function loadBundledFonts(): Promise<void> {
   if (typeof document === 'undefined' || !document.fonts) return;
   const loads = ['400 16px Inter', '700 16px Inter', 'italic 400 16px Inter'].map((font) => document.fonts.load(font, tr('AaЯя')));

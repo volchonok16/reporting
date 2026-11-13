@@ -153,7 +153,7 @@ export async function createCanvasServer(options: ServerOptions): Promise<Canvas
     }
     if (path === '/html-sandbox') return serveSandbox(res);
     if (options.heavy && path.startsWith('/heavy/') && (await serveHeavy(path, res, options.heavy, req.method === 'HEAD'))) return;
-    if (await serveStatic(path, res, { root: options.root, dev: options.dev })) return;
+    if (await serveStatic(path, res, { root: options.root, dev: options.dev }, req)) return;
     securityHeaders(res);
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Не найдено');
   };

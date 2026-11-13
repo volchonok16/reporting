@@ -65,17 +65,35 @@ export function identitySlides(): { name: string }[] {
 }
 
 let identityFile: Promise<File> | null = null;
+const TEMPLATE_CACHE = 'symmetrica-slide-templates-v1';
 
 export function cachedIdentityFile(): Promise<File> {
   identityFile ??= loadSlideTemplate(SLIDE_TEMPLATE_ID);
   return identityFile;
 }
 
+async function templateCache(): Promise<Cache | null> {
+  if (typeof caches === 'undefined') return null;
+  try {
+    return await caches.open(TEMPLATE_CACHE);
+  } catch {
+    return null;
+  }
+}
+
 export async function loadSlideTemplate(id: string): Promise<File> {
   const template = slideTemplates().find((item) => item.id === id);
   if (!template) throw new Error(tr('Нет такого шаблона'));
+  const cache = await templateCache();
+  const hit = cache ? await cache.match(template.file).catch(() => undefined) : undefined;
+  if (hit) {
+    return new File([await hit.arrayBuffer()], `${template.name}.pptx`, {
+      type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    });
+  }
   const response = await fetch(template.file);
   if (!response.ok) throw new Error(tr('Шаблон «{0}» не загрузился', template.name));
+  if (cache) await cache.put(template.file, response.clone()).catch(() => undefined);
   return new File([await response.arrayBuffer()], `${template.name}.pptx`, {
     type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   });

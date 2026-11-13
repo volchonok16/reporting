@@ -4,10 +4,10 @@
 // Policy hash, so no other inline script can run.
 
 import { createHash } from 'node:crypto';
-import { createReadStream } from 'node:fs';
+import { createReadStream, type Stats } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, sep } from 'node:path';
-import type { ServerResponse } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { frameAncestorsCsp, securityHeaders } from './http.ts';
 
 const MIME: Record<string, string> = {
@@ -25,6 +25,7 @@ const MIME: Record<string, string> = {
   '.ttf': 'font/ttf',
   '.wasm': 'application/wasm',
   '.onnx': 'application/octet-stream',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 };
 
 export interface Transform {
@@ -141,7 +142,7 @@ export function legalFile(path: string): string | null {
   return m ? `apps/web/legal/${m[2]}${m[1] ? '-en' : ''}.html` : null;
 }
 
-export async function serveStatic(path: string, res: ServerResponse, options: StaticOptions): Promise<boolean> {
+export async function serveStatic(path: string, res: ServerResponse, options: StaticOptions, req?: IncomingMessage): Promise<boolean> {
   const base = options.dev ? options.root : join(options.root, 'dist');
   let clean: string;
   try {
@@ -156,13 +157,22 @@ export async function serveStatic(path: string, res: ServerResponse, options: St
   // Server-only code and data never go to the browser.
   const rel = file.slice(base.length);
   if (/[\\/](packages[\\/]server|apps[\\/]server|data|tools|\.git)([\\/]|$)/.test(rel) || /[\\/]\./.test(rel)) return false;
+  let info: Stats;
   try {
-    const info = await stat(file);
+    info = await stat(file);
     if (!info.isFile()) return false;
   } catch {
     return false;
   }
   const ext = extname(file);
+  const cacheable = ext === '.woff2' || ext === '.ttf' || ext === '.pptx';
+  const etag = `W/"${info.size.toString(16)}-${Math.floor(info.mtimeMs).toString(16)}"`;
+  if (ext === '.pptx' && req?.headers['if-none-match'] === etag) {
+    securityHeaders(res);
+    res.writeHead(304, { ETag: etag, 'Cache-Control': 'public, max-age=604800' });
+    res.end();
+    return true;
+  }
   let body: Buffer = await readFile(file);
   if (options.dev && ext === '.ts') body = Buffer.from(options.dev.transformTs(body.toString('utf8')));
   if (options.dev && ext === '.html') body = Buffer.from(options.dev.transformHtml(body.toString('utf8')));
@@ -170,9 +180,10 @@ export async function serveStatic(path: string, res: ServerResponse, options: St
   const headers: Record<string, string | number> = {
     'Content-Type': MIME[ext] ?? 'application/octet-stream',
     // HTML always fresh (it names the current modules); fonts can be cached.
-    'Cache-Control': ext === '.woff2' || ext === '.ttf' ? 'public, max-age=604800' : 'no-cache',
+    'Cache-Control': cacheable ? 'public, max-age=604800' : 'no-cache',
     'Content-Length': body.length,
   };
+  if (ext === '.pptx') headers.ETag = etag;
   // Маркер для iframe reporting — родитель на другом origin читает текст.
   if (clean === '/apps/web/reporting-canvas.txt') {
     headers['Access-Control-Allow-Origin'] = '*';
