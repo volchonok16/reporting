@@ -6,7 +6,7 @@
 // backgrounds), the theme (colours, fonts). Own code, no libraries; the build
 // into a document is in import-build.ts.
 
-import type { Color, LineHeight, SlideTransition, TextAlignH, TextAlignV } from '#core';
+import type { Color, LineCap, LineHeight, SlideTransition, TextAlignH, TextAlignV, VectorPoint } from '#core';
 import { parseXml, type XmlNode } from '../svg-import.ts';
 import { emfPicture, emfToSvg } from './emf.ts';
 
@@ -25,6 +25,10 @@ export interface ImStroke {
   color: Color;
   width: number;
   dash: boolean;
+  /** PowerPoint tailEnd → начало линии. */
+  startCap: LineCap;
+  /** PowerPoint headEnd → конец линии. */
+  endCap: LineCap;
 }
 
 export interface ImRun {
@@ -75,6 +79,8 @@ export type ImElement =
   | ({ k: 'shape'; name: string; geom: string; radius: number; fill: ImFill; stroke: ImStroke | null; text: ImText | null; path: string | null } & Box)
   | ({ k: 'pic'; name: string; path: string; crop: Crop | null; geom: string; stroke: ImStroke | null } & Box)
   | ({ k: 'line'; name: string; x1: number; y1: number; x2: number; y2: number; stroke: ImStroke })
+  /** Elbow/curve connectors: open path in slide pixels (not a diagonal through the box). */
+  | { k: 'polyline'; name: string; points: VectorPoint[]; stroke: ImStroke }
   | { k: 'group'; name: string; children: ImElement[] }
   | { k: 'table'; name: string; x: number; y: number; cols: number[]; rows: { h: number; cells: ({ fill: ImFill | undefined; stroke: ImStroke | null; text: ImText; span: number; rowSpan: number } | null)[] }[] }
   | ({ k: 'missing'; name: string; what: string } & Box)
@@ -337,6 +343,24 @@ function crop(n: XmlNode | undefined): Crop | null {
   return c.l || c.t || c.r || c.b ? c : null;
 }
 
+/** PowerPoint a:headEnd / a:tailEnd type → our line ends. */
+function lineCapOf(type: string | undefined): LineCap {
+  switch ((type ?? 'none').toLowerCase()) {
+    case 'triangle':
+      return 'ARROW';
+    case 'stealth':
+      return 'REVERSED_TRIANGLE';
+    case 'diamond':
+      return 'DIAMOND';
+    case 'oval':
+      return 'CIRCLE';
+    case 'arrow':
+      return 'LINE_ARROW';
+    default:
+      return 'NONE';
+  }
+}
+
 function stroke(ctx: Ctx, ln: XmlNode | undefined, styleRef?: XmlNode): ImStroke | null {
   if (ln && kid(ln, 'noFill')) return null;
   const solid = kid(ln, 'solidFill');
@@ -344,7 +368,14 @@ function stroke(ctx: Ctx, ln: XmlNode | undefined, styleRef?: XmlNode): ImStroke
   if (!c) return null;
   const w = ln?.attrs.w ? num(ln.attrs.w) : 9525 * Math.max(1, num(styleRef?.attrs.idx, 1));
   const dash = kid(ln, 'prstDash')?.attrs.val;
-  return { color: c, width: Math.max(0.5, w * ctx.k), dash: !!dash && dash !== 'solid' };
+  return {
+    color: c,
+    width: Math.max(0.5, w * ctx.k),
+    dash: !!dash && dash !== 'solid',
+    // headEnd sits at the path's end; tailEnd at the start.
+    startCap: lineCapOf(kid(ln, 'tailEnd')?.attrs.type),
+    endCap: lineCapOf(kid(ln, 'headEnd')?.attrs.type),
+  };
 }
 
 // ---------- placement ----------
@@ -591,9 +622,9 @@ function readShape(ctx: Ctx, sp: XmlNode, t: Xform, inherited: boolean): ImEleme
   const defaultColor = fontColor ?? ctx.theme.colors[ctx.clrMap.tx1 ?? 'dk1'] ?? hex('000000');
   const text = textOf(ctx, kid(sp, 'txBody'), chain, b, defaultColor);
   for (const r of text?.paragraphs ?? []) for (const run of r.runs) ctx.deck.fonts.add(run.font);
-  if (prst === 'line' || prst.startsWith('straightConnector') || prst.endsWith('Connector')) {
+  if (prst === 'line' || prst.startsWith('straightConnector') || /^(bent|curved)Connector/i.test(prst) || prst.endsWith('Connector')) {
     if (!s) return null;
-    return lineOf(name, b, s);
+    return connectorOf(name, b, s, prst, path(spPr, 'prstGeom', 'avLst'));
   }
   if (!f && !s && !text) return null;
   return {
@@ -609,24 +640,112 @@ function readShape(ctx: Ctx, sp: XmlNode, t: Xform, inherited: boolean): ImEleme
   };
 }
 
-function lineOf(name: string, b: Box, s: ImStroke): ImElement {
-  // The line runs corner to corner of its box; flips swap the ends, then the box turns around its centre.
-  let x1 = b.x;
-  let y1 = b.y;
-  let x2 = b.x + b.w;
-  let y2 = b.y + b.h;
-  if (b.flipH) [x1, x2] = [x2, x1];
-  if (b.flipV) [y1, y2] = [y2, y1];
+/** Adjustment values from a:avLst (adj / adj1 / adj2 / …), default 50000. */
+function adjOf(avLst: XmlNode | undefined, name: string, fallback = 50000): number {
+  const gd = kids(avLst, 'gd').find((g) => g.attrs.name === name);
+  const raw = gd?.attrs.fmla?.replace(/^val\s+/i, '');
+  return num(raw, fallback);
+}
+
+/**
+ * Local path of a DrawingML connector preset inside a w×h box (OOXML
+ * presetShapeDefinitions: start at top-left, first segment horizontal).
+ */
+function connectorLocal(prst: string, w: number, h: number, avLst: XmlNode | undefined): VectorPoint[] | null {
+  const W = Math.max(0, w);
+  const H = Math.max(0, h);
+  if (prst === 'line' || prst.startsWith('straightConnector')) return [{ x: 0, y: 0 }, { x: W, y: H }];
+  if (prst === 'bentConnector2') return [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }];
+  if (prst === 'bentConnector3') {
+    const x1 = (W * adjOf(avLst, 'adj1')) / 100000;
+    return [{ x: 0, y: 0 }, { x: x1, y: 0 }, { x: x1, y: H }, { x: W, y: H }];
+  }
+  if (prst === 'bentConnector4') {
+    const x1 = (W * adjOf(avLst, 'adj1')) / 100000;
+    const y2 = (H * adjOf(avLst, 'adj2')) / 100000;
+    return [{ x: 0, y: 0 }, { x: x1, y: 0 }, { x: x1, y: y2 }, { x: W, y: y2 }, { x: W, y: H }];
+  }
+  if (prst === 'bentConnector5') {
+    const x1 = (W * adjOf(avLst, 'adj1')) / 100000;
+    const y2 = (H * adjOf(avLst, 'adj2')) / 100000;
+    const x3 = (W * adjOf(avLst, 'adj3')) / 100000;
+    return [{ x: 0, y: 0 }, { x: x1, y: 0 }, { x: x1, y: y2 }, { x: x3, y: y2 }, { x: x3, y: H }, { x: W, y: H }];
+  }
+  if (prst === 'curvedConnector2') {
+    // cubicBezTo wd2 t, r hd2, r b
+    const c1 = { x: W / 2, y: 0 };
+    const c2 = { x: W, y: H / 2 };
+    const end = { x: W, y: H };
+    return [{ x: 0, y: 0, out: c1 }, { ...end, in: c2 }];
+  }
+  if (prst === 'curvedConnector3') {
+    const x2 = (W * adjOf(avLst, 'adj1')) / 100000;
+    const x1 = x2 / 2;
+    const x3 = (W + x2) / 2;
+    const y3 = (H * 3) / 4;
+    const mid = { x: x2, y: H / 2 };
+    const end = { x: W, y: H };
+    return [
+      { x: 0, y: 0, out: { x: x1, y: 0 } },
+      { ...mid, in: { x: x2, y: H / 4 }, out: { x: x2, y: y3 } },
+      { ...end, in: { x: x3, y: H } },
+    ];
+  }
+  if (prst.startsWith('curvedConnector')) {
+    // bent* fallback for curved 4/5: same elbows look better than a diagonal.
+    const bent = connectorLocal(prst.replace('curved', 'bent'), W, H, avLst);
+    return bent;
+  }
+  if (prst.endsWith('Connector') || prst.startsWith('bentConnector')) {
+    const x1 = (W * adjOf(avLst, 'adj1')) / 100000;
+    return [{ x: 0, y: 0 }, { x: x1, y: 0 }, { x: x1, y: H }, { x: W, y: H }];
+  }
+  return null;
+}
+
+/** Map a local point through flipH/flipV then rotation around the box centre. */
+function mapBoxPoint(p: VectorPoint, b: Box): VectorPoint {
+  let x = p.x;
+  let y = p.y;
+  if (b.flipH) x = b.w - x;
+  if (b.flipV) y = b.h - y;
+  x += b.x;
+  y += b.y;
+  const mapHandle = (h: { x: number; y: number } | undefined) => {
+    if (!h) return undefined;
+    let hx = h.x;
+    let hy = h.y;
+    if (b.flipH) hx = b.w - hx;
+    if (b.flipV) hy = b.h - hy;
+    return { x: hx + b.x, y: hy + b.y };
+  };
+  let out = mapHandle(p.out);
+  let inn = mapHandle(p.in);
   if (b.rot) {
     const cx = b.x + b.w / 2;
     const cy = b.y + b.h / 2;
     const a = (b.rot * Math.PI) / 180;
-    const turn = (x: number, y: number) => ({ x: cx + (x - cx) * Math.cos(a) - (y - cy) * Math.sin(a), y: cy + (x - cx) * Math.sin(a) + (y - cy) * Math.cos(a) });
-    const p = turn(x1, y1);
-    const q = turn(x2, y2);
-    [x1, y1, x2, y2] = [p.x, p.y, q.x, q.y];
+    const turn = (qx: number, qy: number) => ({
+      x: cx + (qx - cx) * Math.cos(a) - (qy - cy) * Math.sin(a),
+      y: cy + (qx - cx) * Math.sin(a) + (qy - cy) * Math.cos(a),
+    });
+    ({ x, y } = turn(x, y));
+    if (out) out = turn(out.x, out.y);
+    if (inn) inn = turn(inn.x, inn.y);
   }
-  return { k: 'line', name: name || 'Line', x1, y1, x2, y2, stroke: s };
+  return { x, y, ...(out ? { out } : {}), ...(inn ? { in: inn } : {}) };
+}
+
+function connectorOf(name: string, b: Box, s: ImStroke, prst: string, avLst: XmlNode | undefined): ImElement {
+  const local = connectorLocal(prst, b.w, b.h, avLst) ?? [{ x: 0, y: 0 }, { x: b.w, y: b.h }];
+  const points = local.map((p) => mapBoxPoint(p, b));
+  const bent = points.length > 2 || points.some((p) => p.in || p.out);
+  if (!bent && points.length >= 2) {
+    const a = points[0]!;
+    const z = points[points.length - 1]!;
+    return { k: 'line', name: name || 'Line', x1: a.x, y1: a.y, x2: z.x, y2: z.y, stroke: s };
+  }
+  return { k: 'polyline', name: name || 'Connector', points, stroke: s };
 }
 
 function readPic(ctx: Ctx, pic: XmlNode, t: Xform): ImElement | null {
@@ -705,7 +824,8 @@ function readTree(ctx: Ctx, nodes: XmlNode[], t: Xform, inherited: boolean): ImE
         const spPr = kid(n, 'spPr');
         const b = box(kid(spPr, 'xfrm'), t);
         const s = stroke(ctx, kid(spPr, 'ln'), path(n, 'style', 'lnRef'));
-        if (b && s) el = lineOf(path(n, 'nvCxnSpPr', 'cNvPr')?.attrs.name ?? 'Line', b, s);
+        const prst = path(spPr, 'prstGeom')?.attrs.prst ?? 'straightConnector1';
+        if (b && s) el = connectorOf(path(n, 'nvCxnSpPr', 'cNvPr')?.attrs.name ?? 'Line', b, s, prst, path(spPr, 'prstGeom', 'avLst'));
         break;
       }
       case 'pic':

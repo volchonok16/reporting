@@ -358,7 +358,7 @@ docker-compose exec -T postgres psql -U reporting -d reporting < db/migrations/0
 
 ### MinIO — фото и вложения
 
-При `docker compose up` поднимаются `minio` и `minio-init`. Init:
+При `docker compose up` поднимаются `minio` и `minio-init` (`alpine` + бинарь `mc` с GitHub Releases). Init:
 
 1. Создаёт bucket `photos` (`MINIO_BUCKET`) и `product-status` (`MINIO_ATTACHMENTS_BUCKET`)
 2. Ставит **`anonymous set none`** на оба (публичного download нет)
