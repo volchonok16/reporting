@@ -425,6 +425,59 @@ test('pptx export (BUG-139): the text of a cell wrapped in frames that paint not
   assert.deepEqual(els.filter((e) => e.k === 'text').map((e) => e.k === 'text' && e.paras[0]!.runs[0]!.text), ['Новое'], 'only the pill\'s text goes over');
 });
 
+test('pptx import: bent connectors keep elbow geometry and arrow heads (not a diagonal through the box)', async () => {
+  const { readPptx } = await import('../src/pptx/import.ts');
+  const { buildDeck } = await import('../src/pptx/import-build.ts');
+  const { createSlidesDocument, slideIds, arrangeSlides } = await import('../src/slides.ts');
+  const enc = new TextEncoder();
+  const EMU = 12192000;
+  const cx = 2_000_000;
+  const cy = 1_000_000;
+  const k = 1920 / EMU;
+  const w = cx * k;
+  const h = cy * k;
+  const adj1 = 30000;
+  const x1 = (w * adj1) / 100000;
+  const pres = `<?xml version="1.0"?><p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:sldIdLst><p:sldId r:id="rId1"/></p:sldIdLst><p:sldSz cx="${EMU}" cy="6858000"/></p:presentation>`;
+  const rels = `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/></Relationships>`;
+  const slide = `<?xml version="1.0"?><p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/><p:cxnSp><p:nvCxnSpPr><p:cNvPr id="2" name="Elbow"/><p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="bentConnector3"><a:avLst><a:gd name="adj1" fmla="val ${adj1}"/></a:avLst></a:prstGeom><a:ln w="12700"><a:solidFill><a:srgbClr val="808080"/></a:solidFill><a:headEnd type="triangle"/></a:ln></p:spPr></p:cxnSp><p:cxnSp><p:nvCxnSpPr><p:cNvPr id="3" name="Straight"/><p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr><p:spPr><a:xfrm flipH="1"><a:off x="3000000" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="straightConnector1"><a:avLst/></a:prstGeom><a:ln w="12700"><a:solidFill><a:srgbClr val="000000"/></a:solidFill><a:tailEnd type="triangle"/><a:headEnd type="arrow"/></a:ln></p:spPr></p:cxnSp></p:spTree></p:cSld></p:sld>`;
+  const deck = readPptx(
+    new Map([
+      ['ppt/presentation.xml', enc.encode(pres)],
+      ['ppt/_rels/presentation.xml.rels', enc.encode(rels)],
+      ['ppt/slides/slide1.xml', enc.encode(slide)],
+    ]),
+  );
+  const elbow = deck.slides[0]!.elements.find((e) => e.k === 'polyline' && e.name === 'Elbow');
+  assert.ok(elbow && elbow.k === 'polyline', 'bentConnector3 is a polyline, not a diagonal line');
+  assert.equal(elbow.points.length, 4);
+  assert.ok(Math.abs(elbow.points[0]!.x - 0) < 0.5 && Math.abs(elbow.points[0]!.y - 0) < 0.5);
+  assert.ok(Math.abs(elbow.points[1]!.x - x1) < 0.5 && Math.abs(elbow.points[1]!.y - 0) < 0.5);
+  assert.ok(Math.abs(elbow.points[2]!.x - x1) < 0.5 && Math.abs(elbow.points[2]!.y - h) < 0.5);
+  assert.ok(Math.abs(elbow.points[3]!.x - w) < 0.5 && Math.abs(elbow.points[3]!.y - h) < 0.5);
+  assert.equal(elbow.stroke.endCap, 'ARROW', 'headEnd triangle → endCap');
+  const straight = deck.slides[0]!.elements.find((e) => e.k === 'line' && e.name === 'Straight');
+  assert.ok(straight && straight.k === 'line');
+  assert.ok(straight.x1 > straight.x2, 'flipH swaps the ends of a straight connector');
+  assert.equal(straight.stroke.startCap, 'ARROW');
+  assert.equal(straight.stroke.endCap, 'LINE_ARROW');
+
+  const doc = createSlidesDocument('Коннекторы', true);
+  const target = new Editor(doc, new ApproximateTextMeasurer());
+  target.editPass = (tx, final) => final && arrangeSlides(doc, tx, target.pageId, true);
+  target.commit('import', (tx) => buildDeck(target, tx, deck, deck.media, null));
+  const slideId = slideIds(doc, target.pageId)[0]!;
+  const kids = doc.children(slideId);
+  const vec = kids.find((id) => doc.type(id) === 'VECTOR' && doc.get(id, 'name') === 'Elbow')!;
+  const path = doc.get(vec, 'vectorPaths')[0]!;
+  assert.equal(path.closed, false);
+  assert.equal(path.points.length, 4);
+  assert.equal(doc.get(vec, 'endCap'), 'ARROW');
+  const line = kids.find((id) => doc.type(id) === 'LINE' && doc.get(id, 'name') === 'Straight')!;
+  assert.equal(doc.get(line, 'startCap'), 'ARROW');
+  assert.equal(doc.get(line, 'endCap'), 'LINE_ARROW');
+});
+
 test('PowerPoint clipboard package is an editable slide, not only a picture', async () => {
   const { readPptx } = await import('../src/pptx/import.ts');
   const { powerpointClipboardRaw, powerpointPackageBytes } = await import('../src/pptx/clipboard-package.ts');

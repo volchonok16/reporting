@@ -99,6 +99,8 @@ def _photo_sig(safe: str, exp: int) -> str:
 
 def photo_signed_url(photo_path: str | None, ttl_seconds: int = 30 * 24 * 3600) -> str | None:
     """Ссылка для <img> без заголовка сессии. Подпись живёт ttl_seconds."""
+    if not photo_path:
+        return None
     safe = _safe_photo_rel(photo_path)
     if not safe:
         return None

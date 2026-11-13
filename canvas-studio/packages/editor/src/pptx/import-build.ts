@@ -114,7 +114,16 @@ export function buildDeck(editor: Editor, tx: Transaction, deck: ImDeck, media: 
     return hash ? { type: 'IMAGE', imageHash: hash, scaleMode: 'FILL', scale: 1, opacity: 1, visible: true } : null;
   };
   const strokeProps = (s: ImStroke | null): Partial<NodeProps> =>
-    s ? { strokes: [solidOf(s.color)], strokeWeight: round(s.width), strokeAlign: 'CENTER', dashPattern: s.dash ? [round(s.width * 3), round(s.width * 2)] : [] } : { strokes: [] };
+    s
+      ? {
+          strokes: [solidOf(s.color)],
+          strokeWeight: round(s.width),
+          strokeAlign: 'CENTER',
+          dashPattern: s.dash ? [round(s.width * 3), round(s.width * 2)] : [],
+          startCap: s.startCap,
+          endCap: s.endCap,
+        }
+      : { strokes: [] };
 
   const text = (parent: NodeId, t: ImText, name: string, rot: number, pivot: { x: number; y: number } | null): NodeId | null => {
     const paras = t.paragraphs;
@@ -194,6 +203,38 @@ export function buildDeck(editor: Editor, tx: Transaction, deck: ImDeck, media: 
       case 'line': {
         const len = Math.hypot(e.x2 - e.x1, e.y2 - e.y1);
         tx.create('LINE', parent, { name: e.name, x: round(e.x1), y: round(e.y1), width: round(Math.max(1, len)), height: 0, rotation: round((Math.atan2(e.y2 - e.y1, e.x2 - e.x1) * 180) / Math.PI), ...strokeProps(e.stroke) });
+        return;
+      }
+      case 'polyline': {
+        // Elbow/curve connectors: open VECTOR, not a diagonal LINE through the box.
+        const pts = e.points;
+        if (pts.length < 2) return;
+        const xs: number[] = [];
+        const ys: number[] = [];
+        for (const p of pts) {
+          xs.push(p.x, p.in?.x ?? p.x, p.out?.x ?? p.x);
+          ys.push(p.y, p.in?.y ?? p.y, p.out?.y ?? p.y);
+        }
+        const minX = Math.min(...xs);
+        const minY = Math.min(...ys);
+        const maxX = Math.max(...xs);
+        const maxY = Math.max(...ys);
+        const local = pts.map((p) => ({
+          x: p.x - minX,
+          y: p.y - minY,
+          ...(p.in ? { in: { x: p.in.x - minX, y: p.in.y - minY } } : {}),
+          ...(p.out ? { out: { x: p.out.x - minX, y: p.out.y - minY } } : {}),
+        }));
+        tx.create('VECTOR', parent, {
+          name: e.name,
+          x: round(minX),
+          y: round(minY),
+          width: round(Math.max(1, maxX - minX)),
+          height: round(Math.max(1, maxY - minY)),
+          fills: [],
+          vectorPaths: [{ closed: false, points: local }],
+          ...strokeProps(e.stroke),
+        });
         return;
       }
       case 'table': {
