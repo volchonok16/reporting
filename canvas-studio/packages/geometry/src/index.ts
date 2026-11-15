@@ -9,3 +9,4 @@ export * from './precision.ts';
 export * from './network.ts';
 export * from './variable-stroke.ts';
 export * from './warp.ts';
+export * from './sketch.ts';

@@ -110,7 +110,7 @@ export function openTokenCode(editor: Editor, toast: (message: string) => void):
       () => toast(tr('Код скопирован')),
       () => {
         preview.select();
-        toast(tr('Не удалось скопировать — выделил текст, нажмите ⌘C'));
+        toast(tr('Не удалось скопировать. Текст выделен, нажмите ⌘C'));
       },
     );
   });

@@ -21,10 +21,12 @@
 
 import type { Color, NodeId } from '#core';
 import { intersects, unionAll, type Rect } from '#geometry';
-import { Viewport, type Canvas2DRenderer, type SceneGraph } from '#render';
+import { Viewport, type Canvas2DRenderer, type SceneGraph, colorProfile, context2d } from '#render';
 
 /** Side of a tile in device pixels. */
 const TILE = 256;
+/** Mip levels of a tile's texture: 256, 128 … 1. */
+const TILE_LEVELS = Math.log2(TILE) + 1;
 /** Quantized families per doubling of the scale (used while zooming). */
 const STEPS = 4;
 /** Time a frame may spend drawing tiles that are only missing (edits are drawn at once). */
@@ -35,6 +37,33 @@ const REST_MS = 180;
 const BASE_SIDE = 2048;
 /** Longest side of a lifted selection's picture, device pixels; a bigger one is not lifted. */
 const LIFT_SIDE = 4096;
+
+/**
+ * WebKit (Safari, the macOS app): tiles are drawn on canvases kept in memory and handed to WebGL as
+ * bytes (PERF-008). Handing over a GPU canvas made WebKit read it back and convert it, ~2.5 ms a tile —
+ * a frame moved under 35 tiles took 70–120 ms; now ~1 ms. Chromium copies a GPU canvas into a texture
+ * on the GPU, cheaply, and draws slower on a canvas in memory: it keeps the GPU canvas.
+ */
+const READ_BACK = typeof navigator !== 'undefined' && /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|Edg\//.test(navigator.userAgent);
+
+/** The 2D context of a tile canvas, for READ_BACK in memory. */
+function tileContext(canvas: OffscreenCanvas | HTMLCanvasElement): OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | null {
+  return context2d(canvas, { alpha: false, willReadFrequently: READ_BACK }) as OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | null;
+}
+
+/** A drawn square (w × h at the canvas's corner) into the bound texture at (x, y). */
+function upload(gl: WebGL2RenderingContext, x: number, y: number, w: number, h: number, ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D, canvas: OffscreenCanvas | HTMLCanvasElement): void {
+  if (!READ_BACK) {
+    // The whole canvas goes when it is the tile; a part is cut by the unpack window.
+    gl.pixelStorei(gl.UNPACK_ROW_LENGTH, canvas.width);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, canvas as TexImageSource);
+    gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+    return;
+  }
+  const data = ctx.getImageData(0, 0, w, h).data;
+  // getImageData gives straight (not premultiplied) colours; the tiles are opaque (alpha: false), so they are the same.
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+}
 
 /** A grid of tiles: scale (device px per world unit) and where it starts on the device pixel grid. */
 interface Family {
@@ -85,8 +114,8 @@ export class TileLayer {
   private readonly renderer: Canvas2DRenderer;
   private readonly tiles = new Map<string, Tile>();
   private readonly families = new Map<string, Family>();
-  private readonly scratch: OffscreenCanvas | HTMLCanvasElement;
-  private readonly scratchCtx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
+  private scratch!: OffscreenCanvas | HTMLCanvasElement;
+  private scratchCtx!: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
   private frame = 0;
   private lost = false;
   private lastZoom = 0;
@@ -156,15 +185,30 @@ export class TileLayer {
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     gl.useProgram(program);
+    this.setColorSpace();
+  }
+
+  /**
+   * Draws in the file's colour space (step 9, Display P3): the tile canvases are made again in it (a canvas keeps
+   * the space it was made in), WebGL reads and shows them in it, and every tile is drawn again.
+   */
+  setColorSpace(): void {
+    const space = colorProfile() === 'DISPLAY_P3' ? 'display-p3' : 'srgb';
+    const gl = this.gl as WebGL2RenderingContext & { drawingBufferColorSpace?: string; unpackColorSpace?: string };
+    if ('drawingBufferColorSpace' in gl) gl.drawingBufferColorSpace = space;
+    if ('unpackColorSpace' in gl) gl.unpackColorSpace = space;
     if (typeof OffscreenCanvas !== 'undefined') {
       this.scratch = new OffscreenCanvas(TILE, TILE);
-      this.scratchCtx = this.scratch.getContext('2d', { alpha: false })!;
+      this.scratchCtx = tileContext(this.scratch)!;
     } else {
       const c = document.createElement('canvas');
       c.width = c.height = TILE;
       this.scratch = c;
-      this.scratchCtx = c.getContext('2d', { alpha: false })!;
+      this.scratchCtx = tileContext(c)!;
     }
+    this.part = null;
+    this.partCtx = null;
+    if (this.tiles) this.clear();
   }
 
   get usable(): boolean {
@@ -209,7 +253,7 @@ export class TileLayer {
     const height = Math.ceil(box.height * scale);
     if (width > side || height > side) return false;
     const canvas: OffscreenCanvas | HTMLCanvasElement = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(width, height) : Object.assign(document.createElement('canvas'), { width, height });
-    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D | null;
+    const ctx = context2d(canvas) as CanvasRenderingContext2D | null;
     if (!ctx) return false;
     this.renderer.renderLifted(ctx, scene, ids, box, scale);
     const tex = gl.createTexture()!;
@@ -296,7 +340,10 @@ export class TileLayer {
     this.renderer.renderPage({ ctx: this.scratchCtx as CanvasRenderingContext2D, width: TILE, height: TILE, dpr: 1 }, scene, view);
     const tex = tile?.tex ?? gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.scratch as TexImageSource);
+    // Storage once per tile, then only its pixels (PERF-008): texImage2D allocated the texture anew
+    // on every redraw, and in WebKit that and the readback cost ~2.5 ms a tile — 35 tiles under a moved frame.
+    if (!tile) gl.texStorage2D(gl.TEXTURE_2D, TILE_LEVELS, gl.RGBA8, TILE, TILE);
+    upload(gl, 0, 0, TILE, TILE, this.scratchCtx, this.scratch);
     gl.generateMipmap(gl.TEXTURE_2D);
     if (!tile) {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
@@ -351,13 +398,13 @@ export class TileLayer {
       return tile;
     }
     if (w * h > TILE * TILE * 0.5) return this.draw(scene, f, i, j);
+    // One canvas of a tile's size for every part (PERF-008): resizing it to each part allocated it anew
+    // and made a part dearer than a whole tile. The part is drawn in its corner and only that is read.
     if (!this.part) {
-      this.part = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h });
-      this.partCtx = this.part.getContext('2d', { alpha: false }) as OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | null;
+      this.part = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(TILE, TILE) : Object.assign(document.createElement('canvas'), { width: TILE, height: TILE });
+      this.partCtx = tileContext(this.part);
     }
     if (!this.partCtx) return this.draw(scene, f, i, j);
-    this.part.width = w;
-    this.part.height = h;
     const view = new Viewport();
     view.zoom = f.scale;
     view.offsetX = -ox - x0;
@@ -365,7 +412,7 @@ export class TileLayer {
     this.renderer.renderPage({ ctx: this.partCtx as CanvasRenderingContext2D, width: w, height: h, dpr: 1 }, scene, view);
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, tile.tex);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, x0, y0, gl.RGBA, gl.UNSIGNED_BYTE, this.part as TexImageSource);
+    upload(gl, x0, y0, w, h, this.partCtx, this.part);
     gl.generateMipmap(gl.TEXTURE_2D);
     tile.edited = false;
     tile.dirty = 'all';

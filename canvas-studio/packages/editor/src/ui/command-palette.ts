@@ -7,6 +7,7 @@ import type { Command } from '../commands.ts';
 import type { Editor } from '../editor.ts';
 import { formatShortcut, switchLayout } from '../keyboard.ts';
 import { clear, h, icon } from './dom.ts';
+import { fadeAway } from './motion-ui.ts';
 
 interface Item {
   label: string;
@@ -114,6 +115,7 @@ export class CommandPalette {
   }
 
   close(): void {
+    fadeAway(this.el);
     this.el.hidden = true;
     this.restoreFocus?.focus();
   }

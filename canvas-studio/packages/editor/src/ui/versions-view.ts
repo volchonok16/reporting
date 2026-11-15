@@ -85,7 +85,7 @@ export class VersionsView {
 
   private renderList(): void {
     if (!this.items.length) {
-      this.list.replaceChildren(h('p', { class: 'hint' }, tr('Версий пока нет: они появляются, когда вы заканчиваете работу с файлом, и не реже раза в 10 минут во время работы.')));
+      this.list.replaceChildren(h('p', { class: 'hint' }, tr('Версий пока нет. Они сохраняются сами каждые 10 минут работы и когда все вышли из файла.')));
       return;
     }
     this.list.replaceChildren(
@@ -226,10 +226,8 @@ export class VersionsView {
   }
 
   private async saveVersion(): Promise<void> {
-    const name = await askText({ title: tr('Сохранить версию'), label: tr('Название'), placeholder: tr('Например, «Перед показом заказчику»'), confirm: tr('Сохранить'), maxLength: 120, empty: tr('Введите название') });
-    if (!name) return;
     try {
-      await api.save(this.host.fileId, name);
+      if (!(await saveNamedVersion(this.host.fileId))) return;
       this.selected = null;
       this.docs.clear();
       await this.load();
@@ -257,6 +255,14 @@ export class VersionsView {
 }
 
 /** Draws a page of a document fitted into a canvas, with outlines around some of its top-level layers (versions, merges). */
+/** Asks a name and saves the file's version under it; false — the person cancelled. Throws what the server answers. */
+export async function saveNamedVersion(fileId: string): Promise<string | null> {
+  const name = await askText({ title: tr('Сохранить версию'), label: tr('Название'), placeholder: tr('Например, «Перед показом заказчику»'), confirm: tr('Сохранить'), maxLength: 120, empty: tr('Введите название') });
+  if (!name) return null;
+  await api.save(fileId, name);
+  return name;
+}
+
 export function drawPage(canvas: HTMLCanvasElement, doc: Document, page: NodeId, renderer: Canvas2DRenderer, marks: { id: NodeId; color: string }[]): void {
   const width = canvas.clientWidth || 400;
   const height = canvas.clientHeight || 300;

@@ -7,12 +7,12 @@
 import { tr } from '#core';
 import type { Document } from '#core';
 import { embeddedFonts, embedFontFiles, embedGoogleFamilies, embedLocalFamily } from '../fonts.ts';
-import { isBrandFamily } from '../t2-fonts.ts';
 import { fontTraits, type FontKind } from '../font-kinds.ts';
 import { pickFiles } from '../images.ts';
 import { switchLayout } from '../keyboard.ts';
 import { clear, h, icon } from './dom.ts';
 import { MIXED, mixedOption, type Field, type Mixed } from './fields.ts';
+import { fadeAway } from './motion-ui.ts';
 
 const COMMON_FAMILIES = [
   'Inter', 'Roboto', 'Open Sans', 'Montserrat', 'Lato', 'Manrope', 'PT Sans', 'PT Serif', 'PT Mono', 'Noto Sans', 'Noto Serif', 'Source Sans Pro', 'Source Serif Pro',
@@ -20,7 +20,7 @@ const COMMON_FAMILIES = [
   'Merriweather', 'Oswald', 'Arial', 'Arial Black', 'Helvetica', 'Helvetica Neue', 'Verdana', 'Tahoma', 'Trebuchet MS', 'Georgia', 'Times New Roman', 'Courier New',
   'Impact', 'Comic Sans MS', 'Segoe UI', 'Calibri', 'Cambria', 'Candara', 'Consolas', 'Constantia', 'Corbel', 'Franklin Gothic Medium', 'Garamond', 'Palatino Linotype',
   'SF Pro Text', 'SF Pro Display', 'SF Pro Rounded', 'SF Mono', 'New York', 'Avenir', 'Avenir Next', 'Futura', 'Gill Sans', 'Optima', 'Palatino', 'Baskerville',
-  'Didot', 'Hoefler Text', 'American Typewriter', 'Menlo', 'Monaco', 'Charter', 'Rockwell', 'Copperplate', 'Papyrus', 'Marker Felt', 'Chalkboard', 'T2 Rooftop', 'T2 Rooftop Medium', 'T2 Halvar Breit', 'T2 Halvar Breit ExtraBold', 'DejaVu Sans',
+  'Didot', 'Hoefler Text', 'American Typewriter', 'Menlo', 'Monaco', 'Charter', 'Rockwell', 'Copperplate', 'Papyrus', 'Marker Felt', 'Chalkboard', 'DejaVu Sans',
   'DejaVu Serif', 'DejaVu Sans Mono', 'Liberation Sans', 'Liberation Serif', 'Liberation Mono', 'Cantarell',
 ];
 
@@ -64,7 +64,6 @@ export async function addFontFiles(doc: Document): Promise<string> {
 }
 
 export function isFontAvailable(family: string): boolean {
-  if (isBrandFamily(family)) return true;
   const known = availability.get(family);
   if (known !== undefined) return known;
   if (isBundled(family)) {
@@ -196,7 +195,7 @@ export class FontPicker implements Field {
     this.warning.hidden = !missing && !localOnly;
     this.warning.classList.toggle('subtle', localOnly);
     this.warning.textContent = missing
-      ? tr('Шрифт «{0}» не установлен на этом компьютере — показан похожим.', single)
+      ? tr('Шрифт «{0}» не установлен на этом компьютере и показан похожим.', single)
       : localOnly
         ? tr('Шрифт есть на этом компьютере, у других его может не быть.')
         : '';
@@ -222,7 +221,7 @@ export class FontPicker implements Field {
       if (g.embedded.length) return;
       if (g.missing.length) notOnGoogle.add(family);
       if (this.actionKind === 'google') {
-        this.warning.textContent = g.missing.length ? tr('Шрифта «{0}» нет в Google Fonts — добавьте файл шрифта.', family) : tr('Не удалось загрузить шрифт: нет связи с сервером. Можно добавить файл шрифта.');
+        this.warning.textContent = g.missing.length ? tr('Шрифта «{0}» нет в Google Fonts. Добавьте файл шрифта.', family) : tr('Не удалось загрузить шрифт: нет связи с сервером. Можно добавить файл шрифта.');
         this.actionKind = 'file';
         this.action.textContent = tr('Добавить файл шрифта…');
         return;
@@ -253,6 +252,7 @@ export class FontPicker implements Field {
   private close(): void {
     this.endPreview();
     this.endPreview = () => {};
+    fadeAway(this.popover);
     this.popover?.remove();
     this.popover = null;
     document.removeEventListener('pointerdown', this.outside, true);
@@ -497,7 +497,7 @@ export class FontPicker implements Field {
       });
       footer.append(more);
     } else if (!hasApi) {
-      footer.append(h('p', { class: 'hint small' }, tr('Показаны распространённые шрифты, найденные на компьютере. Полный список доступен в Chrome и Edge.')));
+      footer.append(h('p', { class: 'hint small' }, tr('Показаны распространённые шрифты. Полный список есть в Chrome и Edge.')));
     }
     render();
     search.focus();

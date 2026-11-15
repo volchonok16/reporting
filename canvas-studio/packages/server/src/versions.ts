@@ -20,7 +20,7 @@
 import { randomBytes } from 'node:crypto';
 import { statfs } from 'node:fs/promises';
 import { gunzipSync, gzipSync } from 'node:zlib';
-import type { BlobStore } from './storage.ts';
+import type { FileBlobs } from './storage.ts';
 
 export interface VersionEntry {
   id: string;
@@ -84,7 +84,7 @@ interface StoredSnapshot {
 }
 
 export class Versions {
-  private readonly files: BlobStore;
+  private readonly files: FileBlobs;
   private readonly log: (line: string) => void;
   private disk: { at: number; free: number } | null = null;
   /** Changes of one file's history run one after another (a clean-up must not remove a picture just written). */
@@ -100,7 +100,7 @@ export class Versions {
     return next;
   }
 
-  constructor(files: BlobStore, log: (line: string) => void = () => undefined) {
+  constructor(files: FileBlobs, log: (line: string) => void = () => undefined) {
     this.files = files;
     this.log = log;
   }
@@ -143,22 +143,14 @@ export class Versions {
     return Object.keys(mimes);
   }
 
-  /** Free space for version GC; checked at most every ten minutes. */
+  /** Free space where the files are; checked at most every ten minutes. */
   private async freeSpace(): Promise<number> {
     const now = Date.now();
     if (!this.disk || now - this.disk.at > 10 * 60_000) {
       try {
-        if (this.files.freeSpaceBytes) {
-          this.disk = { at: now, free: await this.files.freeSpaceBytes() };
-        } else {
-          const s = await statfs(this.files.root);
-          this.disk = { at: now, free: s.bavail * s.bsize };
-          if (this.disk.free < DISK_RESERVE * 2) {
-            this.log(
-              `мало места на диске: свободно ${Math.round(this.disk.free / MB)} МБ — автоматические версии ${this.disk.free < DISK_RESERVE ? 'не сохраняются' : 'скоро перестанут сохраняться'}`,
-            );
-          }
-        }
+        const s = await statfs(this.files.root);
+        this.disk = { at: now, free: s.bavail * s.bsize };
+        if (this.disk.free < DISK_RESERVE * 2) this.log(`мало места на диске: свободно ${Math.round(this.disk.free / MB)} МБ — автоматические версии ${this.disk.free < DISK_RESERVE ? 'не сохраняются' : 'скоро перестанут сохраняться'}`);
       } catch {
         this.disk = { at: now, free: Number.POSITIVE_INFINITY };
       }

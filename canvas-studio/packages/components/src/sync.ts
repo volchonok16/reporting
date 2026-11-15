@@ -28,7 +28,7 @@ import { type Document, type NodeId, type NodeProps, type NodeType, type PropKey
 import { constrainSpan } from '#layout';
 
 /** Never copied from a source and never overridable. */
-const LOCAL_KEYS: ReadonlySet<string> = new Set(['deleted', 'overrides', 'componentKey', 'parkedOverrides', 'componentProps', 'description', 'layerKey']);
+const LOCAL_KEYS: ReadonlySet<string> = new Set(['deleted', 'overrides', 'componentKey', 'parkedOverrides', 'componentProps', 'description', 'layerKey', 'slotFilled', 'annotations', 'devResources', 'codeConnect', 'bpKey', 'breakpoint']);
 const GEOMETRY_KEYS: ReadonlySet<string> = new Set(['x', 'y', 'width', 'height', 'rotation']);
 /** Properties copied from the source (geometry is handled separately). */
 const COPY_KEYS: readonly PropKey[] = PROP_KEYS.filter((k) => !LOCAL_KEYS.has(k) && !GEOMETRY_KEYS.has(k));
@@ -88,10 +88,16 @@ export function outerInstance(doc: Document, id: NodeId): NodeId | null {
   return found;
 }
 
-/** Whether the node is an instance layer or inside an instance (its structure follows a component). */
+/** A slot of an instance (step 6): layers of the instance's own may be put inside it. */
+export function isSlotMirror(doc: Document, id: NodeId): boolean {
+  return doc.get(id, 'slot') && isInstanceLayer(doc, id);
+}
+
+/** Whether the node is an instance layer or inside an instance (its structure follows a component); a slot's content is free. */
 export function insideInstance(doc: Document, id: NodeId): boolean {
   let current = doc.parent(id);
   while (current !== null) {
+    if (isSlotMirror(doc, current)) return false;
     if (doc.type(current) === 'INSTANCE') return true;
     if (doc.type(current) === 'PAGE') return false;
     current = doc.parent(current);
@@ -144,9 +150,22 @@ export function componentDependencies(doc: Document, component: NodeId): Set<Nod
 
 /** Whether placing an instance of `component` inside `parent` would make a component contain itself. */
 export function wouldCreateCycle(doc: Document, component: NodeId, parent: NodeId): boolean {
-  const host = owningComponent(doc, parent);
-  if (host === null) return false;
-  return host === component || componentDependencies(doc, component).has(host);
+  // What would contain it: the component around `parent`, and the components shown by the instances around it
+  // (a nested icon of a button's instance swapped to that very button — BUG-173).
+  const hosts = new Set<NodeId>();
+  const own = owningComponent(doc, parent);
+  if (own) hosts.add(own);
+  for (let at: NodeId | null = parent; at !== null && doc.type(at) !== 'PAGE'; at = doc.parent(at)) {
+    if (doc.type(at) === 'INSTANCE') {
+      const main = doc.get(at, 'mainComponent');
+      if (main) hosts.add(main);
+    }
+  }
+  if (hosts.size === 0) return false;
+  if (hosts.has(component)) return true;
+  const deps = componentDependencies(doc, component);
+  for (const h of hosts) if (deps.has(h)) return true;
+  return false;
 }
 
 // ---------- index ----------
@@ -206,6 +225,8 @@ export function markOverrides(doc: Document, tx: Transaction, changed: ReadonlyM
 
 /** Clears overrides (all, or the given keys) of one layer; synchronisation restores source values. */
 export function resetOverrides(doc: Document, tx: Transaction, id: NodeId, keys?: readonly string[]): void {
+  // A slot gets the component's content back (synchronisation rebuilds it).
+  if (!keys && doc.get(id, 'slotFilled')) tx.set(id, 'slotFilled', false);
   const current = doc.get(id, 'overrides');
   const next = keys ? current.filter((k) => !keys.includes(k)) : [];
   if (next.length !== current.length) tx.set(id, 'overrides', next);
@@ -225,7 +246,7 @@ export function resetInstance(doc: Document, tx: Transaction, instance: NodeId):
 export function countOverrides(doc: Document, instance: NodeId): number {
   let n = doc.get(instance, 'overrides').length + Object.keys(doc.get(instance, 'propValues') ?? {}).length * (isTopLevelInstance(doc, instance) ? 1 : 0);
   doc.store.walk(instance, (id) => {
-    n += doc.get(id, 'overrides').length;
+    n += doc.get(id, 'overrides').length + (doc.get(id, 'slotFilled') ? 1 : 0);
   });
   return n;
 }
@@ -417,6 +438,8 @@ function createMirror(ctx: Ctx, parent: NodeId, source: NodeId, depth: number): 
 
 function syncChildren(ctx: Ctx, id: NodeId, source: NodeId, deep: boolean, depth: number): void {
   const { doc, tx } = ctx;
+  // A slot with content of the instance's own: its layers are the instance's, not the component's.
+  if (doc.get(id, 'slotFilled')) return;
   const sourceChildren = doc.children(source);
   const current = [...doc.children(id)];
   const used = new Set<NodeId>();
@@ -508,6 +531,48 @@ export function syncComponents(doc: Document, tx: Transaction, touched: Iterable
     if (ctx.structural) index = new SourceIndex(doc);
     pending = ctx.modified;
   }
+}
+
+const SLOT_GEOMETRY: readonly PropKey[] = ['x', 'y', 'width', 'height', 'rotation'];
+
+/**
+ * A slot of an instance becomes the instance's own on the user's first change of its content (step 6): a layer
+ * put in, taken out, deleted or moved there. What it showed from the component stays, as layers of its own (as on
+ * detaching), and synchronisation leaves the slot alone. Runs on the user's changes, before synchronisation.
+ */
+export function claimSlots(doc: Document, tx: Transaction): void {
+  const parents = new Set<NodeId>(tx.changes.left);
+  // A layer put in by the user (not a copied instance's own layers, created with their links — Alt-drag of an instance).
+  for (const id of tx.changes.created) {
+    const p = doc.store.record(id)?.parent;
+    if (p && doc.get(id, 'componentKey') === null) parents.add(p);
+  }
+  for (const id of tx.changes.moved) {
+    const p = doc.store.record(id)?.parent;
+    if (p) parents.add(p);
+  }
+  for (const [id, keys] of tx.changes.updated) {
+    if (keys.has('deleted') || SLOT_GEOMETRY.some((k) => keys.has(k))) {
+      const p = doc.store.record(id)?.parent;
+      if (p) parents.add(p);
+    }
+  }
+  for (const slot of parents) {
+    if (!alive(doc, slot) || !isSlotMirror(doc, slot) || doc.get(slot, 'slotFilled')) continue;
+    tx.set(slot, 'slotFilled', true);
+    for (const child of doc.children(slot)) ownLayer(doc, tx, child);
+  }
+}
+
+/** A layer that mirrored a component's, made a layer of its own (a nested instance stays an instance of its component). */
+function ownLayer(doc: Document, tx: Transaction, id: NodeId): void {
+  if (doc.get(id, 'componentKey') === null) return;
+  tx.set(id, 'componentKey', null);
+  tx.set(id, 'parkedOverrides', null);
+  tx.set(id, 'layerKey', null);
+  if (doc.type(id) === 'INSTANCE') return; // its layers still mirror its component
+  tx.set(id, 'overrides', []);
+  for (const child of doc.children(id)) ownLayer(doc, tx, child);
 }
 
 /** Assigns explicit layer keys inside a component so duplicates (variants) share them. */

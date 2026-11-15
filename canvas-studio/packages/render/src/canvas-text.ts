@@ -1,5 +1,6 @@
 // Text measurement with the browser's real font engine (Canvas 2D measureText).
 
+import { context2d } from './color-space.ts';
 import { tr } from '#core';
 import { letterSpacingPx, measureWith, type RunFont, type TextMeasurer, type TextMetrics, type TextStyle } from '#layout';
 
@@ -54,7 +55,7 @@ export class CanvasTextMeasurer implements TextMeasurer {
 
   constructor() {
     const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(1, 1) : document.createElement('canvas');
-    const ctx = canvas.getContext('2d') as Ctx2D | null;
+    const ctx = context2d(canvas) as Ctx2D | null;
     if (!ctx) throw new Error(tr('Canvas 2D недоступен'));
     this.ctx = ctx;
   }

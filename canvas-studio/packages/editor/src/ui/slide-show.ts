@@ -8,7 +8,6 @@ import { deserialize, serialize, tr, type Document, type NodeId, type SlideTrans
 import { invert } from '#geometry';
 import type { TextMeasurer } from '#layout';
 import { Canvas2DRenderer, SceneGraph } from '#render';
-import { fileAnchor, openSlideFile } from '../slide-files.ts';
 import { slideIds, slideInfo } from '../slides.ts';
 import { h, icon } from './dom.ts';
 
@@ -41,7 +40,6 @@ export class SlideShow {
   private readonly canvas: HTMLCanvasElement;
   private readonly counter: HTMLElement;
   private readonly bar: HTMLElement;
-  private readonly filesHost: HTMLElement;
   private readonly onClose: (last: NodeId | null) => void;
   private index = 0;
   private anim: { from: number; to: number; start: number; transition: SlideTransition; back: boolean } | null = null;
@@ -78,8 +76,7 @@ export class SlideShow {
       h('button', { class: 'show-text-button', type: 'button', onclick: (e: MouseEvent) => (e.stopPropagation(), this.openPresenter()) }, icon('note', 16), h('span', {}, tr('Окно докладчика'))),
       button('close', tr('Завершить (Esc)'), () => this.close()),
     );
-    this.filesHost = h('div', { class: 'show-files' });
-    this.el = h('div', { class: 'slide-show', role: 'dialog', 'aria-label': tr('Показ презентации'), tabindex: -1 }, this.canvas, this.filesHost, this.bar);
+    this.el = h('div', { class: 'slide-show', role: 'dialog', 'aria-label': tr('Показ презентации'), tabindex: -1 }, this.canvas, this.bar);
     this.el.addEventListener('click', () => this.go(this.index + 1));
     this.el.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -93,42 +90,7 @@ export class SlideShow {
     document.addEventListener('fullscreenchange', this.onResize);
     void this.el.requestFullscreen?.().catch(() => undefined);
     this.showBar();
-    this.paintFiles();
     this.request();
-  }
-
-  private paintFiles(): void {
-    const id = this.black ? null : this.slides[this.index];
-    const files = id ? (slideInfo(this.doc, id).files ?? []) : [];
-    const height = id ? this.doc.get(id, 'height') : 0;
-    this.filesHost.replaceChildren(
-      ...files.map((file, index) => {
-        const button = h('button', { class: 'show-file', type: 'button', title: tr('Открыть «{0}»', file.name) }, file.name);
-        const place = file.x != null && file.y != null ? { x: file.x, y: file.y } : fileAnchor(index, height);
-        button.dataset.x = String(place.x);
-        button.dataset.y = String(place.y);
-        button.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (!openSlideFile(this.doc, file, 'open')) return;
-        });
-        return button;
-      }),
-    );
-    this.placeFiles();
-  }
-
-  /** Puts each file icon where it was dragged on the slide. */
-  private placeFiles(): void {
-    const id = this.black ? null : this.slides[this.index];
-    if (!id) return;
-    const box = this.fit(id, this.canvas.clientWidth, this.canvas.clientHeight);
-    for (const button of this.filesHost.children) {
-      if (!(button instanceof HTMLElement)) continue;
-      const x = Number(button.dataset.x);
-      const y = Number(button.dataset.y);
-      button.style.left = `${box.x + x * box.scale}px`;
-      button.style.top = `${box.y + y * box.scale}px`;
-    }
   }
 
   // ---------- moving ----------
@@ -148,7 +110,6 @@ export class SlideShow {
     this.anim = transition.type === 'NONE' || reduce || Math.abs(to - this.index) > 1 ? null : { from: this.index, to, start: performance.now(), transition, back };
     this.index = to;
     this.black = false;
-    this.paintFiles();
     this.request();
     this.drawPresenter();
   }
@@ -167,7 +128,6 @@ export class SlideShow {
       this.typed = '';
     } else if (k === 'b' || k === 'B' || k === 'и' || k === 'И' || k === '.') {
       this.black = !this.black;
-      this.paintFiles();
       this.request();
     } else if (k === 'p' || k === 'P' || k === 'з' || k === 'З') this.openPresenter();
     else return;
@@ -264,11 +224,9 @@ export class SlideShow {
       }
       if (raw < 1) this.request();
       else this.anim = null;
-      this.placeFiles();
       return;
     }
     this.drawSlide(ctx, id, this.fit(id, w, hgt), dpr, 0, 0, 1);
-    this.placeFiles();
   }
 
   /** A slide at its box, shifted by (dx, dy), clipped to its own rectangle. */

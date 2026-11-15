@@ -47,7 +47,7 @@ export class BoardTemplatesDialog {
         });
         own.append(h('div', { class: 'tpl-own-item' }, card, remove));
       }
-      if (!own.childElementCount) own.append(h('p', { class: 'share-muted' }, tr('Пока пусто. Выделите на доске стикеры, фигуры, разделы — и сохраните их как свой шаблон.')));
+      if (!own.childElementCount) own.append(h('p', { class: 'share-muted' }, tr('Пока пусто. Выделите на доске стикеры, фигуры, разделы и сохраните их как свой шаблон.')));
     };
     fill();
     const save = h('button', { class: 'text-button', type: 'button', disabled: editor.doc.readOnly || editor.selection.length === 0, title: editor.selection.length ? '' : tr('Сначала выделите на доске то, что станет шаблоном') }, tr('Сохранить выделенное как шаблон…'));
@@ -64,10 +64,8 @@ export class BoardTemplatesDialog {
       'div',
       { class: 'dialog tpl-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
       h('header', { class: 'dialog-header' }, h('h2', {}, title), close),
-      h('p', { class: 'share-muted tpl-intro' }, tr('Шаблон встанет посреди экрана; потом его можно двигать, дописывать и удалять как обычные стикеры и фигуры.')),
-      grid,
-      h('div', { class: 'tpl-own-head' }, h('h3', {}, tr('Мои шаблоны')), save),
-      own,
+      h('p', { class: 'share-muted tpl-intro' }, tr('Шаблон появится посреди экрана. Дальше это обычные стикеры и фигуры.')),
+      h('div', { class: 'tpl-body' }, grid, h('div', { class: 'tpl-own-head' }, h('h3', {}, tr('Мои шаблоны')), save), own),
     );
     this.overlay = h('div', { class: 'dialog-overlay' }, dialog);
     this.overlay.addEventListener('pointerdown', (e) => {

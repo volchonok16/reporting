@@ -410,7 +410,7 @@ test('sharing: roles decide who may open, save, rename, move and delete', async 
     const inv = await owner('POST', '/api/files/fShared001/share/invite', { email: 'ed@example.com', role: 'editor' });
     assert.equal(inv.status, 200);
     assert.deepEqual(inv.body!.members.map((m: { email: string; role: string }) => [m.email, m.role]), [['ed@example.com', 'editor']]);
-    assert.match(letters.at(-1)!.subject, /Вам предоставлен доступ к «Макет»/);
+    assert.match(letters.at(-1)!.subject, /Оля открыл\(а\) вам доступ к «Макет»/);
     assert.match(letters.at(-1)!.html, /\?file=fShared001/);
     await owner('POST', '/api/files/fShared001/share/invite', { email: 'vi@example.com', role: 'viewer' });
 
@@ -822,6 +822,66 @@ test('branch review: reviewers from the people of the main file, letters both wa
 
     await ed('DELETE', `/api/files/${branch}/review`);
     assert.equal((await vi('GET', `/api/files/${branch}`)).body!.branch.review, undefined);
+  } finally {
+    await stop();
+  }
+});
+
+test('approval: one person of the file is asked, answers with a version or a note; letters both ways; back to a draft', async () => {
+  const { base, stop, letters } = await start();
+  try {
+    const owner = client(base);
+    const ed = client(base);
+    const cl = client(base);
+    const stranger = client(base);
+    await signUp(owner, letters, 'owner@example.com', '12345678', 'Оля');
+    await signUp(ed, letters, 'ed@example.com', '12345678', 'Эд');
+    await signUp(cl, letters, 'cl@example.com', '12345678', 'Клим');
+    await signUp(stranger, letters, 'st@example.com', '12345678', 'Стас');
+    const id = async (api: ReturnType<typeof client>) => (await api('GET', '/api/me')).body!.user.id as string;
+    const [ownerId, clId, stId] = [await id(owner), await id(cl), await id(stranger)];
+    await owner('PUT', '/api/files/fApprove01', { name: 'Лендинг', snapshot: SNAPSHOT });
+    await owner('POST', '/api/files/fApprove01/share/invite', { email: 'ed@example.com', role: 'editor' });
+    await owner('POST', '/api/files/fApprove01/share/invite', { email: 'cl@example.com', role: 'commenter' });
+    const ask = { nodeId: '1:5', pageId: '0:1', name: 'Главная', reviewer: clId, note: 'Шапка и цены' };
+
+    assert.equal((await cl('POST', '/api/files/fApprove01/approvals', { ...ask, reviewer: ownerId })).status, 403, 'commenters do not ask');
+    assert.equal((await ed('POST', '/api/files/fApprove01/approvals', { ...ask, reviewer: stId })).status, 400, 'not a person of the file');
+    assert.equal((await ed('POST', '/api/files/fApprove01/approvals', { ...ask, nodeId: 'bad id' })).status, 400);
+    const sent = letters.length;
+    const asked = await ed('POST', '/api/files/fApprove01/approvals', ask);
+    assert.equal(asked.status, 200);
+    assert.equal(asked.body!.approval.status, 'REVIEW');
+    assert.deepEqual([asked.body!.approval.by.name, asked.body!.approval.reviewer.name], ['Эд', 'Клим']);
+    assert.deepEqual(letters.slice(sent).map((l) => [l.to, l.subject]), [['cl@example.com', 'Эд просит утвердить «Главная» — Симметрика']]);
+    assert.match(letters.at(-1)!.text, /Шапка и цены/);
+    assert.match(letters.at(-1)!.text, /file=fApprove01&page=0%3A1&node=1%3A5/);
+
+    assert.equal((await owner('POST', '/api/files/fApprove01/approvals/1:5/verdict', { verdict: 'approved' })).status, 403, 'only the person asked');
+    assert.equal((await stranger('POST', '/api/files/fApprove01/approvals/1:5/verdict', { verdict: 'approved' })).status, 404);
+    assert.equal((await cl('POST', '/api/files/fApprove01/approvals/1:5/verdict', { verdict: 'changes' })).status, 400, 'say what to change');
+    const changes = await cl('POST', '/api/files/fApprove01/approvals/1:5/verdict', { verdict: 'changes', note: 'Цены крупнее' });
+    assert.equal(changes.body!.approval.status, 'CHANGES');
+    assert.deepEqual([letters.at(-1)!.to, letters.at(-1)!.subject], ['ed@example.com', 'Клим просит поправить «Главная» — Симметрика']);
+
+    // Asked again after the changes; approved — the file is saved as a named version.
+    await ed('POST', '/api/files/fApprove01/approvals', { ...ask, note: '' });
+    const approved = (await cl('POST', '/api/files/fApprove01/approvals/1:5/verdict', { verdict: 'approved' })).body!.approval;
+    assert.equal(approved.status, 'APPROVED');
+    assert.ok(approved.version && approved.approvedAt);
+    assert.equal(approved.note, undefined, 'the old note is gone');
+    assert.deepEqual(approved.history.map((e: { status: string; by: string }) => [e.status, e.by]), [['REVIEW', 'Эд'], ['CHANGES', 'Клим'], ['REVIEW', 'Эд'], ['APPROVED', 'Клим']]);
+    const versions = (await owner('GET', '/api/files/fApprove01/versions')).body!.versions;
+    assert.equal(versions.find((v: { id: string }) => v.id === approved.version).name, 'Утверждено: Главная');
+    assert.equal(letters.at(-1)!.subject, 'Клим утвердил(а) «Главная» — Симметрика');
+
+    // Everyone in the file reads the statuses; a stranger does not.
+    assert.equal((await cl('GET', '/api/files/fApprove01/approvals')).body!.approvals.length, 1);
+    assert.equal((await stranger('GET', '/api/files/fApprove01/approvals')).status, 404);
+    assert.equal((await cl('DELETE', '/api/files/fApprove01/approvals/1:5')).status, 403);
+    assert.equal((await owner('DELETE', '/api/files/fApprove01/approvals/1:5')).status, 200);
+    assert.deepEqual((await ed('GET', '/api/files/fApprove01/approvals')).body!.approvals, []);
+    assert.equal((await owner('DELETE', '/api/files/fApprove01/approvals/1:5')).status, 404);
   } finally {
     await stop();
   }
@@ -1794,7 +1854,7 @@ test('small model requests: texts, notes, names — checked JSON cut to what was
   }) as typeof fetch;
   const dataDir = await mkdtemp(join(tmpdir(), 'cs-test-'));
   const letters: Letter[] = [];
-  const { server } = await createCanvasServer({ dataDir, root: dataDir, dev: null, secure: false, trustProxy: false, openRegistration: true, mailer: async (l) => void letters.push(l), ai: { url: 'https://gw.test/v1/', key: 'test-key', model: 'm' }, aiFetch });
+  const { server } = await createCanvasServer({ dataDir, root: dataDir, dev: null, secure: false, trustProxy: false, openRegistration: true, mailer: async (l) => void letters.push(l), ai: { url: 'https://gw.test/v1/', key: 'test-key', model: 'm', reasoningOff: true }, aiFetch });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   try {
@@ -1835,7 +1895,7 @@ test('layout from a description: only signed in, off without a key, the model pa
   }) as typeof fetch;
   const dataDir = await mkdtemp(join(tmpdir(), 'cs-test-'));
   const letters: Letter[] = [];
-  const { server } = await createCanvasServer({ dataDir, root: dataDir, dev: null, secure: false, trustProxy: false, openRegistration: true, mailer: async (l) => void letters.push(l), ai: { url: 'https://gw.test/v1/', key: 'test-key', model: 'm' }, aiFetch });
+  const { server } = await createCanvasServer({ dataDir, root: dataDir, dev: null, secure: false, trustProxy: false, openRegistration: true, mailer: async (l) => void letters.push(l), ai: { url: 'https://gw.test/v1/', key: 'test-key', model: 'm', reasoningOff: true }, aiFetch });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   try {
@@ -1933,6 +1993,37 @@ test('behind HTTPS every answer tells the browser to use HTTPS only (HSTS); with
   }
 });
 
+test('downloads (the macOS app): update archives cached for good, latest.json never, nothing outside the folder', async () => {
+  const { mkdir, writeFile } = await import('node:fs/promises');
+  const dataDir = await mkdtemp(join(tmpdir(), 'cs-test-'));
+  const downloads = join(dataDir, 'downloads');
+  await mkdir(join(downloads, 'macos'), { recursive: true });
+  await writeFile(join(downloads, 'macos', 'latest.json'), '{"build":7}');
+  await writeFile(join(downloads, 'macos', 'Simmetrika-7.zip'), new Uint8Array([80, 75, 3, 4]));
+  await writeFile(join(dataDir, 'secret.txt'), 'nope');
+  const { server } = await createCanvasServer({ dataDir: join(dataDir, 'data'), root: dataDir, dev: null, secure: false, trustProxy: false, openRegistration: true, mailer: async () => {}, downloads });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const feed = await fetch(`${base}/downloads/macos/latest.json`);
+    assert.equal(feed.status, 200);
+    assert.equal(feed.headers.get('cache-control'), 'no-cache');
+    assert.deepEqual(await feed.json(), { build: 7 });
+    const zip = await fetch(`${base}/downloads/macos/Simmetrika-7.zip`);
+    assert.equal(zip.headers.get('content-type'), 'application/zip');
+    assert.match(zip.headers.get('cache-control')!, /immutable/);
+    assert.deepEqual([...new Uint8Array(await zip.arrayBuffer())], [80, 75, 3, 4]);
+    for (const path of ['/downloads/../secret.txt', '/downloads/%2e%2e/secret.txt', '/downloads/macos/missing.zip']) {
+      const res = await fetch(base + path);
+      assert.notEqual(res.status, 200, path);
+      assert.doesNotMatch(await res.text(), /nope/);
+    }
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await rm(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
 test('heavy files (the neural network): served from their own folder, cached for a year, never outside it; the app may compile WebAssembly', async () => {
   const { mkdir, writeFile } = await import('node:fs/promises');
   const dataDir = await mkdtemp(join(tmpdir(), 'cs-test-'));
@@ -1962,5 +2053,137 @@ test('heavy files (the neural network): served from their own folder, cached for
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test('own neural network: its https origin from the cookie joins connect-src, nothing else does; reasoning only when asked', async () => {
+  const { aiOrigin, cspFor } = await import('../src/static.ts');
+  const { aiConfigFromEnv } = await import('../src/ai-layout.ts');
+  assert.equal(aiOrigin('https%3A%2F%2Fapi.deepseek.com'), 'https://api.deepseek.com');
+  assert.equal(aiOrigin('https://openrouter.ai:8443'), 'https://openrouter.ai:8443');
+  for (const bad of [undefined, '', 'http://api.deepseek.com', 'https://api.deepseek.com/v1', "https://a.com 'unsafe-inline'", 'https://a.com;script-src *', 'https://localhost', '*', 'https://*.com']) assert.equal(aiOrigin(bad), null, String(bad));
+  assert.match(cspFor('<html></html>', 'https://api.deepseek.com'), /connect-src 'self' data: https:\/\/api\.deepseek\.com;/);
+  assert.match(cspFor('<html></html>'), /connect-src 'self' data:;/);
+  assert.equal(aiConfigFromEnv({ CS_AI_KEY: 'k' })?.reasoningOff, true);
+  const { streamLayout } = await import('../src/ai-layout.ts');
+  let sent: Record<string, unknown> = {};
+  const fetcher = (async (_url: string, init: RequestInit) => {
+    sent = JSON.parse(String(init.body)) as Record<string, unknown>;
+    return new Response('data: [DONE]\n\n', { status: 200 });
+  }) as unknown as typeof fetch;
+  for await (const _ of streamLayout({ url: 'https://api.openai.com/v1/', key: 'k', model: 'm' }, { prompt: 'лендинг', width: 1440 }, new AbortController().signal, fetcher)) void _;
+  assert.equal('reasoning' in sent, false);
+});
+
+test('view history (step 9): a visit after half an hour apart, guests as one line, seen by the owner and editors only', async () => {
+  const { recordView, VISIT_GAP } = await import('../src/views.ts');
+  let list = recordView([], 'u1', 1000);
+  list = recordView(list, 'u1', 1000 + 60_000);
+  assert.deepEqual(list, [{ userId: 'u1', first: 1000, last: 61_000, visits: 1 }], 'opened again within half an hour: one visit');
+  list = recordView(list, 'u1', 61_000 + VISIT_GAP + 1);
+  list = recordView(list, null, 90_000_000);
+  assert.deepEqual(list.map((v) => [v.userId, v.visits]), [[null, 1], ['u1', 2]]);
+
+  const { base, stop, letters } = await start();
+  try {
+    const owner = client(base);
+    const ed = client(base);
+    const vi = client(base);
+    const anon = client(base);
+    await signUp(owner, letters, 'owner@example.com', '12345678', 'Оля');
+    await signUp(ed, letters, 'ed@example.com', '12345678', 'Эд');
+    await signUp(vi, letters, 'vi@example.com', '12345678', 'Вика');
+    await owner('PUT', '/api/files/fViews0001', { name: 'Макет', snapshot: SNAPSHOT });
+    await owner('POST', '/api/files/fViews0001/share/invite', { email: 'ed@example.com', role: 'editor' });
+    await owner('POST', '/api/files/fViews0001/share/invite', { email: 'vi@example.com', role: 'viewer' });
+    const link = (await owner('PUT', '/api/files/fViews0001/share/link', { mode: 'anyone', role: 'viewer' })).body!.link;
+    await vi('GET', '/api/files/fViews0001');
+    await vi('GET', '/api/files/fViews0001');
+    await anon('GET', '/api/files/fViews0001', undefined, { 'X-CS-Link': link.token });
+    await owner('GET', '/api/files/fViews0001');
+    await new Promise((r) => setTimeout(r, 100));
+    const seen = await owner('GET', '/api/files/fViews0001/views');
+    assert.equal(seen.status, 200);
+    const rows = seen.body!.views as { name: string | null; me: boolean; visits: number }[];
+    assert.deepEqual(rows.map((r) => [r.name, r.me, r.visits]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))), [
+      ['null', false, 1],
+      ['Вика', false, 1],
+      ['Оля', true, 1],
+    ].map(([n, m, v]) => [n === 'null' ? null : n, m, v]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
+    assert.equal((await ed('GET', '/api/files/fViews0001/views')).status, 200, 'editors see it');
+    assert.equal((await vi('GET', '/api/files/fViews0001/views')).status, 403, 'viewers do not');
+    assert.equal((await anon('GET', '/api/files/fViews0001/views', undefined, { 'X-CS-Link': link.token })).status, 401);
+  } finally {
+    await stop();
+  }
+});
+
+test('prototype tests on people: tasks checked against frozen screens, answers by link without signing in, results for editors only', async () => {
+  const { cleanSession, upsertSession, SESSIONS_PER_TEST } = await import('../src/usertests.ts');
+  const { base, stop, letters } = await start();
+  try {
+    const owner = client(base);
+    const vi = client(base);
+    const anon = client(base);
+    await signUp(owner, letters, 'owner@example.com', '12345678', 'Оля');
+    await signUp(vi, letters, 'vi@example.com', '12345678', 'Вика');
+    const { Document, serialize } = await import('../../core/src/index.ts');
+    const doc = Document.createEmpty('Макет');
+    const page = doc.pages()[0]!;
+    let a = '';
+    let b = '';
+    let inner = '';
+    doc.transact((tx) => {
+      a = tx.create('FRAME', page, { name: 'Каталог', width: 390, height: 800 });
+      b = tx.create('FRAME', page, { name: 'Оплата', width: 390, height: 800 });
+      inner = tx.create('FRAME', a, { name: 'Кнопка', width: 100, height: 40 });
+    });
+    await owner('PUT', '/api/files/fTest00001', { name: 'Магазин', snapshot: serialize(doc) });
+    await owner('POST', '/api/files/fTest00001/share/invite', { email: 'vi@example.com', role: 'viewer' });
+    const task = { text: 'Найдите, где оплатить заказ', start: a, goals: [b] };
+    assert.equal((await owner('POST', '/api/files/fTest00001/tests', { name: 'Оплата', pageId: page, tasks: [] })).status, 400, 'no tasks');
+    assert.equal((await owner('POST', '/api/files/fTest00001/tests', { name: 'Оплата', pageId: page, tasks: [{ ...task, goals: [inner] }] })).status, 400, 'a goal must be a screen');
+    assert.equal((await vi('POST', '/api/files/fTest00001/tests', { name: 'Оплата', pageId: page, tasks: [task] })).status, 403, 'viewers make no tests');
+    const made = await owner('POST', '/api/files/fTest00001/tests', { name: 'Оплата', pageId: page, tasks: [task] });
+    assert.equal(made.status, 200);
+    const test = made.body!.test;
+    assert.deepEqual(test.tasks, [{ id: 'k1', ...task }]);
+    // Changing the file afterwards does not change what respondents see.
+    doc.transact((tx) => tx.set(a, 'name', 'Другое имя'));
+    await owner('PUT', '/api/files/fTest00001', { name: 'Магазин', snapshot: serialize(doc) });
+
+    const opened = await anon('GET', `/api/tests/fTest00001/${test.token}`);
+    assert.equal(opened.status, 200);
+    assert.equal(opened.body!.test.tasks[0].goals[0], b);
+    assert.ok(opened.body!.snapshot.includes('Каталог') && !opened.body!.snapshot.includes('Другое имя'), 'the frozen state');
+    assert.equal((await anon('GET', `/api/tests/fTest00001/${test.token}x`)).status, 404);
+    assert.notEqual((await anon('GET', '/api/files/fTest00001', undefined, { 'X-CS-Link': test.token })).status, 200, 'the test link does not open the file');
+
+    const sid = 'abcdefghijklmnop1';
+    const answer = { tasks: [{ task: 'k1', outcome: 'done', ms: 4200, path: [a, b], taps: [{ s: a, x: 10, y: 20, t: 900, hit: false }, { s: a, x: 50, y: 700, t: 3000, hit: true }] }, { task: 'nope', outcome: 'done', ms: 1, path: [], taps: [] }] };
+    assert.equal((await anon('PUT', `/api/tests/fTest00001/${test.token}/sessions/${sid}`, answer)).status, 200);
+    assert.equal((await anon('PUT', `/api/tests/fTest00001/${test.token}/sessions/${sid}`, answer)).status, 200, 'sent again: the same session');
+    assert.equal((await anon('PUT', `/api/tests/fTest00001/${test.token}/sessions/short`, answer)).status, 400);
+
+    const results = await owner('GET', `/api/files/fTest00001/tests/${test.id}`);
+    assert.equal(results.status, 200);
+    assert.equal(results.body!.sessions.length, 1);
+    assert.deepEqual(results.body!.sessions[0].tasks.map((t: { task: string; outcome: string; taps: unknown[] }) => [t.task, t.outcome, t.taps.length]), [['k1', 'done', 2]], 'unknown tasks dropped');
+    assert.equal((await vi('GET', `/api/files/fTest00001/tests/${test.id}`)).status, 403);
+    assert.equal((await owner('GET', '/api/files/fTest00001/tests')).body!.tests[0].sessions, 1);
+
+    assert.equal((await owner('PATCH', `/api/files/fTest00001/tests/${test.id}`, { open: false })).status, 200);
+    assert.equal((await anon('GET', `/api/tests/fTest00001/${test.token}`)).status, 410, 'closed');
+    assert.equal((await anon('PUT', `/api/tests/fTest00001/${test.token}/sessions/${sid}`, answer)).status, 410);
+    assert.equal((await owner('DELETE', `/api/files/fTest00001/tests/${test.id}`)).status, 200);
+    assert.equal((await owner('GET', '/api/files/fTest00001/tests')).body!.tests.length, 0);
+
+    // A full test takes no new sessions, but an earlier one may still be finished.
+    const t0 = { id: 't', token: 'x', name: 'n', pageId: 'p', tasks: [{ id: 'k1', text: 'x', start: 'a', goals: ['b'] }], open: true, createdAt: 0, by: 'u' };
+    const full = Array.from({ length: SESSIONS_PER_TEST }, (_, i) => ({ id: `s${i}`, at: 1, tasks: [] }));
+    assert.equal(upsertSession(full, cleanSession({}, t0, 'new', 2)), null);
+    assert.equal(upsertSession(full, cleanSession({ tasks: [{ task: 'k1', outcome: 'gaveup' }] }, t0, 's3', 2))![3]!.tasks[0]!.outcome, 'gaveup');
+  } finally {
+    await stop();
   }
 });

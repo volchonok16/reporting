@@ -127,7 +127,7 @@ export async function openDoodleDialog(editor: Editor): Promise<void> {
           h('label', { class: 'dialog-field' }, h('span', {}, tr('Цвет')), h('span', { class: 'gen-row' }, color)),
         ),
       ),
-      h('p', { class: 'dialog-hint' }, hasSelection ? tr('Подчёркивание, обводка и маркер встанут по выделенному, остальное — рядом с ним.') : tr('Выделите текст или объект — подчёркивание, обводка и маркер встанут точно по нему.')),
+      h('p', { class: 'dialog-hint' }, hasSelection ? tr('Подчёркивание, обводка и маркер встанут по выделенному, остальное — рядом с ним.') : tr('Выделите текст или объект, и подчёркивание, обводка и маркер встанут точно по нему.')),
     ],
     focus: () => roll,
   });

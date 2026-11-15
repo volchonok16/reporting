@@ -304,14 +304,14 @@ export function addBoardColor(editor: Editor, hex: string): void {
   const c = hex.toUpperCase();
   if (!/^#[0-9A-F]{6}$/.test(c)) return;
   const d = editor.doc;
-  const now = d.get(d.rootId, 'boardColors');
+  const now = boardColorsOf(d);
   if (now.includes(c)) return;
   editor.commit(tr('Свой цвет доски'), (tx) => tx.set(d.rootId, 'boardColors', [...now, c].slice(-BOARD_COLORS_MAX)));
 }
 
 export function removeBoardColor(editor: Editor, hex: string): void {
   const d = editor.doc;
-  editor.commit(tr('Убрать свой цвет'), (tx) => tx.set(d.rootId, 'boardColors', d.get(d.rootId, 'boardColors').filter((c) => c !== hex)));
+  editor.commit(tr('Убрать свой цвет'), (tx) => tx.set(d.rootId, 'boardColors', boardColorsOf(d).filter((c) => c !== hex)));
 }
 
 /** Washi tape colours: soft, as paper tape (step 10). */
@@ -901,4 +901,10 @@ export function freeSpotOnBoard(editor: Editor, centre: Point, w: number, h: num
     if (found) return found;
   }
   return { x: x0, y: y0 };
+}
+
+/** The board's own colours of a file: only #RRGGBB strings, whatever a file or a co-editor put there. */
+export function boardColorsOf(d: { get(id: string, key: 'boardColors'): unknown; rootId: string }): string[] {
+  const v = d.get(d.rootId, 'boardColors');
+  return Array.isArray(v) ? v.filter((c): c is string => typeof c === 'string' && /^#[0-9A-F]{6}$/i.test(c)) : [];
 }

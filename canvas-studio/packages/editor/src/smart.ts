@@ -8,6 +8,7 @@ import { isBoard } from './board.ts';
 import { plural, tr, type NodeId } from '#core';
 import { planTidy, tidyKinds, tidySummary } from './tidy.ts';
 import { nameLayers, unnamedLayers, writableTexts, writeTexts } from './ai-text.ts';
+import { AiMissingError, toastAiError } from './own-ai.ts';
 import type { Editor } from './editor.ts';
 import { IS_MAC } from './keyboard.ts';
 
@@ -50,7 +51,7 @@ export function smartActions(editor: Editor): SmartMenu {
   const actions: SmartAction[] = [];
 
   if (ids.length === 0) {
-    actions.push({ command: 'smart.generate', title: tr('Макет по описанию'), desc: tr('Опишите экран словами — нейросеть сверстает его, и он станет слоями') });
+    actions.push({ command: 'smart.generate', title: tr('Макет по описанию'), desc: tr('Опишите экран словами, и нейросеть сверстает его слоями') });
   }
 
   // Pixels, gaps, variables (and names) at once; names alone are the next item.
@@ -63,7 +64,7 @@ export function smartActions(editor: Editor): SmartMenu {
   // In a presentation with nothing selected — the slide on show, whoever made it.
   const slide = ids.length === 0 ? editor.slideStage?.current() : null;
   if (slide && d.store.isAlive(slide) && d.children(slide).length > 0) {
-    actions.push({ command: 'smart.editLayout', title: tr('Изменить слайд по описанию'), desc: tr('Скажите словами, что улучшить: нейросеть переделает «{0}» — заметки и тема останутся', String(d.get(slide, 'name'))) });
+    actions.push({ command: 'smart.editLayout', title: tr('Изменить слайд по описанию'), desc: tr('Скажите словами, что улучшить: нейросеть переделает «{0}», заметки и тема останутся', String(d.get(slide, 'name'))) });
   } else if (ids.length === 1 && d.type(ids[0]!) === 'FRAME' && d.children(ids[0]!).length > 0 && (editor.canTransform(ids[0]!) || editor.isSlide(ids[0]!))) {
     actions.push({ command: 'smart.editLayout', title: tr('Изменить по описанию'), desc: tr('Скажите словами, что поправить: нейросеть переделает «{0}», а вы сравните до и после', String(d.get(ids[0]!, 'name'))) });
   }
@@ -83,7 +84,7 @@ export function smartActions(editor: Editor): SmartMenu {
           if (busy(editor)) return;
           editor.track(tr('Нейросеть пишет тексты…'), roots, writeTexts(editor, roots, hint)).then(
             (n) => editor.toast(n ? tr('Новых текстов: {0}. Отменить — {1}.', n, undoKey()) : tr('Нейросеть оставила тексты как есть.')),
-            (error: unknown) => editor.toast(error instanceof Error ? error.message : String(error)),
+            (error: unknown) => toastAiError(editor, error),
           );
         },
       },
@@ -115,7 +116,7 @@ const undoKey = () => (IS_MAC ? '⌘Z' : 'Ctrl+Z');
 /** One model job at a time: a second one waits for the first (its glow is on the canvas). */
 function busy(editor: Editor): boolean {
   if (!editor.works.size) return false;
-  editor.toast(tr('Нейросеть ещё работает — дождитесь, пока закончит.'));
+  editor.toast(tr('Нейросеть ещё работает. Дождитесь, пока закончит.'));
   return true;
 }
 
@@ -129,7 +130,8 @@ export function renameLayers(editor: Editor): void {
     (error: unknown) => {
       const why = error instanceof Error ? error.message : String(error);
       const n = editor.autoName();
-      editor.toast(n ? tr('{0}. Назвал по правилам: {1}. Отменить — {2}.', why, n, undoKey()) : why);
+      if (error instanceof AiMissingError) toastAiError(editor, error, n ? tr('Назвал по правилам: {0}. ', n) : '');
+      else editor.toast(n ? tr('{0}. Назвал по правилам: {1}. Отменить — {2}.', why, n, undoKey()) : why);
     },
   );
 }

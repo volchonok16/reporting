@@ -1,8 +1,9 @@
 // Application shell: lays out the panels and wires keyboard, clipboard,
 // persistence and file operations together.
 
-import { brand, plural, tr } from '#core';
+import { brand, inMacApp, plural, tr } from '#core';
 import { PrototypePlayer } from './prototype/player.ts';
+import { connectComments } from './prototype/player-comments.ts';
 import { openBlobDialog } from './ui/blob-dialog.ts';
 import { openColorKit } from './ui/color-kit-dialog.ts';
 import { play, setSoundsEnabled } from './sounds.ts';
@@ -12,15 +13,16 @@ import { openDoodleDialog } from './ui/doodle-dialog.ts';
 import { IMAGE_TYPES, isImageFile, pickFiles, pickImageFiles, readImageFile, sliceBigImage, type ImageInput } from './images.ts';
 import { DEFAULT_EXPORT, packExports, renderExports } from './exporter.ts';
 import { importSvg } from './svg-import.ts';
-import { base64ToBytes, colorToHex, Document, deserialize, safeLink, serialize, type Color, type NodeId, type Op } from '#core';
+import { base64ToBytes, colorToHex, Document, deserialize, LIMITS, safeLink, serialize, type Color, type NodeId, type Op } from '#core';
+import { countOverrides } from '#components';
 import { applyLayout } from '#layout';
 import type { Point } from '#geometry';
-import { Canvas2DRenderer, CanvasTextMeasurer, exportSvg, Viewport, layerPicture } from '#render';
+import { Canvas2DRenderer, CanvasTextMeasurer, exportSvg, Viewport, layerPicture, setColorProfile } from '#render';
 import { CanvasView } from './canvas-view.ts';
 import { createCommands, type Command } from './commands.ts';
 import { layOutMenu, type LaidOut } from './menu-layout.ts';
 import { buildDemo } from './demo.ts';
-import { Editor, themePageBackground } from './editor.ts';
+import { Editor, themePageBackground, type ToastAction } from './editor.ts';
 import { formatShortcut, IS_MAC, isTyping, matches } from './keyboard.ts';
 import { Autosaver, newFileId, storage, type Role, type StoredFile } from './storage.ts';
 import { CODE_FONT, createBoardDocument, createCodeBlock, guestIdentity, isBoard } from './board.ts';
@@ -36,6 +38,9 @@ import { buildSlideSection } from './ui/slide-section.ts';
 import { DiagramView } from './diagram/view.ts';
 import { BoardOptions } from './ui/board-options.ts';
 import { IconsPanel } from './ui/icons-panel.ts';
+import { TimelinePanel } from './ui/timeline-panel.ts';
+import { DesignCheckPanel } from './ui/design-check-panel.ts';
+import { A11yPanel } from './ui/a11y-panel.ts';
 import { ContentPanel } from './ui/content-panel.ts';
 import { loadCjkFonts } from './cjk-fonts.ts';
 import { loadBrandFonts } from './t2-fonts.ts';
@@ -54,6 +59,8 @@ import { attachTouchPinch, attachTouchViewing, isPhone, onPhoneChange } from './
 import { LiveSession, type Peer, type Presence } from './live.ts';
 import { Comments } from './ui/comments.ts';
 import { SlideFilePins } from './ui/slide-file-pins.ts';
+import { Approvals } from './approvals.ts';
+import { askApproval, buildApprovalSection, type ApprovalHost } from './ui/approval-ui.ts';
 import { Emotes } from './ui/emotes.ts';
 import { TextMentions } from './ui/text-mentions.ts';
 import { FindPanel } from './ui/find-panel.ts';
@@ -88,6 +95,7 @@ import { Toolbar } from './ui/toolbar.ts';
 import { ContextBar } from './ui/context-bar.ts';
 import { WorkGlow } from './ui/work-glow.ts';
 import { savedContextBar } from './ui/settings-dialog.ts';
+import { FocusBar } from './ui/focus-bar.ts';
 
 /** The file opened last time with a backend (local files saved before the file list used the id "current"). */
 function lastFileId(backend: FileBackend): string {
@@ -173,6 +181,8 @@ export class App {
   private readonly serverAvailable: boolean;
   private readonly palette: CommandPalette;
   private readonly toasts: HTMLElement;
+  private designCheck: DesignCheckPanel | null = null;
+  private a11yPanel: A11yPanel | null = null;
   private commands: Command[];
   private readonly commandMap: Map<string, Command>;
   private readonly menu: ContextMenu;
@@ -217,6 +227,8 @@ export class App {
   private readonly chat: CursorChat;
   /** Discussions pinned to the canvas (server files only). */
   private readonly comments: Comments;
+  /** Frames asked to be approved (other editors, item 9). */
+  private readonly approvals: Approvals;
   private readonly assets: AssetsPanel;
   /** Changes from an earlier session the server has not confirmed (sent by the live session). */
   private carried: Op[] = [];
@@ -246,6 +258,10 @@ export class App {
     this.slidesFile = isSlides(doc);
     bindOldSlides(doc);
     this.editor = new Editor(doc, this.measurer);
+    // A server file: a component cut here remembers it, so files using it follow it elsewhere (step 6).
+    this.editor.fileId = backend instanceof CloudBackend ? this.fileId : null;
+    // The file's name in the tab (the window of the macOS app) at once, not after the first edit is saved.
+    document.title = `${doc.get(doc.rootId, 'name')} — ${brand()}`;
     // The slides stay in their grid after every edit, in the same undo step.
     if (this.slidesFile) this.editor.editPass = (tx, final) => final && arrangeSlides(this.editor.doc, tx, this.editor.pageId, true);
     if (backend instanceof CloudBackend && backend.user) this.editor.boardPrefs.voter = backend.user.id;
@@ -275,7 +291,9 @@ export class App {
       openPalette: () => this.palette.open(),
       newFile: () => void this.newFile(),
       openFile: (accept) => this.openFile(accept),
-      saveFile: () => this.saveFile(),
+      saveFile: (anonymous?: boolean) => this.saveFile(anonymous),
+      checkDesign: () => (this.a11yPanel?.close(), this.designCheck?.open()),
+      checkAccessibility: () => (this.designCheck?.close(), this.a11yPanel?.open()),
       exportSelection: () => void this.exportSelection(),
       toggleUi: (which) => this.toggleUi(which),
       setUiScale: (scale) => {
@@ -311,6 +329,7 @@ export class App {
       copyAs: (format) => void this.copyAs(format),
       importSvg: () => void this.importSvgFiles(),
       importFig: () => this.openFile('.fig,.jam'),
+      importSketch: () => this.openFile('.sketch'),
       editLayout: () => void this.editLayoutByDescription(),
       importHtml: (start) => {
         if (this.editor.doc.readOnly) this.toast(tr('Только просмотр: импорт недоступен.'));
@@ -324,6 +343,12 @@ export class App {
       showHistory: () => this.toolbar.toggleHistory(),
       findReplace: () => this.findPanel.open(),
       showVersions: () => this.showVersions(),
+      showViewHistory: () => this.showViewHistory(),
+      showUserTests: () => this.showUserTests(),
+      compareChanges: () => this.compareChanges(),
+      requestApproval: () => this.requestApproval(),
+      openPlayground: () => this.openPlayground(),
+      saveVersion: () => void this.saveVersion(),
       showBranches: (create) => this.showBranches(create),
       updateBranch: () => this.updateBranch(),
       mergeBranch: () => void this.mergeIntoMain(),
@@ -348,14 +373,15 @@ export class App {
       insertLink: async () => {
         if (this.editor.doc.readOnly) return this.toast(tr('Только просмотр: вставка недоступна.'));
         const { askText } = await import('./ui/dialog.ts');
-        const raw = await askText({ title: tr('Ссылка на доску'), label: tr('Адрес страницы'), placeholder: 'https://', confirm: tr('Вставить'), maxLength: 2048, empty: tr('Вставьте адрес страницы'), hint: tr('На доске появится карточка с картинкой, заголовком и описанием страницы. Можно и просто вставить ссылку на доску — ⌘V.') });
+        const raw = await askText({ title: tr('Ссылка на доску'), label: tr('Адрес страницы'), placeholder: 'https://', confirm: tr('Вставить'), maxLength: 2048, empty: tr('Вставьте адрес страницы'), hint: tr('На доске появится карточка с картинкой, заголовком и описанием страницы. Можно и просто вставить ссылку на доску через ⌘V.') });
         if (raw === null) return;
         const link = linkOfText(raw) ?? linkOfText(`https://${raw.trim()}`);
         if (!link) return this.toast(tr('Это не похоже на адрес страницы'));
         await insertLink(this.editor, link, (m) => this.toast(m));
       },
       openStickers: (tab) => {
-        const anchor = document.querySelector<HTMLElement>(`.tool-dock button[aria-label^="${tr('Наклейки и компоненты')}"]`) ?? this.canvas.element;
+        // The dock's list of inserts (6 Nov): its button, whichever entry it shows now.
+        const anchor = document.querySelector<HTMLElement>(`.tool-dock .tool-chevron[aria-label^="${tr('Наклейки, таблица, код, ссылка')}"]`)?.parentElement ?? this.canvas.element;
         void import('./ui/board-stickers.ts').then(({ openBoardStickers }) => openBoardStickers(this.editor, anchor, this.assets, tab));
       },
       insertCode: () => {
@@ -380,6 +406,8 @@ export class App {
       openBackdrop: () => void openBackdropDialog(this.editor),
       openDoodle: () => void openDoodleDialog(this.editor),
       openTable: () => void openTableDialog(this.editor),
+      openDsSite: () => void import('./ui/ds-site-view.ts').then(({ openDsSite }) => openDsSite(this.editor, this.canvas.renderer)),
+      exportPrint: () => void import('./ui/print-dialog.ts').then(({ openPrintDialog }) => openPrintDialog(this.editor, this.canvas.renderer, this.measurer)),
       exportPptx: () => void import('./pptx/dialog.ts').then(({ PptxExportDialog }) => new PptxExportDialog(this.editor, this.canvas.renderer)),
       cancel: () => this.canvas.cancelMode(),
       present: (newTab) => void this.present(null, newTab),
@@ -389,7 +417,7 @@ export class App {
     }).filter((c) => !c.mode || (!this.diagramFile && c.mode === (this.board ? 'board' : 'design')));
     if (this.diagramFile) {
       // A diagram has no canvas of layers: only what makes sense for it, and its own commands (FEAT-090).
-      const keep = new Set(['help.open', 'file.list', 'edit.undo', 'edit.redo', 'file.versions', 'edit.history', 'file.new', 'file.open', 'file.save', 'view.settings', 'view.langRu', 'view.langEn', 'view.toggleUi', 'view.toggleLeft', 'view.toggleRight', 'view.palette']);
+      const keep = new Set(['help.open', 'file.list', 'edit.undo', 'edit.redo', 'file.versions', 'edit.history', 'file.new', 'file.open', 'file.save', 'file.saveAnonymous', 'view.settings', 'view.langRu', 'view.langEn', 'view.toggleUi', 'view.toggleLeft', 'view.toggleRight', 'view.palette']);
       const kept = this.commands.filter((c) => keep.has(c.id) || c.id.startsWith('view.uiScale'));
       const d = () => this.diagram;
       const group = tr('Схема');
@@ -438,6 +466,8 @@ export class App {
       toast: (text, kind) => this.toast(text, kind),
     });
     this.canvas.onComment = (world) => this.comments.startAt(world);
+    this.approvals = new Approvals(this.editor);
+    this.canvas.approvalBadge = (id) => this.approvals.badge(id);
     // «@» in board texts and stickers: the people of the file, a letter to the one called.
     this.canvas.mentions = new TextMentions(this.editor, this.canvas.textInput, {
       people: () => (this.backend instanceof CloudBackend && this.backend.user && this.editor.isBoardFile() ? this.comments.loadPeople() : Promise.resolve([])),
@@ -464,6 +494,13 @@ export class App {
     }
     this.layers = new LayersPanel(this.editor, this.assets, { el: this.comments.panel, setVisible: (v) => this.comments.setPanelVisible(v) }, this.slides ?? undefined);
     this.properties = new PropertiesPanel(this.editor, this.canvas);
+    this.properties.compareChanges = () => this.compareChanges();
+    this.properties.approvalSection = (section, ids) => buildApprovalSection(this.approvalHost(), section, ids);
+    this.approvals.onChange = () => {
+      this.canvas.render();
+      this.properties.refreshApprovals();
+    };
+    this.properties.openPlayground = () => this.openPlayground();
     if (this.slides) {
       const slides = this.slides;
       this.properties.slideSection = (section, ids) => {
@@ -518,8 +555,8 @@ export class App {
       if (this.editor.scaleMode && !scaling) {
         this.toast(
           this.editor.selection.length
-            ? tr('Масштаб (K): тяните за угол рамки — слой увеличится целиком: размер текста, толщина обводок, скругления и тени меняются вместе с ним. Точное «во сколько раз» — справа, в разделе «Масштаб». Esc или V — обычное перемещение.')
-            : tr('Масштаб (K): выделите слой и тяните за угол рамки — он увеличится целиком, вместе с размером текста, толщиной обводок, скруглениями и тенями. Обычное растягивание меняет только ширину и высоту. Esc или V — обычное перемещение.'),
+            ? tr('Масштаб (K): тяните за угол рамки, и слой увеличится целиком, вместе с размером текста, толщиной обводок, скруглениями и тенями. Точный коэффициент задаётся справа, в разделе «Масштаб». Esc или V — обычное перемещение.')
+            : tr('Масштаб (K): выделите слой и тяните за угол рамки. Слой увеличится целиком, вместе с размером текста, толщиной обводок, скруглениями и тенями. Обычное растягивание меняет только ширину и высоту. Esc или V — обычное перемещение.'),
           'info',
           9000,
         );
@@ -528,9 +565,13 @@ export class App {
     });
     this.root.classList.toggle('property-labels', this.editor.view.propertyLabels);
     setSoundsEnabled(this.editor.view.sounds);
+    // «Анимации интерфейса» off: the panels and buttons stop moving too, not only the canvas (UI-009).
+    const motionAttr = (on: boolean) => (on ? delete document.documentElement.dataset.motion : (document.documentElement.dataset.motion = 'off'));
+    motionAttr(this.editor.view.motion);
     this.editor.events.on('view', (view) => {
       this.root.classList.toggle('property-labels', view.propertyLabels);
       setSoundsEnabled(view.sounds);
+      motionAttr(view.motion);
       try {
         localStorage.setItem('cs.view', JSON.stringify(view));
         prefsChanged();
@@ -540,6 +581,7 @@ export class App {
     });
     this.properties.openVariables = (variable) => this.variables.open(variable);
     this.properties.present = (start, newTab) => void this.present(start, newTab);
+    this.properties.userTests = () => this.showUserTests();
     this.properties.cropImage = (id, index) => this.cropImage(id, index);
     this.properties.eraseImage = (id, index) => this.eraseImage(id, index);
     this.properties.removeImageBackground = (id, index) => this.removeImageBackground(id, index);
@@ -609,7 +651,7 @@ export class App {
     };
     this.canvas.element.addEventListener('pointerdown', () => this.root.classList.remove('left-open'));
     const workGlow = new WorkGlow(this.editor, this.canvas.element);
-    const canvasArea = h('main', { class: 'canvas-area' }, this.canvas.element, workGlow.el, this.following.el, this.findPanel.el, this.toolbar.dock, this.contextBar.el);
+    const canvasArea = h('main', { class: 'canvas-area' }, this.canvas.element, workGlow.el, this.following.el, this.findPanel.el, this.toolbar.dock, this.contextBar.el, new FocusBar(this.editor).el);
     if (this.slides) {
       // Speaker's notes under the slide (FEAT-166).
       const slides = this.slides;
@@ -624,6 +666,14 @@ export class App {
     }
     // Ready frame sizes while the Frame tool is on (a design's tool).
     if (!this.board) {
+      // The report of «Проверка по дизайн-системе» over the canvas (step 6).
+      this.designCheck = new DesignCheckPanel(this.editor);
+      canvasArea.append(this.designCheck.el);
+      // «Проверка доступности» (FEAT-222), in the same place.
+      this.a11yPanel = new A11yPanel(this.editor);
+      canvasArea.append(this.a11yPanel.el);
+      // The timeline of a frame under the canvas (Motion, stage 2).
+      canvasArea.append(new TimelinePanel(this.editor, canvasArea, () => this.canvas.renderer).el);
       canvasArea.append(new FramePresets(this.editor, this.toolbar.dock).el);
       this.deviceMockups = new DeviceMockups(this.editor, this.toolbar.dock);
       canvasArea.append(this.deviceMockups.el);
@@ -708,7 +758,9 @@ export class App {
     this.editor.events.on('change', ({ source }) => {
       if (source !== 'load') this.autosaver.schedule();
     });
-    this.editor.events.on('toast', ({ message, kind }) => this.toast(message, kind));
+    this.editor.events.on('toast', ({ message, kind, action }) => this.toast(message, kind, 4000, action));
+    // «Подключить нейросеть…» (own-ai.ts): the settings at their neural network section, over whatever dialog asked.
+    addEventListener('cs:settings', (e) => this.openSettings((e as CustomEvent<{ section?: 'ai' }>).detail?.section));
     this.editor.events.on('page', () => this.autosaver.schedule());
 
     this.bindKeyboard();
@@ -749,11 +801,12 @@ export class App {
     fonts();
     this.editor.events.on('change', fonts);
     this.editor.events.on('document', fonts);
-    // Chinese, Japanese and Korean texts: Noto Sans of their script, loaded when a text needs it.
+    // T2 brand fonts (Rooftop, Halvar): loaded in the background, text is re-measured once they are in.
     loadBrandFonts((added) => {
       fontsChanged(added);
       this.remeasureText();
     });
+    // Chinese, Japanese and Korean texts: Noto Sans of their script, loaded when a text needs it.
     const cjk = () =>
       loadCjkFonts(this.editor.doc, (added) => {
         fontsChanged(added);
@@ -861,7 +914,7 @@ export class App {
     let stored: StoredFile | undefined;
     let problem =
       backend.kind === 'local'
-        ? tr('Файла нет в этом браузере. Если он на сервере или вам открыли к нему доступ — войдите.')
+        ? tr('Файла нет в этом браузере. Если он на сервере или вам открыли к нему доступ, войдите.')
         : tr('Файл не найден: его удалили, доступ закрыли или ссылка устарела.');
     for (;;) {
       try {
@@ -910,7 +963,7 @@ export class App {
       app.carried = stored.pending as Op[];
       doc.applyRemote(app.carried);
     }
-    if (stored.offline) app.toast(tr('Нет связи с сервером — открыта копия из этого браузера. Правки сохраняются и отправятся, когда связь вернётся.'));
+    if (stored.offline) app.toast(tr('Нет связи с сервером, открыта копия из этого браузера. Правки сохраняются и отправятся, когда связь вернётся.'));
     try {
       const note = sessionStorage.getItem(IMPORT_NOTE);
       if (note) {
@@ -966,67 +1019,69 @@ export class App {
         await duplicateIn(backend, id);
       },
       importFromDisk: () => {
-        void pickFiles('.json,.csdoc,.fig,.jam,.pptx,application/json').then(async ([file]) => {
-          if (!file) return;
-          try {
-            let doc: Document;
-            const fig = await import('./fig/import.ts');
-            if (/\.pptx$/i.test(file.name)) {
-              // PowerPoint becomes a presentation (FEAT-158).
-              home.toast(tr('Импортирую «{0}»…', file.name), 60_000);
-              const { pptxToDocument } = await import('./pptx/import-run.ts');
-              const result = await pptxToDocument(file, new CanvasTextMeasurer());
-              doc = result.doc;
-              try {
-                sessionStorage.setItem(IMPORT_NOTE, result.note);
-              } catch {
-                // the note is a courtesy
-              }
-            } else if (await fig.isFigFile(file)) {
-              // Reading a big .fig takes seconds: say it is going on.
-              home.toast(tr('Импортирую «{0}»…', file.name), 60_000);
-              const result = await fig.importFig(file);
-              doc = result.doc;
-              // Told in the editor, once the file is open.
-              try {
-                sessionStorage.setItem(IMPORT_NOTE, result.note);
-              } catch {
-                // the note is a courtesy
-              }
-            } else doc = deserialize(await file.text());
-            const id = backend.kind === 'cloud' ? newCloudId() : newFileId();
-            await backend.save({ id, name: doc.get(doc.rootId, 'name'), snapshot: serialize(doc), savedAt: Date.now() });
-            location.assign(fileUrl(id));
-          } catch (error) {
-            home.clearToasts();
-            await showMessage({ title: tr('Не удалось открыть файл'), message: error instanceof Error ? error.message : String(error) });
-          }
+        void pickFiles('.json,.csdoc,.fig,.jam,.sketch,.pptx,application/json').then(([file]) => {
+          if (file) void importFile(file);
         });
       },
       uploadPresentation: () => {
-        void pickFiles('.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation').then(async ([file]) => {
-          if (!file || !/\.pptx$/i.test(file.name)) return;
-          try {
-            home.toast(tr('Загружаю презентацию «{0}»…', file.name), 60_000);
-            const { pptxToDocument } = await import('./pptx/import-run.ts');
-            const result = await pptxToDocument(file, new CanvasTextMeasurer());
-            try {
-              sessionStorage.setItem(IMPORT_NOTE, result.note);
-            } catch {
-              // the note is a courtesy
-            }
-            const doc = result.doc;
-            const id = backend.kind === 'cloud' ? newCloudId() : newFileId();
-            await backend.save({ id, name: doc.get(doc.rootId, 'name') || file.name.replace(/\.pptx$/i, ''), snapshot: serialize(doc), savedAt: Date.now() });
-            location.assign(fileUrl(id));
-          } catch (error) {
-            home.clearToasts();
-            await showMessage({ title: tr('Не удалось открыть файл'), message: error instanceof Error ? error.message : String(error) });
-          }
+        void pickFiles('.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation').then(([file]) => {
+          if (file && /\.pptx$/i.test(file.name)) void importFile(file);
         });
       },
     });
+    // A file from disk becomes a new file of the list and opens.
+    const importFile = async (file: File): Promise<void> => {
+      try {
+        let doc: Document;
+        const fig = await import('./fig/import.ts');
+        if (/\.pptx$/i.test(file.name)) {
+          // PowerPoint becomes a presentation (FEAT-158).
+          home.toast(tr('Импортирую «{0}»…', file.name), 60_000);
+          const { pptxToDocument } = await import('./pptx/import-run.ts');
+          const result = await pptxToDocument(file, new CanvasTextMeasurer());
+          doc = result.doc;
+          try {
+            sessionStorage.setItem(IMPORT_NOTE, result.note);
+          } catch {
+            // the note is a courtesy
+          }
+        } else if (/\.sketch$/i.test(file.name)) {
+          home.toast(tr('Импортирую «{0}»…', file.name), 60_000);
+          const result = await (await import('./sketch/import.ts')).importSketch(file);
+          doc = result.doc;
+          try {
+            sessionStorage.setItem(IMPORT_NOTE, result.note);
+          } catch {
+            // the note is a courtesy
+          }
+        } else if (await fig.isFigFile(file)) {
+          // Reading a big .fig takes seconds: say it is going on.
+          home.toast(tr('Импортирую «{0}»…', file.name), 60_000);
+          const result = await fig.importFig(file);
+          doc = result.doc;
+          // Told in the editor, once the file is open.
+          try {
+            sessionStorage.setItem(IMPORT_NOTE, result.note);
+          } catch {
+            // the note is a courtesy
+          }
+        } else doc = deserialize(await file.text());
+        const id = backend.kind === 'cloud' ? newCloudId() : newFileId();
+        await backend.save({ id, name: doc.get(doc.rootId, 'name') || file.name.replace(/\.[^.]+$/, ''), snapshot: serialize(doc), savedAt: Date.now() });
+        location.assign(fileUrl(id));
+      } catch (error) {
+        home.clearToasts();
+        await showMessage({ title: tr('Не удалось открыть файл'), message: error instanceof Error ? error.message : String(error) });
+      }
+    };
     await home.reload();
+    // The macOS app: a file opened from Finder or dropped on the Dock icon (?open=<token>, apps/macos AppFiles.swift).
+    const token = inMacApp ? params.get('open') : null;
+    if (token) {
+      history.replaceState(null, '', '/');
+      const res = await fetch(`/app-open/${encodeURIComponent(token)}`).catch(() => null);
+      if (res?.ok) void importFile(new File([await res.blob()], decodeURIComponent(res.headers.get('X-File-Name') ?? 'file')));
+    }
     return home;
   }
 
@@ -1066,7 +1121,7 @@ export class App {
     const editor = this.editor;
     const screen = start ?? editor.prototype.startScreen();
     if (!screen) {
-      editor.toast(tr('На странице нет фреймов: нечего показывать. Нарисуйте фрейм (F) — это будет экран.'));
+      editor.toast(tr('На странице нет фреймов: нечего показывать. Нарисуйте фрейм (F), это будет экран.'));
       return;
     }
     if (newTab) {
@@ -1078,16 +1133,22 @@ export class App {
     }
     if (this.player) return;
     this.palette.close?.();
+    // Comments right in the viewer (step 8): the same discussions, drawn over its screen while it is open.
+    const onServer = this.backend instanceof CloudBackend;
+    let disconnect: (() => void) | null = null;
     this.player = new PrototypePlayer({
       doc: editor.doc,
       pageId: editor.pageId,
       start: screen,
       measurer: this.measurer,
+      comments: onServer,
       onClose: () => {
+        disconnect?.();
         this.player = null;
         this.canvas.focus();
       },
     });
+    if (onServer) disconnect = connectComments(this.player, this.comments);
     document.body.append(this.player.el);
   }
 
@@ -1141,7 +1202,7 @@ export class App {
     if (probe.state === 'no-server') return { backend: localBackend, server: false };
     if (probe.state === 'signed-in') {
       // The logo of the file browser (/?welcome) shows the landing page to the signed in too, with «Мои файлы» on it.
-      if (landing === 'welcome') {
+      if (landing === 'welcome' && !inMacApp) {
         const { showLanding } = await import('./ui/landing.ts');
         const choice = await showLanding(root, { signedIn: true });
         if (choice === 'new' || choice === 'newBoard' || choice === 'newDiagram' || choice === 'newSlides') {
@@ -1152,6 +1213,8 @@ export class App {
       }
       return { backend: new CloudBackend(probe.user), server: true };
     }
+    // The macOS app, not signed in: its own files with «Войти» — no landing page there (it is the site's front door).
+    if (inMacApp && landing !== 'login') return { backend: localBackend, server: true };
     let local = false;
     try {
       local = localStorage.getItem(LOCAL_CHOICE) === 'local';
@@ -1209,12 +1272,13 @@ export class App {
     this.live = null;
     this.resetPeers();
     void this.comments.load();
+    void this.approvals.load(this.backend instanceof CloudBackend ? this.fileId : null);
     void this.assets.checkUpdates();
     const backend = this.backend;
     if (!(backend instanceof CloudBackend) || typeof WebSocket === 'undefined') return;
     let wasOffline = false;
     const fileId = this.fileId;
-    const texts = { connecting: tr('Подключение…'), synced: tr('Сохранено на сервере'), sending: tr('Сохранение…'), offline: tr('Нет связи — правки отправятся при подключении') } as const;
+    const texts = { connecting: tr('Подключение…'), synced: tr('Сохранено на сервере'), sending: tr('Сохранение…'), offline: tr('Нет связи. Правки отправятся при подключении') } as const;
     this.live = new LiveSession({
       fileId,
       doc: this.editor.doc,
@@ -1225,14 +1289,18 @@ export class App {
       pending: this.carried,
       onState: (state) => {
         // Back after a break: discussions changed meanwhile are fetched again.
-        if (state === 'synced' && wasOffline) void this.comments.load();
+        if (state === 'synced' && wasOffline) {
+          void this.comments.load();
+          void this.approvals.load(fileId);
+        }
         // Everything confirmed: the copy in this browser has nothing left to send.
         if (state === 'synced') {
           this.carried = [];
           this.saveOfflineCopy();
         }
         wasOffline = state === 'offline' || (wasOffline && state !== 'synced');
-        if (state === 'offline') this.toolbar.setSaveState('error', texts.offline);
+        // No connection is not an error: said as it is, the changes wait (the help promises these words).
+        if (state === 'offline') this.toolbar.setSaveState('offline', texts.offline);
         else this.toolbar.setSaveState(state === 'synced' ? 'saved' : 'saving', texts[state]);
         if (state === 'synced') void this.updateThumbnail(false);
       },
@@ -1244,7 +1312,7 @@ export class App {
         const others = peers.filter((p) => p.id !== you && !(me && p.userId === me));
         this.others = others;
         const gone = this.following.setPeers(others);
-        if (gone) this.toast(tr('{0} больше нет в файле — наблюдение закончено.', gone.name));
+        if (gone) this.toast(tr('{0} больше нет в файле, наблюдение закончено.', gone.name));
         this.toolbar.setPeers(others, this.following.following);
         this.peerOverlay.setPeers(others);
         if (this.self && this.spotlightBy === this.self.id) this.following.setPresenting({ color: this.self.color });
@@ -1257,6 +1325,7 @@ export class App {
       },
       onSpotlight: (from) => this.onSpotlight(from),
       onThread: (change) => this.comments.apply(change),
+      onApproval: (change) => this.approvals.apply(change),
       onEmote: (from, emote) => this.emotes.receive(from, emote),
       onSnapshot: (snapshot) => {
         const doc = deserialize(snapshot);
@@ -1395,7 +1464,7 @@ export class App {
         ? { kind: 'separator' }
         : l.kind === 'submenu'
           ? { kind: 'submenu', label: l.label, items: l.items.map(item) }
-          : { kind: 'action', label: l.command.label, shortcut: l.command.keys?.[0] ? formatShortcut(l.command.keys[0]) : undefined, run: () => l.command.run() };
+          : { kind: 'action', label: l.command.label, shortcut: l.command.keys?.[0] ? formatShortcut(l.command.keys[0]) : undefined, run: () => l.command.run(), checked: l.command.checked?.() };
     return [
       { kind: 'action', label: tr('К файлам и проектам'), run: () => void this.goHome() },
       { kind: 'action', label: tr('Настройки…'), run: () => this.openSettings() },
@@ -1476,7 +1545,7 @@ export class App {
     if (!(this.backend instanceof CloudBackend) || !this.backend.user) {
       const ok = await askConfirm({
         title: tr('Войдите, чтобы делиться'),
-        message: tr('Сейчас файл хранится только в этом браузере. После входа его можно перенести на сервер и открыть доступ коллегам — по приглашению или по ссылке.'),
+        message: tr('Сейчас файл хранится только в этом браузере. После входа его можно перенести на сервер и открыть доступ коллегам по приглашению или по ссылке.'),
         confirm: tr('Войти'),
       });
       if (ok) {
@@ -1550,6 +1619,7 @@ export class App {
     const stored = await backend.load(params.get('present') ?? '');
     if (!stored) throw new Error(backend.kind === 'cloud' ? tr('Файл не найден') : tr('Файл не найден в этом браузере'));
     const doc = deserialize(stored.snapshot);
+    setColorProfile(doc.get(doc.rootId, 'colorProfile'));
     const pageParam = params.get('page');
     const pageId = pageParam && doc.store.has(pageParam) && doc.type(pageParam) === 'PAGE' ? pageParam : doc.pages()[0]!;
     const startParam = params.get('start');
@@ -1557,9 +1627,27 @@ export class App {
     const start = startParam && isScreen(doc, startParam) ? startParam : (doc.get(pageId, 'flowStartingPoints')[0]?.nodeId ?? list(doc, pageId)[0]);
     if (!start) throw new Error(tr('На странице нет экранов'));
     document.title = tr('{0} — просмотр', doc.get(doc.rootId, 'name'));
-    const player = new PrototypePlayer({ doc, pageId, start, measurer: new CanvasTextMeasurer() });
-    root.replaceChildren(player.el);
+    // Comments right in the viewer (step 8): a file on the server, read by someone signed in.
+    const fileId = backend instanceof CloudBackend ? (params.get('present') ?? '') : null;
+    const user = backend instanceof CloudBackend ? backend.user : null;
+    const toasts = h('div', { class: 'toasts', role: 'status', 'aria-live': 'polite' });
+    const toast = (text: string, kind?: 'error'): void => {
+      const el = h('div', { class: `toast ${kind ?? 'info'}` }, text);
+      toasts.append(el);
+      setTimeout(() => el.remove(), kind === 'error' ? 8000 : 4000);
+    };
+    // Made before the viewer: its Esc (closing a discussion) must come before the viewer's own.
+    const comments = fileId && user ? new Comments(null, { fileId: () => fileId, role: () => stored.role ?? 'viewer', userId: () => user.id, toast }) : null;
+    const player = new PrototypePlayer({ doc, pageId, start, measurer: new CanvasTextMeasurer(), comments: !!comments });
+    root.replaceChildren(player.el, toasts);
     player.el.classList.add('standalone');
+    if (comments) {
+      connectComments(player, comments);
+      // No live connection in this tab: the list is read again now and then, and when the tab comes back.
+      void comments.load();
+      setInterval(() => document.visibilityState === 'visible' && void comments.load(), 30_000);
+      document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && void comments.load());
+    }
     return player;
   }
 
@@ -1579,7 +1667,8 @@ export class App {
       // Dialogs handle their own keys (Delete in the variables table must not delete layers).
       if (this.variables.isOpen || this.files.isOpen || this.player) return;
       // A modal window is open (crop, erase, remove background…): its keys are its own — ⌘Z must not undo in the file behind it.
-      if ([...document.querySelectorAll<HTMLElement>('.dialog-overlay')].some((el) => !el.hidden)) return;
+      // Full-screen windows too: version history, branch merges, «Сравнить изменения».
+      if ([...document.querySelectorAll<HTMLElement>('.dialog-overlay, .versions-view')].some((el) => !el.hidden)) return;
       // ⌘Z / ⌘⇧Z in a panel field with nothing typed (after Enter, a list's choice): the file's step, as in Figma.
       // While something is being typed there, the field's own undo takes back the typing.
       const target = e.target instanceof HTMLElement ? e.target : null;
@@ -1647,7 +1736,7 @@ export class App {
         this.editor.removePickedProperty();
         return;
       }
-      const flavours = this.editor.copyFlavours();
+      const flavours = this.editor.copyFlavours(true);
       if (!flavours || !e.clipboardData) return;
       e.clipboardData.setData('text/html', flavours.html);
       e.clipboardData.setData('text/plain', flavours.text);
@@ -1862,7 +1951,10 @@ export class App {
     const items: MenuItem[] = [];
     const inInstance = selection.some((id) => this.editor.isInstanceLayer(id));
     if (types.every((t) => t === 'INSTANCE')) {
-      items.push(cmd('component.goToMain'), cmd('component.reset'));
+      if (selection.length === 1 && this.editor.orphanInstance()) items.push(cmd('component.restore'));
+      else items.push(cmd('component.goToMain'));
+      if (selection.length === 1 && countOverrides(doc, selection[0]!) > 0 && !this.editor.pushBlocker(selection[0]!)) items.push(cmd('component.push'));
+      items.push(cmd('component.reset'));
       if (selection.every((id) => doc.get(id, 'componentKey') === null)) items.push(cmd('component.detach'));
     } else if (inInstance) {
       items.push(cmd('component.goToMain', tr('Перейти к компоненту')), cmd('component.reset', tr('Сбросить изменения этого слоя')));
@@ -1875,6 +1967,7 @@ export class App {
       items.push(cmd('component.addVariant'));
     } else {
       items.push(cmd('component.create'));
+      if (selection.length > 1) items.push(cmd('component.createMany'));
     }
     return items;
   }
@@ -2159,6 +2252,20 @@ export class App {
    * file browser and stores it next to the file. Never gets in the way: a
    * failure only means an older (or no) preview.
    */
+  /** The macOS app's menu «Файл» (6 Nov): a command of the open file; false — there is none such here. */
+  runCommand(id: string): boolean {
+    const command = this.commandMap.get(id);
+    if (!command || command.hidden) return false;
+    command.run();
+    return true;
+  }
+
+  /** The macOS app before it closes the window or quits (no beforeunload there): the last edits and the preview saved. */
+  async flushBeforeClose(): Promise<void> {
+    await this.autosaver.flush();
+    await this.updateThumbnail(true);
+  }
+
   private async updateThumbnail(force: boolean): Promise<void> {
     if (this.editor.doc.readOnly) return;
     if (!force && Date.now() - this.thumbnailAt < THUMBNAIL_EVERY) return;
@@ -2205,6 +2312,7 @@ export class App {
   /** Switches the open file id: remembered, and shown in the address so it can be bookmarked or shared. */
   private setFileId(id: string): void {
     this.fileId = id;
+    this.editor.fileId = this.backend instanceof CloudBackend ? id : null;
     try {
       localStorage.setItem(this.backend.lastFileKey, id);
     } catch {
@@ -2381,10 +2489,80 @@ export class App {
   }
 
   /** Version history of a server file: compare with now, bring back a frame or the whole file. */
+  /** «Сохранить версию в истории…» (Mod+Alt+S): named, right away, without the history window. */
+  private async saveVersion(): Promise<void> {
+    if (!(this.backend instanceof CloudBackend)) return void this.toast(tr('Версии с названием хранятся для файлов на сервере. Изменения в этом файле и так сохраняются сами.'));
+    if (!((this.role === 'owner' || this.role === 'editor') && !this.editor.doc.readOnly)) return void this.toast(tr('Сохранять версии могут владелец и редакторы'));
+    try {
+      const { saveNamedVersion } = await import('./ui/versions-view.ts');
+      const name = await saveNamedVersion(this.fileId);
+      if (name) this.toast(tr('Версия «{0}» сохранена в истории', name));
+    } catch (error) {
+      this.toast(error instanceof Error ? error.message : String(error), 'error');
+    }
+  }
+
+  /** «Тестирование на людях…»: for the owner and editors of a design file on the server. */
+  private showUserTests(): void {
+    if (!(this.backend instanceof CloudBackend)) return void this.toast(tr('Тестирование на людях работает для файлов на сервере. Войдите, чтобы перенести файл.'));
+    if (this.role !== 'owner' && this.role !== 'editor') return void this.toast(tr('Тесты создают владелец и редакторы.'));
+    if (this.board || this.diagram || this.slides) return void this.toast(tr('Тестировать можно прототип макета.'));
+    const host = { editor: this.editor, renderer: this.canvas.renderer, fileId: this.fileId, toast: (text: string, kind?: 'error') => this.toast(text, kind) };
+    void import('./ui/usertests-view.ts').then(({ UserTestsView }) => new UserTestsView(host)).catch((error: unknown) => this.toast(error instanceof Error ? error.message : String(error), 'error'));
+  }
+
+  /** «История просмотров…» (step 9): who opened the file and when; for the owner and editors of a file on the server. */
+  private showViewHistory(): void {
+    if (!(this.backend instanceof CloudBackend)) return void this.toast(tr('История просмотров есть у файлов на сервере.'));
+    if (this.role !== 'owner' && this.role !== 'editor') return void this.toast(tr('Историю просмотров видят владелец и редакторы.'));
+    void import('./ui/views-dialog.ts').then(({ showViewHistory }) => showViewHistory(this.fileId)).catch((error: unknown) => this.toast(error instanceof CloudError ? error.message : tr('Не удалось загрузить историю просмотров'), 'error'));
+  }
+
   private showVersions(): void {
     if (!(this.backend instanceof CloudBackend)) return void this.toast(tr('История версий работает для файлов на сервере. Войдите, чтобы перенести файл.'));
     const canEdit = (this.role === 'owner' || this.role === 'editor') && !this.editor.doc.readOnly;
     void import('./ui/versions-view.ts').then(({ VersionsView }) => new VersionsView({ editor: this.editor, renderer: this.canvas.renderer, fileId: this.fileId, canEdit, toast: (t, k) => this.toast(t, k) }));
+  }
+
+  /** «Сравнить изменения» (step 7): the selected layer in a saved version next to it now — properties and code. */
+  private compareChanges(): void {
+    const ids = this.editor.topLevelSelection();
+    if (ids.length !== 1) return void this.toast(tr('Выделите один слой или фрейм, чтобы сравнить его с версией'));
+    if (!(this.backend instanceof CloudBackend)) return void this.toast(tr('Сравнение с версиями работает для файлов на сервере: версии хранятся там. Войдите, чтобы перенести файл.'));
+    const canEdit = (this.role === 'owner' || this.role === 'editor') && !this.editor.doc.readOnly;
+    void import('./ui/compare-dialog.ts').then(({ CompareDialog }) => new CompareDialog({ editor: this.editor, renderer: this.canvas.renderer, fileId: this.fileId, canEdit, toast: (t, k) => this.toast(t, k) }, ids[0]!));
+  }
+
+  private approvalHost(): ApprovalHost {
+    return {
+      editor: this.editor,
+      approvals: this.approvals,
+      fileId: () => this.fileId,
+      userId: () => (this.backend instanceof CloudBackend ? (this.backend.user?.id ?? null) : null),
+      canEdit: () => (this.role === 'owner' || this.role === 'editor') && !this.editor.doc.readOnly,
+      toast: (t, k) => this.toast(t, k),
+      compare: (id, version) => {
+        const canEdit = (this.role === 'owner' || this.role === 'editor') && !this.editor.doc.readOnly;
+        void import('./ui/compare-dialog.ts').then(({ CompareDialog }) => new CompareDialog({ editor: this.editor, renderer: this.canvas.renderer, fileId: this.fileId, canEdit, toast: (t, k) => this.toast(t, k) }, id, version));
+      },
+    };
+  }
+
+  /** «Отправить на согласование…» (other editors, item 9): one frame or section, one person of the file. */
+  private requestApproval(): void {
+    const ids = this.editor.topLevelSelection();
+    const d = this.editor.doc;
+    if (ids.length !== 1 || !['FRAME', 'SECTION', 'COMPONENT', 'COMPONENT_SET'].includes(d.type(ids[0]!)) || !['PAGE', 'SECTION'].includes(d.type(d.parent(ids[0]!)!))) return void this.toast(tr('Выделите один фрейм или секцию'));
+    if (!(this.backend instanceof CloudBackend) || !this.backend.user) return void this.toast(tr('Согласование работает для файлов на сервере. Войдите, чтобы перенести файл.'));
+    if (!(this.role === 'owner' || this.role === 'editor')) return void this.toast(tr('Отправить на согласование может тот, кто редактирует файл'));
+    void askApproval(this.approvalHost(), ids[0]!, this.approvals.get(ids[0]!));
+  }
+
+  /** «Песочница компонента» (step 7): variants and properties tried on a copy of the file. */
+  private openPlayground(): void {
+    const ids = this.editor.selection;
+    if (ids.length !== 1) return void this.toast(tr('Выделите один компонент или его копию'));
+    void import('./ui/playground-dialog.ts').then(({ openPlaygroundDialog }) => openPlaygroundDialog(this.editor, this.canvas.renderer, ids[0]!));
   }
 
   /** "Crop picture" for the first selected layer with a picture. */
@@ -2417,8 +2595,9 @@ export class App {
     void import('./ui/crop-dialog.ts').then(({ CropDialog }) => new CropDialog(this.editor, id, index));
   }
 
-  private openSettings(): void {
+  private openSettings(section?: 'ai'): void {
     void import('./ui/settings-dialog.ts').then(({ SettingsDialog }) => new SettingsDialog({
+        section,
         onUiScale: (s) => this.applyUiScale(s),
         onDock: (p) => this.toolbar.setDockPlace(p),
         onContextBar: (mode) => {
@@ -2513,13 +2692,17 @@ export class App {
   }
 
   /** Opens a file from disk as a new file: our .csdoc.json, or a .fig from Figma. */
-  private openFile(accept = '.json,.csdoc,.fig,.jam,.pptx,application/json'): void {
+  private openFile(accept = '.json,.csdoc,.fig,.jam,.sketch,.pptx,application/json'): void {
     void pickFiles(accept).then(([file]) => {
       if (file) void this.loadFile(file);
     });
   }
 
   private async loadFile(file: File): Promise<void> {
+    if (file.size > LIMITS.fileBytes) {
+      this.toast(tr('Файл «{0}» слишком большой: больше {1} МБ', file.name, Math.round(LIMITS.fileBytes / 1024 / 1024)), 'error');
+      return;
+    }
     try {
       let note = '';
       let doc: Document;
@@ -2535,6 +2718,11 @@ export class App {
           return;
         }
         const result = await pptx.pptxToDocument(file, this.measurer);
+        doc = result.doc;
+        note = result.note;
+      } else if (/\.sketch$/i.test(file.name)) {
+        this.toast(tr('Импортирую «{0}»…', file.name));
+        const result = await (await import('./sketch/import.ts')).importSketch(file);
         doc = result.doc;
         note = result.note;
       } else if (await fig.isFigFile(file)) {
@@ -2571,10 +2759,13 @@ export class App {
     }
   }
 
-  private saveFile(): void {
+  /** «Сохранить копию файла…»; `anonymous` — «…без авторов»: stickies' authors and voters are not in it (core anonymize). */
+  private saveFile(anonymous = false): void {
     const doc = this.editor.doc;
     const name = doc.get(doc.rootId, 'name').replace(/[\\/:*?"<>|]+/g, '_') || 'file';
-    download(new Blob([serialize(doc)], { type: 'application/json' }), `${name}.csdoc.json`);
+    download(new Blob([serialize(doc, { anonymous })], { type: 'application/json' }), `${name}.csdoc.json`);
+    // As Figma's ⌘S: the file saves itself; this is a copy on the disk (6 Nov).
+    this.toast(anonymous ? tr('Копия сохранена без авторов стикеров и без имён голосовавших') : tr('Изменения сохраняются сами. Это копия файла на диск.'));
   }
 
   /**
@@ -2647,7 +2838,7 @@ export class App {
       } catch {
         // for this visit only
       }
-      this.toast(tr('Новое имя появится у курсора после переподключения, под новыми стикерами — сразу.'));
+      this.toast(tr('Новое имя появится у курсора после переподключения, а под новыми стикерами сразу.'));
       return;
     }
     let asked = false;
@@ -2706,8 +2897,12 @@ export class App {
     doc.transact((tx) => applyLayout(doc, tx, texts, this.measurer), { undoable: false });
   }
 
-  toast(message: string, kind: 'info' | 'error' = 'info', ms = 4000): void {
+  toast(message: string, kind: 'info' | 'error' = 'info', ms = 4000, action?: ToastAction): void {
     const el = h('div', { class: `toast ${kind}` }, message);
+    if (action) {
+      el.append(h('button', { class: 'toast-action', type: 'button', onclick: () => (el.remove(), action.run()) }, action.label));
+      ms = Math.max(ms, 8000);
+    }
     this.toasts.append(el);
     // Errors stay until dismissed (FR-UI-031).
     if (kind === 'error') {

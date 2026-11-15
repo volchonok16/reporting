@@ -29,7 +29,7 @@ function paintFace(host: HTMLElement, letters: string, avatar: string | undefine
 }
 
 /** `viewers` — also shown when the file is read-only (moving around and commenting). */
-type ToolEntry = { id: ToolId | null; icon: string; label: string; command: string; viewers?: true; /** Shown instead of the icon (stamps). */ emoji?: string; /** A heading over the entries of a long list (board shapes). */ section?: string; /** A word next to a small icon, for actions no pictogram explains (HTML in, PPTX out). */ text?: string };
+type ToolEntry = { id: ToolId | null; icon: string; label: string; command: string; viewers?: true; /** Only with the «Код» tab open (step 7). */ dev?: true; /** Shown instead of the icon (stamps). */ emoji?: string; /** A heading over the entries of a long list (board shapes). */ section?: string; /** A word next to a small icon, for actions no pictogram explains (HTML in, PPTX out). */ text?: string };
 /** A group is either plain buttons or a flyout (one button showing the last used tool + a list). */
 type ToolGroup = { kind: 'buttons'; tools: ToolEntry[] } | { kind: 'flyout'; label: string; tools: ToolEntry[] };
 const TOOL_GROUPS: ToolGroup[] = [
@@ -49,6 +49,7 @@ const TOOL_GROUPS: ToolGroup[] = [
     tools: [
       { id: 'frame', icon: 'frame', label: tr('Фрейм'), command: 'tool.frame' },
       { id: 'section', icon: 'section', label: tr('Секция'), command: 'tool.section' },
+      { id: 'slice', icon: 'slice', label: tr('Нарезка'), command: 'tool.slice' },
       { id: null, icon: 'code', label: tr('Код-слой'), command: 'object.codeLayer' },
     ],
   },
@@ -93,6 +94,8 @@ const TOOL_GROUPS: ToolGroup[] = [
   },
   { kind: 'buttons', tools: [{ id: 'text', icon: 'text', label: tr('Текст'), command: 'tool.text' }] },
   { kind: 'buttons', tools: [{ id: 'comment', icon: 'comment', label: tr('Комментарий'), command: 'tool.comment', viewers: true }] },
+  // Dev Mode (step 7): shown only while the «Код» tab is open, as Figma's Dev Mode toolbar.
+  { kind: 'buttons', tools: [{ id: 'annotate', icon: 'annotate', label: tr('Аннотация и замер'), command: 'tool.annotate', dev: true }] },
   // Files in, one button with a list (27 Oct): our own .csdoc.json (1 Nov), HTML (FEAT-036), Figma, PowerPoint (FEAT-158). Export to
   // PowerPoint lives with the rest of the export, in the right panel (28 Oct).
   {
@@ -109,8 +112,10 @@ const TOOL_GROUPS: ToolGroup[] = [
 
 /** The board's tools (FEAT-083): FigJam's set, in its order. */
 const BOARD_TOOL_GROUPS: ToolGroup[] = [
+  // Grouped by kind, as the design's dock (6 Nov): one button with a list instead of a row of single ones.
   {
-    kind: 'buttons',
+    kind: 'flyout',
+    label: tr('Перемещение и рука'),
     tools: [
       { id: 'select', icon: 'select', label: tr('Перемещение'), command: 'tool.select', viewers: true },
       { id: 'hand', icon: 'hand', label: tr('Рука'), command: 'tool.hand', viewers: true },
@@ -133,14 +138,21 @@ const BOARD_TOOL_GROUPS: ToolGroup[] = [
   { kind: 'buttons', tools: [{ id: 'section', icon: 'section', label: tr('Раздел'), command: 'tool.section' }] },
   { kind: 'flyout', label: tr('Штампы'), tools: STAMPS.map((s) => ({ id: 'stamp' as const, icon: 'stamp', label: s.label, command: `tool.stamp.${s.id}`, emoji: s.id === 'me' ? '' : s.text })) },
   { kind: 'buttons', tools: [{ id: 'comment', icon: 'comment', label: tr('Комментарий'), command: 'tool.comment', viewers: true }] },
-  { kind: 'buttons', tools: [{ id: null, icon: 'star', label: tr('Наклейки и компоненты'), command: 'board.stickers' }] },
-  { kind: 'buttons', tools: [{ id: null, icon: 'table', label: tr('Таблица'), command: 'board.table' }] },
-  { kind: 'buttons', tools: [{ id: null, icon: 'code', label: tr('Блок кода'), command: 'board.code' }] },
-  { kind: 'buttons', tools: [{ id: null, icon: 'link', label: tr('Ссылка'), command: 'board.insertLink' }] },
+  {
+    kind: 'flyout',
+    label: tr('Наклейки, таблица, код, ссылка'),
+    tools: [
+      { id: null, icon: 'star', label: tr('Наклейки и компоненты'), command: 'board.stickers' },
+      { id: null, icon: 'table', label: tr('Таблица'), command: 'board.table' },
+      { id: null, icon: 'code', label: tr('Блок кода'), command: 'board.code' },
+      { id: null, icon: 'link', label: tr('Ссылка'), command: 'board.insertLink' },
+    ],
+  },
   { kind: 'buttons', tools: [{ id: null, icon: 'templates', label: tr('Шаблоны досок'), command: 'board.templates' }] },
 ];
 
-export type SaveState = 'saved' | 'saving' | 'error' | 'unsaved';
+/** offline: no connection, the changes wait and go once it is back (not an error: nothing is lost). */
+export type SaveState = 'saved' | 'saving' | 'error' | 'unsaved' | 'offline';
 
 export class Toolbar {
   readonly el: HTMLElement;
@@ -206,6 +218,18 @@ export class Toolbar {
         const face = tool.text ? [icon(tool.icon, 14), h('span', {}, tool.text)] : [icon(tool.icon, 18)];
         const button = h('button', { class: `tool-button${tool.text ? ' text-tool' : ''}${tool.viewers ? ' for-viewers' : ''}`, type: 'button', title: label, 'aria-label': label, onclick: run }, ...face);
         if (tool.id) this.toolButtons.set(tool.id, button);
+        if (tool.dev) {
+          // Its separator goes with it: no empty gap in the dock outside the «Код» tab.
+          const separator = this.dock.lastElementChild as HTMLElement | null;
+          const show = () => {
+            const on = editor.prototype.mode === 'code';
+            button.hidden = !on;
+            if (separator?.classList.contains('dock-separator')) separator.hidden = !on;
+            if (!on && editor.tool === tool.id) editor.setTool('select');
+          };
+          editor.events.on('mode', show);
+          show();
+        }
         this.dock.append(button);
       }
     });
@@ -485,7 +509,7 @@ export class Toolbar {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
-    if ((state === 'saving' || state === 'unsaved') && this.status.dataset.state !== 'error' && this.status.textContent) {
+    if ((state === 'saving' || state === 'unsaved') && this.status.dataset.state !== 'error' && this.status.dataset.state !== 'offline' && this.status.textContent) {
       this.saveTimer = setTimeout(() => {
         this.saveTimer = null;
         this.showSaveState(state, detail);
@@ -501,11 +525,19 @@ export class Toolbar {
       saving: tr('Сохранение…'),
       unsaved: tr('Есть несохранённые изменения'),
       error: tr('Ошибка сохранения'),
+      offline: tr('Нет связи. Правки отправятся при подключении'),
     };
     this.status.textContent = text[state];
     this.status.title = detail || text[state];
     this.status.dataset.state = state;
+    // «Сохранено» is said for a moment, then fades (UI-006): a line always there is one more thing to read.
+    // Errors, offline and unsaved changes stay. Pointing at the place shows it again.
+    this.status.classList.remove('quiet');
+    if (this.quietTimer) clearTimeout(this.quietTimer);
+    this.quietTimer = state === 'saved' ? setTimeout(() => this.status.classList.add('quiet'), 2500) : null;
   }
+
+  private quietTimer: ReturnType<typeof setTimeout> | null = null;
 
   private syncFrame = 0;
 

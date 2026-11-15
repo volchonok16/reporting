@@ -8,6 +8,7 @@
 // already on the canvas (✦ → «Изменить по описанию»): its HTML goes to the
 // model with the request, the changed page takes the layer's place.
 
+import { AiMissingError, openAiSettings, ownAi, toastAiError } from '../own-ai.ts';
 import { tr, type NodeId } from '#core';
 import type { Editor } from '../editor.ts';
 import { clear, h, icon } from '../ui/dom.ts';
@@ -132,6 +133,17 @@ export class HtmlImportDialog {
     this.importButton = h('button', { class: 'text-button primary', type: 'button', disabled: true, onclick: () => void this.run() }, tr('Импортировать'));
     this.preview = h('div', { class: 'hi-preview' }, h('p', { class: 'hi-empty' }, tr('Здесь появится превью страницы')));
     this.note = h('p', { class: 'hi-note' }, this.noteText());
+    // Where the description goes: the person's own neural network (own-ai.ts) or our server with its limit.
+    const privacy = h('p', { class: 'hi-privacy' }, tr('Описание и прикреплённые файлы обрабатываются на сервере Симметрики. До 20 макетов в сутки.'));
+    const serverNote = privacy.textContent;
+    const where = () =>
+      void ownAi().then((own) => {
+        privacy.textContent = own ? tr('Описание и файлы уходят в вашу нейросеть ({0}), оплата по вашему ключу.', own.model) : serverNote;
+      });
+    where();
+    // Set or switched off in «Настройки» over this window: the line follows.
+    const onAi = () => (privacy.isConnected ? where() : removeEventListener('cs:ai', onAi));
+    addEventListener('cs:ai', onAi);
 
     // Source: file/folder or pasted code.
     const fileInput = h('input', { type: 'file', multiple: true, accept: '.html,.htm,text/html', hidden: true });
@@ -154,7 +166,7 @@ export class HtmlImportDialog {
     for (const t of ['dragenter', 'dragover']) drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('over'); });
     for (const t of ['dragleave', 'drop']) drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('over'); });
     drop.addEventListener('drop', (e) => void this.onDrop(e as DragEvent));
-    this.code = h('textarea', { class: 'hi-code', placeholder: tr('Вставьте HTML-код страницы — например, ответ нейросети'), spellcheck: false });
+    this.code = h('textarea', { class: 'hi-code', placeholder: tr('Вставьте HTML-код страницы, например ответ нейросети'), spellcheck: false });
     this.code.addEventListener('input', () => this.schedule(700));
     const filePane = h('div', { class: 'hi-pane' }, drop, this.fileInfo);
     const codePane = h('div', { class: 'hi-pane', hidden: true }, this.code);
@@ -220,7 +232,7 @@ export class HtmlImportDialog {
       attachInput,
       ...(edit ? [] : [this.prompt, attachRow(), examples, this.generateButton]),
       this.refineBox,
-      h('p', { class: 'hi-privacy' }, tr('Описание и прикреплённые файлы обрабатываются на сервере Симметрики. До 20 макетов в сутки.')),
+      privacy,
     );
     const tabFile = h('button', { class: 'auth-tab active', type: 'button', role: 'tab' }, tr('Файлы'));
     const tabCode = h('button', { class: 'auth-tab', type: 'button', role: 'tab' }, tr('Вставить код'));
@@ -239,7 +251,7 @@ export class HtmlImportDialog {
         ? tr('Скажите словами, что поправить: нейросеть изменит макет, а вы сравните до и после. Правку можно продолжать, пока не понравится.')
         : m === 'prompt'
           ? this.slidePrompt()
-            ? tr('Опишите слайд словами: нейросеть сверстает его точно в размер слайдов презентации — {0} × {1}, и он станет редактируемыми слоями.', slideSize(this.editor.doc, this.editor.pageId).w, slideSize(this.editor.doc, this.editor.pageId).h)
+            ? tr('Опишите слайд словами, и нейросеть сверстает его точно в размер слайдов презентации ({0} × {1}) редактируемыми слоями.', slideSize(this.editor.doc, this.editor.pageId).w, slideSize(this.editor.doc, this.editor.pageId).h)
             : tr('Опишите экран словами: нейросеть сверстает его, и он станет редактируемыми слоями.')
           : tr('Превращает HTML-страницу в редактируемые слои: фреймы, текст, картинки, SVG-иконки, градиенты и тени.');
       tabFile.classList.toggle('active', m === 'file');
@@ -407,7 +419,7 @@ export class HtmlImportDialog {
         const total = this.attachments.reduce((n, x) => n + x.text.length, 0);
         if (total + a.text.length > FILES_CHARS) throw new Error(tr('«{0}» не поместился: нейросеть прочтёт до {1} тыс. знаков из всех файлов вместе', file.name, FILES_CHARS / 1000));
         this.attachments = [...this.attachments.filter((x) => x.name !== a.name), a];
-        this.setStatus(a.cut ? tr('«{0}» длинный — нейросеть прочтёт начало, {1} тыс. знаков', a.name, Math.round(a.text.length / 1000)) : '');
+        this.setStatus(a.cut ? tr('«{0}» длинный, нейросеть прочтёт начало, {1} тыс. знаков', a.name, Math.round(a.text.length / 1000)) : '');
       } catch (error) {
         this.setStatus(error instanceof Error ? error.message : String(error), true);
       }
@@ -509,7 +521,7 @@ export class HtmlImportDialog {
       if (refine) {
         // Edit blocks applied to the page as it is: the rest stays exactly as it was.
         const result = applyEdits(base!, text);
-        if (!result || !result.applied) throw new Error(tr('Нейросеть не поняла, что поменять. Скажите иначе — например, какой текст или блок и на что.'));
+        if (!result || !result.applied) throw new Error(tr('Нейросеть не поняла, что поменять. Скажите иначе, например какой текст или блок и на что поменять.'));
         missed = result.missed;
         blocks = result.applied + result.missed;
         html = restore(result.html);
@@ -526,10 +538,10 @@ export class HtmlImportDialog {
         missed
           ? tr('Сделана часть правки: {0} из {1} мест нейросеть не нашла. Проверьте превью или скажите точнее.', missed, blocks)
           : this.edit
-            ? tr('Готово. Проверьте превью и нажмите «Заменить макет» — или поправьте ещё.')
+            ? tr('Готово. Проверьте превью и нажмите «Заменить макет» или поправьте ещё.')
             : refine
               ? tr('Правка готова. Импортируйте или поправьте ещё.')
-              : tr('Готово. Проверьте превью и нажмите «Импортировать» — или доработайте словами.'),
+              : tr('Готово. Проверьте превью и нажмите «Импортировать» или доработайте словами.'),
       );
       await drawing;
       if (this.overlay.hidden) {
@@ -549,6 +561,22 @@ export class HtmlImportDialog {
         this.generated = '';
         this.waiting = null;
         this.preview.replaceChildren(h('p', { class: 'hi-empty' }, tr('Здесь появится превью страницы')));
+      }
+      if (error instanceof AiMissingError) {
+        // Not a slip of the person's to read in a small red line: what is missing and the way to it, in the middle.
+        this.setStatus('');
+        this.preview.replaceChildren(
+          h(
+            'div',
+            { class: 'hi-ai-missing', role: 'alert' },
+            h('h3', {}, tr('Нейросеть не подключена')),
+            h('p', {}, error.message),
+            h('p', { class: 'hi-ai-missing-note' }, tr('Подойдёт DeepSeek, OpenAI, OpenRouter или любой сервис с API как у OpenAI. Ключ хранится только на этом компьютере.')),
+            h('button', { class: 'text-button primary', type: 'button', onclick: () => openAiSettings() }, tr('Подключить нейросеть…')),
+          ),
+        );
+        if (this.overlay.hidden) toastAiError(this.editor, error, tr('Макет по описанию: '));
+        return;
       }
       this.setStatus(error instanceof Error ? error.message : String(error), true);
       if (this.overlay.hidden) this.editor.toast(tr('Макет по описанию: {0}', error instanceof Error ? error.message : String(error)), 'error');
@@ -685,11 +713,11 @@ export class HtmlImportDialog {
   }
 
   private noteText(): string {
-    if (!isSlides(this.editor.doc)) return tr('Превью живое: переключите вкладку или откройте окно на странице — импортируется то, что видно.');
+    if (!isSlides(this.editor.doc)) return tr('Превью живое: переключите вкладку или откройте окно на странице, и импортируется то, что видно.');
     // A slide changed in place: no new slide comes.
     if (this.edit && this.editor.isSlide(this.edit.id)) return tr('Слайд изменится на месте: его слои заменятся тем, что в превью, а заметки, место в презентации и тема останутся.');
     return this.crop
-      ? tr('В презентацию попадёт слайд со страницы — то, что в превью, без фона вокруг; он станет новым слайдом в формате презентации.')
+      ? tr('В презентацию попадёт слайд со страницы, как в превью, без фона вокруг. Он станет новым слайдом в формате презентации.')
       : tr('Страница станет новым слайдом: она впишется в формат презентации целиком.');
   }
 

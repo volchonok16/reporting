@@ -8,6 +8,7 @@
 
 import { tr } from '#core';
 import { h, icon } from './dom.ts';
+import { fadeAway } from './motion-ui.ts';
 
 export interface Frame {
   title: string;
@@ -47,6 +48,7 @@ function open(frame: Frame): Promise<boolean> {
     const finish = (result: boolean) => {
       if (done) return;
       done = true;
+      fadeAway(overlay);
       overlay.remove();
       previous?.focus?.();
       resolve(result);

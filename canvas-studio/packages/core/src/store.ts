@@ -17,6 +17,8 @@ import {
   type NodeProps,
   type NodeType,
   type PropKey,
+  safeBlobData,
+  safeMime,
 } from './schema.ts';
 
 export interface NodeRecord {
@@ -134,7 +136,9 @@ export class DocumentStore {
         return this.applyMove(op, changes);
       case 'blob':
         if (this.blobs.has(op.hash)) return 'noop';
-        this.blobs.set(op.hash, { mime: op.mime, data: op.data });
+        // Data not base64 is not taken; a type that is not one becomes octet-stream (schema.ts safeBlobData, safeMime).
+        if (!safeBlobData(op.data)) return 'noop';
+        this.blobs.set(op.hash, { mime: safeMime(op.mime), data: op.data });
         changes.blobs.add(op.hash);
         return 'applied';
     }

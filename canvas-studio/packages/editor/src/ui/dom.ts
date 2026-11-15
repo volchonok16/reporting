@@ -48,6 +48,7 @@ const ICONS: Record<string, string> = {
   frame: 'M5 2v12M11 2v12M2 5h12M2 11h12',
   section: 'M2.5 2.5h11v11h-11zM4.5 4.5h4',
   play: 'M5 3.5v9l7.5-4.5z',
+  pause: 'M5 3.5v9M11 3.5v9',
   rectangle: 'M3 3.5h10v9H3z',
   ellipse: 'M8 3a5 5 0 1 0 0 10A5 5 0 0 0 8 3z',
   line: 'M3 13L13 3',
@@ -165,6 +166,9 @@ const ICONS: Record<string, string> = {
   textRight: 'M2.5 4h11M6.5 8h7M4.5 12h9',
   textJustify: 'M2.5 4h11M2.5 8h11M2.5 12h11',
   gap: 'M2 2.5v11M14 2.5v11M6 5.5h4v5H6z',
+  // Padding in pairs (UI-005): the two edges and the room between them.
+  padX: 'M2 2.5v11M14 2.5v11M5 8h6M6.8 6.2 5 8l1.8 1.8M9.2 6.2 11 8l-1.8 1.8',
+  padY: 'M2.5 2h11M2.5 14h11M8 5v6M6.2 6.8 8 5l1.8 1.8M6.2 9.2 8 11l1.8-1.8',
   gapRows: 'M2.5 2h11M2.5 14h11M5.5 6v4h5V6z',
   columns: 'M2.5 2.5h11v11h-11zM6.2 2.5v11M9.8 2.5v11',
   rows: 'M2.5 2.5h11v11h-11zM2.5 6.2h11M2.5 9.8h11',
@@ -197,7 +201,13 @@ const ICONS: Record<string, string> = {
   scissors: 'M4.5 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM4.5 10a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM5.8 5.2l8 6.3M5.8 10.8l8-6.3',
   clock: 'M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2zM8 4.5V8l2.5 1.5',
   search: 'M7 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8zM10 10l3.5 3.5',
+  /** Slice (step 9): a dashed area with a corner cut, as an area to export. */
+  slice: 'M2.5 5.5v-3h3M10.5 2.5h3v3M13.5 10.5v3h-3M5.5 13.5h-3v-3M5 11L11 5',
+  /** Screen reader mode of the prototype viewer: a speaker with sound waves. */
+  speaker: 'M2.5 6h2.5L8.5 3v10L5 10H2.5zM10.8 5.7a3.2 3.2 0 0 1 0 4.6M12.6 4a5.6 5.6 0 0 1 0 8',
   comment: 'M8 2.5c3.3 0 5.5 2.1 5.5 4.8S11.3 12 8 12c-.8 0-1.5-.1-2.2-.3L2.5 13.5l1-2.6C2.9 10 2.5 8.7 2.5 7.3 2.5 4.6 4.7 2.5 8 2.5z',
+  // Dev Mode note (step 7): a square note with lines, apart from the round comment.
+  annotate: 'M2.5 3h11v7.5h-6L4.5 13v-2.5h-2zM5 5.8h6M5 8h4',
   check: 'M3 8.5l3.2 3L13 4.5',
   // A diagram file (FEAT-090): a node and its branches.
   diagram: 'M6.5 8a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0M9.5 8H11M11 8l1.8-3.5M11 8l1.8 3.5M6.5 8H5M5 8 3.2 4.5M5 8l-1.8 3.5',
@@ -286,6 +296,7 @@ export function typeIcon(type: string, autoLayout: boolean): SVGSVGElement {
   if (type === 'INSTANCE') return icon('instance', 14);
   if (type === 'FRAME') return icon(autoLayout ? 'padding' : 'frame', 14);
   if (type === 'SECTION') return icon('section', 14);
+  if (type === 'SLICE') return icon('slice', 14);
   if (type === 'GROUP') return icon('group', 14);
   if (type === 'ELLIPSE') return icon('ellipse', 14);
   if (type === 'LINE') return icon('line', 14);

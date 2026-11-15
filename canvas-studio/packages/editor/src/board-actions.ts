@@ -178,7 +178,7 @@ export function copyBoardLook(editor: Editor): boolean {
   } else if (kind === 'SECTION') look = { kind: 'SECTION', fills: structuredClone(d.get(id, 'fills')) };
   if (!look) return false;
   copiedLook = look;
-  editor.toast(tr('Оформление скопировано — выделите другие объекты и нажмите ⌥⌘V'));
+  editor.toast(tr('Оформление скопировано. Выделите другие объекты и нажмите ⌥⌘V'));
   return true;
 }
 
@@ -256,7 +256,7 @@ export function fitSections(editor: Editor, sections = selectedSections(editor))
   const d = editor.doc;
   const work = sections.filter((s) => d.children(s).length > 0 && !d.get(s, 'locked'));
   if (work.length === 0) {
-    editor.toast(tr('В разделе ничего нет — подгонять не подо что'));
+    editor.toast(tr('В разделе ничего нет, подгонять не подо что'));
     return;
   }
   editor.commit(tr('Подогнать раздел'), (tx) => {

@@ -5,6 +5,8 @@
 // never allows — and, when the browser sends an Origin, it must be our own.
 // Together with SameSite cookies this closes cross-site request forgery.
 
+import { parseViews, recordView } from './views.ts';
+import { cleanSession, cleanTasks, parseSessions, parseTests, sameToken, SESSION_ID, TESTS_PER_FILE, TestError, testResultsName, testSnapshotName, upsertSession, type UserTest } from './usertests.ts';
 import { randomBytes, randomInt } from 'node:crypto';
 import { LinkPreviews, previewTarget } from './link-preview.ts';
 import { askText, checkAnswer, parseAnswer, parseTextRequest, TEXT_MAX } from './ai-text.ts';
@@ -30,7 +32,6 @@ import {
   type Session,
   type User,
 } from './auth.ts';
-import { isSsoUserPassword, SSO_PASSWORD_MARKER, verifyReportingSsoToken } from './reporting-sso.ts';
 import {
   atLeast,
   claimInvites,
@@ -51,8 +52,10 @@ import {
 } from './access.ts';
 import { addReply, addThread, cleanMentions, cleanPlace, cleanText, CommentError, commentMailPref, deleteComment, editComment, mailRecipients, movePin, parseThreads, publicThread, setResolved, THREADS_PER_FILE, type CommentEntry, type Thread } from './comments.ts';
 import { cookie, HttpError, parseCookies, readBody, readJson, Router, type Ctx } from './http.ts';
-import { codeLetter, commentLetter, reviewLetter, shareLetter, teamLetter, verdictLetter, type Mailer } from './mail.ts';
+import { ApprovalError, decide, parseApprovals, peopleOf, publicApproval, requestApproval, withdraw, type Approval } from './approvals.ts';
+import { approvalLetter, codeLetter, commentLetter, reviewLetter, shareLetter, teamLetter, verdictLetter, type Mailer } from './mail.ts';
 import { FileBlobs, isSafeId, JsonStore, writeAtomic } from './storage.ts';
+import { isSsoUserPassword, SSO_PASSWORD_MARKER, verifyReportingSsoToken } from './reporting-sso.ts';
 import { Versions } from './versions.ts';
 import { Documents } from './documents.ts';
 import { GoogleFonts, parseFaceRequest } from './fonts.ts';
@@ -175,6 +178,8 @@ function withoutPictures(text: string): string {
   return JSON.stringify(snap);
 }
 
+type KvStore<T> = JsonStore<T> | import('./pg-storage.ts').PgJsonStore<T>;
+
 /**
  * Who has which file, kept in memory as the files change (PERF-006): the list of a
  * person's files, a team's files and a file's branches no longer go through every
@@ -227,8 +232,6 @@ export class FileIndex {
   }
 }
 
-type KvStore<T> = JsonStore<T> | import('./pg-storage.ts').PgJsonStore<T>;
-
 export class Api {
   readonly router = new Router();
   readonly users: KvStore<User>;
@@ -265,6 +268,9 @@ export class Api {
   /** Font faces from Google: a big file may need a few dozen at once. */
   private readonly fontsByIp = new RateLimiter(300, 10 * 60_000);
   private readonly commentsByUser = new RateLimiter(300, 60 * 60_000);
+  /** Prototype tests: answers from one address in an hour (each finished task sends the session again). */
+  private readonly testAnswersByIp = new RateLimiter(600, 60 * 60_000);
+  private readonly testOpensByIp = new RateLimiter(120, 10 * 60_000);
   /** @ in board texts: letters one person may cause in an hour. */
   private readonly mentionsByUser = new RateLimiter(60, 60 * 60_000);
   /** Link cards on boards: pasting a list of links is fine, crawling through us is not. */
@@ -332,8 +338,8 @@ export class Api {
     r.on('POST', '/api/ai/layout', (c) => this.aiLayout(c));
     r.on('POST', '/api/ai/text', (c) => this.aiText(c));
     r.on('POST', '/api/auth/register', (c) => this.register(c));
-    r.on('POST', '/api/auth/login', (c) => this.login(c));
     r.on('POST', '/api/auth/reporting-sso', (c) => this.reportingSso(c));
+    r.on('POST', '/api/auth/login', (c) => this.login(c));
     r.on('POST', '/api/auth/logout', (c) => this.logout(c));
     r.on('POST', '/api/auth/verify', (c) => this.verify(c));
     r.on('POST', '/api/auth/resend', (c) => this.resend(c));
@@ -391,6 +397,18 @@ export class Api {
     r.on('GET', '/api/files/:id/versions/:versionId', (c) => this.getVersion(c));
     r.on('PATCH', '/api/files/:id/versions/:versionId', (c) => this.renameVersion(c));
     r.on('GET', '/api/files/:id/comments', (c) => this.listComments(c));
+    r.on('GET', '/api/files/:id/approvals', (c) => this.listApprovals(c));
+    r.on('POST', '/api/files/:id/approvals', (c) => this.askApproval(c));
+    r.on('POST', '/api/files/:id/approvals/:nodeId/verdict', (c) => this.approvalVerdict(c));
+    r.on('DELETE', '/api/files/:id/approvals/:nodeId', (c) => this.withdrawApproval(c));
+    r.on('GET', '/api/files/:id/views', (c) => this.listViews(c));
+    r.on('GET', '/api/files/:id/tests', (c) => this.listTests(c));
+    r.on('POST', '/api/files/:id/tests', (c) => this.createTest(c));
+    r.on('GET', '/api/files/:id/tests/:testId', (c) => this.getTestResults(c));
+    r.on('PATCH', '/api/files/:id/tests/:testId', (c) => this.changeTest(c));
+    r.on('DELETE', '/api/files/:id/tests/:testId', (c) => this.deleteTest(c));
+    r.on('GET', '/api/tests/:id/:token', (c) => this.openTest(c));
+    r.on('PUT', '/api/tests/:id/:token/sessions/:sessionId', (c) => this.answerTest(c));
     r.on('GET', '/api/files/:id/people', (c) => this.listPeople(c));
     r.on('GET', '/api/libraries', (c) => this.listLibraries(c));
     r.on('GET', '/api/files/:id/library', (c) => this.getLibrary(c));
@@ -432,6 +450,10 @@ export class Api {
       this.emails = map;
     }
     return this.emails;
+  }
+
+  private setSession(c: Ctx, token: string | null): void {
+    c.res.setHeader('Set-Cookie', cookie(SESSION_COOKIE, token ?? '', { maxAge: token ? SESSION_DAYS * 86400 : 0, secure: this.options.secure }));
   }
 
   /** Resolve user id by email: memory index, then PostgreSQL expression index when available. */
@@ -757,7 +779,7 @@ export class Api {
     const email = normalizeEmail(String(body.email ?? ''));
     if (!validEmail(email)) throw new HttpError(400, 'Проверьте email', 'bad_email');
     if (!this.forgotByIp.allow(c.ip) || !this.verifyMailByEmail.allow(email)) {
-      throw new HttpError(429, 'Код уже отправлен. Новый можно запросить позже — проверьте почту и папку «Спам».', 'rate_limited');
+      throw new HttpError(429, 'Код уже отправлен. Новый можно запросить позже, а пока проверьте почту и папку «Спам».', 'rate_limited');
     }
     const id = (await this.emailIndex()).get(email);
     const user = id ? await this.users.get(id) : null;
@@ -823,7 +845,7 @@ export class Api {
     const email = normalizeEmail(String(body.email ?? ''));
     if (!validEmail(email)) throw new HttpError(400, 'Проверьте email', 'bad_email');
     if (!this.forgotByIp.allow(c.ip) || !this.forgotByEmail.allow(email)) {
-      throw new HttpError(429, 'Код уже отправлен. Новый можно запросить позже — проверьте почту и папку «Спам».', 'rate_limited');
+      throw new HttpError(429, 'Код уже отправлен. Новый можно запросить позже, а пока проверьте почту и папку «Спам».', 'rate_limited');
     }
     const id = (await this.emailIndex()).get(email);
     const user = id ? await this.users.get(id) : null;
@@ -874,14 +896,6 @@ export class Api {
     return user && user.verified !== false ? user : null;
   }
 
-  /** Сотрудники reporting по фамилии или почте — для приглашения в файл. */
-  async directory(c: Ctx): Promise<{ people: { name: string; email: string }[] }> {
-    await this.requireUser(c);
-    const q = c.url.searchParams.get('q') ?? '';
-    if (!this.colleagues) return { people: [] };
-    return { people: await this.colleagues(q) };
-  }
-
   async requireUser(c: Ctx): Promise<User> {
     const user = await this.userOf(c.req);
     if (!user) throw new HttpError(401, 'Нужно войти', 'unauthorized');
@@ -889,6 +903,14 @@ export class Api {
   }
 
   // ---------- files ----------
+
+  /** Сотрудники reporting по фамилии или почте — для приглашения в файл. */
+  async directory(c: Ctx): Promise<{ people: { name: string; email: string }[] }> {
+    await this.requireUser(c);
+    const q = c.url.searchParams.get('q') ?? '';
+    if (!this.colleagues) return { people: [] };
+    return { people: await this.colleagues(q) };
+  }
 
   /** Key for link password proofs; made once (PostgreSQL or data directory). */
   private secretKey(): Promise<Uint8Array> {
@@ -1025,6 +1047,8 @@ export class Api {
 
   private async getFile(c: Ctx): Promise<unknown> {
     const { meta, user, role } = await this.access(c);
+    // View history (step 9): noted on the side, the file is not kept waiting for it.
+    void this.blobs.update(meta.id, 'views.json', (text) => JSON.stringify(recordView(parseViews(text), user?.id ?? null, Date.now()))).catch(() => undefined);
     const snapshot = await this.documents.read(meta.id);
     const owner = meta.ownerId === user?.id ? user : await this.users.get(meta.ownerId);
     const team = await this.teamOfFile(meta);
@@ -1055,7 +1079,7 @@ export class Api {
     const { user, role } = existing ? await this.access(c, 'editor') : { user: await this.requireUser(c), role: 'owner' as Role };
     if (!user) throw new HttpError(401, 'Нужно войти', 'unauthorized');
     // People are editing it together right now: a whole-file save would overwrite their work.
-    if (existing && (await this.live?.isLive(id))) throw new HttpError(409, 'Файл сейчас редактируют вместе — обновите страницу, чтобы подключиться', 'conflict');
+    if (existing && (await this.live?.isLive(id))) throw new HttpError(409, 'Файл сейчас редактируют вместе. Обновите страницу, чтобы подключиться', 'conflict');
     const type = String(c.req.headers['content-type'] ?? '');
     if (!type.startsWith('application/json')) throw new HttpError(415, 'Ожидался JSON', 'bad_type');
     const raw = (await readBody(c.req, MAX_DOCUMENT)).toString('utf8');
@@ -1637,23 +1661,255 @@ export class Api {
     return { version };
   }
 
-  // ---------- comments ----------
+  // ---------- prototype tests on people ----------
 
-  /** Names of the people in the threads, for display (`reveal` — addresses of those without a name, for people of the file). */
-  private async authorNames(threads: Thread[], reveal = true): Promise<Map<string, { name: string; avatar?: string }>> {
-    const names = new Map<string, { name: string; avatar?: string }>();
-    for (const t of threads) {
-      for (const id of [...t.comments.flatMap((x) => [x.authorId, ...(x.mentions ?? [])]), t.resolvedBy ?? '']) {
-        if (!id || names.has(id)) continue;
-        names.set(id, this.shownFace(await this.users.get(id), reveal));
-      }
+  private async testsOf(id: string): Promise<UserTest[]> {
+    return parseTests(await this.blobs.read(id, 'tests.json'));
+  }
+
+  /** A test with what respondents did so far, in a few numbers (the list in the editor). */
+  private async testSummary(fileId: string, t: UserTest): Promise<unknown> {
+    const sessions = parseSessions(await this.blobs.read(fileId, testResultsName(t.id)));
+    return { ...t, sessions: sessions.length, last: sessions.reduce((m, s) => Math.max(m, s.at), 0) || null };
+  }
+
+  private async listTests(c: Ctx): Promise<unknown> {
+    const { meta } = await this.access(c, 'editor');
+    const out = [];
+    for (const t of await this.testsOf(meta.id)) out.push(await this.testSummary(meta.id, t));
+    return { tests: out.reverse() };
+  }
+
+  /** A new test: the tasks are checked against the file as it is now, and that state is frozen for it. */
+  private async createTest(c: Ctx): Promise<unknown> {
+    const { meta, user } = await this.access(c, 'editor');
+    if (meta.kind) throw new HttpError(400, 'Тестировать можно прототип макета', 'not_design');
+    const body = await readJson<{ name?: unknown; pageId?: unknown; tasks?: unknown }>(c.req);
+    if ((await this.testsOf(meta.id)).length >= TESTS_PER_FILE) throw new HttpError(400, `Не больше ${TESTS_PER_FILE} тестов в файле`, 'too_many');
+    await this.live?.flush(meta.id);
+    const raw = await this.blobs.read(meta.id, 'snapshot.json');
+    const opened = raw ? await this.documents.open(meta.id) : null;
+    if (!raw || !opened) throw new HttpError(404, 'Файл не найден', 'not_found');
+    const doc = opened.doc;
+    const pageId = typeof body.pageId === 'string' ? body.pageId : '';
+    if (!doc.store.isAlive(pageId) || doc.type(pageId) !== 'PAGE') throw new HttpError(400, 'Нет такой страницы', 'bad_page');
+    const isScreen = (id: string): boolean => {
+      if (!id || !doc.store.isAlive(id) || !['FRAME', 'COMPONENT', 'INSTANCE'].includes(doc.type(id))) return false;
+      const parent = doc.parent(id);
+      return !!parent && (doc.type(parent) === 'PAGE' || doc.type(parent) === 'SECTION') && doc.pageOf(id) === pageId;
+    };
+    let tasks;
+    try {
+      tasks = cleanTasks(body.tasks, isScreen);
+    } catch (error) {
+      if (error instanceof TestError) throw new HttpError(400, error.message, 'bad_tasks');
+      throw error;
     }
+    const name = (typeof body.name === 'string' ? body.name.trim().slice(0, 120) : '') || 'Тест';
+    const test: UserTest = { id: newId('ut'), token: randomBytes(15).toString('base64url'), name, pageId, tasks, open: true, createdAt: Date.now(), by: user!.id };
+    // The document as stored (pictures stay in the file's own picture files, shared with it).
+    await this.blobs.write(meta.id, testSnapshotName(test.id), raw);
+    await this.blobs.update(meta.id, 'tests.json', (text) => JSON.stringify([...parseTests(text), test]));
+    return { test: await this.testSummary(meta.id, test) };
+  }
+
+  private async findTest(fileId: string, testId: string): Promise<UserTest> {
+    const test = (await this.testsOf(fileId)).find((t) => t.id === testId);
+    if (!test) throw new HttpError(404, 'Тест не найден', 'not_found');
+    return test;
+  }
+
+  /** The frozen document of a test, with its pictures, as a client loads a file. */
+  private async testSnapshot(fileId: string, testId: string): Promise<string> {
+    const raw = await this.blobs.read(fileId, testSnapshotName(testId));
+    if (!raw) throw new HttpError(404, 'Тест не найден', 'not_found');
+    const stored = JSON.parse(raw) as { blobMimes?: Record<string, string> };
+    if (!stored.blobMimes) return raw;
+    const mimes = stored.blobMimes;
+    delete stored.blobMimes;
+    return this.documents.withPictures(fileId, JSON.stringify(stored), Object.entries(mimes).map(([hash, mime]) => ({ hash, mime, data: null })));
+  }
+
+  /** Results for the editor: the test, every session and the frozen document (to draw the heat over its screens). */
+  private async getTestResults(c: Ctx): Promise<unknown> {
+    const { meta } = await this.access(c, 'editor');
+    const test = await this.findTest(meta.id, c.params.testId!);
+    const sessions = parseSessions(await this.blobs.read(meta.id, testResultsName(test.id)));
+    return { test: await this.testSummary(meta.id, test), sessions, snapshot: await this.testSnapshot(meta.id, test.id) };
+  }
+
+  /** Renames, closes or opens a test. Tasks stay: a change would mix answers to different questions. */
+  private async changeTest(c: Ctx): Promise<unknown> {
+    const { meta } = await this.access(c, 'editor');
+    const body = await readJson<{ name?: unknown; open?: unknown }>(c.req);
+    let found: UserTest | null = null;
+    await this.blobs.update(meta.id, 'tests.json', (text) => {
+      const list = parseTests(text);
+      const t = list.find((x) => x.id === c.params.testId);
+      if (!t) return undefined;
+      if (typeof body.name === 'string' && body.name.trim()) t.name = body.name.trim().slice(0, 120);
+      if (typeof body.open === 'boolean') t.open = body.open;
+      found = t;
+      return JSON.stringify(list);
+    });
+    if (!found) throw new HttpError(404, 'Тест не найден', 'not_found');
+    return { test: await this.testSummary(meta.id, found) };
+  }
+
+  private async deleteTest(c: Ctx): Promise<unknown> {
+    const { meta } = await this.access(c, 'editor');
+    const test = await this.findTest(meta.id, c.params.testId!);
+    await this.blobs.update(meta.id, 'tests.json', (text) => JSON.stringify(parseTests(text).filter((t) => t.id !== test.id)));
+    await this.blobs.removeFile(meta.id, testSnapshotName(test.id));
+    await this.blobs.removeFile(meta.id, testResultsName(test.id));
+    return { ok: true };
+  }
+
+  /** A test by its link, for anyone: the same answer for a wrong token and a missing file. */
+  private async publicTest(c: Ctx): Promise<{ fileId: string; test: UserTest }> {
+    const id = c.params.id!;
+    const token = c.params.token!;
+    const meta = isSafeId(id) ? await this.files.get(id) : null;
+    const test = meta ? (await this.testsOf(meta.id)).find((t) => sameToken(t.token, token)) : undefined;
+    if (!meta || !test) throw new HttpError(404, 'Тест не найден. Проверьте ссылку.', 'not_found');
+    if (!test.open) throw new HttpError(410, 'Тест закрыт: ответы больше не принимаются.', 'closed');
+    return { fileId: meta.id, test };
+  }
+
+  private async openTest(c: Ctx): Promise<unknown> {
+    if (!this.testOpensByIp.allow(c.ip)) throw new HttpError(429, 'Слишком много запросов. Подождите несколько минут.', 'rate_limited');
+    const { fileId, test } = await this.publicTest(c);
+    return { test: { name: test.name, pageId: test.pageId, tasks: test.tasks }, snapshot: await this.testSnapshot(fileId, test.id) };
+  }
+
+  /** A respondent's session so far (sent after every task and when the tab is closed): the same id replaces itself. */
+  private async answerTest(c: Ctx): Promise<unknown> {
+    if (!this.testAnswersByIp.allow(c.ip)) throw new HttpError(429, 'Слишком много ответов с этого адреса.', 'rate_limited');
+    const { fileId, test } = await this.publicTest(c);
+    const sessionId = c.params.sessionId!;
+    if (!SESSION_ID.test(sessionId)) throw new HttpError(400, 'Неверный номер прохождения', 'bad_session');
+    const session = cleanSession(await readJson(c.req, 256 * 1024), test, sessionId, Date.now());
+    let full = false;
+    await this.blobs.update(fileId, testResultsName(test.id), (text) => {
+      const next = upsertSession(parseSessions(text), session);
+      if (!next) {
+        full = true;
+        return undefined;
+      }
+      return JSON.stringify(next);
+    });
+    if (full) throw new HttpError(409, 'Тест набрал наибольшее число ответов.', 'full');
+    return { ok: true };
+  }
+
+  // ---------- approval (other editors, item 9) ----------
+
+  private async approvalNames(list: Approval[], reveal: boolean): Promise<Map<string, string>> {
+    const names = new Map<string, string>();
+    for (const id of peopleOf(list)) names.set(id, this.shownName(await this.users.get(id), reveal));
     return names;
   }
 
-  private shownFace(u: User | null | undefined, reveal: boolean): { name: string; avatar?: string } {
-    const avatar = u?.avatar && /^https?:\/\//i.test(u.avatar) ? u.avatar : undefined;
-    return { name: this.shownName(u, reveal), ...(avatar ? { avatar } : {}) };
+  private async listApprovals(c: Ctx): Promise<unknown> {
+    const { meta, user } = await this.access(c);
+    const list = parseApprovals(await this.blobs.read(meta.id, 'approvals.json'));
+    const names = await this.approvalNames(list, await this.isInsider(meta, user?.id));
+    return { approvals: list.map((a) => publicApproval(a, names)) };
+  }
+
+  /** Changes the approvals of a file under its queue and tells everyone in it. */
+  private async changeApprovals(fileId: string, nodeId: string, reveal: boolean, fn: (list: Approval[]) => Approval[]): Promise<{ approval: Approval | null; message: Record<string, unknown> }> {
+    let changed: Approval | null = null;
+    try {
+      await this.blobs.update(fileId, 'approvals.json', (text) => {
+        const next = fn(parseApprovals(text));
+        changed = next.find((a) => a.nodeId === nodeId) ?? null;
+        return JSON.stringify(next);
+      });
+    } catch (error) {
+      if (error instanceof ApprovalError) throw new HttpError(error.status, error.message, error.code);
+      throw error;
+    }
+    const a = changed as Approval | null;
+    const inside = a ? await this.approvalNames([a], true) : null;
+    const outside = a ? await this.approvalNames([a], false) : null;
+    const message = (insider: boolean) => (a ? { type: 'approval', approval: publicApproval(a, insider ? inside! : outside!) } : { type: 'approval', nodeId, deleted: true });
+    await this.live?.broadcast(fileId, message);
+    return { approval: a, message: message(reveal) };
+  }
+
+  private approvalUrl(fileId: string, a: Approval): string {
+    return this.shareUrl(fileId, { page: a.pageId, node: a.nodeId });
+  }
+
+  /** A letter about an approval; a failed one is logged, the answer says so. */
+  private async approvalMail(to: string, kind: 'request' | 'approved' | 'changes', author: User, fileName: string, fileId: string, a: Approval): Promise<boolean> {
+    const person = await this.users.get(to);
+    if (!person || person.id === author.id) return true;
+    try {
+      await this.options.mailer(approvalLetter({ to: person.email, kind, author: author.name || author.email, fileName, frameName: a.name, note: a.note ?? '', url: this.approvalUrl(fileId, a), appUrl: this.options.publicUrl || this.options.appUrl }));
+      return true;
+    } catch (error) {
+      this.options.log?.(`письмо о согласовании для ${person.email} не отправлено: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  }
+
+  /** Asks one person of the file to approve a frame (again after changes, too). */
+  private async askApproval(c: Ctx): Promise<unknown> {
+    const { meta, user } = await this.access(c, 'editor');
+    const body = await readJson<{ nodeId?: unknown; pageId?: unknown; name?: unknown; reviewer?: unknown; note?: unknown }>(c.req);
+    const reviewer = String(body.reviewer ?? '');
+    const people = await this.people(meta);
+    if (!people.has(reviewer)) throw new HttpError(400, 'Утвердить может только тот, у кого есть этот файл', 'bad_reviewer');
+    if (!this.mentionsByUser.allow(user!.id)) throw new HttpError(429, 'Слишком много запросов. Попробуйте позже.', 'rate_limited');
+    const nodeId = String(body.nodeId ?? '');
+    const { approval, message } = await this.changeApprovals(meta.id, nodeId, true, (list) => requestApproval(list, { nodeId: body.nodeId, pageId: body.pageId, name: body.name, reviewer, note: body.note }, user!.id, Date.now()));
+    const sent = await this.approvalMail(reviewer, 'request', user!, meta.name, meta.id, approval!);
+    return { ...message, ...(sent ? {} : { mailFailed: true }) };
+  }
+
+  /** The answer of the person asked; an approval saves the file as a version (to compare with later). */
+  private async approvalVerdict(c: Ctx): Promise<unknown> {
+    const { meta, user } = await this.access(c);
+    if (!user) throw new HttpError(401, 'Войдите, чтобы ответить', 'unauthorized');
+    const nodeId = c.params.nodeId!;
+    const current = parseApprovals(await this.blobs.read(meta.id, 'approvals.json')).find((a) => a.nodeId === nodeId);
+    if (!current) throw new HttpError(404, 'Согласование не запрошено', 'not_found');
+    if (current.reviewer !== user.id) throw new HttpError(403, 'Утвердить может только тот, кого попросили', 'forbidden');
+    const body = await readJson<{ verdict?: unknown; note?: unknown }>(c.req);
+    let version: string | undefined;
+    if (body.verdict === 'approved') {
+      await this.live?.flush(meta.id);
+      const snapshot = await this.documents.read(meta.id);
+      if (!snapshot) throw new HttpError(404, 'Файл не найден', 'not_found');
+      version = (await this.versions.add(meta.id, snapshot, { authors: [], name: `Утверждено: ${current.name}`.slice(0, 120), by: user.id }))?.id;
+    }
+    const isInsider = await this.isInsider(meta, user.id);
+    const { approval, message } = await this.changeApprovals(meta.id, nodeId, isInsider, (list) => decide(list, nodeId, user.id, body.verdict, { note: body.note, ...(version ? { version } : {}) }, Date.now()));
+    const sent = await this.approvalMail(approval!.by, approval!.status === 'APPROVED' ? 'approved' : 'changes', user, meta.name, meta.id, approval!);
+    return { ...message, ...(sent ? {} : { mailFailed: true }) };
+  }
+
+  private async withdrawApproval(c: Ctx): Promise<unknown> {
+    const { meta, user } = await this.access(c, 'editor');
+    const nodeId = c.params.nodeId!;
+    const { message } = await this.changeApprovals(meta.id, nodeId, await this.isInsider(meta, user?.id), (list) => withdraw(list, nodeId));
+    return message;
+  }
+
+  // ---------- comments ----------
+
+  /** Names of the people in the threads, for display (`reveal` — addresses of those without a name, for people of the file). */
+  private async authorNames(threads: Thread[], reveal = true): Promise<Map<string, string>> {
+    const names = new Map<string, string>();
+    for (const t of threads) {
+      for (const id of [...t.comments.flatMap((x) => [x.authorId, ...(x.mentions ?? [])]), t.resolvedBy ?? '']) {
+        if (!id || names.has(id)) continue;
+        names.set(id, this.shownName(await this.users.get(id), reveal));
+      }
+    }
+    return names;
   }
 
   /** A person as someone sees them: the name; without one — the address for people of the file, else HIDDEN_NAME (BUG-159). */
@@ -1768,6 +2024,16 @@ export class Api {
     if (!user) throw new HttpError(401, 'Войдите, чтобы комментировать', 'unauthorized');
     if (!this.commentsByUser.allow(user.id)) throw new HttpError(429, 'Слишком много комментариев. Попробуйте позже.', 'rate_limited');
     return user;
+  }
+
+  /** Who opened the file and when (step 9): for the owner and editors. */
+  private async listViews(c: Ctx): Promise<unknown> {
+    const { meta, user } = await this.access(c, 'editor');
+    const reveal = await this.isInsider(meta, user?.id);
+    const list = parseViews(await this.blobs.read(meta.id, 'views.json'));
+    const out = [];
+    for (const v of list) out.push({ name: v.userId ? this.shownName(await this.users.get(v.userId), reveal) : null, me: v.userId !== null && v.userId === user?.id, first: v.first, last: v.last, visits: v.visits });
+    return { views: out };
   }
 
   private async listComments(c: Ctx): Promise<unknown> {

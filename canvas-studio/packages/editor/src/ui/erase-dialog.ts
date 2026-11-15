@@ -18,7 +18,7 @@ type Backdrop = 'checker' | 'white' | 'black';
 type Point = { x: number; y: number };
 
 const BRUSHES: [EraseBrush, string, string][] = [
-  ['dry', tr('Сухая'), tr('Полосы ворса вдоль мазка, рвётся там, где кисть «высыхает» — как мазок краской (1)')],
+  ['dry', tr('Сухая'), tr('Полосы ворса вдоль мазка, рвётся там, где кисть «высыхает», как мазок краской (1)')],
   ['torn', tr('Рваная'), tr('Неровный, рваный край с крошками (2)')],
   ['splatter', tr('Брызги'), tr('Капли вокруг мазка (3)')],
   ['soft', tr('Мягкая'), tr('Круглая с мягким краем; край — «Жёсткость» (4)')],
@@ -136,7 +136,7 @@ export class EraseDialog {
       backdrops.append(h('button', { class: `erase-backdrop ${b}`, type: 'button', dataset: { value: b }, title: tr('Фон под картинкой: {0}', title), 'aria-label': title, onclick: () => setBackdrop(b) }));
     }
     setBackdrop('checker');
-    const hideAll = h('button', { class: 'text-button', type: 'button', title: tr('Скрыть картинку целиком — и проявлять её кистью в режиме «Вернуть»'), onclick: () => this.setAll(false) }, tr('Скрыть всё'));
+    const hideAll = h('button', { class: 'text-button', type: 'button', title: tr('Скрыть картинку целиком и проявлять её кистью в режиме «Вернуть»'), onclick: () => this.setAll(false) }, tr('Скрыть всё'));
     const restoreAll = h('button', { class: 'text-button', type: 'button', title: tr('Вернуть картинку целиком'), onclick: () => this.setAll(true) }, tr('Вернуть всё'));
     const cancel = h('button', { class: 'text-button', type: 'button', onclick: () => this.close() }, tr('Отмена'));
     this.apply = h('button', { class: 'text-button primary', type: 'button', onclick: () => void this.finish() }, tr('Применить'));
@@ -150,7 +150,7 @@ export class EraseDialog {
       h(
         'div',
         { class: 'crop-bar' },
-        h('span', { class: 'erase-hint' }, tr('Совет: «Скрыть всё», затем проявляйте картинку сухой кистью в режиме «Вернуть». ⌘ + колёсико — масштаб, пробел — сдвиг, Shift + щелчок — прямой мазок.')),
+        h('span', { class: 'erase-hint' }, tr('Совет: «Скрыть всё», потом проявляйте кистью «Вернуть». Масштаб: ⌘ + колёсико, сдвиг: пробел, прямой мазок: Shift + щелчок.')),
         h('span', { class: 'crop-spacer' }),
         cancel,
         this.apply,

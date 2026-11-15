@@ -10,3 +10,4 @@ export * from './hash.ts';
 export * from './i18n.ts';
 export * from './restore.ts';
 export * from './merge.ts';
+export * from './validate.ts';

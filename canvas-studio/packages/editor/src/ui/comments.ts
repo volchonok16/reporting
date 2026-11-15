@@ -9,7 +9,7 @@
 // "@" in a box lists the people of the file; those called get a letter
 // (the server decides who else is told) and are highlighted in the text.
 
-import { locale, plural, tr } from '#core';
+import { inMacApp, locale, plural, tr } from '#core';
 import { boardObjectOf } from '../board.ts';
 import type { Point } from '#geometry';
 import { comments as api, CloudError, type CommentItem, type CommentPlace, type CommentThread, type Person, type ThreadChange } from '../cloud.ts';
@@ -17,6 +17,9 @@ import type { Editor } from '../editor.ts';
 import type { Role } from '../storage.ts';
 import { askConfirm } from './dialog.ts';
 import { clear, h, icon } from './dom.ts';
+
+/** Comments need a file on the server; the macOS app has none yet (stage 2 of docs/ROADMAP.md). */
+const serverOnly = (): string => (inMacApp ? tr('Комментарии работают в файлах на сервере, в приложении их пока нет.') : tr('Комментарии работают в файлах на сервере.'));
 
 export interface CommentsHost {
   /** The open file on the server, or null (comments need the server). */
@@ -28,21 +31,32 @@ export interface CommentsHost {
 
 type Filter = 'open' | 'resolved' | 'all';
 
+/**
+ * Where pins are drawn and how a place maps to a point there: the canvas of
+ * the editor, or the screen of the prototype viewer (step 8, comments right in
+ * the viewer). Points are in CSS pixels of `overlay`.
+ */
+export interface CommentSurface {
+  overlay: HTMLElement;
+  size(): { width: number; height: number };
+  /** Where a pin of this place is shown, or null (not shown here). */
+  pointOf(place: Pick<CommentThread, 'pageId' | 'nodeId' | 'x' | 'y'>): Point | null;
+  /** The place a click at this point pins to, or null (nothing to pin to there). */
+  placeAt(p: Point): CommentPlace | null;
+  nodeName(id: string): string;
+  /** Pins are shown (in the viewer — only while commenting). */
+  pinsShown(): boolean;
+  /** Resolved discussions are shown too (the filter of the "Comments" tab). */
+  resolvedShown(): boolean;
+  /** The pins were drawn again (the viewer updates the count on its button). */
+  onRender?(): void;
+}
+
 /** Pins are drawn with their tail at the point: the bubble sits above and to the right. */
 const PIN = 28;
 
 function initial(name: string): string {
   return (name.trim()[0] ?? '?').toUpperCase();
-}
-
-/** Photo when the account has one; the letter stays if the picture does not load. */
-function face(name: string, avatar: string | undefined, pin = false): Node {
-  if (!avatar) return pin ? document.createTextNode(initial(name)) : h('span', { class: 'comment-avatar' }, initial(name));
-  const img = h('img', { class: pin ? '' : 'comment-avatar', src: avatar, alt: '' }) as HTMLImageElement;
-  img.addEventListener('error', () => {
-    img.replaceWith(pin ? document.createTextNode(initial(name)) : h('span', { class: 'comment-avatar' }, initial(name)));
-  });
-  return img;
 }
 
 /** The "@word" being typed right before the caret, or null. */
@@ -100,8 +114,11 @@ export class Comments {
   readonly overlay: HTMLElement;
   /** The "Comments" tab of the left panel. */
   readonly panel: HTMLElement;
-  private readonly editor: Editor;
+  private readonly editor: Editor | null;
   private readonly host: CommentsHost;
+  /** Where pins are drawn now: the canvas, or the prototype viewer over it. */
+  private surface: CommentSurface;
+  private readonly canvasSurface: CommentSurface;
   private threads = new Map<string, CommentThread>();
   private filter: Filter = 'open';
   private panelVisible = false;
@@ -120,17 +137,32 @@ export class Comments {
   /** A discussion to open once the list arrives (a link from a letter). */
   private pendingShow: string | null = null;
   private frame = 0;
-  private busy = false;
+  private sending = false;
+  /** Where the pins were last drawn, to skip drawing again when nothing moved. */
+  private layoutKey = '';
   private readonly list: HTMLElement;
   private readonly filterSelect: HTMLSelectElement;
   /** A pin being dragged to a new place. */
   private drag: { id: string; start: Point; at: Point; moved: boolean } | null = null;
 
-  constructor(editor: Editor, host: CommentsHost) {
+  /** `editor` is null in a separate tab showing only the prototype: there is no canvas, only a viewer surface. */
+  constructor(editor: Editor | null, host: CommentsHost) {
     this.editor = editor;
     this.host = host;
     this.overlay = h('div', { class: 'comment-overlay' });
-    for (const event of ['viewport', 'change', 'page', 'tool'] as const) editor.events.on(event, () => this.request());
+    this.canvasSurface = this.surface = {
+      overlay: this.overlay,
+      size: () => editor?.screenSize ?? { width: 0, height: 0 },
+      pointOf: (t) => {
+        const at = editor ? this.anchor(t) : null;
+        return at && editor ? editor.viewport.worldToScreen(at) : null;
+      },
+      placeAt: (p) => (editor ? this.placeAt(editor.viewport.screenToWorld(p)) : null),
+      nodeName: (id) => (editor?.doc.store.isAlive(id) ? String(editor.doc.get(id, 'name') ?? '') : ''),
+      pinsShown: () => !this.pinsHidden || editor?.tool === 'comment' || this.panelVisible || this.openId !== null,
+      resolvedShown: () => this.filter !== 'open',
+    };
+    if (editor) for (const event of ['viewport', 'change', 'page', 'tool'] as const) editor.events.on(event, () => this.request());
     this.filterSelect = h(
       'select',
       { class: 'field-select comments-filter', 'aria-label': tr('Какие обсуждения показывать') },
@@ -143,7 +175,7 @@ export class Comments {
       this.request();
     });
     this.list = h('div', { class: 'comments-list', role: 'list' });
-    const add = h('button', { class: 'icon-button', type: 'button', title: tr('Новый комментарий (C)'), onclick: () => editor.setTool('comment') }, icon('comment'));
+    const add = h('button', { class: 'icon-button', type: 'button', title: tr('Новый комментарий (C)'), onclick: () => editor?.setTool('comment') }, icon('comment'));
     this.panel = h('div', { class: 'comments-panel' }, h('div', { class: 'comments-bar' }, h('div', { class: 'select-wrap' }, this.filterSelect), add), this.list);
     // Esc closes the open discussion before anything else; a click on the canvas closes it too.
     window.addEventListener(
@@ -151,6 +183,8 @@ export class Comments {
       (e) => {
         if (e.key !== 'Escape' || (!this.openId && !this.draft)) return;
         e.stopPropagation();
+        // Taken: the prototype viewer (listening on the window too) leaves its own Esc for the next press.
+        e.preventDefault();
         this.close();
       },
       true,
@@ -164,7 +198,7 @@ export class Comments {
       'pointerdown',
       (e) => {
         if (this.overlay.contains(e.target as Node)) return;
-        if ((this.openId || this.draft) && this.editor.tool !== 'comment') this.close();
+        if (this.surface === this.canvasSurface && (this.openId || this.draft) && this.editor?.tool !== 'comment') this.close();
       },
       true,
     );
@@ -196,6 +230,40 @@ export class Comments {
     }
     this.request();
     return !this.pinsHidden;
+  }
+
+  /**
+   * Draws pins on another surface (the prototype viewer) until called with
+   * null: then back on the canvas. What was open there is closed.
+   */
+  useSurface(surface: CommentSurface | null): void {
+    const next = surface ?? this.canvasSurface;
+    if (next === this.surface) return;
+    this.surface.overlay.replaceChildren();
+    this.openId = null;
+    this.draft = null;
+    this.editing = null;
+    this.drag = null;
+    this.surface = next;
+    this.layoutKey = '';
+    this.request();
+  }
+
+  /** The surface moved under the pins (the viewer drew a frame): drawn again only if a pin is elsewhere now. */
+  reflow(): void {
+    if (this.layoutKey !== this.layout()) this.request();
+  }
+
+  /** Open discussions on this surface (for the count on the viewer's button). */
+  openCount(): number {
+    let n = 0;
+    for (const t of this.threads.values()) if (!t.resolved && this.surface.pointOf(t)) n++;
+    return n;
+  }
+
+  /** Something is open: a discussion or a new comment. */
+  get busy(): boolean {
+    return this.openId !== null || this.draft !== null;
   }
 
   setPanelVisible(visible: boolean): void {
@@ -243,15 +311,15 @@ export class Comments {
     this.request();
   }
 
-  private canComment(): boolean {
+  canComment(): boolean {
     const role = this.host.role();
     return !!this.host.userId() && (role === 'owner' || role === 'editor' || role === 'commenter');
   }
 
   private async call(fn: (fileId: string) => Promise<ThreadChange>): Promise<boolean> {
     const fileId = this.host.fileId();
-    if (!fileId || this.busy) return false;
-    this.busy = true;
+    if (!fileId || this.sending) return false;
+    this.sending = true;
     try {
       this.apply(await fn(fileId));
       return true;
@@ -259,7 +327,7 @@ export class Comments {
       this.host.toast(error instanceof CloudError ? error.message : tr('Не получилось сохранить комментарий'), 'error');
       return false;
     } finally {
-      this.busy = false;
+      this.sending = false;
     }
   }
 
@@ -273,7 +341,7 @@ export class Comments {
    * too). Over nothing — on the page.
    */
   private placeAt(world: Point): CommentPlace {
-    const editor = this.editor;
+    const editor = this.editor!;
     const d = editor.doc;
     const round = (n: number) => Math.round(n * 10) / 10;
     const hit = editor.scene.hitTest(world, { tolerance: 2 / editor.viewport.zoom })[0];
@@ -288,6 +356,7 @@ export class Comments {
   /** World point of a pin on the current page (null — another page, or its layer is gone). */
   private anchor(t: Pick<CommentThread, 'pageId' | 'nodeId' | 'x' | 'y'>): Point | null {
     const editor = this.editor;
+    if (!editor) return null;
     if (t.pageId !== editor.pageId) return null;
     if (!t.nodeId) return { x: t.x, y: t.y };
     if (!editor.doc.store.isAlive(t.nodeId) || editor.doc.pageOf(t.nodeId) !== editor.pageId) return null;
@@ -297,10 +366,17 @@ export class Comments {
 
   /** A click with the comment tool. */
   startAt(world: Point): void {
-    if (!this.host.fileId()) return this.host.toast(tr('Комментарии работают в файлах на сервере.'));
+    if (this.editor) this.startAtPoint(this.editor.viewport.worldToScreen(world));
+  }
+
+  /** A click at a point of the surface: a new discussion there. */
+  startAtPoint(p: Point): void {
+    if (!this.host.fileId()) return this.host.toast(serverOnly());
     if (!this.canComment()) return this.host.toast(this.host.userId() ? tr('У вас доступ только на просмотр: комментировать нельзя.') : tr('Войдите, чтобы комментировать.'));
+    const place = this.surface.placeAt(p);
+    if (!place) return this.close();
     this.openId = null;
-    this.draft = { place: this.placeAt(world), text: '' };
+    this.draft = { place, text: '' };
     this.request();
   }
 
@@ -338,6 +414,7 @@ export class Comments {
     const t = this.threads.get(id);
     if (!t) return;
     const editor = this.editor;
+    if (!editor || this.surface !== this.canvasSurface) return this.open(id);
     if (t.pageId !== editor.pageId && editor.doc.store.isAlive(t.pageId)) editor.setPage(t.pageId);
     const at = this.anchor(t);
     if (at) {
@@ -367,7 +444,20 @@ export class Comments {
   }
 
   private visible(t: CommentThread): boolean {
+    if (this.surface !== this.canvasSurface) return !t.resolved || this.surface.resolvedShown();
     return this.filter === 'all' || (this.filter === 'resolved') === t.resolved;
+  }
+
+  /** Where every pin, the new one and the open discussion would be drawn now. */
+  private layout(): string {
+    const s = this.surface;
+    if (!s.pinsShown() && !this.openId && !this.draft) return 'none';
+    const parts: string[] = [];
+    const add = (id: string, p: Point | null) => parts.push(p ? `${id}:${Math.round(p.x)},${Math.round(p.y)}` : `${id}:-`);
+    for (const t of this.threads.values()) if (this.visible(t) || t.id === this.openId) add(t.id, s.pointOf(t));
+    if (this.draft) add('draft', s.pointOf(this.draft.place));
+    const { width, height } = s.size();
+    return `${width}x${height}|${parts.join('|')}`;
   }
 
   // ---------- drawing ----------
@@ -381,36 +471,37 @@ export class Comments {
 
   private render(): void {
     this.renderList();
-    const editor = this.editor;
-    const vp = editor.viewport;
-    const showPins = !this.pinsHidden || editor.tool === 'comment' || this.panelVisible || this.openId !== null;
+    const surface = this.surface;
+    const overlay = surface.overlay;
+    this.layoutKey = this.layout();
     const nodes: HTMLElement[] = [];
     // Keep focus and the caret in a box being typed in across re-renders.
-    const focused = document.activeElement instanceof HTMLTextAreaElement && this.overlay.contains(document.activeElement) ? document.activeElement.dataset.box : null;
-    if (showPins) {
+    const focused = document.activeElement instanceof HTMLTextAreaElement && overlay.contains(document.activeElement) ? document.activeElement.dataset.box : null;
+    if (surface.pinsShown() || this.openId !== null) {
       for (const t of this.threads.values()) {
         if (!this.visible(t) && t.id !== this.openId) continue;
-        const at = this.drag?.id === t.id ? this.drag.at : this.anchor(t);
+        const at = this.drag?.id === t.id ? this.drag.at : surface.pointOf(t);
         if (!at) continue;
-        nodes.push(this.pin(t, vp.worldToScreen(at)));
+        nodes.push(this.pin(t, at));
       }
     }
     if (this.draft) {
-      const at = this.anchor(this.draft.place);
-      if (at) {
-        const s = vp.worldToScreen(at);
+      const s = surface.pointOf(this.draft.place);
+      if (s) {
         nodes.push(h('div', { class: 'comment-pin draft', style: { transform: `translate(${s.x}px, ${s.y - PIN}px)` } }, '+'));
         nodes.push(this.composer(s));
       } else this.draft = null;
     }
     const open = this.openId ? this.threads.get(this.openId) : undefined;
     if (open) {
-      const at = this.anchor(open);
-      if (at) nodes.push(this.popover(open, vp.worldToScreen(at)));
+      const at = surface.pointOf(open);
+      if (at) nodes.push(this.popover(open, at));
+      else this.openId = null;
     }
-    this.overlay.replaceChildren(...nodes);
+    overlay.replaceChildren(...nodes);
+    surface.onRender?.();
     if (focused) {
-      const box = this.overlay.querySelector<HTMLTextAreaElement>(`textarea[data-box="${focused}"]`);
+      const box = overlay.querySelector<HTMLTextAreaElement>(`textarea[data-box="${focused}"]`);
       if (box) {
         box.focus({ preventScroll: true });
         box.setSelectionRange(box.value.length, box.value.length);
@@ -430,7 +521,7 @@ export class Comments {
         title: first ? `${first.author}: ${first.text.slice(0, 120)}` : '',
         'aria-label': tr('Обсуждение: {0}', first?.author ?? ''),
       },
-      face(first?.author ?? '', first?.avatar, true),
+      initial(first?.author ?? '?'),
       replies > 0 ? h('span', { class: 'comment-pin-count' }, String(replies)) : null,
     );
     // Click opens; dragging moves the pin (its author or an editor).
@@ -438,29 +529,28 @@ export class Comments {
       if (e.button !== 0) return;
       e.stopPropagation();
       const canMove = this.canComment() && (first?.authorId === this.host.userId() || this.host.role() === 'owner' || this.host.role() === 'editor');
-      const start = this.editor.viewport.screenToWorld(this.screenPoint(e));
-      this.drag = canMove ? { id: t.id, start, at: this.anchor(t) ?? start, moved: false } : null;
+      const start = this.screenPoint(e);
+      this.drag = canMove ? { id: t.id, start, at: this.surface.pointOf(t) ?? start, moved: false } : null;
       el.setPointerCapture(e.pointerId);
     });
     el.addEventListener('pointermove', (e) => {
       const d = this.drag;
       if (!d || d.id !== t.id) return;
-      const p = this.editor.viewport.screenToWorld(this.screenPoint(e));
-      const origin = this.anchor(t) ?? d.start;
-      const zoom = this.editor.viewport.zoom;
-      if (!d.moved && Math.hypot(p.x - d.start.x, p.y - d.start.y) * zoom < 4) return;
+      const p = this.screenPoint(e);
+      const origin = this.surface.pointOf(t) ?? d.start;
+      if (!d.moved && Math.hypot(p.x - d.start.x, p.y - d.start.y) < 4) return;
       d.moved = true;
       d.at = { x: origin.x + p.x - d.start.x, y: origin.y + p.y - d.start.y };
       // Moved in place: re-rendering would replace the element and lose the pointer.
-      const s = this.editor.viewport.worldToScreen(d.at);
-      el.style.transform = `translate(${s.x}px, ${s.y - PIN}px)`;
+      el.style.transform = `translate(${d.at.x}px, ${d.at.y - PIN}px)`;
     });
     el.addEventListener('pointerup', () => {
       const d = this.drag;
       this.drag = null;
       if (d?.moved) {
-        const place = this.placeAt(d.at);
-        void this.call((f) => api.move(f, t.id, place));
+        const place = this.surface.placeAt(d.at);
+        if (place) void this.call((f) => api.move(f, t.id, place));
+        else this.request();
         return;
       }
       if (this.openId === t.id) this.close();
@@ -473,14 +563,14 @@ export class Comments {
   }
 
   private screenPoint(e: PointerEvent): Point {
-    const r = this.overlay.getBoundingClientRect();
+    const r = this.surface.overlay.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   }
 
   /** A box positioned next to a pin, kept inside the canvas. */
   private box(s: Point, cls: string, ...children: (HTMLElement | null)[]): HTMLElement {
     const width = 300;
-    const { width: W, height: H } = this.editor.screenSize;
+    const { width: W, height: H } = this.surface.size();
     const left = Math.max(8, Math.min(s.x + PIN + 8, W - width - 8));
     const top = Math.max(8, Math.min(s.y - PIN, H - 120));
     const el = h('div', { class: `comment-popover ${cls}`, style: { left: `${left}px`, top: `${top}px`, width: `${width}px`, maxHeight: `${Math.max(160, H - top - 16)}px` } }, ...children);
@@ -597,7 +687,7 @@ export class Comments {
     const box = this.textBox('new', draft.text, tr('Добавьте комментарий'), (v) => (draft.text = v), send);
     queueMicrotask(() => {
       const input = box.querySelector('textarea');
-      if (input && document.activeElement !== input && !this.overlay.querySelector('textarea:focus')) input.focus({ preventScroll: true });
+      if (input && document.activeElement !== input && !this.surface.overlay.querySelector('textarea:focus')) input.focus({ preventScroll: true });
     });
     return this.box(s, 'composer', h('div', { class: 'comment-reply' }, box, h('button', { class: 'comment-send', type: 'button', title: tr('Отправить (Enter)'), onclick: send }, '↑')));
   }
@@ -656,7 +746,7 @@ export class Comments {
         h(
           'div',
           { class: 'comment-meta' },
-          face(c.author, c.avatar),
+          h('span', { class: 'comment-avatar' }, initial(c.author)),
           h('span', { class: 'comment-author' }, c.author || tr('Без имени')),
           h('time', { class: 'comment-time', datetime: new Date(c.createdAt).toISOString(), title: new Date(c.createdAt).toLocaleString(locale()) }, when(c.createdAt) + (c.editedAt ? ` · ${tr('изменено')}` : '')),
         ),
@@ -676,7 +766,7 @@ export class Comments {
     const footer = can
       ? h('div', { class: 'comment-reply' }, this.textBox('reply', this.reply, tr('Ответить'), (v) => (this.reply = v), send), h('button', { class: 'comment-send', type: 'button', title: tr('Отправить (Enter)'), onclick: send }, '↑'))
       : h('p', { class: 'comment-note' }, this.host.userId() ? tr('Отвечать могут те, у кого есть доступ на комментирование.') : tr('Войдите, чтобы отвечать.'));
-    const node = t.nodeId && this.editor.doc.store.isAlive(t.nodeId) ? String(this.editor.doc.get(t.nodeId, 'name') ?? '') : '';
+    const node = t.nodeId ? this.surface.nodeName(t.nodeId) : '';
     return this.box(s, 'thread', header, node ? h('div', { class: 'comment-on' }, tr('На слое «{0}»', node)) : null, h('div', { class: 'comment-items' }, ...items), footer);
   }
 
@@ -704,10 +794,11 @@ export class Comments {
   // ---------- the list on the left ----------
 
   private renderList(): void {
-    if (!this.panelVisible) return;
+    const editor = this.editor;
+    if (!this.panelVisible || !editor) return;
     clear(this.list);
     if (!this.host.fileId()) {
-      this.list.append(h('p', { class: 'comments-empty' }, tr('Комментарии работают в файлах на сервере.')));
+      this.list.append(h('p', { class: 'comments-empty' }, serverOnly()));
       return;
     }
     const all = [...this.threads.values()];
@@ -717,16 +808,15 @@ export class Comments {
       this.list.append(h('p', { class: 'comments-empty' }, text));
       return;
     }
-    const pages = new Map(this.editor.doc.pages().map((p) => [p, String(this.editor.doc.get(p, 'name') ?? '')]));
+    const pages = new Map(editor.doc.pages().map((p) => [p, String(editor.doc.get(p, 'name') ?? '')]));
     for (const t of shown) {
       const first = t.comments[0];
       if (!first) continue;
       const replies = t.comments.length - 1;
       const last = t.comments.at(-1)!;
-      const lost = t.nodeId !== null && !this.editor.doc.store.isAlive(t.nodeId);
+      const lost = t.nodeId !== null && !editor.doc.store.isAlive(t.nodeId);
       const meta = [
         pages.get(t.pageId) ?? tr('Страница удалена'),
-        replies > 0 ? tr('ответил {0}', last.author || tr('Без имени')) : '',
         replies > 0 ? `${replies} ${plural(replies, tr('ответ'), tr('ответа'), tr('ответов'))}` : '',
         lost ? tr('слой удалён') : '',
         t.resolved ? tr('решено') : '',
@@ -734,7 +824,7 @@ export class Comments {
       const row = h(
         'button',
         { class: `comment-row${t.id === this.openId ? ' active' : ''}${t.resolved ? ' resolved' : ''}`, type: 'button', role: 'listitem', onclick: () => this.show(t.id) },
-        face(first.author, first.avatar),
+        h('span', { class: 'comment-avatar' }, initial(first.author)),
         h(
           'span',
           { class: 'comment-row-body' },

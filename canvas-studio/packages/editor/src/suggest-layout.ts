@@ -233,7 +233,7 @@ export function suggestAutoLayout(editor: Editor): void {
   const roots = editor.topLevelSelection();
   const plan = planSuggest(editor, roots.length ? roots : editor.doc.children(editor.pageId));
   if (plan.frames.length === 0) {
-    editor.toast(roots.length ? tr('Не нашлось фреймов, где слои можно выстроить рядами и столбцами') : tr('Выделите фрейм — раскладка подберётся для него и всего внутри'));
+    editor.toast(roots.length ? tr('Не нашлось фреймов, где слои можно выстроить рядами и столбцами') : tr('Выделите фрейм, и раскладка подберётся для него и всего внутри'));
     return;
   }
   applySuggest(editor, plan);

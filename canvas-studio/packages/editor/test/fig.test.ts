@@ -265,7 +265,7 @@ test('convert: pages, frames with auto layout, groups, shapes, texts with mixed 
   assert.deepEqual([...r.fonts], ['Inter']);
 });
 
-test('convert: a FigJam shape with text becomes a group of the shape and an editable text', () => {
+test('convert: a FigJam shape with text — a frame with the text (rectangles), a group (other outlines), the shape alone (no text)', () => {
   const g = (l: number) => ({ sessionID: 1, localID: l });
   const part = (localID: number) => ({ guidPath: { guids: [{ sessionID: 40000000, localID }] } });
   const nodeChanges = [
@@ -288,13 +288,33 @@ test('convert: a FigJam shape with text becomes a group of the shape and an edit
       },
     },
   ];
-  const { doc, skipped } = convertFig({ message: { nodeChanges }, images: new Map(), kind: 'design', version: 100 }, 'Доска');
-  const [group] = doc.children(doc.pages()[0]!);
+  const swt = nodeChanges[2] as Record<string, unknown> & { nodeGenerationData: { overrides: Record<string, unknown>[] }; derivedImmutableFrameData: { overrides: Record<string, unknown>[] } };
+  const at = (x: number) => ({ ...(swt.transform as object), m02: x });
+  const board = { guid: g(5), parentIndex: { guid: g(1), position: '#' }, type: 'FRAME', name: 'План', size: { x: 400, y: 300 }, transform: at(900) };
+  const inFrame = { ...swt, guid: g(6), name: 'В рамке', parentIndex: { guid: g(5), position: '!' }, transform: at(10) };
+  const oval = { ...swt, guid: g(3), name: 'Круг', shapeWithTextType: 'ELLIPSE', transform: at(300) };
+  const bare = { ...swt, guid: g(4), name: 'Пусто', transform: at(600), nodeGenerationData: { overrides: [swt.nodeGenerationData.overrides[0]] }, derivedImmutableFrameData: { overrides: [swt.derivedImmutableFrameData.overrides[0]] } };
+  const { doc, skipped, count } = convertFig({ message: { nodeChanges: [...nodeChanges, oval, bare, board, inFrame] }, images: new Map(), kind: 'design', version: 100 }, 'Доска');
+  const [group, oGroup, alone, plan] = doc.children(doc.pages()[0]!);
+  // On the page a frame would get a screen title over it: a group of the shape and the text, as before.
   assert.equal(doc.type(group!), 'GROUP');
   assert.equal(doc.get(group!, 'x'), 50);
   const [shape, text] = doc.children(group!);
   assert.equal(doc.type(shape!), 'RECTANGLE');
   assert.equal(doc.get(shape!, 'cornerRadius'), 6);
+  assert.deepEqual(doc.children(oGroup!).map((c) => doc.type(c)), ['ELLIPSE', 'TEXT']);
+  // No text: the shape alone, under the shape-with-text's name and place.
+  assert.equal(doc.type(alone!), 'RECTANGLE');
+  assert.equal(doc.get(alone!, 'name'), 'Пусто');
+  assert.equal(doc.get(alone!, 'x'), 600);
+  assert.equal(doc.get(alone!, 'cornerRadius'), 6);
+  // Inside a frame (no title there): one frame with the text, two layers instead of three.
+  const [framed] = doc.children(plan!);
+  assert.equal(doc.type(framed!), 'FRAME');
+  assert.equal(doc.get(framed!, 'cornerRadius'), 6);
+  assert.equal(doc.get(framed!, 'clipsContent'), false);
+  assert.deepEqual(doc.children(framed!).map((c) => doc.type(c)), ['TEXT']);
+  assert.equal(count, 3 + 3 + 1 + 1 + 2, 'the count says what was made');
   assert.equal(doc.type(text!), 'TEXT');
   assert.equal(doc.get(text!, 'characters'), '2Q 2026');
   assert.equal(doc.get(text!, 'textAlignH'), 'CENTER');

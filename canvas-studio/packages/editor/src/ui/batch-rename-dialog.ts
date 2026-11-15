@@ -49,7 +49,7 @@ export async function openBatchRename(editor: Editor): Promise<void> {
     ],
     confirm: tr('Переименовать'),
     cancel: tr('Отмена'),
-    validate: () => (regexError(rule()) ? tr('Исправьте выражение в поле «Найти»') : renameAll(names, rule()).every((n, i) => n.trim() === '' || n === names[i]) ? tr('Имена не изменятся — впишите новое имя или что заменить') : null),
+    validate: () => (regexError(rule()) ? tr('Исправьте выражение в поле «Найти»') : renameAll(names, rule()).every((n, i) => n.trim() === '' || n === names[i]) ? tr('Имена не изменятся. Впишите новое имя или что заменить') : null),
     focus: () => {
       requestAnimationFrame(() => pattern.select());
       return pattern;

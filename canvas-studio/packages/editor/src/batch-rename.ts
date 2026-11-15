@@ -103,7 +103,7 @@ export function matchingLayers(editor: Editor): NodeId[] {
 export function selectMatching(editor: Editor): void {
   const found = matchingLayers(editor);
   if (found.length <= editor.selection.length) {
-    editor.toast(editor.selection.length === 0 ? tr('Выделите слой — найдутся такие же на странице') : tr('Других таких же слоёв на странице нет'));
+    editor.toast(editor.selection.length === 0 ? tr('Выделите слой, и найдутся такие же на странице') : tr('Других таких же слоёв на странице нет'));
     return;
   }
   editor.setSelection(found);

@@ -182,9 +182,9 @@ export class ContentPanel {
       rows.push(this.row(entry));
       if (this.open === entry.set.id) rows.push(this.values(entry));
     }
-    if (entries.length === 0 && this.category !== 'mine') rows.push(h('p', { class: 'ip-empty' }, tr('Ничего не нашлось — попробуйте другое слово')));
+    if (entries.length === 0 && this.category !== 'mine') rows.push(h('p', { class: 'ip-empty' }, tr('Ничего не нашлось. Попробуйте другое слово')));
     if (entries.length === 0 && this.category === 'mine' && !this.editing)
-      rows.push(h('p', { class: 'ip-empty' }, tr('Свои наборы: вставьте список (по значению в строке) или таблицу из Excel и Google Таблиц — набор на каждый столбец; или выберите картинки.')));
+      rows.push(h('p', { class: 'ip-empty' }, tr('Свой набор: вставьте список по строкам, таблицу из Excel или Google Таблиц (столбец станет набором) или выберите картинки.')));
     this.list.replaceChildren(...rows);
     this.showStatus();
     // Opened values or the form change the height: the panel stays by the tool panel.
@@ -258,10 +258,10 @@ export class ContentPanel {
     if (this.el.hidden) return;
     const texts = contentTargets(this.editor, 'text').length;
     const shapes = contentTargets(this.editor, 'image').length;
-    if (!this.editor.selection.length) this.status.textContent = tr('Ничего не выделено — щелчок добавит новый слой');
+    if (!this.editor.selection.length) this.status.textContent = tr('Ничего не выделено, щелчок добавит новый слой');
     else if (texts || shapes)
       this.status.textContent = [texts ? `${texts} ${plural(texts, tr('текст'), tr('текста'), tr('текстов'))}` : '', shapes ? `${shapes} ${plural(shapes, tr('фигура'), tr('фигуры'), tr('фигур'))}` : ''].filter(Boolean).join(', ') + tr(' — заполнятся по щелчку');
-    else this.status.textContent = tr('В выделении нет текстов и фигур — щелчок добавит новый слой');
+    else this.status.textContent = tr('В выделении нет текстов и фигур, щелчок добавит новый слой');
   }
 
   /**

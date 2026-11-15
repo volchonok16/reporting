@@ -6,6 +6,7 @@
 // the details only when needed (Figma has no such thing).
 
 import { SHAPE_TYPES, tr, type Color, type NodeId, type Paint } from '#core';
+import { boardColorsOf } from '../board.ts';
 import type { Command } from '../commands.ts';
 import { MIXED_RUN } from '#layout';
 import type { Editor } from '../editor.ts';
@@ -139,7 +140,7 @@ export class ContextBar {
     const board = e.editingText ? null : this.boardMode && anyLocked(e, ids) ? 'LOCKED' : boardBarKind(d, ids);
     const kind = board ? `board-${board}` : cells ? 'cells' : types.length === 1 && types[0] === 'TEXT' ? 'text' : ids.length > 1 ? 'many' : image ? 'image' : SHAPES.has(types[0]!) ? 'shape' : 'other';
     // A board's own colours are in its bar: a colour added or removed (by anyone) rebuilds it.
-    const key = `${kind}:${ids.length === 1 ? ids[0] : ids.join(',')}${board ? `:${d.get(d.rootId, 'boardColors').join('')}` : ''}`;
+    const key = `${kind}:${ids.length === 1 ? ids[0] : ids.join(',')}${board ? `:${boardColorsOf(d).join('')}` : ''}`;
     if (key !== this.kind) {
       this.kind = key;
       this.build(kind, ids);
@@ -331,7 +332,7 @@ export class ContextBar {
   private dots(label: string, base: readonly string[], read: () => string | null, write: (hex: string) => void, names?: readonly string[], own = false): HTMLElement {
     const d = this.editor.doc;
     // A board's own colours come after the usual ones (step 10), and «+» adds one.
-    const extra = own ? d.get(d.rootId, 'boardColors').filter((c) => !base.some((x) => x.toUpperCase() === c)) : [];
+    const extra = own ? boardColorsOf(d).filter((c) => !base.some((x) => x.toUpperCase() === c)) : [];
     const colors = [...base, ...extra];
     const wrap = h('span', { class: 'cb-dots', role: 'group', 'aria-label': label });
     const buttons = colors.map((hex, i) => {

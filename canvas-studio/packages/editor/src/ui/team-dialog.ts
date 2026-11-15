@@ -4,7 +4,6 @@
 
 import { locale, tr } from '#core';
 import { CloudError, teams, type TeamInfo, type TeamRole } from '../cloud.ts';
-import { colleagueEmailField } from './colleague-picker.ts';
 import { askConfirm } from './dialog.ts';
 import { clear, h, icon } from './dom.ts';
 
@@ -110,18 +109,18 @@ export class TeamDialog {
     let form: HTMLElement | string = '';
     let email: HTMLInputElement | null = null;
     if (admin) {
-      const who = colleagueEmailField(tr('Фамилия или email'), tr('Фамилия или email'));
-      email = who.input;
+      const field = h('input', { class: 'dialog-input share-email', type: 'email', placeholder: tr('Email коллеги'), 'aria-label': 'Email', autocomplete: 'off', spellcheck: false });
+      email = field;
       let role: TeamRole = 'editor';
       const inviteRole = roleSelect(role, (r) => (role = r), tr('Роль для приглашения'));
       const invite = h('button', { class: 'text-button primary', type: 'submit' }, tr('Пригласить'));
-      form = h('form', { class: 'share-invite', novalidate: true }, who.wrap, inviteRole, invite);
+      form = h('form', { class: 'share-invite', novalidate: true }, field, inviteRole, invite);
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const value = who.email();
-        if (!value) {
-          this.error.textContent = tr('Выберите коллегу из списка или введите email');
-          who.input.focus();
+        const value = field.value.trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)) {
+          this.error.textContent = tr('Проверьте email');
+          field.focus();
           return;
         }
         invite.disabled = true;
@@ -169,7 +168,7 @@ export class TeamDialog {
     if (team.role !== 'owner') {
       const leave = h('button', { class: 'text-button', type: 'button' }, tr('Выйти из команды'));
       leave.addEventListener('click', async () => {
-        const ok = await askConfirm({ title: tr('Выйти из команды?'), message: tr('Файлы команды «{0}» перестанут быть вам доступны (кроме созданных вами — они останутся в ваших). Вернуться можно по новому приглашению.', team.name), confirm: tr('Выйти'), danger: true });
+        const ok = await askConfirm({ title: tr('Выйти из команды?'), message: tr('Файлы команды «{0}» перестанут быть вам доступны, кроме созданных вами: они останутся в ваших. Вернуться можно по новому приглашению.', team.name), confirm: tr('Выйти'), danger: true });
         if (!ok) return;
         try {
           await teams.removeMember(id, this.target.me);
@@ -185,7 +184,7 @@ export class TeamDialog {
 
     this.body.append(
       form,
-      h('p', { class: 'share-muted' }, admin ? tr('Все в команде видят её проекты и файлы — с правами своей роли.') : tr('Приглашать людей могут администраторы команды.')),
+      h('p', { class: 'share-muted' }, admin ? tr('Все в команде видят её проекты и файлы, с правами своей роли.') : tr('Приглашать людей могут администраторы команды.')),
       h('h3', { class: 'share-heading' }, tr('Участники: {0}', team.members.length)),
       people,
       footer,

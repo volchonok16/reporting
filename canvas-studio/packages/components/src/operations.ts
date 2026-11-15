@@ -3,8 +3,8 @@
 // caller's transaction; synchronisation then fills instances in.
 
 import { tr } from '#core';
-import { randomId, type ComponentPropDef, type ComponentPropType, type Document, type NodeId, type NodeProps, type Position, type PropBinding, type Transaction } from '#core';
-import { alive, componentSetOf, ensureLayerKeys, isInstanceLayer, isTopLevelInstance, owningComponent, wouldCreateCycle } from './sync.ts';
+import { isPropKey, randomId, type ComponentPropDef, type ComponentPropType, type Document, type NodeId, type NodeProps, type Position, type PropBinding, type Transaction } from '#core';
+import { alive, componentSetOf, countOverrides, ensureLayerKeys, isInstanceLayer, isOverridable, isTopLevelInstance, keyOf, owningComponent, sourceOf, wouldCreateCycle } from './sync.ts';
 
 /** Properties that describe a component link; never carried into plain layers. */
 const LINK_KEYS = ['componentKey', 'overrides', 'parkedOverrides', 'mainComponent', 'propValues'] as const;
@@ -67,6 +67,124 @@ function unlink(doc: Document, tx: Transaction, id: NodeId): void {
   if (doc.type(id) === 'INSTANCE') return; // its layers still mirror its component
   tx.set(id, 'overrides', []);
   for (const child of doc.children(id)) unlink(doc, tx, child);
+}
+
+/**
+ * Brings back the deleted main component of a top-level instance (step 6, Figma's «Restore component»), with
+ * its own id, so every instance of it is linked again at once.
+ * - Deleted in this session (its record is still in the file): it is made alive where it was — inside its
+ *   set if the set was deleted with it; if its place is gone too, at `place`.
+ * - Gone from the file (deleted, then saved and opened again): it is rebuilt from the instance of it with
+ *   the fewest overrides — each layer under its old id (the instances' links), its properties from the
+ *   bindings its layers keep — at `place`.
+ * Returns the component, or null when the instance's component is alive or unknown.
+ */
+export function restoreMainComponent(doc: Document, tx: Transaction, instance: NodeId, place: { parent: NodeId; x: number; y: number }): NodeId | null {
+  if (!isTopLevelInstance(doc, instance)) return null;
+  const main = doc.get(instance, 'mainComponent');
+  if (!main || alive(doc, main)) return null;
+  const record = doc.store.record(main);
+  if (record) {
+    if (record.type !== 'COMPONENT') return null;
+    const parent = record.parent;
+    const set = parent !== null && doc.store.record(parent)?.type === 'COMPONENT_SET' ? parent : null;
+    if (parent !== null && doc.store.isAlive(parent)) {
+      tx.set(main, 'deleted', false);
+    } else if (set && doc.store.get(set, 'deleted') === true && doc.store.record(set)!.parent !== null && doc.store.isAlive(doc.store.record(set)!.parent!)) {
+      tx.set(set, 'deleted', false);
+      tx.set(main, 'deleted', false);
+    } else {
+      tx.move(main, place.parent, { at: 'end' });
+      tx.set(main, 'x', place.x);
+      tx.set(main, 'y', place.y);
+      tx.set(main, 'deleted', false);
+    }
+    return alive(doc, main) ? main : null;
+  }
+  // Rebuilt: from the instance that repeats the component most closely.
+  const instances: NodeId[] = [];
+  for (const r of doc.store.allRecords()) if (r.type === 'INSTANCE' && r.props.mainComponent === main && doc.store.isAlive(r.id) && isTopLevelInstance(doc, r.id)) instances.push(r.id);
+  const from = instances.sort((a, b) => countOverrides(doc, a) - countOverrides(doc, b))[0] ?? instance;
+  const props = structuredClone(doc.store.record(from)!.props) as Partial<NodeProps>;
+  for (const key of [...LINK_KEYS, 'deleted', 'layerKey', 'componentProps'] as const) delete props[key];
+  props.x = place.x;
+  props.y = place.y;
+  const defs: ComponentPropDef[] = [];
+  if (!tx.revive(main, 'COMPONENT', place.parent, doc.indexFor(place.parent), props)) return null;
+  for (const child of doc.children(from)) rebuildLayer(doc, tx, child, main, null, defs);
+  if (defs.length) tx.set(main, 'componentProps', defs);
+  return main;
+}
+
+const TYPE_FOR: Record<PropBinding, ComponentPropType> = { characters: 'TEXT', visible: 'BOOLEAN', mainComponent: 'INSTANCE_SWAP' };
+
+/**
+ * A layer of the rebuilt component (or of an instance nested in it) under the id the instance's copy links
+ * to. `source` — what the new layer's parent is synced from (null for the component's own layers).
+ */
+function rebuildLayer(doc: Document, tx: Transaction, copy: NodeId, parent: NodeId, parentSource: NodeId | null, defs: ComponentPropDef[]): void {
+  const id = doc.get(copy, 'componentKey');
+  if (!id || doc.store.has(id)) return;
+  const props = structuredClone(doc.store.record(copy)!.props) as Partial<NodeProps>;
+  for (const key of ['deleted', 'overrides', 'parkedOverrides'] as const) delete props[key];
+  const key = doc.get(copy, 'layerKey') ?? id;
+  // Inside a nested instance: synced from the layer of its source with the same key.
+  const source = parentSource ? (doc.children(parentSource).find((c) => keyOf(doc, c) === key) ?? null) : null;
+  props.componentKey = source;
+  if (!parentSource) {
+    props.layerKey = key;
+    if (doc.type(copy) !== 'INSTANCE') delete props.propValues;
+    // The component's properties, from what its layers are bound to (names as when a property is added).
+    for (const [binding, propId] of Object.entries(props.propRefs ?? {}) as [PropBinding, string][]) {
+      if (!propId || defs.some((d) => d.id === propId)) continue;
+      const type = TYPE_FOR[binding];
+      if (type) defs.push({ id: propId, name: uniqueName(defs, type === 'BOOLEAN' ? tr('Показать «{0}»', String(props.name ?? '')) : String(props.name ?? '')), type });
+    }
+  }
+  if (!tx.revive(id, doc.type(copy), parent, doc.indexFor(parent), props)) return;
+  const main = doc.get(copy, 'mainComponent');
+  const childSource = doc.type(copy) === 'INSTANCE' && !parentSource ? (alive(doc, main) ? main : null) : source;
+  for (const child of doc.children(copy)) rebuildLayer(doc, tx, child, id, childSource, defs);
+}
+
+/**
+ * «Перенести изменения в компонент» (step 6, Figma's Push changes to main component): the overrides of a
+ * top-level instance become the values of its main component — each overridden property is written to the
+ * layer it mirrors (a layer of the component, or of an instance nested in it, where it becomes that nested
+ * instance's override) and the instance's own override is cleared. The instance looks the same; the other
+ * instances take the change unless they override that property themselves. Property values (propValues) are
+ * the instance's choices and stay. Returns how many properties were carried over.
+ */
+export function pushOverridesToMain(doc: Document, tx: Transaction, instance: NodeId): number {
+  if (!isTopLevelInstance(doc, instance)) return 0;
+  const main = doc.get(instance, 'mainComponent');
+  if (!alive(doc, main) || doc.type(main) !== 'COMPONENT') return 0;
+  let pushed = 0;
+  const carry = (layer: NodeId, target: NodeId) => {
+    const all = doc.get(layer, 'overrides');
+    if (all.length === 0) return;
+    // The instance's own name is what it is called where it stands, not the component's name.
+    const keys = layer === instance ? all.filter((k) => k !== 'name') : all;
+    for (const key of keys) {
+      if (!isPropKey(key)) continue;
+      tx.set(target, key, structuredClone(doc.get(layer, key)) as never);
+      pushed++;
+    }
+    // A layer of an instance nested in the component: the value is that nested instance's override.
+    if (target !== main) {
+      const own = new Set(doc.get(target, 'overrides'));
+      for (const key of keys) if (isOverridable(doc, target, key)) own.add(key);
+      if (own.size !== doc.get(target, 'overrides').length) tx.set(target, 'overrides', [...own]);
+    }
+    tx.set(layer, 'overrides', all.filter((k) => !keys.includes(k)));
+  };
+  carry(instance, main);
+  doc.store.walk(instance, (id) => {
+    const source = sourceOf(doc, id);
+    // Only into this component (a swapped nested instance mirrors another component: not changed from here).
+    if (source && owningComponent(doc, source) === main) carry(id, source);
+  });
+  return pushed;
 }
 
 /** Main component of an instance (or of the instance containing a layer). */
@@ -167,6 +285,57 @@ export function sameLayerInVariants(doc: Document, layer: NodeId): NodeId[] {
 
 export function renameProperty(doc: Document, tx: Transaction, owner: NodeId, propId: string, name: string): void {
   tx.set(owner, 'componentProps', doc.get(owner, 'componentProps').map((p) => (p.id === propId ? { ...p, name } : p)));
+}
+
+/** The preferred components of a swap property (step 6): kept in the given order, without repeats. */
+export function setPreferredValues(doc: Document, tx: Transaction, owner: NodeId, propId: string, components: readonly NodeId[]): void {
+  const list = [...new Set(components)];
+  tx.set(owner, 'componentProps', doc.get(owner, 'componentProps').map((p) => (p.id === propId ? (list.length ? { ...p, preferred: list } : (({ preferred: _, ...rest }) => rest)(p)) : p)));
+}
+
+/**
+ * The preferred components for swapping `instance` (a nested instance bound to a swap property of the
+ * component its outer instance shows), alive ones only; [] when it is not bound or has none.
+ */
+export function preferredFor(doc: Document, instance: NodeId): NodeId[] {
+  const source = doc.get(instance, 'componentKey');
+  if (!alive(doc, source)) return [];
+  const propId = doc.get(source, 'propRefs')?.mainComponent;
+  const component = owningComponent(doc, source);
+  if (!propId || !component) return [];
+  const def = propertyDefs(doc, component).find((d) => d.id === propId);
+  return (def?.preferred ?? []).filter((id) => alive(doc, id) && doc.type(id) === 'COMPONENT');
+}
+
+/** Instances placed in a component (not the layers of other instances), in layer order — those that can be exposed. */
+export function nestedInstancesOf(doc: Document, component: NodeId): NodeId[] {
+  const out: NodeId[] = [];
+  doc.store.walk(component, (id) => {
+    if (doc.type(id) !== 'INSTANCE') return true;
+    out.push(id);
+    return false;
+  });
+  return out;
+}
+
+/** Shows (or stops showing) a nested instance's properties in the component's instances; the same layer in every variant. */
+export function setExposed(doc: Document, tx: Transaction, layer: NodeId, on: boolean): void {
+  for (const target of sameLayerInVariants(doc, layer)) if (doc.type(target) === 'INSTANCE') tx.set(target, 'exposedInstance', on);
+}
+
+/** The nested instances of `instance` whose properties its panel shows (exposed in their components), outermost first. */
+export function exposedIn(doc: Document, instance: NodeId): NodeId[] {
+  const out: NodeId[] = [];
+  // The flag of the layer it mirrors decides (a swapped variant syncs from its own component, which has none).
+  const exposed = (id: NodeId): boolean => {
+    for (let at: NodeId | null = id, n = 0; at && n < 64; at = doc.get(at, 'componentKey'), n++) if (doc.get(at, 'exposedInstance')) return true;
+    return false;
+  };
+  doc.store.walk(instance, (id) => {
+    if (doc.type(id) === 'INSTANCE' && isInstanceLayer(doc, id) && exposed(id)) out.push(id);
+    return true;
+  });
+  return out;
 }
 
 /** Removes a property and its bindings; instance values are dropped. */

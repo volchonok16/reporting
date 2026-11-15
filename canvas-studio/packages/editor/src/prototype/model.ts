@@ -8,7 +8,7 @@ import { tr } from '#core';
 import { reverseTransition } from './easing.ts';
 import { formatValue, tryEvaluate, type ExprError, type ExprValue } from '#components';
 import { coerce, readVariable, variableMode } from './vars.ts';
-import type { Document, FlowStart, NodeId, OverlaySettings, PrototypeAction, Reaction, Transition, TriggerType, VariableLiteral, Vec } from '#core';
+import type { Document, FlowStart, NodeId, OverlaySettings, PrototypeAction, Reaction, Transition, TriggerType, VariableLiteral, Vec, VideoOp } from '#core';
 
 /** Screen types: frames and components placed directly on the page or in a section. */
 const SCREEN_TYPES = new Set(['FRAME', 'COMPONENT', 'INSTANCE']);
@@ -128,7 +128,7 @@ export function interactiveLayers(doc: Document, screen: NodeId): NodeId[] {
   return out;
 }
 
-const POINTER_TRIGGERS = new Set<TriggerType>(['ON_CLICK', 'ON_HOVER', 'ON_PRESS', 'MOUSE_ENTER', 'MOUSE_LEAVE']);
+const POINTER_TRIGGERS = new Set<TriggerType>(['ON_CLICK', 'ON_DRAG', 'ON_HOVER', 'ON_PRESS', 'MOUSE_ENTER', 'MOUSE_LEAVE', 'MOUSE_DOWN', 'MOUSE_UP']);
 
 export const DEFAULT_TRANSITION: Transition = { type: 'INSTANT', duration: 300, easing: { type: 'EASE_OUT' } };
 
@@ -146,7 +146,11 @@ export type Effect =
   /** A variable got a new value (for the debugger; the session has already written it). */
   | { type: 'variable'; variable: NodeId; value: VariableLiteral }
   /** An expression could not be computed: the action is skipped, the debugger shows why. */
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  /** Play, pause, mute or seek a layer's video (step 8). */
+  | { type: 'video'; node: NodeId; op: VideoOp; seconds: number }
+  /** A collection switched to a mode for the whole prototype (step 8). */
+  | { type: 'variable-mode'; collection: NodeId; mode: string };
 
 /** Nesting limit of conditions (FR-PRT-041). */
 export const MAX_CONDITION_DEPTH = 5;
@@ -350,6 +354,19 @@ export class PrototypeSession {
           for (const o of this.overlays.splice(from).reverse()) effects.push({ type: 'overlay-close', screen: o.screen, transition: reverseTransition(o.transition) });
           break;
         }
+        case 'SET_VARIABLE_MODE': {
+          const c = action.collectionId;
+          if (!c || !d.store.isAlive(c) || d.type(c) !== 'VARIABLE_COLLECTION') break;
+          if (!action.modeId || !d.get(c, 'modes').some((m) => m.id === action.modeId)) break;
+          effects.push({ type: 'variable-mode', collection: c, mode: action.modeId });
+          break;
+        }
+        case 'VIDEO': {
+          const target = action.destinationId && d.store.isAlive(action.destinationId) ? action.destinationId : node;
+          if (!target) break;
+          effects.push({ type: 'video', node: target, op: action.op, seconds: Number.isFinite(action.seconds) ? action.seconds : 0 });
+          break;
+        }
         case 'SCROLL_TO': {
           const target = action.destinationId;
           if (!target || !d.store.isAlive(target)) break;
@@ -433,11 +450,15 @@ export function safeUrl(raw: string): string | null {
 
 export const TRIGGER_LABELS: Record<TriggerType, string> = {
   ON_CLICK: tr('По нажатию'),
+  ON_DRAG: tr('При перетаскивании'),
   ON_HOVER: tr('Пока наведено'),
   ON_PRESS: tr('Пока зажато'),
   MOUSE_ENTER: tr('При наведении'),
   MOUSE_LEAVE: tr('Когда курсор уходит'),
+  MOUSE_DOWN: tr('Кнопка нажата'),
+  MOUSE_UP: tr('Кнопка отпущена'),
   AFTER_TIMEOUT: tr('Через время'),
+  VIDEO_END: tr('Когда видео закончилось'),
   ON_KEY: tr('По клавише'),
 };
 
@@ -452,4 +473,18 @@ export const ACTION_LABELS: Record<PrototypeAction['type'], string> = {
   CHANGE_TO: tr('Изменить на'),
   SET_VARIABLE: tr('Установить переменную'),
   CONDITIONAL: tr('Условие'),
+  VIDEO: tr('Видео'),
+  SET_VARIABLE_MODE: tr('Сменить режим переменных'),
 };
+
+export const VIDEO_OPS: [VideoOp, string][] = [
+  ['PLAY', tr('Воспроизвести')],
+  ['PAUSE', tr('Пауза')],
+  ['TOGGLE_PLAY', tr('Воспроизвести / пауза')],
+  ['MUTE', tr('Выключить звук')],
+  ['UNMUTE', tr('Включить звук')],
+  ['TOGGLE_MUTE', tr('Звук: вкл. / выкл.')],
+  ['SEEK_FORWARD', tr('Вперёд на')],
+  ['SEEK_BACKWARD', tr('Назад на')],
+  ['SEEK_TO', tr('Перейти к секунде')],
+];

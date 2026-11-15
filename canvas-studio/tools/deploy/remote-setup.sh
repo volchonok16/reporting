@@ -97,6 +97,9 @@ APP_URL="${DOMAIN:+https://$DOMAIN}"
 # unit file, readable by root only; systemd reads them before dropping to "canvas".
 mkdir -p "$APP/heavy"
 chmod -R a+rX,go-w "$APP/heavy"
+# The macOS app and its updates (/downloads/macos/…, deploy.sh puts them there).
+mkdir -p "$APP/downloads/macos"
+chmod -R a+rX,go-w "$APP/downloads"
 mkdir -p /etc/canvas-studio
 chmod 700 /etc/canvas-studio
 [ -f /etc/canvas-studio/env ] || install -m 600 /dev/null /etc/canvas-studio/env
@@ -121,6 +124,7 @@ Environment=CS_TRUST_PROXY=1
 Environment=CS_SECURE=$SECURE
 # The neural network of «Удалить фон» (70 MB): deploy.sh puts it here once, outside the releases.
 Environment=CS_HEAVY=$APP/heavy
+Environment=CS_DOWNLOADS=$APP/downloads
 Environment=CS_OPEN_REGISTRATION=$OPEN_REGISTRATION
 Environment=CS_APP_URL=$APP_URL
 Environment=NODE_ENV=production

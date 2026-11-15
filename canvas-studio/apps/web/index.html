@@ -44,7 +44,8 @@
           var kind = '';
           if (q.has('present') || q.has('welcome') || q.has('login')) kind = '';
           else if (q.has('file') || q.has('new')) kind = known || q.has('t') ? (q.has('board') ? 'board' : 'editor') : '';
-          else if (s.getItem('cs.offline.user') || q.has('local')) kind = 'home';
+          // simmetrika: — the macOS app, its own files from the start (no landing page there).
+          else if (s.getItem('cs.offline.user') || q.has('local') || location.protocol === 'simmetrika:') kind = 'home';
           else kind = 'landing';
           if (kind) document.documentElement.setAttribute('data-boot', kind);
         } catch (e) {}

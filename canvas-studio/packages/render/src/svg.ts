@@ -4,19 +4,22 @@
 // matches the canvas line for line. Gradients, image fills, inside/outside
 // strokes, shadows, blur and masks are expressed with SVG primitives.
 
-import { safeLink, tr } from '#core';
+import { context2d, srgbOut } from './color-space.ts';
+import { cssString, safeLink, tr } from '#core';
 import type { Document, Effect, GradientPaint, NodeId, Paint, VectorPath } from '#core';
 import { gradientGrid, gradientPixels } from './gradients.ts';
 import type { FontFile } from './font-file.ts';
 import { capShape, isVariableStroke, multiply, nodeTransform, openEnds, pathsToSvg, shapePaths, sideStrokeRegion, type Matrix, type NetworkPart, type Rect } from '#geometry';
 import { dashOf, rectRadii, sideWeights } from './stroke.ts';
-import { decorationLookOf, decorationPath, lineOffset, nodePaths, pathTextGlyphs, textStyleOf, vectorDrawing, type DecorationLook, type RunFont, type TextMeasurer } from '#layout';
+import { decorationLookOf, decorationPath, isSketched, lineOffset, nodePaths, sketchOf, pathTextGlyphs, textStyleOf, vectorDrawing, type DecorationLook, type RunFont, type TextMeasurer } from '#layout';
 import { variableStrokeOf } from '#layout';
 import type { ImageCache } from './images.ts';
 import { needsPicture } from './export.ts';
 import type { SceneGraph } from './scene.ts';
 
 export interface SvgOptions {
+  /** The picture's area in world space (a slice): what lies outside is cut off. */
+  area?: Rect;
   /** Embed images as data URIs (true) or leave image fills empty. */
   images?: boolean;
   /** Layer names as id attributes (off by default: a clean SVG for the web). */
@@ -39,7 +42,8 @@ export interface SvgOptions {
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const n = (v: number) => String(Math.round(v * 1000) / 1000);
-const hex = (c: { r: number; g: number; b: number }) => '#' + [c.r, c.g, c.b].map((v) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, '0')).join('');
+// A Display P3 file's colours go into SVG as their sRGB look (step 9).
+const hex = (raw: { r: number; g: number; b: number }, c = srgbOut(raw)) => '#' + [c.r, c.g, c.b].map((v) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, '0')).join('');
 /** The shortest transform attribute: none, a shift, or a full matrix. */
 const transformAttr = (m: Matrix) =>
   m.a === 1 && m.b === 0 && m.c === 0 && m.d === 1 ? (Math.abs(m.e) < 1e-6 && Math.abs(m.f) < 1e-6 ? '' : `transform="translate(${n(m.e)} ${n(m.f)})"`) : `transform="${matrix(m)}"`;
@@ -176,6 +180,22 @@ class SvgWriter {
     const all = nodePaths(this.doc, id);
     if (this.doc.get(id, 'board')?.kind !== 'SHAPE_OUTLINE' || all.every((p) => p.closed)) return this.shape(id, all, w, h, rule);
     return this.shape(id, all.filter((p) => p.closed), w, h, rule) + this.shape(id, all.filter((p) => !p.closed), w, h, rule, true);
+  }
+
+  private sketchBody(id: NodeId, type: string, w: number, h: number): string {
+    const d = this.doc;
+    const sketch = sketchOf(d, id);
+    let body = this.shape(id, type === 'LINE' ? [] : sketch.fill, w, h, 'nonzero', true, sketch.stroke);
+    if (type === 'FRAME' || type === 'INSTANCE' || type === 'COMPONENT') {
+      let kids = this.children(id);
+      if (d.get(id, 'clipsContent') && kids) {
+        const cid = this.id('clip');
+        this.defs.push(`<clipPath id="${cid}"><path d="${pathsToSvg(sketch.fill)}"/></clipPath>`);
+        kids = `<g clip-path="url(#${cid})">${kids}</g>`;
+      }
+      body += kids;
+    }
+    return body;
   }
 
   shape(id: NodeId, paths: VectorPath[], w: number, h: number, rule: 'nonzero' | 'evenodd', forceCenter = false, strokePaths: VectorPath[] = paths, parts: readonly NetworkPart[] = []): string {
@@ -388,7 +408,8 @@ class SvgWriter {
 
   node(id: NodeId): string {
     const d = this.doc;
-    if (!d.get(id, 'visible')) return '';
+    // A slice is an area to export, never a picture of its own.
+    if (!d.get(id, 'visible') || d.type(id) === 'SLICE') return '';
     const type = d.type(id);
     const w = d.get(id, 'width');
     const h = d.get(id, 'height');
@@ -407,7 +428,9 @@ class SvgWriter {
     }
     const attrs = `${transformAttr(m)}${opacity < 1 ? ` opacity="${n(opacity)}"` : ''}${blend ? ` style="mix-blend-mode:${blend}"` : ''}${this.filter(d.get(id, 'effects'), id)}`;
     let body = '';
-    switch (type) {
+    // «От руки» (FEAT-223): the same hand-drawn outline as on the canvas.
+    if (isSketched(d, id)) body = this.sketchBody(id, type, w, h);
+    else switch (type) {
       case 'SECTION':
       case 'FRAME':
       case 'COMPONENT':
@@ -455,7 +478,7 @@ class SvgWriter {
 export function exportSvg(scene: SceneGraph, measurer: TextMeasurer, ids: readonly NodeId[], images: ImageCache | null = null, options: SvgOptions = {}): { svg: string; skipped: string[] } {
   scene.ensure();
   const doc = scene.doc;
-  const bounds = ids.map((id) => scene.renderBounds(id)).reduce<Rect | null>((u, b) => (u ? { x: Math.min(u.x, b.x), y: Math.min(u.y, b.y), width: Math.max(u.x + u.width, b.x + b.width) - Math.min(u.x, b.x), height: Math.max(u.y + u.height, b.y + b.height) - Math.min(u.y, b.y) } : b), null) ?? { x: 0, y: 0, width: 0, height: 0 };
+  const bounds = options.area ?? ids.map((id) => scene.renderBounds(id)).reduce<Rect | null>((u, b) => (u ? { x: Math.min(u.x, b.x), y: Math.min(u.y, b.y), width: Math.max(u.x + u.width, b.x + b.width) - Math.min(u.x, b.x), height: Math.max(u.y + u.height, b.y + b.height) - Math.min(u.y, b.y) } : b), null) ?? { x: 0, y: 0, width: 0, height: 0 };
   const writer = new SvgWriter(doc, measurer, images, options);
   let body = '';
   for (const id of ids) {
@@ -473,7 +496,7 @@ export function exportSvg(scene: SceneGraph, measurer: TextMeasurer, ids: readon
     .filter((f) => body.includes(`font-family="${esc(f.family)}"`))
     .map((f) => {
       const blob = doc.store.blobs.get(f.hash);
-      return blob ? `@font-face{font-family:"${esc(f.family)}";src:url(data:${blob.mime};base64,${blob.data});font-weight:${f.weight === 0 ? '1 1000' : f.weight};font-style:${f.italic ? 'italic' : 'normal'}}` : '';
+      return blob ? `@font-face{font-family:${cssString(f.family).replace(/&/g, "&amp;")};src:url(data:${blob.mime};base64,${blob.data});font-weight:${f.weight === 0 ? '1 1000' : f.weight};font-style:${f.italic ? 'italic' : 'normal'}}` : '';
     })
     .join('');
   if (fonts) writer.defs.unshift(`<style>${fonts}</style>`);
@@ -493,7 +516,7 @@ function gradientPng(p: GradientPaint, w: number, h: number): string | null {
   if (typeof document === 'undefined') return null;
   const { cols, rows } = gradientGrid(w, h, 512);
   const canvas = Object.assign(document.createElement('canvas'), { width: cols, height: rows });
-  const ctx = canvas.getContext('2d');
+  const ctx = context2d(canvas);
   if (!ctx) return null;
   ctx.putImageData(new ImageData(gradientPixels(p, w, h, cols, rows), cols, rows), 0, 0);
   return canvas.toDataURL('image/png');

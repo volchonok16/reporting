@@ -74,7 +74,7 @@ export function planStylesToVariables(doc: Document, styles: readonly NodeId[] =
       add('fontSize', 'font-size');
       add('fontWeight', 'font-weight');
       if (doc.get(style, 'lineHeight').unit === 'PX') add('lineHeight', 'line-height');
-      else kept.push(doc.get(style, 'lineHeight').unit === 'AUTO' ? tr('Межстрочный «Авто» — подбирается по шрифту') : tr('Межстрочный в процентах — переменная хранит пиксели'));
+      else kept.push(doc.get(style, 'lineHeight').unit === 'AUTO' ? tr('Межстрочный «Авто» — подбирается по шрифту') : tr('Межстрочный в процентах, а переменная хранит пиксели'));
       add('letterSpacing', 'letter-spacing');
       if (doc.get(style, 'paragraphSpacing') !== 0) add('paragraphSpacing', 'paragraph-spacing');
     } else if (type === 'EFFECT') {

@@ -30,11 +30,13 @@ interface Ort {
   InferenceSession: { create(url: string, options: { executionProviders: string[]; graphOptimizationLevel: string }): Promise<OrtSession> };
 }
 
-let loading: Promise<{ ort: Ort; session: OrtSession } | null> | null = null;
+let loading: Promise<{ ort: Ort; session: OrtSession; gpu: boolean } | null> | null = null;
 let failed = false;
+/** The video card made the session but could not run it: from then on the processor. */
+let noGpu = false;
 
 /** Loads the runtime and the model once (null — not available here: GrabCut then). */
-function load(onLoad?: () => void): Promise<{ ort: Ort; session: OrtSession } | null> {
+function load(onLoad?: () => void): Promise<{ ort: Ort; session: OrtSession; gpu: boolean } | null> {
   if (failed) return Promise.resolve(null);
   loading ??= (async () => {
     onLoad?.();
@@ -44,11 +46,11 @@ function load(onLoad?: () => void): Promise<{ ort: Ort; session: OrtSession } | 
       // Threads need a cross-origin isolated page; the app is not one (its sandboxes would break).
       ort.env.wasm.numThreads = 1;
       ort.env.logLevel = 'error';
-      const gpu = 'gpu' in navigator;
+      const gpu = 'gpu' in navigator && !noGpu;
       for (const providers of gpu ? [['webgpu'], ['wasm']] : [['wasm']]) {
         try {
           const session = await ort.InferenceSession.create(MODEL_URL, { executionProviders: providers, graphOptimizationLevel: 'all' });
-          return { ort, session };
+          return { ort, session, gpu: providers[0] === 'webgpu' };
         } catch {
           // WebGPU there but not usable (a blocked adapter): the processor
         }
@@ -90,23 +92,37 @@ export async function objectMask(picture: CanvasImageSource, width: number, heig
     const a = rgba[p * 4 + 3]! / 255;
     for (let c = 0; c < 3; c++) input[c * n + p] = (rgba[p * 4 + c]! * a + 255 * (1 - a)) / 255 - 0.5;
   }
+  let run = net;
+  let out: Record<string, OrtTensor>;
   try {
-    const out = await net.session.run({ [net.session.inputNames[0]!]: new net.ort.Tensor('float32', input, [1, 3, side, side]) });
-    const raw = out[net.session.outputNames[0]!]!.data;
-    let lo = Infinity;
-    let hi = -Infinity;
-    for (let p = 0; p < n; p++) {
-      const v = raw[p]!;
-      if (v < lo) lo = v;
-      if (v > hi) hi = v;
-    }
-    const mask = new Float32Array(n);
-    const span = hi - lo || 1;
-    for (let p = 0; p < n; p++) mask[p] = (raw[p]! - lo) / span;
-    return mask;
+    out = await run.session.run({ [run.session.inputNames[0]!]: new run.ort.Tensor('float32', input, [1, 3, side, side]) });
   } catch {
-    return null;
+    // WebGPU of ONNX Runtime 1.20 makes the session of IS-Net but cannot run it ("ceil() … MaxPool",
+    // Safari and the macOS app): once more on the processor, and the processor from then on.
+    if (!run.gpu) return null;
+    noGpu = true;
+    loading = null;
+    const cpu = await load();
+    if (!cpu) return null;
+    run = cpu;
+    try {
+      out = await run.session.run({ [run.session.inputNames[0]!]: new run.ort.Tensor('float32', input, [1, 3, side, side]) });
+    } catch {
+      return null;
+    }
   }
+  const raw = out[run.session.outputNames[0]!]!.data;
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let p = 0; p < n; p++) {
+    const v = raw[p]!;
+    if (v < lo) lo = v;
+    if (v > hi) hi = v;
+  }
+  const mask = new Float32Array(n);
+  const span = hi - lo || 1;
+  for (let p = 0; p < n; p++) mask[p] = (raw[p]! - lo) / span;
+  return mask;
 }
 
 /** The square mask sampled at another size (nearest of the bilinear four). */
@@ -132,4 +148,4 @@ export function maskAt(mask: Float32Array, w: number, h: number): Float32Array {
 }
 
 /** What the person sees while the network loads the first time. */
-export const LOADING_NOTE = (): string => tr('Загружаю нейросеть для удаления фона — один раз, около 70 МБ…');
+export const LOADING_NOTE = (): string => tr('Загружаю нейросеть для удаления фона. Это один раз, около 70 МБ…');

@@ -1,12 +1,17 @@
 import { lang, tr } from '#core';
-import { App, applyTheme, bootstrapReportingSso, isReportingEmbed, listenReportingSso } from '#editor';
+import { App, applyTheme, bootstrapReportingSso, installSegmentGlide, isReportingEmbed, listenReportingSso, routeEscapeToTopWindow, runUserTest } from '#editor';
 
 // The chosen theme before anything is drawn.
 applyTheme();
+// Esc closes the top window even when the focus is not in it (Safari focuses no clicked button); before every other key listener.
+routeEscapeToTopWindow();
+// Segmented controls: the plate glides to the new choice (UI-010).
+installSegmentGlide();
 
 const bootParams = new URLSearchParams(location.search);
 const reportingEmbed = bootParams.has('embed') || isReportingEmbed();
 
+// The built app (not the dev server) registers its service worker: the editor then opens without a network.
 // Service worker в iframe reporting мешает SSO/обновлениям — только для standalone.
 if ('serviceWorker' in navigator && import.meta.url.endsWith('.js') && !reportingEmbed) {
   addEventListener('load', () => void navigator.serviceWorker.register('/sw.js').catch(() => undefined));
@@ -26,7 +31,7 @@ listenReportingSso();
 
 const bootText = root.querySelector('.boot-text');
 const params = bootParams;
-if (bootText) bootText.textContent = params.has('present') ? tr('Открываю прототип…') : params.has('file') || params.has('new') ? tr('Открываю файл…') : tr('Загружаю файлы…');
+if (bootText) bootText.textContent = params.has('present') || params.has('test') ? tr('Открываю прототип…') : params.has('file') || params.has('new') ? tr('Открываю файл…') : tr('Загружаю файлы…');
 
 void bootstrapReportingSso()
   .catch((error: unknown) => {
@@ -38,13 +43,16 @@ void bootstrapReportingSso()
     // A prototype opened in its own tab shows only the viewer (FR-PRT-050); a file
     // (?file=<id>) or a new one (?new=1[&project=<id>]) opens the editor; anything
     // else is the home screen with sections, projects and files.
-    const started: Promise<unknown> = q.has('present')
-      ? App.presentStandalone(root, q)
-      : fileId
-        ? App.start(root, { fileId, link: q.get('t'), page: q.get('page'), node: q.get('node'), comment: q.get('comment') })
-        : q.has('new')
-          ? App.start(root, { create: { projectId: q.get('project'), example: q.has('example'), board: q.has('board'), diagram: q.has('diagram'), diagramKind: q.get('diagram'), slides: q.has('slides'), template: q.get('template') } })
-          : App.home(root);
+    // A test of a prototype on people (?test=<file>&t=<token>): only the tasks and the prototype, no account.
+    const started: Promise<unknown> = q.has('test')
+      ? runUserTest(root, q)
+      : q.has('present')
+        ? App.presentStandalone(root, q)
+        : fileId
+          ? App.start(root, { fileId, link: q.get('t'), page: q.get('page'), node: q.get('node'), comment: q.get('comment') })
+          : q.has('new')
+            ? App.start(root, { create: { projectId: q.get('project'), example: q.has('example'), board: q.has('board'), diagram: q.has('diagram'), diagramKind: q.get('diagram'), slides: q.has('slides'), template: q.get('template') } })
+            : App.home(root);
     return started;
   })
   .finally(() => root.querySelector('.boot')?.remove())

@@ -6,7 +6,6 @@
 
 import { locale, tr } from '#core';
 import { CloudError, sharing, type GrantRole, type LinkMode, type ShareInfo } from '../cloud.ts';
-import { colleagueEmailField } from './colleague-picker.ts';
 import { askConfirm } from './dialog.ts';
 import { clear, h, icon, skeletonRows } from './dom.ts';
 
@@ -100,17 +99,17 @@ export class ShareDialog {
     clear(this.body);
 
     // Invite by email.
-    const who = colleagueEmailField(tr('Фамилия или email'), tr('Фамилия или email'));
+    const email = h('input', { class: 'dialog-input share-email', type: 'email', placeholder: tr('Email коллеги'), 'aria-label': 'Email', autocomplete: 'off', spellcheck: false });
     let role: GrantRole = 'editor';
     const inviteRole = roleSelect(role, (r) => (role = r), tr('Роль для приглашения'));
     const invite = h('button', { class: 'text-button primary', type: 'submit' }, tr('Пригласить'));
-    const form = h('form', { class: 'share-invite', novalidate: true }, who.wrap, inviteRole, invite);
+    const form = h('form', { class: 'share-invite', novalidate: true }, email, inviteRole, invite);
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const value = who.email();
-      if (!value) {
-        this.error.textContent = tr('Выберите коллегу из списка или введите email');
-        who.input.focus();
+      const value = email.value.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)) {
+        this.error.textContent = tr('Проверьте email');
+        email.focus();
         return;
       }
       invite.disabled = true;
@@ -192,7 +191,7 @@ export class ShareDialog {
         if (expiry.value === 'keep') return;
         void this.run(() => sharing.setLink(id, { expiresInDays: expiry.value ? (Number(expiry.value) as 1 | 7 | 30) : null }));
       });
-      const password = h('input', { class: 'dialog-input', type: 'password', placeholder: link.hasPassword ? tr('Пароль задан — введите новый') : tr('Без пароля'), 'aria-label': tr('Пароль ссылки'), autocomplete: 'new-password' });
+      const password = h('input', { class: 'dialog-input', type: 'password', placeholder: link.hasPassword ? tr('Пароль задан. Введите новый') : tr('Без пароля'), 'aria-label': tr('Пароль ссылки'), autocomplete: 'new-password' });
       const setPassword = h('button', { class: 'text-button', type: 'button' }, tr('Задать'));
       setPassword.addEventListener('click', async () => {
         if (password.value.length < 4) {
@@ -218,7 +217,7 @@ export class ShareDialog {
             h('input', { type: 'checkbox', checked: guests, onchange: (e: Event) => void this.run(() => sharing.setLink(id, (e.target as HTMLInputElement).checked ? { guests: true, role: 'editor' } : { guests: false })) }),
             h('span', {}, tr('Гости без аккаунта тоже редактируют')),
           ),
-          h('p', { class: 'share-muted' }, guests ? tr('Каждый гость получает имя зверя — его видно у курсора и под стикерами.') : tr('Без аккаунта по ссылке можно только смотреть: чтобы редактировать, нужно войти.')),
+          h('p', { class: 'share-muted' }, guests ? tr('Каждый гость получает имя зверя, его видно у курсора и под стикерами.') : tr('Без аккаунта по ссылке можно только смотреть: чтобы редактировать, нужно войти.')),
         );
       }
     }

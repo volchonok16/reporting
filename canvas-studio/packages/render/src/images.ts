@@ -3,6 +3,7 @@
 // Videos and animated GIFs are fills too (as in Figma): they hand out the frame of
 // the moment, and `isAnimated` tells the canvas to keep redrawing them.
 
+import { context2d } from './color-space.ts';
 import { base64ToBytes, type Document, type ImageFilters } from '#core';
 import { adjustPixels, hasFilters } from './pixels.ts';
 
@@ -43,6 +44,43 @@ interface GifDecoder {
   tracks: { ready: Promise<void>; selectedTrack: { frameCount: number } | null };
   decode(options: { frameIndex: number }): Promise<DecodedFrame>;
   close(): void;
+}
+
+/**
+ * Halved copies of still pictures (PERF-009), made when first needed and dropped with the picture.
+ * A picture drawn at a quarter of its size or less made every tile under an edit downscale all of it
+ * (WebKit: ~1 ms a draw for 2200 × 759); its copy at least as big as the drawing is drawn instead —
+ * cheaper and smoother (a plain downscale skips pixels; halving step by step averages them all).
+ */
+const halves = new WeakMap<object, OffscreenCanvas[]>();
+/** Copies stop at this side: smaller ones gain nothing. */
+const HALF_MIN = 64;
+/** WebKit keeps canvases made for drawing on the GPU and reads them back when they are drawn on a canvas in memory (the tiles there, PERF-008). */
+const IN_MEMORY = typeof navigator !== 'undefined' && /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|Edg\//.test(navigator.userAgent);
+
+/**
+ * What to draw for a picture `width` × `height` that lands on `drawnWidth` × `drawnHeight` device
+ * pixels: the smallest halved copy still at least that big, or the picture itself.
+ */
+export function halvedFor(image: CanvasImageSource, width: number, height: number, drawnWidth: number, drawnHeight: number): CanvasImageSource {
+  if (typeof OffscreenCanvas === 'undefined' || (typeof HTMLVideoElement !== 'undefined' && image instanceof HTMLVideoElement)) return image;
+  let level = 0;
+  while (width >> (level + 1) >= Math.max(HALF_MIN, drawnWidth) && height >> (level + 1) >= Math.max(HALF_MIN, drawnHeight)) level++;
+  if (level === 0) return image;
+  let list = halves.get(image);
+  if (!list) halves.set(image, (list = []));
+  while (list.length < level) {
+    const from = list.at(-1) ?? image;
+    const w = Math.max(1, Math.ceil(width / 2 ** (list.length + 1)));
+    const h = Math.max(1, Math.ceil(height / 2 ** (list.length + 1)));
+    const canvas = new OffscreenCanvas(w, h);
+    const ctx = context2d(canvas, { willReadFrequently: IN_MEMORY });
+    if (!ctx) return list.at(-1) ?? image;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(from, 0, 0, w, h);
+    list.push(canvas);
+  }
+  return list[level - 1]!;
 }
 
 export class ImageCache {
@@ -105,6 +143,12 @@ export class ImageCache {
       this.entries.delete(hash);
       for (const k of [...this.variants.keys()]) if (k.startsWith(`${hash}|`)) this.variants.delete(k);
     }
+  }
+
+  /** The playing element of a video fill (to play, pause, mute or seek it in the prototype); null — not a loaded video. */
+  videoOf(hash: string): HTMLVideoElement | null {
+    const entry = this.entries.get(hash);
+    return entry?.state === 'ready' && entry.video ? entry.video : null;
   }
 
   /** Whether the fill moves (a video or an animated GIF): the canvas keeps redrawing it. */
@@ -187,7 +231,7 @@ export class ImageCache {
     const width = side ? base.height : base.width;
     const height = side ? base.width : base.height;
     const canvas = new OffscreenCanvas(Math.max(1, width), Math.max(1, height));
-    const ctx = canvas.getContext('2d');
+    const ctx = context2d(canvas);
     if (!ctx) return base;
     ctx.translate(width / 2, height / 2);
     // Mirrored in the fill's own directions, then turned (so a flipped layer shows its picture flipped).

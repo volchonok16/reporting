@@ -3,6 +3,7 @@
 // as data URLs, vectors as inline SVG, and the fonts: the file's own fonts as
 // @font-face, the others from Google Fonts (a family it does not have simply
 // falls back). Without the fonts the page showed the browser's default.
+import { cssString } from '#core';
 
 import type { Document, NodeId } from '#core';
 import { exportSvg, layerPicture, type Canvas2DRenderer } from '#render';
@@ -45,7 +46,7 @@ function fontsHead(doc: Document, used: Map<string, Set<string>>): string {
       for (const f of mine) {
         const blob = doc.store.blobs.get(f.hash);
         if (!blob) continue;
-        faces.push(`@font-face { font-family: "${family}"; src: url("data:${blob.mime};base64,${blob.data}"); font-weight: ${f.weight === 0 ? '1 1000' : f.weight}; font-style: ${f.italic ? 'italic' : 'normal'}; font-display: swap; }`);
+        faces.push(`@font-face { font-family: ${cssString(family)}; src: url("data:${blob.mime};base64,${blob.data}"); font-weight: ${f.weight === 0 ? '1 1000' : f.weight}; font-style: ${f.italic ? 'italic' : 'normal'}; font-display: swap; }`);
       }
       continue;
     }

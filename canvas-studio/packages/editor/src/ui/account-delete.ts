@@ -14,7 +14,7 @@ export async function deleteAccount(): Promise<void> {
     return;
   }
   const lines = [
-    plan.files ? tr('Ваши файлы удалятся: {0}.', plan.files) + (plan.shared ? ` ${tr('Открыто другим людям: {0} — у них эти файлы тоже пропадут.', plan.shared)}` : '') : tr('Своих файлов у вас нет.'),
+    plan.files ? tr('Ваши файлы удалятся: {0}.', plan.files) + (plan.shared ? ` ${tr('Открыто другим людям: {0}. У них эти файлы тоже пропадут.', plan.shared)}` : '') : tr('Своих файлов у вас нет.'),
     ...(plan.keptInTeams ? [tr('Файлы в проектах команд останутся команде: {0}.', plan.keptInTeams)] : []),
     ...plan.teamsHandedOver.map((t) => tr('Команда «{0}» перейдёт к {1}.', t.team, t.to)),
     ...plan.teamsDeleted.map((name) => tr('Команда «{0}» удалится: кроме вас, в ней никого нет.', name)),

@@ -6,7 +6,9 @@
 // file). The document core resolves concurrent changes the same way everywhere.
 
 import type { Document, Op } from '#core';
-import type { ThreadChange } from './cloud.ts';
+import type { ApprovalChange, ThreadChange } from './cloud.ts';
+import { inMacApp } from '#core';
+import { AppSocket } from './mac-bridge.ts';
 
 export interface Peer {
   id: string;
@@ -14,8 +16,6 @@ export interface Peer {
   name: string;
   color: string;
   role: string;
-  /** Employee photo from reporting, when the account has one. */
-  avatar?: string;
 }
 
 /** What someone sees: centre of the visible part (world), zoom and screen size. */
@@ -77,6 +77,8 @@ export interface LiveOptions {
   onSpotlight(from: string | null): void;
   /** A discussion was started, answered, resolved, moved or deleted. */
   onThread(change: ThreadChange): void;
+  /** A frame asked to be approved, answered or back to a draft (other editors, item 9). */
+  onApproval?(change: ApprovalChange): void;
   /** Someone sent an emote (never kept). */
   onEmote?(from: string, emote: Emote): void;
   /** Changes made earlier (another session, without a network) still to be sent. */
@@ -138,7 +140,9 @@ export class LiveSession {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const params = [this.options.link ? `link=${encodeURIComponent(this.options.link)}` : '', this.options.guest ? `guest=${encodeURIComponent(this.options.guest)}` : ''].filter(Boolean);
     const link = params.length ? `?${params.join('&')}` : '';
-    const ws = new WebSocket(`${proto}://${location.host}/api/live/${encodeURIComponent(this.options.fileId)}${link}`);
+    const path = `/api/live/${encodeURIComponent(this.options.fileId)}${link}`;
+    // The macOS app: its page cannot reach the server itself — the app opens the socket (mac-bridge.ts).
+    const ws = inMacApp ? (new AppSocket(path) as unknown as WebSocket) : new WebSocket(`${proto}://${location.host}${path}`);
     this.ws = ws;
     this.setState(this.seq === null ? 'connecting' : 'offline');
     ws.addEventListener('open', () => {
@@ -219,6 +223,9 @@ export class LiveSession {
         break;
       case 'thread':
         this.options.onThread(msg as unknown as ThreadChange);
+        break;
+      case 'approval':
+        this.options.onApproval?.(msg as unknown as ApprovalChange);
         break;
       case 'peers':
         this.options.onPeers(msg.peers as Peer[], this.you);

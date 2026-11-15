@@ -5,6 +5,8 @@
 // short JSON. Each result is one undo step.
 
 import { lang, tr, type NodeId } from '#core';
+import { askText, checkAnswer, parseAnswer, parseTextRequest } from '../../core/src/ai-text.ts';
+import { AiMissingError, ownAi, ownAiMessage, ownTransport } from './own-ai.ts';
 import { isDefaultName, suggestNames } from './auto-name.ts';
 import { textLayerName, type Editor } from './editor.ts';
 import { slideIds, slideInfo } from './slides.ts';
@@ -12,17 +14,34 @@ import { slideIds, slideInfo } from './slides.ts';
 /** Layers in one request — the server takes no more. */
 const ITEMS_MAX = 150;
 
-/** Asks the server; throws an Error with words for the person. */
+/** Asks the person's own neural network (own-ai.ts) or the server; throws an Error with words for the person. */
 async function ask<T>(body: Record<string, unknown>): Promise<T> {
+  const own = await ownAi();
+  if (own) {
+    const req = parseTextRequest(body);
+    if (!req) throw new Error(tr('Слишком много или нечего отправить. Выделите меньше.'));
+    const { config, fetcher } = ownTransport(own);
+    let text: string;
+    try {
+      text = await askText(config, req, new AbortController().signal, fetcher);
+    } catch (error) {
+      throw new Error(ownAiMessage(error));
+    }
+    const answer = parseAnswer(text);
+    const checked = answer && checkAnswer(req, answer);
+    if (!checked) throw new Error(tr('Нейросеть ответила не то. Попробуйте ещё раз.'));
+    return checked as T;
+  }
   let res: Response;
   try {
     res = await fetch('/api/ai/text', { method: 'POST', credentials: 'same-origin', headers: { 'X-CS': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   } catch {
     throw new Error(tr('Нет связи с сервером Симметрики'));
   }
-  if (res.status === 401) throw new Error(tr('Войдите в аккаунт — нейросеть работает на сервере'));
-  if (res.status === 404) throw new Error(tr('Этот сервер не умеет работать с нейросетью'));
-  const data = (await res.json().catch(() => null)) as (T & { message?: string }) | null;
+  if (res.status === 401) throw new AiMissingError(tr('Нейросеть не подключена: войдите в аккаунт или укажите свою нейросеть в Настройках.'));
+  if (res.status === 404) throw new AiMissingError(tr('Нейросеть не подключена: укажите адрес и ключ своей нейросети в Настройках.'));
+  const data = (await res.json().catch(() => null)) as (T & { message?: string; error?: string }) | null;
+  if (res.status === 503 && data?.error === 'ai_off') throw new AiMissingError(tr('Нейросеть не подключена: укажите адрес и ключ своей нейросети в Настройках.'));
   if (!res.ok || !data) throw new Error(data?.message ?? tr('Сервер ответил ошибкой {0}', res.status));
   return data;
 }

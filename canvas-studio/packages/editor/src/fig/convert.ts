@@ -686,6 +686,11 @@ class Converter {
       case 'TEXT':
         id = this.text(n, parent, { ...base, fills, effects });
         break;
+      // Figma's slices come over as slices (step 9), exported as PNG 1x until set otherwise.
+      case 'SLICE':
+        if (!canContain(this.tx.doc.type(parent), 'SLICE')) return this.skip('SLICE');
+        id = this.tx.create('SLICE', parent, base);
+        break;
       case 'SHAPE_WITH_TEXT':
         id = this.board ? this.boardShape(n, parent, base) : this.shapeWithText(n, parent, base);
         break;
@@ -1001,16 +1006,43 @@ class Converter {
       this.skip('SHAPE_WITH_TEXT');
       return null;
     }
-    // A group, as the shape and its text are one thing (and a group has no title on the canvas).
-    const id = this.tx.create('GROUP', parent, base);
     const kind = String(n.shapeWithTextType ?? 'SQUARE');
-    if (shape) {
-      const type = kind === 'SQUARE' || kind === 'ROUNDED_RECTANGLE' ? 'ROUNDED_RECTANGLE' : kind === 'ELLIPSE' ? 'ELLIPSE' : 'VECTOR';
-      this.node({ ...shape, type, name: tr('Фигура') }, id, null);
+    const square = kind === 'SQUARE' || kind === 'ROUNDED_RECTANGLE';
+    const type = square ? 'ROUNDED_RECTANGLE' : kind === 'ELLIPSE' ? 'ELLIPSE' : 'VECTOR';
+    const hasText = !!text && String(text.textData?.characters ?? '').trim() !== '';
+    const textNode = (into: NodeId) => this.node({ ...text, type: 'TEXT', name: String(text!.textData.characters).slice(0, 40), textAutoResize: 'HEIGHT' }, into, null);
+    // In Figma it is one layer; ours as few as the look allows (the layer count stays close to Figma's):
+    // no text — the shape alone, in the shape-with-text's place and under its name.
+    if (!hasText) {
+      if (!shape) {
+        this.skip('SHAPE_WITH_TEXT');
+        return null;
+      }
+      const before = this.tx.doc.children(parent).length;
+      // node() counts the shape; the caller counts the returned layer again.
+      this.count--;
+      this.node({ ...shape, type, name: base.name || tr('Фигура'), locked: n.locked, transform: n.transform, size: n.size ?? shape.size, opacity: n.opacity ?? shape.opacity, visible: n.visible }, parent, null);
+      return this.tx.doc.children(parent)[before] ?? null;
     }
-    if (text && String(text.textData?.characters ?? '').trim()) {
-      this.node({ ...text, type: 'TEXT', name: String(text.textData.characters).slice(0, 40), textAutoResize: 'HEIGHT' }, id, null);
+    // A rectangular shape with text inside a frame — a frame with the shape's fill, stroke and corners, the text
+    // inside. Not where the canvas would title it as a screen (on the page, through groups and sections).
+    const d = this.tx.doc;
+    let titled = false;
+    for (let q: NodeId | null = parent; q; q = d.parent(q)) {
+      const t = d.type(q);
+      if (t === 'GROUP') continue;
+      titled = t === 'SECTION' || t === 'PAGE';
+      break;
     }
+    if (square && shape && !titled && canContain(d.type(parent), 'FRAME')) {
+      const id = this.tx.create('FRAME', parent, { ...base, fills: this.paints(shape.fillPaints), effects: this.effects(shape.effects, false), ...this.strokes(shape, true), ...this.corners(shape), clipsContent: false });
+      textNode(id);
+      return id;
+    }
+    // Other outlines (an ellipse, a diamond…): a group of the shape and the text (a group has no title on the canvas).
+    const id = this.tx.create('GROUP', parent, base);
+    if (shape) this.node({ ...shape, type, name: tr('Фигура') }, id, null);
+    textNode(id);
     return id;
   }
 

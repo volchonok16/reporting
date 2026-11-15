@@ -62,7 +62,7 @@ function hasPictures(editor: Editor, ids: readonly NodeId[]): boolean {
 export function saveOwnTemplate(editor: Editor, name: string): { ok: boolean; message: string } {
   const ids = editor.topLevelSelection();
   if (ids.length === 0) return { ok: false, message: tr('Выделите на доске то, что станет шаблоном') };
-  const data: ClipboardData = { ...toClipboard(editor.doc, ids), sources: [] };
+  const data: ClipboardData = { ...toClipboard(editor.doc, ids, null), sources: [] };
   const clip = JSON.stringify(data);
   const boxes = ids.map((id) => editor.scene.bounds(id));
   const x = Math.min(...boxes.map((b) => b.x));
@@ -76,11 +76,11 @@ export function saveOwnTemplate(editor: Editor, name: string): { ok: boolean; me
     clip,
   };
   const list = ownTemplates().filter((t) => t.name !== template.name);
-  if (list.length >= OWN_TEMPLATES_COUNT) return { ok: false, message: tr('Шаблонов уже {0} — удалите ненужный в «Шаблонах досок»', OWN_TEMPLATES_COUNT) };
+  if (list.length >= OWN_TEMPLATES_COUNT) return { ok: false, message: tr('Шаблонов уже {0}. Удалите ненужный в «Шаблонах досок»', OWN_TEMPLATES_COUNT) };
   const next = [template, ...list];
   if (JSON.stringify(next).length > OWN_TEMPLATES_MAX) return { ok: false, message: tr('Шаблон слишком большой: выделите меньше или удалите старые шаблоны') };
   store(next);
-  return { ok: true, message: hasPictures(editor, ids) ? tr('Шаблон «{0}» сохранён. Картинки в шаблоны не попадают — на их месте будут пустые рамки.', template.name) : tr('Шаблон «{0}» сохранён: он в «Шаблонах досок» на любом вашем компьютере.', template.name) };
+  return { ok: true, message: hasPictures(editor, ids) ? tr('Шаблон «{0}» сохранён. Картинки в шаблоны не попадают, на их месте будут пустые рамки.', template.name) : tr('Шаблон «{0}» сохранён: он в «Шаблонах досок» на любом вашем компьютере.', template.name) };
 }
 
 export function removeOwnTemplate(id: string): void {

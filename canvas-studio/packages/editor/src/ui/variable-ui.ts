@@ -179,7 +179,7 @@ export class BindableField implements Field {
     // Only colours and numbers: "true" or a short text matching a variable is a coincidence, not a token.
     const matches = value !== undefined && value !== 0 && spec && (spec.type === 'COLOR' || spec.type === 'FLOAT') ? vars.matching(this.field, value, ids) : [];
     this.el.classList.toggle('has-match', matches.length > 0);
-    this.button.title = matches.length > 0 ? tr('Значение совпадает с переменной «{0}» — привязать?', d.get(matches[0]!, 'name')) : tr('Применить переменную');
+    this.button.title = matches.length > 0 ? tr('Значение совпадает с переменной «{0}». Привязать?', d.get(matches[0]!, 'name')) : tr('Применить переменную');
   }
 
   dispose(): void {

@@ -4,6 +4,7 @@
 // The picture is prepared by DocPlan's own code (engine.exportSvg): framed by
 // what is drawn, the renderers' background rect dropped for "no background",
 // SVG filters dropped (they blur blocks in a PNG).
+import { cssString } from '#core';
 
 import type { Document } from '#core';
 import { buildPdf } from '#render';
@@ -17,7 +18,7 @@ export function fontFaceCss(doc: Document, family: string): string {
     if (f.family !== family) continue;
     const blob = doc.store.blobs.get(f.hash);
     if (!blob) continue;
-    faces.push(`@font-face{font-family:"${family}";src:url(data:${blob.mime};base64,${blob.data});font-weight:${f.weight === 0 ? '1 1000' : f.weight};font-style:${f.italic ? 'italic' : 'normal'}}`);
+    faces.push(`@font-face{font-family:${cssString(family)};src:url(data:${blob.mime};base64,${blob.data});font-weight:${f.weight === 0 ? '1 1000' : f.weight};font-style:${f.italic ? 'italic' : 'normal'}}`);
   }
   return faces.join('');
 }

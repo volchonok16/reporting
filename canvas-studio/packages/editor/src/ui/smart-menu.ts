@@ -7,6 +7,7 @@ import type { Editor } from '../editor.ts';
 import { formatShortcut } from '../keyboard.ts';
 import { smartActions, type SmartAction } from '../smart.ts';
 import { h, sparkles } from './dom.ts';
+import { fadeAway } from './motion-ui.ts';
 
 /** Opens the menu next to the ✦ button; returns a function that closes it. */
 export function openSmartMenu(anchor: HTMLElement, place: string, editor: Editor, commands: Map<string, Command>, onClose: () => void): () => void {
@@ -108,6 +109,7 @@ export function openSmartMenu(anchor: HTMLElement, place: string, editor: Editor
   function close(): void {
     if (closed) return;
     closed = true;
+    fadeAway(el);
     el.remove();
     document.removeEventListener('pointerdown', outside, true);
     document.removeEventListener('keydown', onKey, true);

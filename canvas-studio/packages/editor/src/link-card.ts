@@ -139,5 +139,5 @@ export async function insertLink(editor: Editor, url: string, toast: (message: s
   clearTimeout(slow);
   if (editor.doc.readOnly) return;
   await createLinkCard(editor, center, url, preview);
-  if (!preview) toast(tr('Превью не загрузилось — на карточке только адрес. Двойной щелчок откроет страницу.'));
+  if (!preview) toast(tr('Превью не загрузилось, на карточке только адрес. Двойной щелчок откроет страницу.'));
 }

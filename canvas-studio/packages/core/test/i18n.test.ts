@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { lang, plural, setLangForTests, tr } from '../src/index.ts';
+import { lang, plural, setLangForTests, setMacAppForTests, tr } from '../src/index.ts';
 
 test('i18n: Russian by default outside a browser; English from the dictionary; placeholders and plurals', () => {
   assert.equal(lang, 'ru');
@@ -16,4 +16,19 @@ test('i18n: Russian by default outside a browser; English from the dictionary; p
   } finally {
     setLangForTests('ru');
   }
+});
+
+test('i18n: in the macOS app files are kept on this Mac, not in this browser', () => {
+  setMacAppForTests(true);
+  try {
+    assert.equal(tr('Файлы хранятся в этом браузере.'), 'Файлы хранятся на этом Mac.');
+    assert.equal(tr('Файл не найден в этом браузере'), 'Файл не найден на этом Mac');
+    setLangForTests('en');
+    assert.equal(tr('Файлы хранятся в этом браузере.'), 'Files are stored on this Mac.');
+    assert.equal(tr('Файлы только в этом браузере'), 'Files only on this Mac');
+  } finally {
+    setLangForTests('ru');
+    setMacAppForTests(false);
+  }
+  assert.equal(tr('Файлы хранятся в этом браузере.'), 'Файлы хранятся в этом браузере.', 'the site is unchanged');
 });

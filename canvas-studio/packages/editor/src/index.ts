@@ -5,3 +5,6 @@ export * from './editor.ts';
 export * from './keyboard.ts';
 export * from './theme.ts';
 export * from './reporting-embed.ts';
+export { routeEscapeToTopWindow } from './ui/escape-route.ts';
+export { installSegmentGlide } from './ui/motion-ui.ts';
+export { runUserTest } from './prototype/test-run.ts';

@@ -3,7 +3,7 @@
 // cached until one of them changes).
 
 import { SHAPE_TYPES, type Document, type NodeId, type VectorNetwork, type VectorPath } from '#core';
-import { booleanAll, flattenPaths, networkFromPaths, networkPaths, roundNetwork, strokeChains, variableStrokeOutline, nodeTransform, shapePaths, transformPaths, type NetworkPart, type Region } from '#geometry';
+import { booleanAll, flattenPaths, sketchPaths, sketchSeed, type Sketch, networkFromPaths, networkPaths, roundNetwork, strokeChains, variableStrokeOutline, nodeTransform, shapePaths, transformPaths, type NetworkPart, type Region } from '#geometry';
 
 /** How a vector network is drawn: what is filled, what is stroked, and how. */
 export interface VectorDrawing {
@@ -117,4 +117,46 @@ export function variableStrokeOf(d: Document, id: NodeId): VectorPath[] {
   for (let i = 0; i < id.length; i++) seed = (Math.imul(seed, 31) + id.charCodeAt(i)) | 0;
   const cap = d.get(id, 'strokeCap');
   return variableStrokeOutline(paths, { weight: d.get(id, 'strokeWeight'), profile: d.get(id, 'strokeProfile'), points: d.get(id, 'widthPoints'), custom: d.get(id, 'customBrush'), brush: d.get(id, 'brush'), roundCaps: cap === 'ROUND' || d.get(id, 'brush') !== 'NONE', seed });
+}
+
+// ---------- «От руки» (FEAT-223) ----------
+
+/** Layers drawn by hand: shapes and vectors; frames inside a frame (cards, buttons) — not screens, they are paper. */
+const SKETCH_SHAPES = new Set(['RECTANGLE', 'ELLIPSE', 'POLYGON', 'STAR', 'LINE', 'VECTOR', 'BOOLEAN_OPERATION']);
+const SKETCH_BOXES = new Set(['FRAME', 'INSTANCE', 'COMPONENT']);
+
+/** Drawn as a sketch: «От руки» on the layer or on any layer around it. */
+export function isSketched(doc: Document, id: NodeId): boolean {
+  const type = doc.type(id);
+  if (!SKETCH_SHAPES.has(type)) {
+    if (!SKETCH_BOXES.has(type)) return false;
+    const parent = doc.parent(id);
+    // A screen (on the page or in a section) stays straight.
+    if (!parent || doc.type(parent) === 'PAGE' || doc.type(parent) === 'SECTION') return false;
+  }
+  for (let n: NodeId | null = id; n && doc.type(n) !== 'PAGE'; n = doc.parent(n)) if (doc.get(n, 'sketch')) return true;
+  return false;
+}
+
+const sketchCache = new Map<NodeId, { key: string; sketch: Sketch }>();
+
+/** The hand-drawn outline of a layer (its own coordinates); cached until the outline changes. */
+export function sketchOf(doc: Document, id: NodeId): Sketch {
+  const type = doc.type(id);
+  const w = doc.get(id, 'width');
+  const h = doc.get(id, 'height');
+  const paths: VectorPath[] =
+    type === 'LINE'
+      ? [{ closed: false, points: [{ x: 0, y: 0 }, { x: w, y: 0 }] }]
+      : SKETCH_BOXES.has(type)
+        ? shapePaths('RECTANGLE', { width: w, height: h, cornerRadius: doc.get(id, 'cornerRadius'), cornerRadii: doc.get(id, 'cornerRadii') })
+        : nodePaths(doc, id);
+  const key = JSON.stringify(paths);
+  const hit = sketchCache.get(id);
+  if (hit && hit.key === key) return hit.sketch;
+  const size = type === 'LINE' ? Math.max(w, h) : Math.min(w, h);
+  const sketch = sketchPaths(paths, sketchSeed(String(id)), size);
+  sketchCache.set(id, { key, sketch });
+  if (sketchCache.size > 5000) sketchCache.clear();
+  return sketch;
 }

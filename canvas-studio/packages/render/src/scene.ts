@@ -3,7 +3,7 @@
 // It never mutates the document; it only listens to change sets.
 
 import type { ChangeSet, Document, NodeId, PropKey } from '#core';
-import { nodePaths } from '#layout';
+import { isSketched, nodePaths } from '#layout';
 import {
   IDENTITY,
   apply,
@@ -15,6 +15,8 @@ import {
   invert,
   multiply,
   nodeTransform,
+  scale,
+  translate,
   transformRect,
   union,
   warpExtent,
@@ -29,6 +31,25 @@ import {
 const PLACEMENT_KEYS: ReadonlySet<PropKey> = new Set<PropKey>(['x', 'y', 'rotation']);
 const GEOMETRY_KEYS: ReadonlySet<PropKey> = new Set<PropKey>(['x', 'y', 'width', 'height', 'rotation', 'strokeWeight', 'strokeWeights', 'strokeAlign', 'strokeJoin', 'strokeMiterLimit', 'effects', 'strokes', 'startCap', 'endCap', 'vectorPaths', 'vectorNetwork', 'booleanOp', 'warp', 'hangingPunctuation', 'hangingList', 'decorationStyle', 'decorationThickness', 'underlineOffset']);
 const CLIP_KEYS: ReadonlySet<PropKey> = new Set<PropKey>(['clipsContent', 'visible']);
+
+/** A layer's place for a moment of a timeline (Motion): what is set replaces the document's value while it is shown. */
+export interface Pose {
+  x?: number;
+  y?: number;
+  rotation?: number;
+  /** Around the layer's centre; 1 — as it is. */
+  scale?: number;
+  opacity?: number;
+}
+
+/** Where and how a layer is drawn: the document's values, or a pose's. */
+export interface Placement {
+  x: number;
+  y: number;
+  rotation: number;
+  scale: number;
+  opacity: number;
+}
 
 export interface HitOptions {
   /** Extra hit tolerance in world units (for thin lines). */
@@ -67,6 +88,12 @@ export class SceneGraph {
    * clicked anywhere, the cut-away part too, to move or edit them (as in Figma).
    */
   readonly openBooleans = new Set<NodeId>();
+  /** Focus view (step 7): only this layer and what is inside it can be hit or picked; null — the whole page. */
+  focusRoot: NodeId | null = null;
+
+  private inFocus(id: NodeId): boolean {
+    return this.focusRoot === null || !this.doc.store.isAlive(this.focusRoot) || this.doc.store.isAncestorOrSelf(this.focusRoot, id);
+  }
   /**
    * Outline view (as in Figma): a click near a drawn outline takes that layer first — one under others,
    * cut off by its frame or (with `hidden`) hidden; elsewhere clicks work as usual.
@@ -78,6 +105,39 @@ export class SceneGraph {
     if (JSON.stringify(outlines) === JSON.stringify(this.outlines)) return;
     this.outlines = outlines;
     this.structureDirty = true;
+  }
+
+  /** A moment of a timeline shown on the canvas (Motion); the document is not changed. */
+  private pose: ReadonlyMap<NodeId, Pose> | null = null;
+
+  /** Shows a moment of a timeline (null — the document as it is); only the layers it touches are recomputed. */
+  setPose(pose: ReadonlyMap<NodeId, Pose> | null): void {
+    const touched = new Set<NodeId>([...(this.pose?.keys() ?? []), ...(pose?.keys() ?? [])]);
+    this.pose = pose && pose.size > 0 ? pose : null;
+    if (touched.size === 0) return;
+    this.version++;
+    for (const id of touched) {
+      if (!this.doc.store.isAlive(id)) continue;
+      const old = this.renderBoundsCache.get(id);
+      if (old && !this.damageAll) this.damage.push(old);
+      this.damageNew.add(id);
+      this.painted.set(id, this.version);
+      for (const a of this.doc.store.ancestors(id)) this.painted.set(a, this.version);
+      this.dirtyGeometry.add(id);
+    }
+  }
+
+  /** Where and how a layer is drawn now. */
+  placement(id: NodeId): Placement {
+    const d = this.doc;
+    const p = this.pose?.get(id);
+    return {
+      x: p?.x ?? d.get(id, 'x'),
+      y: p?.y ?? d.get(id, 'y'),
+      rotation: p?.rotation ?? d.get(id, 'rotation'),
+      scale: p?.scale ?? 1,
+      opacity: p?.opacity ?? d.get(id, 'opacity'),
+    };
   }
 
   constructor(doc: Document, pageId: NodeId) {
@@ -242,7 +302,14 @@ export class SceneGraph {
   /** Recomputes transforms and bounds for `id` and its descendants; returns its render bounds. */
   private computeSubtree(id: NodeId, parentWorld: Matrix): Rect {
     const d = this.doc;
-    const world = multiply(parentWorld, nodeTransform(d.get(id, 'x'), d.get(id, 'y'), d.get(id, 'rotation')));
+    const pl = this.pose ? this.placement(id) : null;
+    let local = pl ? nodeTransform(pl.x, pl.y, pl.rotation) : nodeTransform(d.get(id, 'x'), d.get(id, 'y'), d.get(id, 'rotation'));
+    if (pl && pl.scale !== 1) {
+      const cx = d.get(id, 'width') / 2;
+      const cy = d.get(id, 'height') / 2;
+      local = multiply(local, multiply(translate(cx, cy), multiply(scale(pl.scale), translate(-cx, -cy))));
+    }
+    const world = multiply(parentWorld, local);
     this.worldCache.set(id, world);
     const bounds = transformRect(world, { x: 0, y: 0, width: d.get(id, 'width'), height: d.get(id, 'height') });
     this.boundsCache.set(id, bounds);
@@ -253,7 +320,8 @@ export class SceneGraph {
     for (const child of d.children(id)) {
       const childRender = this.computeSubtree(child, world);
       const o = this.outlines;
-      if ((!clips || o) && (d.get(child, 'visible') || o?.hidden)) render = union(render, childRender);
+      // A slice draws nothing: it does not make what holds it bigger in pictures and exports.
+      if ((!clips || o) && (d.get(child, 'visible') || o?.hidden) && d.type(child) !== 'SLICE') render = union(render, childRender);
     }
     this.renderBoundsCache.set(id, render);
     return render;
@@ -284,6 +352,13 @@ export class SceneGraph {
       top += -e.minY * h;
       right += (e.maxX - 1) * w;
       bottom += (e.maxY - 1) * h;
+    }
+    // «От руки»: the lines wobble and run a little past the corners.
+    if (isSketched(d, id)) {
+      left += 8;
+      top += 8;
+      right += 8;
+      bottom += 8;
     }
     if (left || top || right || bottom) {
       render = { x: render.x - left, y: render.y - top, width: render.width + left + right, height: render.height + top + bottom };
@@ -409,7 +484,8 @@ export class SceneGraph {
   /** Nodes whose bounds intersect a world rectangle. */
   queryRect(r: Rect): NodeId[] {
     this.ensure();
-    return this.index.query(r);
+    const all = this.index.query(r);
+    return this.focusRoot === null ? all : all.filter((id) => this.inFocus(id));
   }
 
   /**
@@ -421,10 +497,10 @@ export class SceneGraph {
     const tolerance = options.tolerance ?? 0;
     const candidates = this.index.queryPoint(p, tolerance);
     if (this.outlines) {
-      const near = candidates.filter((id) => this.nearOutline(id, p, Math.max(tolerance, 1e-6), { ...options, includeHidden: options.includeHidden || this.outlines!.hidden }));
+      const near = candidates.filter((id) => this.inFocus(id) && this.nearOutline(id, p, Math.max(tolerance, 1e-6), { ...options, includeHidden: options.includeHidden || this.outlines!.hidden }));
       if (near.length > 0) return near.sort((a, b) => this.paintOrder(b) - this.paintOrder(a));
     }
-    const hits = candidates.filter((id) => this.hitsNode(id, p, tolerance, options));
+    const hits = candidates.filter((id) => this.inFocus(id) && this.hitsNode(id, p, tolerance, options));
     hits.sort((a, b) => this.paintOrder(b) - this.paintOrder(a));
     return hits;
   }
@@ -443,6 +519,11 @@ export class SceneGraph {
       // Inside a boolean operation only its result is there to click: not a hole, not what was cut away.
       if (current !== id && d.type(current) === 'BOOLEAN_OPERATION' && !this.openBooleans.has(current) && !this.insideShape(current, p, tolerance)) return false;
       current = d.parent(current);
+    }
+    // A slice is caught by its edge only: what lies under it stays easy to click.
+    if (d.type(id) === 'SLICE') {
+      const band = Math.max(tolerance * 2, 2);
+      return this.insideBox(id, p, band) && !this.insideBox(id, p, -band);
     }
     return this.insideShape(id, p, tolerance);
   }

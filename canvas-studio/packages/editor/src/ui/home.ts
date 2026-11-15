@@ -4,7 +4,7 @@
 // (so it can be opened in a new tab and bookmarked); "New file" goes to
 // ?new=1[&project=<id>].
 
-import { brand, tr } from '#core';
+import { brand, inMacApp, tr } from '#core';
 import { SLIDE_TEMPLATE_ID } from '../slide-templates.ts';
 import { loadBrandFonts } from '../t2-fonts.ts';
 import { cloud, CloudError, teams as teamApi, type CloudUser, type FileBackend, type TeamInfo } from '../cloud.ts';
@@ -298,7 +298,7 @@ export class Home {
           ]
         : serverAvailable
           ? [{ kind: 'action', label: tr('Войти или зарегистрироваться…'), run: () => this.options.signIn() }]
-          : [{ kind: 'action', label: tr('Сервера нет: файлы хранятся в этом браузере'), disabled: true, run: () => undefined }];
+          : [{ kind: 'action', label: inMacApp ? tr('Файлы только в этом браузере') : tr('Сервера нет: файлы хранятся в этом браузере'), disabled: true, run: () => undefined }];
       this.menu.open(r.left, r.bottom + 4, items);
     });
     return button;
@@ -389,7 +389,7 @@ export class Home {
       });
       this.nav.append(heading);
       const projects = this.projects.filter((p) => p.teamId === t.id);
-      if (projects.length === 0) this.nav.append(h('p', { class: 'home-nav-hint' }, canEditTeam(t) ? tr('Создайте проект — его файлы увидят все в команде.') : tr('Проектов пока нет.')));
+      if (projects.length === 0) this.nav.append(h('p', { class: 'home-nav-hint' }, canEditTeam(t) ? tr('Создайте проект, и его файлы увидят все в команде.') : tr('Проектов пока нет.')));
       for (const p of projects) this.nav.append(this.projectItem(p));
     }
     this.nav.append(h('button', { class: 'home-nav-item home-new-team', type: 'button', onclick: () => void this.createTeam() }, icon('people', 16), h('span', {}, tr('Создать команду'))));
@@ -539,7 +539,7 @@ export class Home {
     if (this.section.kind === 'shared') return tr('Здесь появятся файлы, к которым вам откроют доступ: по приглашению на ваш email или по ссылке.');
     if (team) {
       if (this.projects.some((p) => p.teamId === team.id)) return tr('В проектах команды пока нет файлов.');
-      return canEditTeam(team) ? tr('В команде пока нет проектов. Создайте проект — его файлы увидят все в команде.') : tr('В команде пока нет проектов: их создают редакторы команды.');
+      return canEditTeam(team) ? tr('В команде пока нет проектов. Создайте проект, и его файлы увидят все в команде.') : tr('В команде пока нет проектов: их создают редакторы команды.');
     }
     if (project) return canCreate ? tr('В проекте пока нет файлов. Создайте новый или перетащите сюда файл из «Недавних».') : tr('В проекте пока нет файлов.');
     if (this.section.kind === 'drafts') return tr('Файлов без проекта нет. Новые файлы попадают сюда, пока вы не перенесёте их в проект.');
@@ -801,7 +801,7 @@ export class Home {
 
   private async removeProject(p: ProjectMeta): Promise<void> {
     const count = this.files.filter((f) => f.projectId === p.id).length;
-    const files = count > 0 ? tr(' Файлы ({0}) не удалятся — они перейдут в раздел «Без проекта».', count) : '';
+    const files = count > 0 ? tr(' Файлы ({0}) не удалятся, они перейдут в раздел «Без проекта».', count) : '';
     const ok = await askConfirm({ title: tr('Удалить проект?'), message: tr('Проект «{0}» будет удалён.{1}', p.name, files), confirm: tr('Удалить проект'), danger: true });
     if (!ok) return;
     await this.act(() => this.options.backend.removeProject(p.id));
@@ -844,7 +844,7 @@ export class Home {
     const count = this.teamFiles(t.id).length;
     const ok = await askConfirm({
       title: tr('Удалить команду?'),
-      message: tr('Команда «{0}» и её проекты будут удалены, участники потеряют доступ.{1}', t.name, count > 0 ? tr(' Файлы ({0}) не удалятся — каждый перейдёт в раздел «Без проекта» того, кто его создал.', count) : ''),
+      message: tr('Команда «{0}» и её проекты будут удалены, участники потеряют доступ.{1}', t.name, count > 0 ? tr(' Файлы ({0}) не удалятся: каждый перейдёт в раздел «Без проекта» того, кто его создал.', count) : ''),
       confirm: tr('Удалить команду'),
       danger: true,
     });
@@ -867,7 +867,7 @@ export class Home {
   private async leaveTeam(t: TeamInfo): Promise<void> {
     const ok = await askConfirm({
       title: tr('Выйти из команды?'),
-      message: tr('Файлы команды «{0}» перестанут быть вам доступны (кроме созданных вами — они останутся в ваших). Вернуться можно по новому приглашению.', t.name),
+      message: tr('Файлы команды «{0}» перестанут быть вам доступны, кроме созданных вами: они останутся в ваших. Вернуться можно по новому приглашению.', t.name),
       confirm: tr('Выйти'),
       danger: true,
     });
@@ -904,7 +904,7 @@ export class Home {
     if ((backend as { offline?: boolean }).offline) {
       this.banner.hidden = false;
       const retry = h('button', { class: 'text-button', type: 'button', onclick: () => void this.reload() }, tr('Проверить снова'));
-      this.banner.replaceChildren(h('span', {}, tr('Нет связи с сервером. Показаны файлы, открывавшиеся в этом браузере, — их можно открыть и править, правки отправятся при подключении.')), retry);
+      this.banner.replaceChildren(h('span', {}, tr('Нет связи с сервером. Показаны файлы, открывавшиеся в этом браузере: их можно открыть и править, правки отправятся при подключении.')), retry);
       return;
     }
     const count = (await localFilesToUpload(backend).catch(() => [])).length;

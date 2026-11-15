@@ -91,7 +91,33 @@ export class LayersPanel {
     this.foldAll = h('button', { class: 'icon-button layers-fold', type: 'button', onclick: () => (this.anyOpen() ? this.collapseAll() : this.expandAll()) });
     const searchBar = h('div', { class: 'layers-search-bar' }, icon('search', 14), this.search, h('div', { class: 'select-wrap' }, this.filter), this.foldAll);
     const body = h('div', { class: 'tab-body' }, searchBar, this.treeEl);
-    const pagesSection = h('section', { class: 'panel-section' }, h('header', { class: 'section-header' }, h('h3', {}, tr('Страницы')), addPage), this.pagesEl);
+    // UI-008: the pages fold to one line with the current page, as in Figma; remembered, folded at first.
+    let folded = true;
+    try {
+      folded = localStorage.getItem('cs.pagesFolded') !== '0';
+    } catch {
+      // folded
+    }
+    this.pagesTitle = h('span', { class: 'pages-title' });
+    const fold = h(
+      'button',
+      { class: 'pages-fold', type: 'button', 'aria-expanded': String(!folded), title: tr('Показать или скрыть список страниц') },
+      icon('chevronRight', 12),
+      this.pagesTitle,
+    );
+    const pagesSection = h('section', { class: `panel-section pages-section${folded ? ' folded' : ''}` }, h('header', { class: 'section-header' }, h('h3', {}, fold), addPage), this.pagesEl);
+    fold.addEventListener('click', () => {
+      folded = pagesSection.classList.toggle('folded');
+      fold.setAttribute('aria-expanded', String(!folded));
+      this.pagesFolded = folded;
+      this.render();
+      try {
+        localStorage.setItem('cs.pagesFolded', folded ? '1' : '0');
+      } catch {
+        // not remembered
+      }
+    });
+    this.pagesFolded = folded;
     const show = (wanted: LeftTab) => {
       const tab: LeftTab = (wanted === 'assets' && !assets) || (wanted === 'comments' && !comments) || (wanted === 'slides' && !slides) ? 'layers' : wanted;
       for (const [id, button] of [['slides', slidesTab], ['layers', layersTab], ['assets', assetsTab], ['comments', commentsTab]] as const) {
@@ -154,6 +180,7 @@ export class LayersPanel {
       this.syncSelection(true);
     });
     editor.events.on('page', () => this.schedule());
+    editor.events.on('focus', () => this.schedule());
     editor.events.on('document', () => this.schedule());
     editor.events.on('overlay', () => this.syncHover());
     this.scroller?.addEventListener('scroll', () => {
@@ -182,9 +209,16 @@ export class LayersPanel {
     });
   }
 
+  private pagesTitle!: HTMLElement;
+  private pagesFolded = true;
+  /** The layer just opened or closed by its arrow: the arrow turns, the opened layers fade in — this render only (UI-011). */
+  private turned: { id: NodeId; open: boolean } | null = null;
+
   private render(): void {
     const editor = this.editor;
     const doc = editor.doc;
+    // Folded: the header names the current page; open: it is the list's title.
+    this.pagesTitle.textContent = this.pagesFolded ? doc.get(editor.pageId, 'name') : tr('Страницы');
     clear(this.pagesEl);
     for (const page of doc.pages()) {
       const active = page === editor.pageId;
@@ -262,7 +296,9 @@ export class LayersPanel {
       this.syncHover();
       return;
     }
-    const children = [...doc.children(editor.pageId)].reverse();
+    // Focus view: the focused frame alone (step 7).
+    const focus = editor.focusFrame && doc.store.isAlive(editor.focusFrame) ? editor.focusFrame : null;
+    const children = focus ? [focus] : [...doc.children(editor.pageId)].reverse();
     if (children.length === 0) {
       this.tree = false;
       this.treeEl.append(h('p', { class: 'hint' }, tr('На странице пока пусто. Нарисуйте фрейм (F) или прямоугольник (R).')));
@@ -399,7 +435,7 @@ export class LayersPanel {
     const toggle = h(
       'button',
       {
-        class: 'tree-toggle',
+        class: `tree-toggle${this.turned?.id === id ? (this.turned.open ? ' turn-open' : ' turn-close') : ''}`,
         type: 'button',
         tabindex: -1,
         'aria-label': open ? tr('Свернуть') : tr('Развернуть'),
@@ -409,7 +445,9 @@ export class LayersPanel {
           if (e.altKey) this.setSubtree(id, !open);
           else if (open) this.collapsed.add(id);
           else this.collapsed.delete(id);
+          this.turned = { id, open: !open };
           this.render();
+          this.turned = null;
         },
       },
       icon(open ? 'chevronDown' : 'chevronRight', 12),
@@ -434,7 +472,7 @@ export class LayersPanel {
     const row = h(
       'div',
       {
-        class: `layer-row type-${type.toLowerCase().replace('_', '-')}${visible ? '' : ' hidden-layer'}${editor.isInstanceLayer(id) ? ' in-instance' : ''}`,
+        class: `layer-row type-${type.toLowerCase().replace('_', '-')}${visible ? '' : ' hidden-layer'}${editor.isInstanceLayer(id) ? ' in-instance' : ''}${this.turned?.open && id !== this.turned.id && doc.store.ancestors(id).includes(this.turned.id) ? ' row-in' : ''}`,
         role: 'treeitem',
         'aria-level': String(depth + 1),
         'aria-expanded': hasKids ? String(open) : undefined,

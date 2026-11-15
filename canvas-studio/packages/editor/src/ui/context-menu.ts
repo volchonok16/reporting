@@ -3,9 +3,10 @@
 
 import { formatShortcut } from '../keyboard.ts';
 import { clear, h, icon } from './dom.ts';
+import { fadeAway } from './motion-ui.ts';
 
 export type MenuItem =
-  | { kind: 'action'; label: string; shortcut?: string; disabled?: boolean; run: () => void }
+  | { kind: 'action'; label: string; shortcut?: string; disabled?: boolean; run: () => void; /** One of a choice (a ✓ when chosen). */ checked?: boolean }
   | { kind: 'submenu'; label: string; items: MenuItem[]; disabled?: boolean }
   | { kind: 'separator' };
 
@@ -41,6 +42,7 @@ export class ContextMenu {
 
   close(): void {
     if (this.layer.hidden) return;
+    fadeAway(this.layer);
     this.layer.hidden = true;
     clear(this.layer);
     this.menus = [];
@@ -60,7 +62,8 @@ export class ContextMenu {
       }
       const row = h(
         'div',
-        { class: `menu-item${item.disabled ? ' disabled' : ''}`, role: 'menuitem', 'aria-disabled': String(!!item.disabled), tabindex: -1 },
+        { class: `menu-item${item.disabled ? ' disabled' : ''}`, role: item.kind === 'action' && item.checked !== undefined ? 'menuitemradio' : 'menuitem', 'aria-checked': item.kind === 'action' && item.checked !== undefined ? String(item.checked) : undefined, 'aria-disabled': String(!!item.disabled), tabindex: -1 },
+        item.kind === 'action' && item.checked !== undefined ? h('span', { class: 'menu-check' }, item.checked ? icon('check', 12) : null) : null,
         h('span', { class: 'menu-label' }, item.label),
         item.kind === 'action' && item.shortcut ? h('span', { class: 'menu-shortcut' }, formatShortcut(item.shortcut)) : null,
         item.kind === 'submenu' ? icon('chevronRight', 12) : null,

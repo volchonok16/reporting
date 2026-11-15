@@ -3,7 +3,7 @@
 // with «+» on the bar over an object or here; removed here.
 
 import { tr } from '#core';
-import { addBoardColor, BOARD_COLORS_MAX, removeBoardColor } from '../board.ts';
+import { addBoardColor, BOARD_COLORS_MAX, boardColorsOf, removeBoardColor } from '../board.ts';
 import type { Editor } from '../editor.ts';
 import { openDialog } from './dialog.ts';
 import { h, icon } from './dom.ts';
@@ -13,7 +13,7 @@ export function openBoardColors(editor: Editor): void {
   const list = h('div', { class: 'board-colors-list', role: 'list' });
   const fill = () => {
     list.replaceChildren();
-    const colors = d.get(d.rootId, 'boardColors');
+    const colors = boardColorsOf(d);
     for (const hex of colors) {
       const remove = h('button', { class: 'icon-button', type: 'button', title: tr('Убрать {0} из палитры доски', hex), 'aria-label': tr('Убрать {0} из палитры доски', hex), disabled: d.readOnly }, icon('close', 12));
       remove.addEventListener('click', () => {
@@ -22,7 +22,7 @@ export function openBoardColors(editor: Editor): void {
       });
       list.append(h('div', { class: 'board-colors-item', role: 'listitem' }, h('span', { class: 'board-colors-chip', style: { background: hex } }), h('code', {}, hex), remove));
     }
-    if (!colors.length) list.append(h('p', { class: 'share-muted' }, tr('Своих цветов пока нет. Добавьте цвета бренда или команды — они появятся у стикеров, фигур, разделов и скотча после обычных.')));
+    if (!colors.length) list.append(h('p', { class: 'share-muted' }, tr('Своих цветов пока нет. Добавьте цвета бренда или команды, и они появятся у стикеров, фигур, разделов и скотча после обычных.')));
   };
   fill();
   const input = h('input', { type: 'color', value: '#4f5bd5', 'aria-label': tr('Цвет') }) as HTMLInputElement;

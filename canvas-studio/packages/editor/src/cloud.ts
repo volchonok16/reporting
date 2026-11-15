@@ -10,6 +10,7 @@ import { localProjects, storage } from './storage.ts';
 import { adoptAccountPrefs, forgetAccountPrefs } from './prefs.ts';
 import { offline, rememberedUser, rememberUser } from './offline.ts';
 import type { LibraryPayload } from './library.ts';
+import { publicOrigin } from './mac-bridge.ts';
 
 export interface CloudUser {
   id: string;
@@ -230,6 +231,118 @@ export type CommentPlace = { pageId: string; nodeId: string | null; x: number; y
 
 const threadsPath = (id: string, rest = '') => `/api/files/${encodeURIComponent(id)}/comments${rest}`;
 
+/** Who opened a file and when (step 9): a person (null — guests by a link), first and last opening, visits. */
+export interface ViewInfo {
+  name: string | null;
+  me: boolean;
+  first: number;
+  last: number;
+  visits: number;
+}
+
+export const views = {
+  list: async (id: string) => (await request<{ views: ViewInfo[] }>('GET', `/api/files/${encodeURIComponent(id)}/views`, undefined, linkHeaders(id))).views,
+};
+
+/** Testing a prototype on people: a task from a start screen to a goal screen. */
+export interface TestTask {
+  id: string;
+  text: string;
+  start: string;
+  goals: string[];
+}
+
+export interface UserTestInfo {
+  id: string;
+  token: string;
+  name: string;
+  pageId: string;
+  tasks: TestTask[];
+  open: boolean;
+  createdAt: number;
+  sessions: number;
+  last: number | null;
+}
+
+/** A tap of a respondent: on which screen, where in its own units, ms from the task's start, whether anything answered. */
+export interface TestTap {
+  s: string;
+  x: number;
+  y: number;
+  t: number;
+  hit: boolean;
+}
+
+export type TestOutcome = 'done' | 'gaveup' | 'left';
+
+export interface TestTaskResult {
+  task: string;
+  outcome: TestOutcome;
+  ms: number;
+  path: string[];
+  taps: TestTap[];
+}
+
+export interface TestSession {
+  id: string;
+  at: number;
+  tasks: TestTaskResult[];
+}
+
+const testsPath = (id: string, rest = '') => `/api/files/${encodeURIComponent(id)}/tests${rest}`;
+const publicTestPath = (fileId: string, token: string) => `/api/tests/${encodeURIComponent(fileId)}/${encodeURIComponent(token)}`;
+
+export const userTests = {
+  list: async (id: string) => (await request<{ tests: UserTestInfo[] }>('GET', testsPath(id), undefined, linkHeaders(id))).tests,
+  create: async (id: string, body: { name: string; pageId: string; tasks: Omit<TestTask, 'id'>[] }) => (await request<{ test: UserTestInfo }>('POST', testsPath(id), body, linkHeaders(id))).test,
+  results: (id: string, test: string) => request<{ test: UserTestInfo; sessions: TestSession[]; snapshot: string }>('GET', testsPath(id, `/${encodeURIComponent(test)}`), undefined, linkHeaders(id)),
+  change: async (id: string, test: string, patch: { name?: string; open?: boolean }) => (await request<{ test: UserTestInfo }>('PATCH', testsPath(id, `/${encodeURIComponent(test)}`), patch, linkHeaders(id))).test,
+  remove: (id: string, test: string) => request<{ ok: true }>('DELETE', testsPath(id, `/${encodeURIComponent(test)}`), undefined, linkHeaders(id)),
+  /** For a respondent, without signing in. */
+  open: (fileId: string, token: string) => request<{ test: { name: string; pageId: string; tasks: TestTask[] }; snapshot: string }>('GET', publicTestPath(fileId, token)),
+  /**
+   * The session so far; the same id replaces itself. `keepalive` — sent while the tab closes
+   * (a beacon cannot carry our header).
+   */
+  answer: (fileId: string, token: string, session: string, tasks: TestTaskResult[], keepalive = false): Promise<unknown> =>
+    keepalive
+      ? fetch(`${publicTestPath(fileId, token)}/sessions/${session}`, { method: 'PUT', keepalive: true, credentials: 'same-origin', headers: { 'X-CS': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ tasks }) }).catch(() => undefined)
+      : request<{ ok: true }>('PUT', `${publicTestPath(fileId, token)}/sessions/${session}`, { tasks }),
+  /** The link a respondent opens. */
+  link: (fileId: string, token: string) => `${location.origin}/?test=${encodeURIComponent(fileId)}&t=${encodeURIComponent(token)}`,
+};
+
+// ---------- approval (other editors, item 9) ----------
+
+export type ApprovalStatus = 'REVIEW' | 'APPROVED' | 'CHANGES';
+
+/** A frame or section asked to be approved: by whom, of whom, the answer, the file version approved. */
+export interface ApprovalInfo {
+  nodeId: string;
+  pageId: string;
+  name: string;
+  status: ApprovalStatus;
+  by: Person;
+  reviewer: Person;
+  at: number;
+  note?: string;
+  approvedAt?: number;
+  version?: string;
+  history: { status: ApprovalStatus | 'WITHDRAWN'; by: string; at: number; note?: string; version?: string }[];
+}
+
+export type ApprovalChange = { type: 'approval'; approval: ApprovalInfo } | { type: 'approval'; nodeId: string; deleted: true };
+
+const approvalsPath = (id: string, rest = '') => `/api/files/${encodeURIComponent(id)}/approvals${rest}`;
+
+export const approvals = {
+  list: async (id: string) => (await request<{ approvals: ApprovalInfo[] }>('GET', approvalsPath(id), undefined, linkHeaders(id))).approvals,
+  ask: (id: string, input: { nodeId: string; pageId: string; name: string; reviewer: string; note: string }) => request<ApprovalChange & { mailFailed?: true }>('POST', approvalsPath(id), input, linkHeaders(id)),
+  answer: (id: string, nodeId: string, verdict: 'approved' | 'changes', note: string) =>
+    request<ApprovalChange & { mailFailed?: true }>('POST', approvalsPath(id, `/${encodeURIComponent(nodeId)}/verdict`), { verdict, note }, linkHeaders(id)),
+  withdraw: (id: string, nodeId: string) => request<ApprovalChange>('DELETE', approvalsPath(id, `/${encodeURIComponent(nodeId)}`), undefined, linkHeaders(id)),
+};
+
 export const comments = {
   list: async (id: string) => (await request<{ threads: CommentThread[] }>('GET', threadsPath(id), undefined, linkHeaders(id))).threads,
   create: (id: string, place: CommentPlace, text: string, mentions: string[] = []) => request<ThreadChange>('POST', threadsPath(id), { ...place, text, mentions }, linkHeaders(id)),
@@ -328,7 +441,8 @@ export const sharing = {
   },
   /** The address to send: the file, optionally a page and a layer to show. */
   url(id: string, token: string | null, target?: { page?: string; node?: string }): string {
-    const u = new URL('/', location.origin);
+    // The macOS app: the server's site, not the app's own address (mac-bridge.ts).
+    const u = new URL('/', publicOrigin());
     u.searchParams.set('file', id);
     if (token) u.searchParams.set('t', token);
     if (target?.page) u.searchParams.set('page', target.page);

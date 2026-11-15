@@ -2,7 +2,7 @@
 // from here and call its actions; they never write to the document directly.
 
 import { boardObjectOf, defaultBoardPrefs, type BoardPrefs, type BoardTool } from './board.ts';
-import { isRepeatCopy, repeatGroupOf } from '#components';
+import { addBreakpoint, breakpointFrames, isRepeatCopy, repeatGroupOf, unlinkBreakpoint } from '#components';
 import { scaleNode } from '#layout';
 import { brushFromPaths } from '#geometry';
 import { applyBuilder, builderCells, type BuilderCell } from './shape-builder.ts';
@@ -35,6 +35,12 @@ import {
   isInstanceLayer,
   isTopLevelInstance,
   mainComponentOf,
+  pushOverridesToMain,
+  setExposed,
+  setPreferredValues,
+  restoreMainComponent,
+  sameLayerInVariants,
+  isSlotMirror,
   outerInstance,
   processTransaction,
   removeProperty,
@@ -48,20 +54,29 @@ import {
   wouldCreateCycle,
 } from '#components';
 import { SceneGraph, Viewport } from '#render';
-import { clipboardHtml, clipboardPlainText, copySubtree, parseClipboard, pasteSubtree, resolvePastedStyles, restoreClipboardBlobs, toClipboard, type ClipboardData } from './clipboard.ts';
+import { clipboardHtml, clipboardPlainText, copySubtree, parseClipboard, pasteSubtree, resolvePastedStyles, toClipboard, type ClipboardData } from './clipboard.ts';
 import { Emitter } from './emitter.ts';
 import { play } from './sounds.ts';
 import { typographRuns } from './typograph.ts';
 import { PrototypeController, type PanelMode } from './prototype/controller.ts';
 import { VariablesController } from './variables.ts';
 import { libraryOf } from './library.ts';
+import { Timeline } from './motion/timeline.ts';
 import { matchingInVariants, variantSetOf } from './multi-edit.ts';
+import type { Vision } from './vision.ts';
 
 /** Margin a new section leaves around the wrapped layers, and room for its title. */
+
+/** A button in a toast («Указать ключ…»): the toast closes with it. */
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
 export const SECTION_PADDING = 40;
 export const SECTION_TITLE_SPACE = 24;
 
-export type ToolId = 'select' | 'frame' | 'section' | 'rectangle' | 'ellipse' | 'polygon' | 'star' | 'line' | 'arrow' | 'pen' | 'pencil' | 'scale' | 'text' | 'hand' | 'eyedropper' | 'comment' | BoardTool;
+export type ToolId = 'select' | 'annotate' | 'frame' | 'section' | 'slice' | 'rectangle' | 'ellipse' | 'polygon' | 'star' | 'line' | 'arrow' | 'pen' | 'pencil' | 'scale' | 'text' | 'hand' | 'eyedropper' | 'comment' | BoardTool;
 
 export interface Guide {
   axis: 'x' | 'y';
@@ -101,6 +116,10 @@ export interface ViewSettings {
   motion: boolean;
   /** Quiet interface sounds (FEAT-150); off by default. */
   sounds: boolean;
+  /** Dev Mode annotations and saved measurements on the canvas (Shift+Y, as in Figma). */
+  annotations: boolean;
+  /** The canvas as a person with colour blindness sees it (FEAT-222); the file does not change. */
+  vision: Vision;
 }
 
 /** A default layout grid of a kind, as Figma creates it. */
@@ -114,12 +133,16 @@ export interface EditorEvents extends Record<string, unknown> {
   selection: readonly NodeId[];
   tool: ToolId;
   page: NodeId;
+  /** Focus view (step 7): the frame shown alone, or null. */
+  focus: NodeId | null;
   viewport: void;
   overlay: void;
+  /** The timeline's moment or state changed (Motion): the canvas shows another pose. */
+  motion: void;
   document: Document;
   /** The undo or redo history changed (an edit entered it, undo, redo). */
   history: void;
-  toast: { message: string; kind: 'info' | 'error' };
+  toast: { message: string; kind: 'info' | 'error'; action?: ToastAction };
   /** A model job started or settled (Editor.works). */
   work: void;
   editText: NodeId | null;
@@ -134,6 +157,10 @@ export interface EditorEvents extends Record<string, unknown> {
   shapeBuilder: { ids: NodeId[]; cells: BuilderCell[] } | null;
   view: ViewSettings;
   mode: PanelMode;
+  /** A Dev Mode note was added or its card clicked: the «Код» tab shows it with its text in focus. */
+  annotate: { id: NodeId; index: number };
+  /** A saved measurement was picked on the canvas (null — let go). */
+  measure: string | null;
 }
 
 export type AlignEdge = 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom';
@@ -146,11 +173,18 @@ const BOARD_GAP = 24;
 /** «@Name» in a board text: the accent colour (#4F5BD5), as mentions in comments. */
 const MENTION_COLOR: Color = { r: 0x4f / 255, g: 0x5b / 255, b: 0xd5 / 255, a: 1 };
 
+/** The page's reduced-motion query, made once (its `.matches` follows the system). */
+let reducedMotion: MediaQueryList | null = null;
+
 export class Editor {
   doc: Document;
+  /** The server file open here (null — a file of this browser): a cut component remembers it (step 6). */
+  fileId: string | null = null;
   scene: SceneGraph;
   readonly viewport = new Viewport();
   readonly events = new Emitter<EditorEvents>();
+  /** The open timeline of a frame (Motion, stage 2). */
+  readonly timeline: Timeline = new Timeline(this);
   readonly measurer: TextMeasurer;
   /** Variables, collections, modes and bindings (section 11). */
   readonly variables: VariablesController = new VariablesController(this);
@@ -236,6 +270,9 @@ export class Editor {
   /** Frames that have ruler guides / layout grids: the overlay asks every frame, the page may have thousands of layers. */
   private withGuides: NodeId[] | null = null;
   private withLayoutGrids: NodeId[] | null = null;
+  private withAnnotations: NodeId[] | null = null;
+  /** A saved measurement picked on the canvas (step 7): Delete removes it, Esc lets it go. */
+  measureSelected: string | null = null;
   /** Gradient whose handles are shown on the canvas (BUG-015); cleared when the selection changes. */
   gradientEdit: { id: NodeId; key: 'fills' | 'strokes'; index: number; stop: number } | null = null;
   /** Layer whose perspective corners are dragged on the canvas (mockups); cleared when the selection changes. */
@@ -244,7 +281,7 @@ export class Editor {
   shapeBuilder: { ids: NodeId[]; cells: BuilderCell[] } | null = null;
 
   /** Display settings: rulers, grids, pixel grid, snapping (the app persists them). */
-  view: ViewSettings = { rulers: false, layoutGrids: true, pixelGrid: true, snapToPixel: true, snapping: true, outlines: false, outlineHidden: false, outlineBounds: false, pixelPreview: 0, cursors: true, propertyLabels: false, smartSymbols: true, motion: true, sounds: false };
+  view: ViewSettings = { rulers: false, layoutGrids: true, pixelGrid: true, snapToPixel: true, snapping: true, outlines: false, outlineHidden: false, outlineBounds: false, pixelPreview: 0, cursors: true, propertyLabels: false, smartSymbols: true, motion: true, sounds: false, annotations: true, vision: 'normal' };
 
   /** The last pixel preview density switched on: Ctrl+P brings it back. */
   private lastPixelPreview: 1 | 2 = 1;
@@ -297,6 +334,32 @@ export class Editor {
     };
     visit(this.pageId);
     return out;
+  }
+
+  /** Layers of this page with Dev Mode annotations (for the overlay; hidden layers are left out). */
+  annotatedLayers(): NodeId[] {
+    if (!this.withAnnotations) {
+      const d = this.doc;
+      const out: NodeId[] = [];
+      const visit = (parent: NodeId) => {
+        for (const id of d.children(parent)) {
+          if (!d.get(id, 'visible')) continue;
+          if (d.get(id, 'annotations').length > 0) out.push(id);
+          visit(id);
+        }
+      };
+      visit(this.pageId);
+      this.withAnnotations = out;
+    }
+    return this.withAnnotations;
+  }
+
+  /** Picks a saved measurement (or none). */
+  selectMeasurement(id: string | null): void {
+    if (this.measureSelected === id) return;
+    this.measureSelected = id;
+    this.events.emit('measure', id);
+    this.requestOverlay();
   }
 
   /** Frames of this page with layout grids (for the overlay). */
@@ -491,6 +554,8 @@ export class Editor {
   /** Viewport state per page, so switching pages returns to where you were (FR-CNV-061). */
   private readonly pageViews = new Map<NodeId, ReturnType<Viewport['toJSON']>>();
   private clipboard: ClipboardData | null = null;
+  /** The plain text our last copy put on the system clipboard: other text there is newer (copied elsewhere). */
+  private clipboardPlain: string | null = null;
   private unsubscribeDoc: (() => void) | null = null;
 
   constructor(doc: Document, measurer: TextMeasurer) {
@@ -512,6 +577,7 @@ export class Editor {
     this.selection = [];
     this.hover = null;
     this.editingText = null;
+    this.focusFrame = null;
     this.pageViews.clear();
     this.attach();
     this.events.emit('document', doc);
@@ -527,9 +593,12 @@ export class Editor {
         if (alive.length !== this.selection.length) this.setSelection(alive);
       }
       if (!this.doc.store.isAlive(this.pageId)) this.setPage(this.doc.pages()[0]!);
+      if (this.focusFrame && !this.doc.store.isAlive(this.focusFrame)) this.setFocus(null, false);
       this.gridCache.clear();
       if (changes.structural || [...changes.updated.values()].some((k) => k.has('guides') || k.has('visible'))) this.withGuides = null;
       if (changes.structural || [...changes.updated.values()].some((k) => k.has('layoutGrids') || k.has('visible'))) this.withLayoutGrids = null;
+      if (changes.structural || [...changes.updated.values()].some((k) => k.has('annotations') || k.has('visible'))) this.withAnnotations = null;
+      if (this.measureSelected && !this.doc.get(this.pageId, 'measurements').some((m) => m.id === this.measureSelected)) this.measureSelected = null;
       this.events.emit('change', { changes, source });
     });
     const offHistory = this.doc.onHistory(() => this.events.emit('history', undefined));
@@ -569,6 +638,8 @@ export class Editor {
   editPass: ((tx: Transaction, final: boolean) => void) | null = null;
 
   postProcess(tx: Transaction, final = true): void {
+    // A layer of an open timeline moved by hand: a keyframe at the playhead (Motion, stage 2c).
+    this.timeline.record(tx);
     processTransaction(tx, this.measurer);
     this.editPass?.(tx, final);
   }
@@ -600,8 +671,8 @@ export class Editor {
     }
   }
 
-  toast(message: string, kind: 'info' | 'error' = 'info'): void {
-    this.events.emit('toast', { message, kind });
+  toast(message: string, kind: 'info' | 'error' = 'info', action?: ToastAction): void {
+    this.events.emit('toast', { message, kind, action });
   }
 
   /** Model jobs in progress (✦): the canvas glows over their layers until each settles (ui/work-glow.ts). */
@@ -626,6 +697,8 @@ export class Editor {
     // A slide on show is the paper, never a selected layer (FEAT-165): whatever asks — a thumbnail,
     // the layers panel, a marquee, ⌘A — it stays out, so there is nothing to drag.
     let unique = [...new Set(ids)].filter((id) => this.doc.store.isAlive(id) && !this.isPinned(id));
+    // Layers taken: Delete is theirs again, not a picked measurement's.
+    if (unique.length > 0) this.measureSelected = null;
     if (this.variantEdit) {
       // Leaving the set ends multi-edit; one layer in a variant brings the same layers of the others.
       if (!this.doc.store.isAlive(this.variantEdit) || unique.some((id) => variantSetOf(this.doc, id) !== this.variantEdit)) this.variantEdit = null;
@@ -775,6 +848,8 @@ export class Editor {
   acceptsChildren(id: NodeId): boolean {
     const type = this.doc.type(id);
     if (type === 'PAGE' || type === 'SECTION') return true;
+    // A slot of an instance takes layers of the instance's own (step 6).
+    if (isSlotMirror(this.doc, id)) return true;
     if (!isFrameLike(type) || type === 'INSTANCE' || type === 'COMPONENT_SET') return false;
     // A board's sticky, shape, stamp or label is a frame inside, but not a container: a sticky dropped
     // on another one stays beside it (BUG-075: it went inside and under the next column).
@@ -789,12 +864,22 @@ export class Editor {
 
   /** Whether the layer may be moved, resized, rotated or deleted directly. */
   canTransform(id: NodeId): boolean {
-    return !this.isInstanceLayer(id) && !this.doc.get(id, 'locked') && !this.isPinned(id) && !this.isTableCell(id);
+    return !this.structureFixed(id) && !this.doc.get(id, 'locked') && !this.isPinned(id) && !this.isTableCell(id);
   }
 
   /** Splits ids into editable ones and explains once why the rest were skipped. */
+  /**
+   * A layer whose place follows a component: an instance's layer — except what a slot of an instance shows, which
+   * can be moved and removed (the slot then becomes the instance's own, step 6).
+   */
+  structureFixed(id: NodeId): boolean {
+    if (!this.isInstanceLayer(id)) return false;
+    const parent = this.doc.parent(id);
+    return !(parent !== null && isSlotMirror(this.doc, parent));
+  }
+
   private transformable(ids: readonly NodeId[], action: string): NodeId[] {
-    const ok = ids.filter((id) => !this.isInstanceLayer(id));
+    const ok = ids.filter((id) => !this.structureFixed(id));
     if (ok.length < ids.length) this.toast(tr('{0}: слои копии повторяют компонент. Измените сам компонент или отвяжите копию от него (⌥⌘B).', action));
     return ok;
   }
@@ -869,6 +954,10 @@ export class Editor {
       if (exclude.some((e) => !canContain(this.doc.type(id), this.doc.type(e)))) continue;
       return id;
     }
+    // A slide on show is the whole world (BUG-180): a layer dragged past its edge stays on it (the part outside is
+    // not shown, as in Figma Slides), and nothing lands on the page between slides.
+    const slide = this.slideStage?.current() ?? null;
+    if (slide && this.doc.store.isAlive(slide) && !exclude.includes(slide)) return slide;
     return this.pageId;
   }
 
@@ -876,11 +965,14 @@ export class Editor {
 
   setPage(pageId: NodeId): void {
     if (pageId === this.pageId) return;
+    if (this.focusFrame) this.setFocus(null, false);
     this.pageViews.set(this.pageId, this.viewport.toJSON());
     this.pageId = pageId;
     this.scene.setPage(pageId);
     this.withGuides = null;
     this.withLayoutGrids = null;
+    this.withAnnotations = null;
+    this.measureSelected = null;
     this.selection = [];
     this.scene.openBooleans.clear();
     const view = this.pageViews.get(pageId);
@@ -999,6 +1091,13 @@ export class Editor {
     return names.size;
   }
 
+  /** The file's colour profile (step 9): the colour numbers stay, they are read in the other space. */
+  setColorProfile(profile: 'SRGB' | 'DISPLAY_P3'): void {
+    if (this.doc.get(this.doc.rootId, 'colorProfile') === profile) return;
+    this.commit(tr('Цветовой профиль'), (tx) => tx.set(this.doc.rootId, 'colorProfile', profile));
+    this.toast(profile === 'DISPLAY_P3' ? tr('Цветовой профиль файла: Display P3') : tr('Цветовой профиль файла: sRGB'));
+  }
+
   /** «Фрейм 3», «Прямоугольник 12» (in the interface's language): the next free number of this kind on the page. */
   nextName(type: NodeType | 'ARROW'): string {
     const base: Record<string, string> = {
@@ -1014,6 +1113,7 @@ export class Editor {
       LINE: tr('Линия'),
       ARROW: tr('Стрелка'),
       TEXT: tr('Текст'),
+      SLICE: tr('Нарезка'),
     };
     const prefix = base[type] ?? type;
     const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1028,6 +1128,14 @@ export class Editor {
   // ---------- actions ----------
 
   deleteSelection(): void {
+    if (this.measureSelected) {
+      const id = this.measureSelected;
+      const list = this.doc.get(this.pageId, 'measurements');
+      this.measureSelected = null;
+      if (list.some((m) => m.id === id) && !this.doc.readOnly) this.commit(tr('Удалить замер'), (tx) => tx.set(this.pageId, 'measurements', list.filter((m) => m.id !== id)));
+      this.requestOverlay();
+      return;
+    }
     if (this.vectorEdit?.tool === 'width' && this.widthSelection !== null) {
       this.removeWidthPoint(this.vectorEdit.id, this.widthSelection);
       return;
@@ -1052,7 +1160,7 @@ export class Editor {
     // On a board a locked object (a template's frame, a background) is kept from a stray Delete.
     if (this.isBoardFile()) {
       const free = ids.filter((id) => !this.doc.store.ancestors(id).concat(id).some((a) => this.doc.store.isAlive(a) && this.doc.type(a) !== 'PAGE' && this.doc.type(a) !== 'DOCUMENT' && this.doc.get(a, 'locked')));
-      if (free.length < ids.length) this.toast(tr('Закреплённое не удаляется — сначала открепите (⇧⌘L)'));
+      if (free.length < ids.length) this.toast(tr('Закреплённое не удаляется. Сначала открепите (⇧⌘L)'));
       ids = free;
     }
     if (ids.length === 0) return;
@@ -1140,7 +1248,6 @@ export class Editor {
     return parent !== null && isFrameLike(this.doc.type(parent)) && this.doc.get(parent, 'layoutMode') !== 'NONE' && this.doc.get(id, 'positioning') === 'AUTO';
   }
 
-  /** Copies the selection to the internal clipboard and returns it as text for the system clipboard. */
   /** Выделение, либо текущий слайд, если в режиме «Слайд» ничего не выделено. */
   private copyIds(): NodeId[] {
     const ids = this.topLevelSelection();
@@ -1149,31 +1256,31 @@ export class Editor {
     return slide ? [slide] : [];
   }
 
-  copyText(): string | null {
+  /** Copies the selection to the internal clipboard and returns it as text for the system clipboard. `cut` — components remember this file (step 6). */
+  copyText(cut = false): string | null {
     const ids = this.copyIds();
     if (ids.length === 0) return null;
-    this.clipboard = toClipboard(this.doc, ids);
+    this.clipboard = toClipboard(this.doc, ids, cut && this.fileId ? this.fileId : null);
+    this.clipboardPlain = clipboardPlainText(this.doc, ids);
     return JSON.stringify(this.clipboard);
   }
 
   /** What goes to the system clipboard: layers hidden in HTML, their text as plain text. */
-  copyFlavours(): { html: string; text: string } | null {
-    const ids = this.copyIds();
-    if (ids.length === 0) return null;
-    this.clipboard = toClipboard(this.doc, ids);
-    return { html: clipboardHtml(JSON.stringify(this.clipboard)), text: clipboardPlainText(this.doc, ids) };
+  copyFlavours(cut = false): { html: string; text: string } | null {
+    const json = this.copyText(cut);
+    return json ? { html: clipboardHtml(json), text: this.clipboardPlain ?? '' } : null;
   }
 
   /** Copy from the command palette: no clipboard event is available, so the async API is used. */
-  copy(): void {
-    const flavours = this.copyFlavours();
+  copy(cut = false): void {
+    const flavours = this.copyFlavours(cut);
     if (!flavours) return;
     const item = typeof ClipboardItem === 'function' ? new ClipboardItem({ 'text/html': new Blob([flavours.html], { type: 'text/html' }), 'text/plain': new Blob([flavours.text], { type: 'text/plain' }) }) : null;
     (item ? navigator.clipboard?.write([item]) : navigator.clipboard?.writeText(flavours.text))?.catch(() => undefined);
   }
 
   cut(): void {
-    this.copy();
+    this.copy(true);
     this.deleteSelection();
   }
 
@@ -1215,7 +1322,10 @@ export class Editor {
 
   /** Each selected layer gives way to a copy of the clipboard: centred where it was, in its parent and at its place in the layers. */
   pasteReplaceText(text: string | null): boolean {
-    const data = (text ? parseClipboard(text) : null) ?? this.clipboard;
+    // The internal copy only when the system clipboard has nothing newer: empty, or the text our copy put
+    // there. Text copied in another program after it is pasted as that text (BUG-165).
+    const ours = !text?.trim() || text === this.clipboardPlain;
+    const data = (text ? parseClipboard(text) : null) ?? (ours ? this.clipboard : null);
     if (!data || data.nodes.length === 0) {
       this.toast(tr('Буфер обмена пуст: сначала скопируйте слои'));
       return false;
@@ -1232,8 +1342,7 @@ export class Editor {
     const width = Math.max(...data.nodes.map((n) => (n.props.x ?? 0) + (n.props.width ?? 0))) - left;
     const height = Math.max(...data.nodes.map((n) => (n.props.y ?? 0) + (n.props.height ?? 0))) - top;
     this.commit(tr('Вставить с заменой'), (tx) => {
-      restoreClipboardBlobs(tx, this.doc, data);
-      const nodes = resolvePastedStyles(tx, this.doc, data);
+      const nodes = resolvePastedStyles(tx, this.doc, data, this.fileId);
       this.pendingSelection = doomed.flatMap((old) => {
         const parent = this.doc.parent(old)!;
         const cx = this.doc.get(old, 'x') + this.doc.get(old, 'width') / 2;
@@ -1255,7 +1364,10 @@ export class Editor {
 
   /** Pastes copied layers (system clipboard text if it holds our format, else the internal clipboard). */
   pasteText(text: string | null, inPlace = false, at?: Point): boolean {
-    const data = (text ? parseClipboard(text) : null) ?? this.clipboard;
+    // The internal copy only when the system clipboard has nothing newer: empty, or the text our copy put
+    // there. Text copied in another program after it is pasted as that text (BUG-165).
+    const ours = !text?.trim() || text === this.clipboardPlain;
+    const data = (text ? parseClipboard(text) : null) ?? (ours ? this.clipboard : null);
     if (!data || data.nodes.length === 0) return false;
     let target = at ? this.containerAt(at) : this.pasteTarget();
     let dx = inPlace ? 0 : 10;
@@ -1321,8 +1433,7 @@ export class Editor {
         ? [...this.selection]
         : null;
     this.commit(tr('Вставить'), (tx) => {
-      restoreClipboardBlobs(tx, this.doc, data);
-      const nodes = resolvePastedStyles(tx, this.doc, data);
+      const nodes = resolvePastedStyles(tx, this.doc, data, this.fileId);
       this.pendingSelection = (frames ?? [target]).flatMap((into) =>
         nodes.map((node) => {
           const copy = structuredClone(node);
@@ -1467,7 +1578,7 @@ export class Editor {
     if (styledFrames.length > 0) {
       const name = this.doc.get(styledFrames[0]!, 'name');
       const undo = navigator.platform.includes('Mac') ? '⌘Z' : 'Ctrl+Z';
-      this.toast(tr('Фрейм «{0}» убран вместе с заливкой, обводкой и тенью — слои внутри остались. Вернуть: {1}', name, undo));
+      this.toast(tr('Фрейм «{0}» убран вместе с заливкой, обводкой и тенью, слои внутри остались. Вернуть: {1}', name, undo));
     }
   }
 
@@ -1488,7 +1599,13 @@ export class Editor {
   }
 
   private wrapInFrame(tx: Transaction, ids: NodeId[], autoLayout: boolean): NodeId {
-    const parent = this.doc.parent(ids[0]!)!;
+    let parent = this.doc.parent(ids[0]!)!;
+    // On a slide on show a frame around loose layers goes on the slide, never becomes a slide of its own (BUG-180).
+    const slide = this.slideStage?.current() ?? null;
+    if (slide && parent === this.pageId && this.doc.store.isAlive(slide)) {
+      for (const id of ids) this.reparentKeepingPosition(tx, id, slide, { at: 'end' });
+      parent = slide;
+    }
     const bounds = unionAll(ids.map((id) => this.scene.bounds(id)))!;
     const origin = this.toParentSpace(parent, { x: bounds.x, y: bounds.y });
     const props: Partial<NodeProps> = {
@@ -2146,45 +2263,77 @@ export class Editor {
 
   /** Mod+Alt+K: a frame becomes a component; anything else is wrapped in a new component. */
   createComponent(): void {
-    const ids = this.topLevelSelection();
-    if (ids.length === 0) return;
-    if (ids.some((id) => this.isInstanceLayer(id) || insideInstance(this.doc, id))) {
-      this.toast(tr('Внутри копии компонента нельзя создать новый компонент'));
-      return;
-    }
-    const already = ids.filter((id) => ['COMPONENT', 'COMPONENT_SET'].includes(this.doc.type(id)));
-    if (already.length) {
-      this.toast(
-        ids.length === 1
-          ? tr('Выделенный слой уже компонент')
-          : tr('Среди выделенных есть компоненты: «{0}». Компонент не кладут в другой компонент — выделите только обычные слои.', already.slice(0, 3).map((id) => this.doc.get(id, 'name')).join('», «')),
-      );
-      return;
-    }
-    const parent = this.doc.parent(ids[0]!)!;
-    if (['COMPONENT', 'INSTANCE'].includes(this.doc.type(parent)) || this.doc.store.ancestors(parent).some((a) => this.doc.type(a) === 'COMPONENT')) {
-      this.toast(tr('Компонент не может быть внутри другого компонента'));
-      return;
-    }
+    const ids = this.componentCandidates();
+    if (!ids) return;
     let result = '';
     if (ids.length === 1 && this.doc.type(ids[0]!) === 'FRAME') {
       result = this.commit(tr('Создать компонент'), (tx) => convertFrameToComponent(this.doc, tx, ids[0]!), () => [result]);
       this.setSelection([result]);
       return;
     }
-    const ordered = this.sortedByPaintOrder(ids);
-    const bounds = unionAll(ordered.map((id) => this.scene.bounds(id)))!;
     this.commit(tr('Создать компонент'), (tx) => {
-      const origin = this.toParentSpace(parent, { x: bounds.x, y: bounds.y });
-      result = tx.create(
-        'COMPONENT',
-        parent,
-        { name: this.nextName('COMPONENT'), x: round2(origin.x), y: round2(origin.y), width: round2(bounds.width), height: round2(bounds.height), fills: [], clipsContent: false },
-        { after: ordered[ordered.length - 1]! },
-      );
-      for (const id of ordered) this.reparentKeepingPosition(tx, id, result);
-      ensureLayerKeys(this.doc, tx, result);
+      result = this.wrapInComponent(tx, ids);
     }, () => [result]);
+  }
+
+  /**
+   * «Создать несколько компонентов» (Figma's Create multiple components): each selected layer becomes a
+   * component of its own — a frame turns into one, any other layer is wrapped in one at its place.
+   */
+  createComponents(): void {
+    const ids = this.componentCandidates();
+    if (!ids) return;
+    if (ids.length === 1) return this.createComponent();
+    const made: NodeId[] = [];
+    this.commit(tr('Создать несколько компонентов'), (tx) => {
+      for (const id of this.sortedByPaintOrder(ids)) made.push(this.doc.type(id) === 'FRAME' ? convertFrameToComponent(this.doc, tx, id) : this.wrapInComponent(tx, [id]));
+    }, () => made);
+    this.setSelection(made);
+    this.toast(tr('Компонентов создано: {0}', String(made.length)));
+  }
+
+  /** The top-level selection, if components can be made of it (else a toast says why and null). */
+  private componentCandidates(): NodeId[] | null {
+    const ids = this.topLevelSelection();
+    if (ids.length === 0) return null;
+    if (ids.some((id) => this.isInstanceLayer(id) || insideInstance(this.doc, id))) {
+      this.toast(tr('Внутри копии компонента нельзя создать новый компонент'));
+      return null;
+    }
+    const already = ids.filter((id) => ['COMPONENT', 'COMPONENT_SET'].includes(this.doc.type(id)));
+    if (already.length) {
+      this.toast(
+        ids.length === 1
+          ? tr('Выделенный слой уже компонент')
+          : tr('Среди выделенных есть компоненты: «{0}». Компонент нельзя положить в другой компонент. Выделите только обычные слои.', already.slice(0, 3).map((id) => this.doc.get(id, 'name')).join('», «')),
+      );
+      return null;
+    }
+    for (const id of ids) {
+      const parent = this.doc.parent(id)!;
+      if (['COMPONENT', 'INSTANCE'].includes(this.doc.type(parent)) || this.doc.store.ancestors(parent).some((a) => this.doc.type(a) === 'COMPONENT')) {
+        this.toast(tr('Компонент не может быть внутри другого компонента'));
+        return null;
+      }
+    }
+    return ids;
+  }
+
+  /** A new component around these layers (same parent as the first), at their bounds; its id. */
+  private wrapInComponent(tx: Transaction, ids: readonly NodeId[]): NodeId {
+    const parent = this.doc.parent(ids[0]!)!;
+    const ordered = this.sortedByPaintOrder([...ids]);
+    const bounds = unionAll(ordered.map((id) => this.scene.bounds(id)))!;
+    const origin = this.toParentSpace(parent, { x: bounds.x, y: bounds.y });
+    const result = tx.create(
+      'COMPONENT',
+      parent,
+      { name: ids.length === 1 ? this.doc.get(ids[0]!, 'name') : this.nextName('COMPONENT'), x: round2(origin.x), y: round2(origin.y), width: round2(bounds.width), height: round2(bounds.height), fills: [], clipsContent: false },
+      { after: ordered[ordered.length - 1]! },
+    );
+    for (const id of ordered) this.reparentKeepingPosition(tx, id, result);
+    ensureLayerKeys(this.doc, tx, result);
+    return result;
   }
 
   /**
@@ -2542,6 +2691,22 @@ export class Editor {
    * Repeat (Figma Draw's repeat transforms): the selection goes into a repeat group that
    * shows it `count` times in a row or round a circle; editing the layers changes every copy.
    */
+  /** Breakpoints: one more width of a screen, to the right of its widths; selected and shown. */
+  addBreakpoint(frame: NodeId, width: number): void {
+    if (breakpointFrames(this.doc, frame).some((f) => Math.round(this.doc.get(f, 'width')) === Math.round(width))) {
+      this.toast(tr('Такая ширина уже есть'));
+      return;
+    }
+    const copy = this.commit(tr('Брейкпоинт'), (tx) => addBreakpoint(this.doc, tx, frame, width));
+    this.setSelection([copy]);
+    this.zoomToSelection();
+  }
+
+  /** Takes a width out of its screen: an ordinary frame again. */
+  unlinkBreakpoint(frame: NodeId): void {
+    this.commit(tr('Отвязать ширину'), (tx) => unlinkBreakpoint(this.doc, tx, frame));
+  }
+
   addRepeat(kind: 'LINEAR' | 'RADIAL'): void {
     const ids = this.sortedByPaintOrder(this.transformable(this.topLevelSelection(), tr('Повтор')));
     if (ids.length === 0) {
@@ -2711,7 +2876,7 @@ export class Editor {
       if (this.doc.get(id, 'visible') && overlaps(this.scene.bounds(id))) above.push(id);
     }
     if (above.length === 0) {
-      this.toast(tr('Маска обрезает слои, лежащие над ней. Положите поверх фигуры картинку или другие слои — или выделите маску вместе с ними и нажмите ⌘⌥M'), 'error');
+      this.toast(tr('Маска обрезает слои, лежащие над ней. Положите поверх фигуры картинку или другие слои либо выделите маску вместе с ними и нажмите ⌘⌥M'), 'error');
       return;
     }
     let group = '';
@@ -2720,7 +2885,7 @@ export class Editor {
       for (const id of [mask, ...above]) this.reparentKeepingPosition(tx, id, group);
       tx.set(mask, 'isMask', true);
     }, () => [group]);
-    this.toast(tr('Маска обрезает {0} {1} над собой — они собраны в «Группу с маской»', above.length, above.length === 1 ? tr('слой') : tr('слоя(ёв)')));
+    this.toast(tr('Маска обрезает {0} {1} над собой, они собраны в «Группу с маской»', above.length, above.length === 1 ? tr('слой') : tr('слоя(ёв)')));
   }
 
   // ---------- styles (section 11, FR-STY) ----------
@@ -2904,20 +3069,87 @@ export class Editor {
     const id = this.selection[0];
     const main = id ? (this.doc.type(id) === 'INSTANCE' ? this.doc.get(id, 'mainComponent') : mainComponentOf(this.doc, id)) : null;
     if (!main || !this.doc.store.isAlive(main)) {
-      this.toast(main ? tr('Главный компонент удалён') : tr('Выделите копию компонента'));
+      this.toast(main ? tr('Главный компонент удалён. Его можно восстановить: «Восстановить компонент» в панели справа') : tr('Выделите копию компонента'));
       return;
     }
     // A component taken from a library is changed in the library's file, not here.
     const library = libraryOf(this.doc, main);
     if (library) {
       globalThis.open?.(`/?file=${encodeURIComponent(library.fileId)}&node=${encodeURIComponent(main)}`, '_blank', 'noopener');
-      this.toast(tr('Компонент из библиотеки «{0}»: его меняют в файле библиотеки — он открыт в новой вкладке', library.name));
+      this.toast(tr('Компонент из библиотеки «{0}»: его меняют в файле библиотеки, он открыт в новой вкладке', library.name));
       return;
     }
     const page = this.doc.pageOf(main);
     if (page && page !== this.pageId) this.setPage(page);
     this.setSelection([main]);
     this.zoomToSelection();
+  }
+
+  /** The top-level instance of the selection whose main component is deleted (for «Восстановить компонент»). */
+  orphanInstance(): NodeId | null {
+    const id = this.selection[0];
+    if (!id) return null;
+    const inst = this.doc.type(id) === 'INSTANCE' && !this.isInstanceLayer(id) ? id : outerInstance(this.doc, id);
+    if (!inst) return null;
+    const main = this.doc.get(inst, 'mainComponent');
+    return main && !this.doc.store.isAlive(main) ? inst : null;
+  }
+
+  /**
+   * «Восстановить компонент» (step 6, Figma's Restore component): the deleted main component of the selected
+   * instance comes back — where it was if deleted in this session, else rebuilt from its instance next to it —
+   * and every instance of it is linked again.
+   */
+  restoreMainComponent(): void {
+    const inst = this.orphanInstance();
+    if (!inst) {
+      this.toast(tr('Выделите копию, у которой удалён главный компонент'));
+      return;
+    }
+    const b = this.scene.bounds(inst);
+    const place = { parent: this.pageId, x: round2(b.x + b.width + 80), y: round2(b.y) };
+    let restored: NodeId | null = null;
+    this.commit(tr('Восстановить компонент'), (tx) => {
+      restored = restoreMainComponent(this.doc, tx, inst, place);
+    }, () => (restored ? [restored] : []));
+    if (!restored) {
+      this.toast(tr('Компонент не удалось восстановить'));
+      return;
+    }
+    const page = this.doc.pageOf(restored);
+    if (page && page !== this.pageId) this.setPage(page);
+    this.setSelection([restored]);
+    this.zoomToSelection();
+    this.toast(tr('Компонент «{0}» восстановлен', this.doc.get(restored, 'name')));
+  }
+
+  /** Why the changes of this instance cannot go into its component, or null if they can. */
+  pushBlocker(instance: NodeId): string | null {
+    const main = this.doc.get(instance, 'mainComponent');
+    if (!main || !this.doc.store.isAlive(main)) return tr('Главный компонент удалён. Сначала восстановите его');
+    if (libraryOf(this.doc, main)) return tr('Компонент из библиотеки меняют в файле библиотеки');
+    if (this.doc.readOnly) return tr('Файл открыт только для просмотра');
+    return null;
+  }
+
+  /**
+   * «Перенести изменения в компонент» (step 6, Figma's Push changes to main component): the overrides of the
+   * selected instances become their main components' values; the instances look the same, other instances follow.
+   */
+  pushOverridesToMain(): void {
+    const instances = [...new Set(this.topLevelSelection().map((id) => (this.doc.type(id) === 'INSTANCE' && !this.isInstanceLayer(id) ? id : outerInstance(this.doc, id))))].filter((id): id is NodeId => !!id);
+    if (instances.length === 0) return this.toast(tr('Выделите копию компонента'));
+    const blocked = instances.map((id) => this.pushBlocker(id)).find((x) => x);
+    if (blocked) return this.toast(blocked);
+    const mains = new Set(instances.map((id) => this.doc.get(id, 'mainComponent')));
+    if (mains.size < instances.length) return this.toast(tr('Выделено несколько копий одного компонента. Перенесите изменения одной из них'));
+    let pushed = 0;
+    this.commit(tr('Перенести изменения в компонент'), (tx) => {
+      for (const id of instances) pushed += pushOverridesToMain(this.doc, tx, id);
+    });
+    if (pushed === 0) return this.toast(tr('В копии нет изменений, переносить нечего'));
+    const main = this.doc.get(instances[0]!, 'mainComponent')!;
+    this.toast(instances.length === 1 ? tr('Изменения перенесены в компонент «{0}»: свойств — {1}. Другие копии их получили', this.doc.get(componentSetOf(this.doc, main) ?? main, 'name'), String(pushed)) : tr('Изменения перенесены в компоненты: свойств — {0}', String(pushed)));
   }
 
   /** Resets overrides of the selected instances or instance layers (FR-CMP-035). */
@@ -2988,6 +3220,11 @@ export class Editor {
   }
 
   setInstanceProperty(instance: NodeId, propId: string, value: string | boolean): void {
+    // A swap value: never the component this instance (or one around it) shows (BUG-173).
+    if (typeof value === 'string' && this.doc.store.has(value) && this.doc.type(value) === 'COMPONENT' && wouldCreateCycle(this.doc, value, instance)) {
+      this.toast(tr('Компонент не может содержать свою же копию'));
+      return;
+    }
     this.commit(tr('Свойство копии'), (tx) => setInstanceProperty(this.doc, tx, instance, propId, value));
   }
 
@@ -3002,6 +3239,23 @@ export class Editor {
 
   renameComponentProperty(owner: NodeId, propId: string, name: string): void {
     this.commit(tr('Переименовать свойство'), (tx) => renameProperty(this.doc, tx, owner, propId, name));
+  }
+
+  /** «Слот» of a frame in a component (step 6): its instances may put layers of their own there. */
+  setSlot(frame: NodeId, on: boolean): void {
+    this.commit(on ? tr('Сделать слотом') : tr('Убрать слот'), (tx) => {
+      for (const target of sameLayerInVariants(this.doc, frame)) tx.set(target, 'slot', on);
+    });
+  }
+
+  /** «Показывать в копиях» of a nested instance in a component (step 6). */
+  setExposedInstance(layer: NodeId, on: boolean): void {
+    this.commit(on ? tr('Показывать свойства вложенной копии') : tr('Не показывать свойства вложенной копии'), (tx) => setExposed(this.doc, tx, layer, on));
+  }
+
+  /** The preferred components of a swap property (step 6). */
+  setPreferredValues(owner: NodeId, propId: string, components: readonly NodeId[]): void {
+    this.commit(tr('Предпочтительные копии'), (tx) => setPreferredValues(this.doc, tx, owner, propId, components));
   }
 
   removeComponentProperty(owner: NodeId, propId: string): void {
@@ -3040,16 +3294,85 @@ export class Editor {
     this.zoomTo(this.viewport.stepZoom(direction));
   }
 
+  // ---------- accessibility check (FEAT-222) ----------
+
+  /** Layers numbered on the canvas in screen-reader order («Проверка доступности», FEAT-222); empty — none. */
+  readingMarks: NodeId[] = [];
+
+  setReadingMarks(ids: NodeId[]): void {
+    this.readingMarks = ids;
+    this.requestOverlay();
+  }
+
+  // ---------- focus view (step 7) ----------
+
+  /** The top-level frame shown alone (Dev Mode's focus view): the rest of the page is covered, cannot be clicked, and the layers list shows only it. */
+  focusFrame: NodeId | null = null;
+  /** The view before focusing, to come back to. */
+  private beforeFocus: { zoom: number; offsetX: number; offsetY: number } | null = null;
+
+  /** Frames that can be focused: top-level frames, components and sets of the page (and inside its sections). */
+  focusableFrames(): NodeId[] {
+    const d = this.doc;
+    const out: NodeId[] = [];
+    const visit = (parent: NodeId) => {
+      for (const id of d.children(parent)) {
+        const type = d.type(id);
+        if (!d.get(id, 'visible')) continue;
+        if (type === 'SECTION' || type === 'GROUP') visit(id);
+        else if ((type === 'FRAME' || type === 'COMPONENT' || type === 'COMPONENT_SET' || type === 'INSTANCE') && !d.get(id, 'board')) out.push(id);
+      }
+    };
+    visit(this.pageId);
+    return out;
+  }
+
+  /** The frame a layer belongs to, as focus view sees it. */
+  focusTargetOf(id: NodeId): NodeId | null {
+    const frames = new Set(this.focusableFrames());
+    for (let cur: NodeId | null = id; cur && cur !== this.pageId; cur = this.doc.parent(cur)) if (frames.has(cur)) return cur;
+    return null;
+  }
+
+  /** Shows one frame alone, or (null) the whole page again. `move` — fit the view to it (and back on leaving). */
+  setFocus(id: NodeId | null, move = true): void {
+    if (id && !this.doc.store.isAlive(id)) id = null;
+    if (id === this.focusFrame) return;
+    const was = this.focusFrame;
+    this.focusFrame = id;
+    this.scene.focusRoot = id;
+    if (id) {
+      if (!was) this.beforeFocus = this.viewport.toJSON();
+      this.setSelection([id]);
+      // Room for the focus bar above and the tool dock below.
+      if (move) this.zoomToBounds(this.scene.bounds(id), 96);
+    } else {
+      if (move && this.beforeFocus) this.glideTo(this.beforeFocus);
+      this.beforeFocus = null;
+    }
+    this.events.emit('focus', id);
+    this.requestOverlay();
+  }
+
+  /** The next (1) or previous (-1) frame of the page in focus view. */
+  stepFocus(step: 1 | -1): void {
+    const frames = this.focusableFrames();
+    if (!frames.length) return;
+    const at = this.focusFrame ? frames.indexOf(this.focusFrame) : -1;
+    this.setFocus(frames[(at + step + frames.length) % frames.length]!);
+  }
+
   zoomToFit(): void {
     const bounds = this.scene.contentBounds();
     if (!bounds) return this.glideTo({ zoom: 1, offsetX: this.screenSize.width / 2, offsetY: this.screenSize.height / 2 });
     this.glideTo(this.fitted(bounds, 64, 1));
   }
 
-  zoomToSelection(): void {
+  /** `rightInset` — screen pixels on the right covered by a panel (the selection is shown left of it). */
+  zoomToSelection(opts: { maxZoom?: number; rightInset?: number } = {}): void {
     const bounds = this.selectionBounds();
     if (!bounds) return this.zoomToFit();
-    this.glideTo(this.fitted(bounds, 80, 8));
+    this.glideTo(this.fitted(bounds, 80, opts.maxZoom ?? 8, opts.rightInset ?? 0));
   }
 
   /** Shows a rectangle of the world whole (a slide, all slides), with `padding` screen pixels around. */
@@ -3058,9 +3381,10 @@ export class Editor {
   }
 
   /** The view that would show `bounds` (the current one is not changed). */
-  private fitted(bounds: Rect, padding: number, maxZoom: number): { zoom: number; offsetX: number; offsetY: number } {
+  private fitted(bounds: Rect, padding: number, maxZoom: number, rightInset = 0): { zoom: number; offsetX: number; offsetY: number } {
     const now = this.viewport.toJSON();
-    this.viewport.fit(bounds, this.screenSize.width, this.screenSize.height, padding, maxZoom);
+    const width = Math.max(this.screenSize.width - rightInset, this.screenSize.width / 3);
+    this.viewport.fit(bounds, width, this.screenSize.height, padding, maxZoom);
     const target = this.viewport.toJSON();
     this.viewport.restore(now);
     return target;
@@ -3069,7 +3393,8 @@ export class Editor {
   /** Whether the interface moves: the setting is on and the system does not ask for less motion. */
   motionOn(): boolean {
     if (!this.view.motion || typeof requestAnimationFrame !== 'function' || typeof matchMedia !== 'function') return false;
-    return !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    reducedMotion ??= matchMedia('(prefers-reduced-motion: reduce)');
+    return !reducedMotion.matches;
   }
 
   /** The running glide of the view; a newer one (or the user moving the view) stops it. */

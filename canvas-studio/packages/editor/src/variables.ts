@@ -27,16 +27,29 @@ import {
   variableUsers,
   wouldCycle,
 } from '#components';
-import { colorToHex, hexToColor, isAlias, isExpression, keyBetween, isColorValue, valueEquals, type Color, type NodeId, type NodeProps, type Position, type VariableLiteral, type VariableScope, type VariableType, type VariableValue } from '#core';
+import { colorToHex, easingText, hexToColor, isAlias, parseEasing, isExpression, keyBetween, isColorValue, valueEquals, type Color, type NodeId, type NodeProps, type Position, type VariableLiteral, type VariableScope, type VariableType, type VariableValue } from '#core';
 import type { Editor } from './editor.ts';
 
-export const TYPE_NAMES: Record<VariableType, string> = { COLOR: tr('Цвет'), FLOAT: tr('Число'), STRING: tr('Строка'), BOOLEAN: tr('Логическое') };
+/** Curves typed in Russian, as the prototype panel names them. */
+const EASING_NAMES: Record<string, string> = {
+  'линейная': 'linear',
+  'плавный старт': 'ease-in',
+  'плавное завершение': 'ease-out',
+  'плавно в начале и в конце': 'ease-in-out',
+  'с откатом в начале': 'ease-in-back',
+  'с перелётом в конце': 'ease-out-back',
+  'с откатом и перелётом': 'ease-in-out-back',
+};
+
+export const TYPE_NAMES: Record<VariableType, string> = { COLOR: tr('Цвет'), FLOAT: tr('Число'), STRING: tr('Строка'), BOOLEAN: tr('Логическое'), TIMING: tr('Время'), EASING: tr('Плавность') };
 
 const DEFAULT_VALUES: Record<VariableType, VariableLiteral> = {
   COLOR: { r: 1, g: 1, b: 1, a: 1 },
   FLOAT: 0,
   STRING: '',
   BOOLEAN: true,
+  TIMING: 300,
+  EASING: 'ease-out',
 };
 
 /** Name as typed in an alias: "Color/Grey/500" and "color.grey.500" are the same. */
@@ -473,6 +486,19 @@ export class VariablesController {
       }
       case 'STRING':
         return text;
+      case 'TIMING': {
+        // 300, 300ms, 300 мс, 0.3s, 0,3 с — kept in ms.
+        const m = /^(\d+(?:[.,]\d+)?)\s*(ms|мс|s|с)?$/i.exec(t);
+        if (!m) return null;
+        const n = Number(m[1]!.replace(',', '.'));
+        const unit = m[2]?.toLowerCase();
+        return Math.round(unit === 's' || unit === 'с' ? n * 1000 : n);
+      }
+      case 'EASING': {
+        const named = EASING_NAMES[t.toLowerCase()];
+        const e = parseEasing(named ?? t);
+        return e ? easingText(e) : null;
+      }
     }
   }
 

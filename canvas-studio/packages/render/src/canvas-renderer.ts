@@ -3,17 +3,18 @@
 // (FR-CNV-005). A GPU backend (WebGL 2 / WebGPU) implements the same `Renderer`
 // interface later.
 
+import { colorProfile, context2d } from './color-space.ts';
 import type { BlendMode, Color, Document, Effect, GlassEffect, GradientPaint, ImagePaint, MaskType, NodeId, NoiseEffect, Paint, PatternPaint, VectorPath, Warp } from '#core';
 import { glassPixels, luminanceMask, noiseTile, plusDarker, roughen, vectorMask } from './pixels.ts';
 import { capShape, cylinderShade, intersects, isVariableStroke, openEnds, sideStrokeRegion, warpGrid, warpMap, type Point, type Rect } from '#geometry';
-import { decorationLookOf, decorationPath, lineOffset, nodePaths, pathTextGlyphs, textStyleOf, variableStrokeOf, vectorDrawing, type TextMeasurer } from '#layout';
+import { decorationLookOf, decorationPath, isSketched, lineOffset, nodePaths, sketchOf, pathTextGlyphs, textStyleOf, variableStrokeOf, vectorDrawing, type TextMeasurer } from '#layout';
 import { applyFont } from './canvas-text.ts';
 import { dashOf, RECT_LIKE, rectRadii } from './stroke.ts';
-import { ImageCache } from './images.ts';
-import type { SceneGraph } from './scene.ts';
+import { halvedFor, ImageCache } from './images.ts';
+import type { Placement, SceneGraph } from './scene.ts';
 import type { Viewport } from './viewport.ts';
 
-import { drawBlurred } from './soft-blur.ts';
+import { canvasFilter, drawBlurred } from './soft-blur.ts';
 type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 import { gradientGrid, gradientPixels } from './gradients.ts';
 
@@ -36,7 +37,39 @@ export interface RenderStats {
   ms: number;
 }
 
+/** Puts the context at a layer's place: position, turn and (a timeline's) scale around its centre; its placement. */
+function place(ctx: Ctx2D, scene: SceneGraph, id: NodeId, w: number, h: number): Placement {
+  const pl = scene.placement(id);
+  ctx.translate(pl.x, pl.y);
+  if (pl.rotation !== 0) ctx.rotate((pl.rotation * Math.PI) / 180);
+  if (pl.scale !== 1) {
+    ctx.translate(w / 2, h / 2);
+    ctx.scale(pl.scale, pl.scale);
+    ctx.translate(-w / 2, -h / 2);
+  }
+  return pl;
+}
+
+/** Undoes `place`: from the parent's space into the layer's own. */
+function unplace(ctx: Ctx2D, scene: SceneGraph, id: NodeId): void {
+  const pl = scene.placement(id);
+  if (pl.scale !== 1) {
+    const w = scene.doc.get(id, 'width');
+    const h = scene.doc.get(id, 'height');
+    ctx.translate(w / 2, h / 2);
+    ctx.scale(1 / pl.scale, 1 / pl.scale);
+    ctx.translate(-w / 2, -h / 2);
+  }
+  if (pl.rotation !== 0) ctx.rotate((-pl.rotation * Math.PI) / 180);
+  ctx.translate(-pl.x, -pl.y);
+}
+
 export function cssColor(c: Color, opacity = 1): string {
+  // In a Display P3 file the numbers are P3 (step 9): the browser draws them as such, wider than sRGB.
+  if (colorProfile() === 'DISPLAY_P3') {
+    const f = (v: number) => +Math.max(0, Math.min(1, v)).toFixed(4);
+    return `color(display-p3 ${f(c.r)} ${f(c.g)} ${f(c.b)} / ${+(c.a * opacity).toFixed(4)})`;
+  }
   const r = Math.round(c.r * 255);
   const g = Math.round(c.g * 255);
   const b = Math.round(c.b * 255);
@@ -185,6 +218,8 @@ export class Canvas2DRenderer implements Renderer {
     const d = scene.doc;
     if (this.outlines && !this.standalone) return this.drawOutline(ctx, scene, id, this.outlines);
     if (!d.get(id, 'visible')) return;
+    // A slice draws nothing: the canvas shows its outline only when it is selected or under the pointer.
+    if (d.type(id) === 'SLICE') return;
     if (this.skipLifted && this.lifted!.has(id)) return;
     if (!force && this.culling && !intersects(scene.renderBounds(id), this.visible)) {
       this.stats.culled++;
@@ -212,13 +247,19 @@ export class Canvas2DRenderer implements Renderer {
     const w = d.get(id, 'width');
     const h = d.get(id, 'height');
     ctx.save();
-    ctx.translate(d.get(id, 'x'), d.get(id, 'y'));
-    const rotation = d.get(id, 'rotation');
-    if (rotation !== 0) ctx.rotate((rotation * Math.PI) / 180);
-    ctx.globalAlpha *= d.get(id, 'opacity');
+    const pl = place(ctx, scene, id, w, h);
+    ctx.globalAlpha *= pl.opacity;
     const blend = BLEND[d.get(id, 'blendMode')];
     if (blend) ctx.globalCompositeOperation = blend;
     this.applyLayerBlur(ctx, d, id);
+
+    // «От руки» (FEAT-223): the hand-drawn outline instead of the exact one.
+    if (isSketched(d, id)) {
+      this.drawSketch(ctx, scene, id, w, h);
+      ctx.restore();
+      this.inkNow = outerInk;
+      return;
+    }
 
     switch (type) {
       case 'SECTION':
@@ -318,6 +359,29 @@ export class Canvas2DRenderer implements Renderer {
     this.inkNow = outerInk;
   }
 
+  /** A layer drawn by hand: the wobbly outline filled, children inside it, the stroke twice along the edges (centred). */
+  private drawSketch(ctx: Ctx2D, scene: SceneGraph, id: NodeId, w: number, h: number): void {
+    const d = scene.doc;
+    const type = d.type(id);
+    const sketch = sketchOf(d, id);
+    const fill = pathOf(sketch.fill);
+    this.drawShadows(ctx, d, id, fill);
+    if (type !== 'LINE' && sketch.fill.some((p) => p.closed)) {
+      this.drawBackgroundBlur(ctx, d, id, fill);
+      this.fillPath(ctx, d.get(id, 'fills'), fill, w, h, d, type === 'VECTOR' && d.get(id, 'windingRule') === 'EVENODD' ? 'evenodd' : 'nonzero');
+      this.drawInnerEffects(ctx, d, id, fill, w, h);
+    }
+    if (type === 'FRAME' || type === 'INSTANCE' || type === 'COMPONENT') {
+      ctx.save();
+      if (d.get(id, 'clipsContent')) ctx.clip(fill);
+      this.drawChildren(ctx, scene, id);
+      ctx.restore();
+    }
+    this.strokePath(ctx, d, id, pathOf(sketch.stroke), true);
+    if (type === 'LINE') this.drawEnds(ctx, d, id, [{ closed: false, points: [{ x: 0, y: 0 }, { x: w, y: 0 }] }]);
+    else if (type === 'VECTOR') this.drawEnds(ctx, d, id, nodePaths(d, id));
+  }
+
   /** A layer in outline view: its outline (a text — its letters) in one thin colour, then its children unclipped. */
   private drawOutline(ctx: Ctx2D, scene: SceneGraph, id: NodeId, o: NonNullable<Canvas2DRenderer['outlines']>): void {
     const d = scene.doc;
@@ -332,9 +396,7 @@ export class Canvas2DRenderer implements Renderer {
     const w = d.get(id, 'width');
     const h = d.get(id, 'height');
     ctx.save();
-    ctx.translate(d.get(id, 'x'), d.get(id, 'y'));
-    const rotation = d.get(id, 'rotation');
-    if (rotation !== 0) ctx.rotate((rotation * Math.PI) / 180);
+    place(ctx, scene, id, w, h);
     if (!shown) ctx.globalAlpha *= 0.45;
     const color = cssColor(this.outlineColor);
     ctx.strokeStyle = color;
@@ -405,7 +467,7 @@ export class Canvas2DRenderer implements Renderer {
     }
     const m = ctx.getTransform();
     const layer = new OffscreenCanvas(W, H);
-    const lctx = layer.getContext('2d');
+    const lctx = context2d(layer);
     if (!lctx) {
       body(ctx);
       return;
@@ -419,7 +481,7 @@ export class Canvas2DRenderer implements Renderer {
     const grown = (spread: number): OffscreenCanvas => {
       if (spread <= 0) return layer;
       const out = new OffscreenCanvas(W, H);
-      const o = out.getContext('2d')!;
+      const o = context2d(out)!;
       const r = spread * scale;
       const steps = Math.max(8, Math.min(32, Math.ceil(r * 2)));
       for (let i = 0; i < steps; i++) o.drawImage(layer, Math.cos((i / steps) * Math.PI * 2) * r, Math.sin((i / steps) * Math.PI * 2) * r);
@@ -433,13 +495,13 @@ export class Canvas2DRenderer implements Renderer {
     const under = effects.find((e) => e.type === 'BACKGROUND_BLUR' || e.type === 'GLASS');
     if (under?.type === 'GLASS' && box) {
       const mask = new OffscreenCanvas(box.w, box.h);
-      mask.getContext('2d')!.drawImage(layer, -box.x, -box.y);
+      context2d(mask)!.drawImage(layer, -box.x, -box.y);
       this.glassUnder(ctx, under, mask, box);
     }
     for (const e of effects) {
       if (e !== under || e.type !== 'BACKGROUND_BLUR' || e.radius <= 0) continue;
       const glass = new OffscreenCanvas(W, H);
-      const g = glass.getContext('2d')!;
+      const g = context2d(glass)!;
       drawBlurred(g, ctx.canvas, e.radius * this.zoom);
       g.globalCompositeOperation = 'destination-in';
       g.drawImage(layer, 0, 0);
@@ -452,7 +514,7 @@ export class Canvas2DRenderer implements Renderer {
       const off = offsetOf(e.offset.x, e.offset.y);
       // The shadow on its own canvas: cut out under the layer unless it shows behind (Figma's default: not).
       const shade = new OffscreenCanvas(W, H);
-      const sctx = shade.getContext('2d')!;
+      const sctx = context2d(shade)!;
       sctx.shadowColor = cssColor(e.color);
       sctx.shadowBlur = e.radius * this.zoom;
       sctx.shadowOffsetX = off.x + FAR;
@@ -474,13 +536,13 @@ export class Canvas2DRenderer implements Renderer {
     for (const e of effects) {
       if (e.type !== 'INNER_SHADOW') continue;
       const outside = new OffscreenCanvas(W, H);
-      const o = outside.getContext('2d')!;
+      const o = context2d(outside)!;
       o.fillStyle = '#000';
       o.fillRect(0, 0, W, H);
       o.globalCompositeOperation = 'destination-out';
       o.drawImage(e.spread > 0 ? this.shrunk(layer, e.spread * scale) : layer, 0, 0);
       const inner = new OffscreenCanvas(W, H);
-      const i = inner.getContext('2d')!;
+      const i = context2d(inner)!;
       const off = offsetOf(e.offset.x, e.offset.y);
       i.shadowColor = cssColor(e.color);
       i.shadowBlur = e.radius * this.zoom;
@@ -502,7 +564,7 @@ export class Canvas2DRenderer implements Renderer {
       const pattern = e.noiseType ? this.colourNoise(ctx, e) : this.noisePattern(ctx);
       if (!pattern) continue;
       const grain = new OffscreenCanvas(W, H);
-      const g = grain.getContext('2d')!;
+      const g = context2d(grain)!;
       const k = Math.max(0.25, e.size) * scale;
       pattern.setTransform(new DOMMatrix([k, 0, 0, k, 0, 0]));
       g.fillStyle = pattern;
@@ -526,7 +588,7 @@ export class Canvas2DRenderer implements Renderer {
   /** The layer's shape shrunk by `r` device px (for an inner shadow's spread): what survives every shift. */
   private shrunk(layer: OffscreenCanvas, r: number): OffscreenCanvas {
     const out = new OffscreenCanvas(layer.width, layer.height);
-    const o = out.getContext('2d')!;
+    const o = context2d(out)!;
     o.drawImage(layer, 0, 0);
     o.globalCompositeOperation = 'destination-in';
     const steps = Math.max(8, Math.min(32, Math.ceil(r * 2)));
@@ -582,6 +644,14 @@ export class Canvas2DRenderer implements Renderer {
   }
 
   /** Diamond gradients as a picture of the layer's size (no canvas gradient draws one); the last few are kept. */
+  /** Patterns and pictures made in the old colour space are dropped when the file's profile changes (step 9). */
+  dropColourCaches(): void {
+    this.diamonds.clear();
+    this.grains.clear();
+    this.warpCache.clear();
+    this.colourNoises.clear();
+  }
+
   private readonly diamonds = new Map<string, CanvasPattern>();
 
   private diamond(ctx: Ctx2D, paint: GradientPaint, w: number, h: number): CanvasPattern | null {
@@ -590,7 +660,7 @@ export class Canvas2DRenderer implements Renderer {
     if (known) return known;
     const { cols, rows } = gradientGrid(w, h);
     const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(cols, rows) : typeof document !== 'undefined' ? Object.assign(document.createElement('canvas'), { width: cols, height: rows }) : null;
-    const pctx = canvas?.getContext('2d') as Ctx2D | null | undefined;
+    const pctx = (canvas ? context2d(canvas) : null) as Ctx2D | null | undefined;
     if (!canvas || !pctx) return null;
     pctx.putImageData(new ImageData(gradientPixels(paint, w, h, cols, rows), cols, rows), 0, 0);
     const pattern = ctx.createPattern(canvas, 'no-repeat');
@@ -644,7 +714,7 @@ export class Canvas2DRenderer implements Renderer {
       while (i + 1 < children.length && !d.get(children[i + 1]!, 'isMask')) masked.push(children[++i]!);
       if (masked.length === 0) continue;
       const layer = new OffscreenCanvas(ctx.canvas.width, ctx.canvas.height);
-      const lctx = layer.getContext('2d');
+      const lctx = context2d(layer);
       if (!lctx) continue;
       lctx.setTransform(ctx.getTransform());
       for (const m of masked) this.drawNode(lctx, scene, m);
@@ -686,7 +756,12 @@ export class Canvas2DRenderer implements Renderer {
     }
     const { image, width: iw, height: ih } = decoded;
     if (iw > 0 && ih > 0) {
-      if (paint.scaleMode === 'STRETCH') ctx.drawImage(image, 0, 0, w, h);
+      // Device pixels per unit here: a picture drawn much smaller than it is comes from its halved copy (PERF-009).
+      const t = ctx.getTransform();
+      const sx = Math.hypot(t.a, t.b);
+      const sy = Math.hypot(t.c, t.d);
+      const still = this.images.isAnimated(paint.imageHash) ? null : (dw: number, dh: number) => halvedFor(image, iw, ih, Math.ceil(dw * sx), Math.ceil(dh * sy));
+      if (paint.scaleMode === 'STRETCH') ctx.drawImage(still?.(w, h) ?? image, 0, 0, w, h);
       else if (paint.scaleMode === 'TILE') {
         const pattern = ctx.createPattern(image, 'repeat');
         if (pattern) {
@@ -699,7 +774,7 @@ export class Canvas2DRenderer implements Renderer {
         const k = paint.scaleMode === 'FIT' ? Math.min(w / iw, h / ih) : Math.max(w / iw, h / ih);
         const dw = iw * k;
         const dh = ih * k;
-        ctx.drawImage(image, (w - dw) / 2, (h - dh) / 2, dw, dh);
+        ctx.drawImage(still?.(dw, dh) ?? image, (w - dw) / 2, (h - dh) / 2, dw, dh);
       }
     }
     ctx.restore();
@@ -782,7 +857,7 @@ export class Canvas2DRenderer implements Renderer {
     if (typeof OffscreenCanvas === 'undefined') return null;
     const size = 64;
     const tile = new OffscreenCanvas(size, size);
-    const tctx = tile.getContext('2d');
+    const tctx = context2d(tile);
     if (!tctx) return null;
     const image = tctx.createImageData(size, size);
     let seed = 0x5bd1e995;
@@ -869,9 +944,11 @@ export class Canvas2DRenderer implements Renderer {
     const m = ctx.getTransform();
     const k = Math.hypot(m.a, m.b);
     if (w * k < 24) return;
+    const alpha = ctx.globalAlpha;
     ctx.save();
+    ctx.globalAlpha = 1;
     // As a note in Miro: a soft shadow under the bottom edge, deeper at the corners (lifted paper).
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.36)';
+    ctx.shadowColor = `rgba(0, 0, 0, ${0.36 * alpha})`;
     ctx.shadowBlur = 22 * k;
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 14 * k;
@@ -904,9 +981,14 @@ export class Canvas2DRenderer implements Renderer {
   private drawShadows(ctx: Ctx2D, d: Document, id: NodeId, path: Path2D): void {
     // A shadow of a layer a few pixels across is invisible, and blurs are what costs most.
     if (this.lod && Math.max(d.get(id, 'width'), d.get(id, 'height')) * this.zoom < 16) return;
+    // WebKit draws a shadow ignoring globalAlpha (a layer at 50 % or faded out on a timeline kept a full shadow):
+    // the layer's opacity goes into the shadow's colour instead, the same in every browser.
+    const alpha = ctx.globalAlpha;
+    if (alpha <= 0) return;
     for (const effect of d.get(id, 'effects')) {
       if (!effect.visible || effect.type !== 'DROP_SHADOW') continue;
       ctx.save();
+      ctx.globalAlpha = 1;
       // As in Figma, the shadow is not shown through the object's own transparent areas (unless asked to).
       if (!effect.showBehind) {
         const box = this.shapeBox(ctx);
@@ -927,7 +1009,7 @@ export class Canvas2DRenderer implements Renderer {
         ctx.restore();
         continue;
       }
-      ctx.shadowColor = cssColor(effect.color);
+      ctx.shadowColor = cssColor(effect.color, alpha);
       ctx.shadowBlur = effect.radius * this.zoom;
       ctx.shadowOffsetX = effect.offset.x * m.a + effect.offset.y * m.c + FAR;
       ctx.shadowOffsetY = effect.offset.x * m.b + effect.offset.y * m.d;
@@ -968,7 +1050,7 @@ export class Canvas2DRenderer implements Renderer {
       const box = this.sceneNow ? this.deviceRect(ctx, this.sceneNow, id, 2, Math.ceil(under.depth * scale * 2 + 4), true) : null;
       if (!box) return;
       const mask = new OffscreenCanvas(box.w, box.h);
-      const mctx = mask.getContext('2d')!;
+      const mctx = context2d(mask)!;
       const m = ctx.getTransform();
       mctx.setTransform(m.a, m.b, m.c, m.d, m.e - box.x, m.f - box.y);
       mctx.fillStyle = '#000';
@@ -987,7 +1069,7 @@ export class Canvas2DRenderer implements Renderer {
       const a = m.transformPoint(new DOMPoint(blur.progressive.from.x * w, blur.progressive.from.y * h));
       const b = m.transformPoint(new DOMPoint(blur.progressive.to.x * w, blur.progressive.to.y * h));
       const copy = new OffscreenCanvas(source.width, source.height);
-      copy.getContext('2d')?.drawImage(source, 0, 0);
+      context2d(copy)?.drawImage(source, 0, 0);
       const out = this.blendBands(copy, a, b, blur.progressive.start, blur.radius);
       ctx.save();
       ctx.clip(path);
@@ -1003,10 +1085,14 @@ export class Canvas2DRenderer implements Renderer {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
-    // Copy the backdrop first: drawing a canvas onto itself with a filter is not reliable everywhere.
-    const copy = new OffscreenCanvas(source.width, source.height);
-    copy.getContext('2d')?.drawImage(source, 0, 0);
-    drawBlurred(ctx, copy, blur.radius * this.zoom);
+    // Through a filter the backdrop is copied first: drawing a canvas onto itself with a filter is not
+    // reliable everywhere. Without one (Safari) it is read into a small picture anyway (PERF-009).
+    let backdrop: OffscreenCanvas | typeof source = source;
+    if (canvasFilter) {
+      backdrop = new OffscreenCanvas(source.width, source.height);
+      context2d(backdrop)?.drawImage(source, 0, 0);
+    }
+    drawBlurred(ctx, backdrop, blur.radius * this.zoom);
     ctx.restore();
   }
 
@@ -1015,7 +1101,10 @@ export class Canvas2DRenderer implements Renderer {
     for (const effect of d.get(id, 'effects')) {
       if (!effect.visible) continue;
       if (effect.type === 'INNER_SHADOW') {
+        // As with drop shadows: WebKit ignores globalAlpha for shadows, so the opacity goes into the colour.
+        const alpha = ctx.globalAlpha;
         ctx.save();
+        ctx.globalAlpha = 1;
         ctx.clip(path);
         const m = ctx.getTransform();
         // A frame around the shape (shape cut out) casts its shadow inwards.
@@ -1023,7 +1112,7 @@ export class Canvas2DRenderer implements Renderer {
         const ring = new Path2D();
         ring.rect(-pad, -pad, w + pad * 2, h + pad * 2);
         ring.addPath(path);
-        ctx.shadowColor = cssColor(effect.color);
+        ctx.shadowColor = cssColor(effect.color, alpha);
         ctx.shadowBlur = effect.radius * this.zoom;
         ctx.shadowOffsetX = effect.offset.x * m.a + effect.offset.y * m.c;
         ctx.shadowOffsetY = effect.offset.x * m.b + effect.offset.y * m.d;
@@ -1066,7 +1155,7 @@ export class Canvas2DRenderer implements Renderer {
     if (this.noise) return this.noise;
     const size = 128;
     const tile = new OffscreenCanvas(size, size);
-    const tctx = tile.getContext('2d');
+    const tctx = context2d(tile);
     if (!tctx) return null;
     const image = tctx.createImageData(size, size);
     let seed = 0x2f6b3a1d;
@@ -1141,9 +1230,7 @@ export class Canvas2DRenderer implements Renderer {
     }
     if (cached.draft) this.drafted.add(id);
     ctx.save();
-    ctx.translate(d.get(id, 'x'), d.get(id, 'y'));
-    const rotation = d.get(id, 'rotation');
-    if (rotation !== 0) ctx.rotate((rotation * Math.PI) / 180);
+    place(ctx, scene, id, d.get(id, 'width'), d.get(id, 'height'));
     // The layer's opacity is in the picture already; its blend mode mixes the picture with what is below.
     const blend = BLEND[d.get(id, 'blendMode')];
     if (blend) ctx.globalCompositeOperation = blend;
@@ -1178,13 +1265,11 @@ export class Canvas2DRenderer implements Renderer {
     // Stretching enlarges parts of the picture: a little more detail than the screen shows, within limits.
     const S = Math.min(scale * (this.draft ? 0.75 : 1.5), WARP_SIDE / fullW, WARP_SIDE / fullH, Math.sqrt(WARP_AREA / (fullW * fullH)));
     const texture = new OffscreenCanvas(Math.max(1, Math.ceil(fullW * S)), Math.max(1, Math.ceil(fullH * S)));
-    const tctx = texture.getContext('2d');
+    const tctx = context2d(texture);
     if (!tctx) return null;
     // The layer's own space: undo the place drawNode puts it at.
     tctx.setTransform(S, 0, 0, S, margin.left * S, margin.top * S);
-    const rotation = d.get(id, 'rotation');
-    if (rotation !== 0) tctx.rotate((-rotation * Math.PI) / 180);
-    tctx.translate(-d.get(id, 'x'), -d.get(id, 'y'));
+    unplace(tctx, scene, id);
     const previous = { zoom: this.zoom, culling: this.culling };
     this.zoom = S;
     this.culling = false;
@@ -1241,7 +1326,7 @@ export class Canvas2DRenderer implements Renderer {
       return { texture, mesh, picture: null, box: { x: 0, y: 0, width: 0, height: 0 } };
     }
     const picture = new OffscreenCanvas(pw, ph);
-    const pctx = picture.getContext('2d');
+    const pctx = context2d(picture);
     if (!pctx) return { texture, mesh, picture: null, box: { x: 0, y: 0, width: 0, height: 0 } };
     pctx.setTransform(k, 0, 0, k, -minX * k, -minY * k);
     drawMesh(pctx, texture, mesh, 0.6 / k);
@@ -1289,7 +1374,7 @@ export class Canvas2DRenderer implements Renderer {
     const box = this.deviceRect(ctx, scene, id, pad, beyond);
     if (!box) return true;
     const layer = new OffscreenCanvas(box.w, box.h);
-    const lctx = layer.getContext('2d');
+    const lctx = context2d(layer);
     if (!lctx) return false;
     const m = ctx.getTransform();
     lctx.setTransform(m.a, m.b, m.c, m.d, m.e - box.x, m.f - box.y);
@@ -1310,7 +1395,7 @@ export class Canvas2DRenderer implements Renderer {
   /** Puts pixels of the box size onto the canvas at the box (under the context's clip and opacity). */
   private putBox(ctx: Ctx2D, pixels: ImageData, box: Box): void {
     const tmp = new OffscreenCanvas(box.w, box.h);
-    tmp.getContext('2d')!.putImageData(pixels, 0, 0);
+    context2d(tmp)!.putImageData(pixels, 0, 0);
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(tmp, box.x, box.y);
@@ -1325,10 +1410,11 @@ export class Canvas2DRenderer implements Renderer {
     const scale = Math.hypot(ctx.getTransform().a, ctx.getTransform().b) || 1;
     const reach = tex.radius * scale;
     return this.drawIsolated(ctx, scene, id, 'texture', reach + 2, reach + 2, (layer, box) => {
-      const lctx = layer.getContext('2d')!;
+      const lctx = context2d(layer)!;
       const src = lctx.getImageData(0, 0, box.w, box.h);
       // The grain is tied to the layer: it moves with it, not with the screen.
-      const origin = ctx.getTransform().transformPoint(new DOMPoint(d.get(id, 'x'), d.get(id, 'y')));
+      const at = scene.placement(id);
+      const origin = ctx.getTransform().transformPoint(new DOMPoint(at.x, at.y));
       const out = roughen(src, Math.max(0.5, tex.size * scale), reach, box.x - origin.x, box.y - origin.y);
       if (tex.clipToShape) {
         const o = out.data;
@@ -1344,7 +1430,7 @@ export class Canvas2DRenderer implements Renderer {
     if (scene.doc.get(id, 'blendMode') !== 'PLUS_DARKER') return false;
     return this.drawIsolated(ctx, scene, id, 'plus-darker', 1, 0, (layer, box) => {
       const base = ctx.getImageData(box.x, box.y, box.w, box.h);
-      plusDarker(base, layer.getContext('2d')!.getImageData(0, 0, box.w, box.h));
+      plusDarker(base, context2d(layer)!.getImageData(0, 0, box.w, box.h));
       this.putBox(ctx, base, box);
     });
   }
@@ -1354,7 +1440,7 @@ export class Canvas2DRenderer implements Renderer {
     const W = ctx.canvas.width;
     const H = ctx.canvas.height;
     const out = new OffscreenCanvas(W, H);
-    const octx = out.getContext('2d')!;
+    const octx = context2d(out)!;
     octx.setTransform(ctx.getTransform());
     this.drawNode(octx, scene, id, true);
     const box = this.deviceRect(ctx, scene, id, 2);
@@ -1374,12 +1460,12 @@ export class Canvas2DRenderer implements Renderer {
     const scale = Math.hypot(ctx.getTransform().a, ctx.getTransform().b) || 1;
     const depth = Math.max(1, e.depth * scale);
     const back = new OffscreenCanvas(box.w, box.h);
-    const bctx = back.getContext('2d')!;
+    const bctx = context2d(back)!;
     drawBlurred(bctx, ctx.canvas, e.frost > 0 ? e.frost * scale : 0, -box.x, -box.y);
     const dome = new OffscreenCanvas(box.w, box.h);
-    const dctx = dome.getContext('2d')!;
+    const dctx = context2d(dome)!;
     drawBlurred(dctx, mask, depth / 2);
-    const mctx = mask.getContext('2d')!;
+    const mctx = context2d(mask)!;
     // Only the part of the box on the canvas has a backdrop to take from.
     const valid = { x0: Math.max(0, -box.x), y0: Math.max(0, -box.y), x1: Math.min(box.w, ctx.canvas.width - box.x), y1: Math.min(box.h, ctx.canvas.height - box.y) };
     if (valid.x1 <= valid.x0 || valid.y1 <= valid.y0) return;
@@ -1406,7 +1492,7 @@ export class Canvas2DRenderer implements Renderer {
     const known = this.colourNoises.get(key);
     if (known) return known;
     const tile = new OffscreenCanvas(128, 128);
-    const tctx = tile.getContext('2d');
+    const tctx = context2d(tile);
     if (!tctx) return null;
     tctx.putImageData(noiseTile(kind, density, color, second, Math.min(1, Math.max(0, e.amount))), 0, 0);
     const pattern = ctx.createPattern(tile, 'repeat');
@@ -1444,7 +1530,7 @@ export class Canvas2DRenderer implements Renderer {
     const tileW = cellW * (hexV ? 2 : 1);
     const tileH = cellH * (hexH ? 2 : 1);
     const tile = new OffscreenCanvas(Math.max(1, Math.ceil(tileW * k)), Math.max(1, Math.ceil(tileH * k)));
-    const tctx = tile.getContext('2d');
+    const tctx = context2d(tile);
     if (!tctx) return null;
     const place = (x: number, y: number) => {
       tctx.setTransform(k, 0, 0, k, x * k, y * k);
@@ -1493,7 +1579,7 @@ export class Canvas2DRenderer implements Renderer {
     const W = ctx.canvas.width;
     const H = ctx.canvas.height;
     const layer = new OffscreenCanvas(W, H);
-    const lctx = layer.getContext('2d');
+    const lctx = context2d(layer);
     if (!lctx) return false;
     lctx.setTransform(ctx.getTransform());
     this.progressiveNow = id;
@@ -1503,7 +1589,8 @@ export class Canvas2DRenderer implements Renderer {
       this.progressiveNow = null;
     }
     // Where the blur's ends are on the screen: through the layer's own place.
-    const m = ctx.getTransform().multiply(new DOMMatrix().translate(d.get(id, 'x'), d.get(id, 'y')).rotate(d.get(id, 'rotation')));
+    const at = scene.placement(id);
+    const m = ctx.getTransform().multiply(new DOMMatrix().translate(at.x, at.y).rotate(at.rotation));
     const w = d.get(id, 'width');
     const h = d.get(id, 'height');
     const a = m.transformPoint(new DOMPoint(blur.progressive.from.x * w, blur.progressive.from.y * h));
@@ -1526,9 +1613,9 @@ export class Canvas2DRenderer implements Renderer {
     const H = source.height;
     const bands = 6;
     const acc = new OffscreenCanvas(W, H);
-    const actx = acc.getContext('2d')!;
+    const actx = context2d(acc)!;
     const tmp = new OffscreenCanvas(W, H);
-    const tctx = tmp.getContext('2d')!;
+    const tctx = context2d(tmp)!;
     actx.globalCompositeOperation = 'lighter';
     for (let k = 0; k < bands; k++) {
       const c = k / (bands - 1);

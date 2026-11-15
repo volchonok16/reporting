@@ -189,6 +189,7 @@ declare module 'node:zlib' {
   export function gzipSync(data: string | Uint8Array, options?: { level?: number }): Buffer;
   export function gunzipSync(data: Uint8Array): Buffer;
   export function deflateRawSync(data: string | Uint8Array): Buffer;
+  export function inflateSync(data: Uint8Array): Buffer;
   /** Node 23.8+; the tests check our own zstd decoder against it. */
   export function zstdCompressSync(data: string | Uint8Array, options?: { params?: Record<number, number> }): Buffer;
   export function zstdDecompressSync(data: Uint8Array): Buffer;

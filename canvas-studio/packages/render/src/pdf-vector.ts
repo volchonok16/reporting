@@ -8,11 +8,65 @@
 // Layers whose look PDF cannot express — shadows, blurs, noise, masks and blend
 // modes — are embedded as high-resolution images of the layer.
 
+import { context2d, srgbOut } from './color-space.ts';
+
+/** A colour's PDF operands; a Display P3 file's colours as their sRGB look (step 9). */
+const rgbOps = (raw: { r: number; g: number; b: number }) => {
+  const c = srgbOut(raw);
+  return `${n(c.r)} ${n(c.g)} ${n(c.b)}`;
+};
+/** sRGB → CMYK, simple (no press profile): black from the darkest channel, the rest under it (FEAT-225). */
+export function toCmyk(r: number, g: number, b: number): [number, number, number, number] {
+  const k = 1 - Math.max(r, g, b);
+  if (k >= 0.9999) return [0, 0, 0, 1];
+  return [(1 - r - k) / (1 - k), (1 - g - k) / (1 - k), (1 - b - k) / (1 - k), k];
+}
+const cmykOps = (raw: { r: number; g: number; b: number }) => {
+  const c = srgbOut(raw);
+  return toCmyk(c.r, c.g, c.b).map(n).join(' ');
+};
+/** RGB bytes → CMYK bytes. */
+function cmykBytes(rgb: Uint8Array): Uint8Array {
+  const out = new Uint8Array((rgb.length / 3) * 4);
+  for (let i = 0, j = 0; i < rgb.length; i += 3, j += 4) {
+    const [c, m, y, k] = toCmyk(rgb[i]! / 255, rgb[i + 1]! / 255, rgb[i + 2]! / 255);
+    out[j] = Math.round(c * 255);
+    out[j + 1] = Math.round(m * 255);
+    out[j + 2] = Math.round(y * 255);
+    out[j + 3] = Math.round(k * 255);
+  }
+  return out;
+}
+
+/** Crop marks at the trim's corners, outside the bleed (PDF space, y up); registration black. */
+function cropMarks(w: number, h: number, off: number, bleed: number, cmyk: boolean): string {
+  const gap = bleed + 3;
+  const len = Math.max(6, off - gap - 1);
+  const out = [`q 0.25 w ${cmyk ? '1 1 1 1 K' : '0 G'}`];
+  for (const x of [off, off + w]) {
+    for (const y of [off, off + h]) {
+      const sx = x === off ? -1 : 1;
+      const sy = y === off ? -1 : 1;
+      // A horizontal mark on the trim line, a vertical one — both starting past the bleed.
+      out.push(`${n(x + sx * gap)} ${n(y)} m ${n(x + sx * (gap + len))} ${n(y)} l S`);
+      out.push(`${n(x)} ${n(y + sy * gap)} m ${n(x)} ${n(y + sy * (gap + len))} l S`);
+    }
+  }
+  out.push('Q');
+  return out.join('\n');
+}
+
+/** Printing (FEAT-225): bleed in points around each frame, crop marks, CMYK colours. */
+export interface PrintOptions {
+  bleed: number;
+  marks: boolean;
+  cmyk: boolean;
+}
 import { safeLink, type Document, type GradientPaint, type NodeId, type Paint, type VectorPath } from '#core';
 import { gradientGrid, gradientPixels } from './gradients.ts';
-import { apply, capShape, invert, isVariableStroke, multiply, nodeTransform, openEnds, shapePaths, sideStrokeRegion, type Matrix } from '#geometry';
+import { apply, capShape, intersects, invert, isVariableStroke, multiply, nodeTransform, openEnds, shapePaths, sideStrokeRegion, type Matrix } from '#geometry';
 import { dashOf, rectRadii, sideWeights } from './stroke.ts';
-import { lineOffset, nodePaths, textStyleOf, vectorDrawing, type TextMeasurer } from '#layout';
+import { isSketched, lineOffset, nodePaths, sketchOf, textStyleOf, vectorDrawing, type TextMeasurer } from '#layout';
 import { variableStrokeOf } from '#layout';
 import type { Canvas2DRenderer } from './canvas-renderer.ts';
 import { needsPicture, rasterize } from './export.ts';
@@ -50,6 +104,19 @@ class PageWriter {
   readonly scale: number;
   readonly font: () => number;
   readonly pending: Promise<void>[] = [];
+  /** Colours in DeviceCMYK instead of DeviceRGB (printing). */
+  cmyk = false;
+  /** The frame printed with bleed: its own fill and clip reach this far past its edges. */
+  bleedFrame: NodeId | null = null;
+  bleed = 0;
+
+  /** A fill (`rg`) or stroke (`RG`) colour operator in the page's colour space. */
+  colorOp(c: { r: number; g: number; b: number }, stroke: boolean): string {
+    return this.cmyk ? `${cmykOps(c)} ${stroke ? 'K' : 'k'}` : `${rgbOps(c)} ${stroke ? 'RG' : 'rg'}`;
+  }
+  private get space(): string {
+    return this.cmyk ? '/DeviceCMYK' : '/DeviceRGB';
+  }
 
   constructor(pdf: PdfWriter, scene: SceneGraph, renderer: Canvas2DRenderer, measurer: TextMeasurer, scale: number, font: () => number) {
     this.pdf = pdf;
@@ -123,7 +190,7 @@ class PageWriter {
   shading(p: GradientPaint, w: number, h: number): string {
     if (p.type === 'GRADIENT_ANGULAR' || p.type === 'GRADIENT_DIAMOND') return this.sampledShading(p, w, h);
     const stops = [...p.stops].sort((a, b) => a.position - b.position);
-    const c = (s: (typeof stops)[number]) => `[${n(s.color.r)} ${n(s.color.g)} ${n(s.color.b)}]`;
+    const c = (s: (typeof stops)[number]) => `[${this.cmyk ? cmykOps(s.color) : rgbOps(s.color)}]`;
     let fn: string;
     if (stops.length === 1) fn = `<< /FunctionType 2 /Domain [0 1] /C0 ${c(stops[0]!)} /C1 ${c(stops[0]!)} /N 1 >>`;
     else {
@@ -144,7 +211,7 @@ class PageWriter {
       p.type === 'GRADIENT_LINEAR'
         ? `/ShadingType 2 /Coords [${n(fx)} ${n(fy)} ${n(tx)} ${n(ty)}] /Domain [${n(first)} ${n(Math.max(first + 1e-6, last))}]`
         : `/ShadingType 3 /Coords [${n(fx)} ${n(fy)} 0 ${n(fx)} ${n(fy)} ${n(Math.hypot(tx - fx, ty - fy))}] /Domain [${n(first)} ${n(Math.max(first + 1e-6, last))}]`;
-    const ref = this.pdf.add(`<< ${coords} /ColorSpace /DeviceRGB /Function ${fn} /Extend [true true] >>`);
+    const ref = this.pdf.add(`<< ${coords} /ColorSpace ${this.space} /Function ${fn} /Extend [true true] >>`);
     const name = this.name('Sh');
     this.res.shadings.set(name, ref);
     return name;
@@ -166,8 +233,10 @@ class PageWriter {
     // Samples sit at the centres of the cells: the domain is the box, half a cell in from each side.
     const hx = w / cols / 2;
     const hy = h / rows / 2;
-    const fn = this.pdf.add(`<< /FunctionType 0 /Domain [${n(hx)} ${n(w - hx)} ${n(hy)} ${n(h - hy)}] /Range [0 1 0 1 0 1] /Size [${cols} ${rows}] /BitsPerSample 8 /Length ${rgb.length} >>`, rgb);
-    const ref = this.pdf.add(`<< /ShadingType 1 /Domain [${n(hx)} ${n(w - hx)} ${n(hy)} ${n(h - hy)}] /ColorSpace /DeviceRGB /Function ${fn} 0 R >>`);
+    const samples = this.cmyk ? cmykBytes(rgb) : rgb;
+    const range = this.cmyk ? '0 1 0 1 0 1 0 1' : '0 1 0 1 0 1';
+    const fn = this.pdf.add(`<< /FunctionType 0 /Domain [${n(hx)} ${n(w - hx)} ${n(hy)} ${n(h - hy)}] /Range [${range}] /Size [${cols} ${rows}] /BitsPerSample 8 /Length ${samples.length} >>`, samples);
+    const ref = this.pdf.add(`<< /ShadingType 1 /Domain [${n(hx)} ${n(w - hx)} ${n(hy)} ${n(h - hy)}] /ColorSpace ${this.space} /Function ${fn} 0 R >>`);
     const name = this.name('Sh');
     this.res.shadings.set(name, ref);
     return name;
@@ -191,8 +260,8 @@ class PageWriter {
       const ref = this.pdf.add(`<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode /Length ${mask.length} >>`, mask);
       smask = ` /SMask ${ref} 0 R`;
     }
-    const body = await deflate(rgb);
-    const ref = this.pdf.add(`<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode${smask} /Length ${body.length} >>`, body);
+    const body = await deflate(this.cmyk ? cmykBytes(rgb) : rgb);
+    const ref = this.pdf.add(`<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace ${this.space} /BitsPerComponent 8 /Filter /FlateDecode${smask} /Length ${body.length} >>`, body);
     this.res.images.set(name, ref);
   }
 
@@ -216,7 +285,7 @@ class PageWriter {
     this.restore(saved);
     this.pending.push(
       rasterize(this.renderer, this.scene, id, this.scale, undefined, { children }).then(async ({ canvas }) => {
-        const ctx = canvas.getContext('2d');
+        const ctx = context2d(canvas);
         if (!ctx) return;
         const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
         await this.image(name, img.width, img.height, img.data);
@@ -230,7 +299,7 @@ class PageWriter {
       if (p.type === 'SOLID') {
         const m = this.save();
         this.alpha(p.color.a * p.opacity);
-        this.push(`${n(p.color.r)} ${n(p.color.g)} ${n(p.color.b)} rg`);
+        this.push(this.colorOp(p.color, false));
         this.path(paths);
         this.push(evenodd ? 'f*' : 'f');
         this.restore(m);
@@ -270,7 +339,7 @@ class PageWriter {
     this.pending.push(
       (async () => {
         const canvas = new OffscreenCanvas(iw, ih);
-        const ctx = canvas.getContext('2d');
+        const ctx = context2d(canvas);
         if (!ctx) return;
         ctx.drawImage(decoded.image, 0, 0);
         const img = ctx.getImageData(0, 0, iw, ih);
@@ -320,7 +389,7 @@ class PageWriter {
       this.push(`${n(align === 'CENTER' ? weight : weight * 2)} w`);
       if (p.type === 'SOLID') {
         this.alpha(p.color.a * p.opacity);
-        this.push(`${n(p.color.r)} ${n(p.color.g)} ${n(p.color.b)} RG`);
+        this.push(this.colorOp(p.color, true));
         this.path(paths);
         this.push('S');
       } else if (p.type !== 'IMAGE' && p.type !== 'PATTERN') {
@@ -339,7 +408,7 @@ class PageWriter {
     const m = this.save();
     if (p.type === 'SOLID') {
       this.alpha(p.color.a * p.opacity);
-      this.push(`${n(p.color.r)} ${n(p.color.g)} ${n(p.color.b)} rg`);
+      this.push(this.colorOp(p.color, false));
       this.path(paths);
       this.push(evenodd ? 'f*' : 'f');
     } else if (p.type !== 'IMAGE' && p.type !== 'PATTERN') {
@@ -372,7 +441,7 @@ class PageWriter {
           else if (p.type === 'SOLID') {
             const m = this.save();
             this.alpha(p.color.a * p.opacity);
-            this.push(`1 J 1 j ${n(weight)} w ${n(p.color.r)} ${n(p.color.g)} ${n(p.color.b)} RG`);
+            this.push(`1 J 1 j ${n(weight)} w ${this.colorOp(p.color, true)}`);
             this.path(shape.paths);
             this.push('S');
             this.restore(m);
@@ -433,7 +502,8 @@ class PageWriter {
 
   node(id: NodeId): void {
     const d = this.doc;
-    if (!d.get(id, 'visible')) return;
+    // A slice is an area to export, never a picture of its own.
+    if (!d.get(id, 'visible') || d.type(id) === 'SLICE') return;
     const type = d.type(id);
     const effects = d.get(id, 'effects').some((e) => e.visible);
     const blend = d.get(id, 'blendMode');
@@ -466,6 +536,23 @@ class PageWriter {
     this.alpha(d.get(id, 'opacity'));
     const w = d.get(id, 'width');
     const h = d.get(id, 'height');
+    // «От руки» (FEAT-223): the same hand-drawn outline as on the canvas.
+    if (isSketched(d, id)) {
+      const sketch = sketchOf(d, id);
+      if (type !== 'LINE') this.fills(id, sketch.fill, w, h, false);
+      if (type === 'FRAME' || type === 'INSTANCE' || type === 'COMPONENT') {
+        const inner = this.save();
+        if (d.get(id, 'clipsContent')) {
+          this.path(sketch.fill);
+          this.push('W n');
+        }
+        for (const c of d.paintChildren(id)) this.node(c);
+        this.restore(inner);
+      }
+      this.strokes(id, sketch.stroke, true);
+      this.restore(saved);
+      return;
+    }
     switch (type) {
       case 'SECTION':
       case 'FRAME':
@@ -473,10 +560,13 @@ class PageWriter {
       case 'COMPONENT_SET':
       case 'INSTANCE': {
         const paths = shapePaths('RECTANGLE', { width: w, height: h, cornerRadius: d.get(id, 'cornerRadius'), cornerRadii: d.get(id, 'cornerRadii') });
-        this.fills(id, paths, w, h, false);
+        // Printed with bleed: the frame's own fill and clip reach past the trim (corners square there).
+        const bl = id === this.bleedFrame ? this.bleed : 0;
+        const area = bl > 0 ? [{ closed: true, points: [{ x: -bl, y: -bl }, { x: w + bl, y: -bl }, { x: w + bl, y: h + bl }, { x: -bl, y: h + bl }] }] : paths;
+        this.fills(id, area, w, h, false);
         const inner = this.save();
         if (d.get(id, 'clipsContent')) {
-          this.path(paths);
+          this.path(area);
           this.push('W n');
         }
         for (const c of d.paintChildren(id)) this.node(c);
@@ -534,7 +624,7 @@ function textFont(pdf: PdfWriter): number {
 }
 
 /** Vector PDF with one page per node (page = the node's painted area, 1 px = 1 pt). */
-export async function exportVectorPdf(renderer: Canvas2DRenderer, scene: SceneGraph, measurer: TextMeasurer, ids: readonly NodeId[], scale = 3): Promise<Blob> {
+export async function exportVectorPdf(renderer: Canvas2DRenderer, scene: SceneGraph, measurer: TextMeasurer, ids: readonly NodeId[], scale = 3, print?: PrintOptions): Promise<Blob> {
   scene.ensure();
   const pdf = new PdfWriter();
   const catalog = pdf.reserve();
@@ -543,15 +633,37 @@ export async function exportVectorPdf(renderer: Canvas2DRenderer, scene: SceneGr
   const font = () => (fontRef ||= textFont(pdf));
   const kids: number[] = [];
   for (const id of ids) {
-    const b = scene.renderBounds(id);
+    // A slice: its area of the page with whatever lies in it (step 9).
+    const slice = scene.doc.type(id) === 'SLICE';
+    // Printing: the page is the frame's trim (its own box) with bleed and, for marks, a margin around.
+    const b = slice || print ? scene.bounds(id) : scene.renderBounds(id);
+    const bleed = print ? Math.max(0, print.bleed) : 0;
+    const off = print ? bleed + (print.marks ? 20 : 0) : 0;
     const page = new PageWriter(pdf, scene, renderer, measurer, scale, font);
+    if (print) {
+      page.cmyk = print.cmyk;
+      page.bleedFrame = id;
+      page.bleed = bleed;
+      // Nothing past the bleed: the margin keeps only the marks.
+      page.push(`q ${n(off - bleed)} ${n(off - bleed)} ${n(b.width + bleed * 2)} ${n(b.height + bleed * 2)} re W n`);
+    }
     // PDF space is y-up: flip so that everything below works in canvas coordinates.
-    page.transform({ a: 1, b: 0, c: 0, d: -1, e: -b.x, f: b.height + b.y });
+    page.transform({ a: 1, b: 0, c: 0, d: -1, e: -b.x + off, f: b.height + b.y + off });
     page.base = page.m;
     const parent = scene.doc.parent(id);
-    if (parent && scene.doc.type(parent) !== 'PAGE') page.transform(scene.world(parent));
-    page.node(id);
+    if (slice) {
+      for (const layer of scene.doc.children(scene.pageId)) {
+        if (scene.doc.get(layer, 'visible') && scene.doc.type(layer) !== 'SLICE' && intersects(scene.renderBounds(layer), b)) page.node(layer);
+      }
+    } else {
+      if (parent && scene.doc.type(parent) !== 'PAGE') page.transform(scene.world(parent));
+      page.node(id);
+    }
     await Promise.all(page.pending);
+    if (print) {
+      page.push('Q');
+      if (print.marks) page.push(cropMarks(b.width, b.height, off, bleed, print.cmyk));
+    }
     const content = await deflate(new TextEncoder().encode(page.ops.join('\n')));
     const contentRef = pdf.add(`<< /Length ${content.length} /Filter /FlateDecode >>`, content);
     const ext = [...page.res.ext].map(([a, name]) => `/${name} << /Type /ExtGState /ca ${a} /CA ${a} >>`).join(' ');
@@ -561,7 +673,10 @@ export async function exportVectorPdf(renderer: Canvas2DRenderer, scene: SceneGr
     const resources = `<< ${ext ? `/ExtGState << ${ext} >> ` : ''}${shadings ? `/Shading << ${shadings} >> ` : ''}${images ? `/XObject << ${images} >> ` : ''}${fonts ? `/Font << ${fonts} >>` : ''} >>`;
     // Hyperlinks of texts: clickable areas opening the address.
     const annots = page.links.map((l) => pdf.add(`<< /Type /Annot /Subtype /Link /Rect [${l.rect.map(n).join(' ')}] /Border [0 0 0] /A << /S /URI /URI (${l.url.replace(/[\\()]/g, '\\$&')}) >> >>`));
-    kids.push(pdf.add(`<< /Type /Page /Parent ${pagesRef} 0 R /MediaBox [0 0 ${n(b.width)} ${n(b.height)}] /Resources ${resources} /Contents ${contentRef} 0 R${annots.length ? ` /Annots [${annots.map((a) => `${a} 0 R`).join(' ')}]` : ''} >>`));
+    const boxes = print
+      ? ` /TrimBox [${n(off)} ${n(off)} ${n(off + b.width)} ${n(off + b.height)}] /BleedBox [${n(off - bleed)} ${n(off - bleed)} ${n(off + b.width + bleed)} ${n(off + b.height + bleed)}]`
+      : '';
+    kids.push(pdf.add(`<< /Type /Page /Parent ${pagesRef} 0 R /MediaBox [0 0 ${n(b.width + off * 2)} ${n(b.height + off * 2)}]${boxes} /Resources ${resources} /Contents ${contentRef} 0 R${annots.length ? ` /Annots [${annots.map((a) => `${a} 0 R`).join(' ')}]` : ''} >>`));
   }
   pdf.set(pagesRef, `<< /Type /Pages /Kids [${kids.map((k) => `${k} 0 R`).join(' ')}] /Count ${kids.length} >>`);
   pdf.set(catalog, `<< /Type /Catalog /Pages ${pagesRef} 0 R >>`);

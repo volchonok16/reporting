@@ -144,7 +144,7 @@ export class IconsPanel {
   private fill(): void {
     const found = findIcons(this.query, this.category);
     if (found.length === 0) {
-      this.grid.replaceChildren(h('p', { class: 'ip-empty' }, tr('Ничего не нашлось — попробуйте другое слово, по-русски или по-английски')));
+      this.grid.replaceChildren(h('p', { class: 'ip-empty' }, tr('Ничего не нашлось. Попробуйте другое слово, по-русски или по-английски')));
       return;
     }
     this.grid.replaceChildren(

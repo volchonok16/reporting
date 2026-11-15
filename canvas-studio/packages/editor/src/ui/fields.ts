@@ -91,6 +91,9 @@ export class NumberField implements Field {
       let total = 0;
       let started = false;
       const from = this.options.read();
+      // While dragging: the field lit, the ↔ cursor on the whole screen, not only over the label (UI-009).
+      this.el.classList.add('scrubbing');
+      document.documentElement.classList.add('scrubbing');
       const move = (ev: PointerEvent) => {
         total += ev.movementX * (ev.shiftKey ? 10 : ev.altKey ? 0.1 : 1);
         if (this.options.scrubAsCommits) {
@@ -111,10 +114,15 @@ export class NumberField implements Field {
       const up = () => {
         label.removeEventListener('pointermove', move);
         label.removeEventListener('pointerup', up);
+        label.removeEventListener('lostpointercapture', up);
+        this.el.classList.remove('scrubbing');
+        document.documentElement.classList.remove('scrubbing');
         if (started) this.options.write((v) => v, 'end');
+        started = false;
       };
       label.addEventListener('pointermove', move);
       label.addEventListener('pointerup', up);
+      label.addEventListener('lostpointercapture', up);
     });
     this.refresh();
   }

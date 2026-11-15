@@ -10,12 +10,13 @@ import { tr } from '#core';
 import { CONNECT_HANDLE, connectHandlePoint, drawConnectHandle, drawConnections, drawFlowFlag, drawPendingConnection } from './prototype/overlay.ts';
 import { screenOf } from './prototype/model.ts';
 import { type HandleMirror, DEV_STATUS_LABELS, hexToColor, isFrameLike, isGradient, rgba, type DevStatus, solid, type Color, type GradientPaint, type NodeId, type NodeProps, type NodeType, type VectorNetwork } from '#core';
-import { cssColor } from '#render';
+import { cssColor, colorProfile, context2d, setColorProfile } from '#render';
 import { caretAt, indexAt, lineOffset, scaleNode, strokeLinePaths, textStyleOf } from '#layout';
 import { widthAt, cubicOf, handlesAt, vertexMirror, pointInPolygon, eraseFill, eraseNetwork, simplifyNetwork, cutNetworkSegment, detachVertex, findFaces, refillPart, flattenPaths, loopPath, nearestSegment, regionAt, splitNetworkSegment, strokeChains, toggleRegionAt } from '#geometry';
 import { pathOf } from '#render';
 import { addStop } from './ui/paint-editor.ts';
 import { h, icon } from './ui/dom.ts';
+import { visionFilter, VISIONS, type Vision } from './vision.ts';
 import { apply, invert, rectFromPoints, transformCorners, intersects, isConvexQuad, polygonPoints, starPoints, warpOutline, type Matrix, type Point, type Rect } from '#geometry';
 import { Canvas2DRenderer, cssFont, Viewport } from '#render';
 import { normalizeVector, round2, normalizeAngle, shownPageBackground, type Editor, type EditorGesture, type Guide } from './editor.ts';
@@ -25,6 +26,7 @@ import { ICON_DRAG_TYPE } from './ui/icons-panel.ts';
 import { CONTENT_DRAG_TYPE } from './ui/content-panel.ts';
 import { TileLayer } from './tiles.ts';
 import { cellPlace, cellsBetween, stepCell, tableOf, tableShape } from './tables.ts';
+import { AnnotateView } from './annotate.ts';
 import { BoardView } from './board-view.ts';
 import { lockedAt } from './board-actions.ts';
 import { addNeighbour, boardObjectOf, editableTextOf, isConnector, smoothStroke } from './board.ts';
@@ -65,6 +67,8 @@ type Mode =
   | { kind: 'idle' }
   /** A board tool or handle has the pointer (board-view.ts). */
   | { kind: 'board' }
+  /** The annotate tool measures from an edge (annotate.ts). */
+  | { kind: 'annotate' }
   | { kind: 'pan'; last: Point }
   | { kind: 'text-select'; anchor: number }
   | { kind: 'pen-drag'; gesture: EditorGesture; vertex: number; start: Point; segment: number | null }
@@ -152,6 +156,8 @@ export class CanvasView {
   private readonly editor: Editor;
   /** Board tools, "+" handles and connector ends (FEAT-083). */
   readonly board: BoardView;
+  /** Dev Mode notes and saved measurements (step 7). */
+  readonly annotate: AnnotateView;
   private readonly textArea: HTMLTextAreaElement;
   /** The «@» list of board texts (set by the app when the file is on the server). */
   mentions: TextMentions | null = null;
@@ -196,10 +202,19 @@ export class CanvasView {
   constructor(editor: Editor, renderer: Canvas2DRenderer) {
     this.editor = editor;
     this.renderer = renderer;
+    // The file's colour profile (step 9) before any canvas is made: they are made in its space.
+    setColorProfile(editor.doc.get(editor.doc.rootId, 'colorProfile'));
     this.renderer.pageBackground = shownPageBackground;
     this.renderer.ink = new CanvasInk(editor).forNode;
     this.renderer.pagePattern = BoardView.pattern(editor);
     this.board = new BoardView(editor, { request: () => this.request(false), focus: () => this.focus() });
+    this.annotate = new AnnotateView(editor, {
+      request: () => this.request(false),
+      focusNote: (id, index) => {
+        editor.prototype.setMode('code');
+        editor.events.emit('annotate', { id, index });
+      },
+    });
     // The canvas colour follows the system theme while the file is open.
     onThemeChange(() => this.refreshAll());
     this.element = document.createElement('div');
@@ -209,7 +224,7 @@ export class CanvasView {
     this.canvas.setAttribute('aria-label', tr('Холст'));
     // The page on the GPU when the browser can (tiles.ts); this canvas then only shows hover, selection and the like over it.
     this.tiles = gpuWanted() ? TileLayer.create(renderer) : null;
-    const ctx = this.canvas.getContext('2d', { alpha: this.tiles !== null });
+    const ctx = context2d(this.canvas, { alpha: this.tiles !== null });
     if (!ctx) throw new Error(tr('Canvas 2D недоступен'));
     this.ctx = ctx;
     // Under the canvas of hover and selection.
@@ -278,6 +293,7 @@ export class CanvasView {
     });
 
     editor.events.on('change', () => {
+      this.followColorProfile();
       this.request();
       if (editor.editingText) this.positionTextArea();
     });
@@ -287,6 +303,8 @@ export class CanvasView {
     });
     // Hover and selection are drawn over the content: the content itself stays.
     editor.events.on('overlay', () => this.request(false));
+    // A moment of a timeline: the layers it moves are drawn anew.
+    editor.events.on('motion', () => this.request());
     editor.events.on('selection', () => this.request(false));
     editor.events.on('appear', (ids) => this.greet(ids));
     // Another page or file: nothing of the old tiles may show through.
@@ -336,6 +354,7 @@ export class CanvasView {
     editor.events.on('view', (view) => {
       this.renderer.outlines = view.outlines ? { hidden: view.outlineHidden, bounds: view.outlineBounds } : null;
       this.updateOutlineBadge();
+      this.applyVision();
       this.refreshAll();
     });
     // Alt shows measurements without moving the pointer (FR-CNV-042).
@@ -369,6 +388,7 @@ export class CanvasView {
   cancelMode(): boolean {
     const mode = this.mode;
     if (mode.kind === 'board') this.board.cancel();
+    if (mode.kind === 'annotate') this.annotate.cancel();
     if (mode.kind === 'move' || mode.kind === 'resize' || mode.kind === 'rotate' || mode.kind === 'radius' || mode.kind === 'warp' || mode.kind === 'arc') mode.gesture.cancel();
     if (mode.kind === 'gradient' && mode.gesture) mode.gesture.cancel();
     this.radiusLabel = null;
@@ -377,7 +397,11 @@ export class CanvasView {
     if (mode.kind === 'vec-points' && mode.gesture) mode.gesture.cancel();
     if (mode.kind === 'vec-erase' || mode.kind === 'vec-transform' || mode.kind === 'vec-width') mode.gesture.cancel();
     let active = mode.kind !== 'idle';
-    if (!active && (this.editor.tool === 'eyedropper' || this.editor.tool === 'comment')) {
+    if (!active && this.editor.measureSelected) {
+      this.editor.selectMeasurement(null);
+      active = true;
+    }
+    if (!active && (this.editor.tool === 'eyedropper' || this.editor.tool === 'comment' || this.editor.tool === 'annotate')) {
       this.editor.setTool('select');
       active = true;
     }
@@ -447,6 +471,16 @@ export class CanvasView {
   refreshAll(): void {
     this.editor.scene.damageEverything();
     this.request();
+  }
+
+  /** The file's colour profile changed (the menu, undo, a co-editor): tiles and the renderer's pictures are made again in it. */
+  private followColorProfile(): void {
+    const profile = this.editor.doc.get(this.editor.doc.rootId, 'colorProfile');
+    if (profile === colorProfile()) return;
+    setColorProfile(profile);
+    this.renderer.dropColourCaches();
+    this.tiles?.setColorSpace();
+    this.refreshAll();
   }
   private contentDirty = true;
   private settle: ReturnType<typeof setTimeout> | null = null;
@@ -523,7 +557,7 @@ export class CanvasView {
       canvas.width = this.canvas.width;
       canvas.height = this.canvas.height;
     }
-    canvas.getContext('2d')!.drawImage(this.canvas, 0, 0);
+    context2d(canvas)!.drawImage(this.canvas, 0, 0);
     this.cache = { canvas, zoom: vp.zoom, offsetX: vp.offsetX, offsetY: vp.offsetY, width, height, dpr: this.dpr };
   }
 
@@ -547,7 +581,7 @@ export class CanvasView {
     small.offsetX = -x0 * scale;
     small.offsetY = -y0 * scale;
     this.contentDirty = false;
-    this.lastStats = this.renderer.renderPage({ ctx: canvas.getContext('2d')!, width: w, height: h, dpr: 1 }, this.editor.scene, small);
+    this.lastStats = this.renderer.renderPage({ ctx: context2d(canvas)!, width: w, height: h, dpr: 1 }, this.editor.scene, small);
     const ctx = this.ctx;
     const k = (vp.zoom * this.dpr) / scale;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -627,6 +661,21 @@ export class CanvasView {
     const d = editor.doc;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.lineJoin = 'miter';
+    const focus = editor.focusFrame && d.store.isAlive(editor.focusFrame) ? editor.focusFrame : null;
+    // Focus view (step 7): the rest of the page under its own background, the frame alone in it.
+    if (focus) {
+      const b = editor.scene.bounds(focus);
+      const a = this.screenPoint({ x: b.x, y: b.y });
+      const c = this.screenPoint({ x: b.x + b.width, y: b.y + b.height });
+      const bg = shownPageBackground(d.get(editor.pageId, 'backgroundColor'));
+      ctx.save();
+      ctx.fillStyle = `rgb(${Math.round(bg.r * 255)} ${Math.round(bg.g * 255)} ${Math.round(bg.b * 255)})`;
+      ctx.beginPath();
+      ctx.rect(0, 0, editor.screenSize.width, editor.screenSize.height);
+      ctx.rect(a.x, a.y, c.x - a.x, c.y - a.y);
+      ctx.fill('evenodd');
+      ctx.restore();
+    }
     drawPixelGrid(ctx, editor);
     drawLayoutGrids(ctx, editor);
     drawGuides(ctx, editor, this.mode.kind === 'guide' && this.mode.owner ? { owner: this.mode.owner, index: this.mode.index } : this.hoverGuide);
@@ -675,6 +724,13 @@ export class CanvasView {
       }
     };
     collect(editor.pageId);
+    // Focus view: titles of the focused frame (and inside it) only.
+    if (focus) {
+      const keep = titled.filter((id) => d.store.isAncestorOrSelf(focus, id));
+      titled.length = 0;
+      titled.push(...keep);
+      sections.length = 0;
+    }
     const screen = editor.screenSize;
     for (const id of sections) this.drawSectionTitle(ctx, id);
     const protoFlows = editor.prototype.mode === 'prototype' ? editor.prototype.flows() : [];
@@ -703,6 +759,15 @@ export class CanvasView {
       ctx.fillText(text, p.x, p.y - 4);
       ctx.globalAlpha = 1;
       this.labels.push({ id, rect: { x: p.x, y: p.y - 18, width: w, height: 16 } });
+      // Approval status after the title (other editors, item 9): a dot, and the words when there is room.
+      const badge = this.approvalBadge?.(id);
+      if (badge && maxWidth - w > 14) {
+        ctx.fillStyle = badge.color;
+        ctx.beginPath();
+        ctx.arc(p.x + w + 9, p.y - 9, 3, 0, Math.PI * 2);
+        ctx.fill();
+        if (maxWidth - w > 60) ctx.fillText(ellipsize(ctx, badge.label, maxWidth - w - 16), p.x + w + 16, p.y - 4);
+      }
       // Flow start flag above the title on the Prototype tab (FR-PRT-002).
       const flow = protoFlows.find((f) => f.nodeId === id);
       if (flow) {
@@ -738,6 +803,9 @@ export class CanvasView {
       }
     }
 
+    // Dev Mode notes beside their layers and the measurements kept in the file (step 7).
+    this.annotate.draw(ctx, editor.screenSize);
+
     // Instances of the selected component are outlined (BUG-028): editing the main
     // component changes them too, so the link is visible before it surprises.
     this.drawLinkedInstances();
@@ -753,6 +821,8 @@ export class CanvasView {
       for (const v of d.children(editor.variantEdit)) if (d.type(v) === 'COMPONENT') this.strokePolygon(this.nodeCorners(v), COMPONENT_ACCENT, 1);
       ctx.setLineDash([]);
     }
+
+    this.drawReadingMarks();
 
     // Selection outlines, handles and size label.
     const selection = editor.topLevelSelection();
@@ -929,6 +999,60 @@ export class CanvasView {
       h('button', { class: 'vector-bar-tool', type: 'button', title: tr('Выйти из контурного режима ({0})', IS_MAC ? '⇧⌘O' : 'Ctrl+Shift+O'), onclick: () => this.editor.setView({ outlines: false }) }, tr('Готово')),
     );
     this.element.append(this.outlineBar);
+  }
+
+  private visionBar: HTMLElement | null = null;
+
+  /** «Как видит человек с дальтонизмом» (FEAT-222): a colour filter over the page's canvases, and a bar to switch
+   *  or leave it — the file does not change. The bar sits outside the filtered canvases. */
+  private applyVision(): void {
+    const v = this.editor.view.vision;
+    const filter = visionFilter(v);
+    for (const c of [this.canvas, this.tiles?.canvas]) if (c) c.style.filter = filter;
+    this.visionBar?.remove();
+    this.visionBar = null;
+    if (v === 'normal') return;
+    const select = h(
+      'select',
+      { class: 'vision-select', 'aria-label': tr('Как видит человек'), onchange: (ev: Event) => this.editor.setView({ vision: (ev.target as HTMLSelectElement).value as Vision }) },
+      ...VISIONS.filter(([k]) => k !== 'normal').map(([k, label]) => h('option', { value: k, selected: k === v }, label)),
+    );
+    this.visionBar = h(
+      'div',
+      { class: 'vector-bar vision-bar', role: 'toolbar', 'aria-label': tr('Как видит человек') },
+      select,
+      h('button', { class: 'vector-bar-tool', type: 'button', title: tr('Обычные цвета'), onclick: () => this.editor.setView({ vision: 'normal' }) }, tr('Готово')),
+    );
+    this.element.append(this.visionBar);
+  }
+
+  /** Numbers in screen-reader order over the layers the accessibility panel shows (FEAT-222). */
+  private drawReadingMarks(): void {
+    const editor = this.editor;
+    const ids = editor.readingMarks.filter((id) => editor.doc.store.isAlive(id) && editor.doc.pageOf(id) === editor.pageId);
+    if (!ids.length) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.font = '600 11px system-ui, -apple-system, "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ids.forEach((id, i) => {
+      const b = editor.scene.bounds(id);
+      const a = this.screenPoint({ x: b.x, y: b.y });
+      const c = this.screenPoint({ x: b.x + b.width, y: b.y + b.height });
+      ctx.strokeStyle = 'rgba(79, 91, 213, 0.55)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(Math.round(a.x) + 0.5, Math.round(a.y) + 0.5, Math.round(c.x - a.x), Math.round(c.y - a.y));
+      const label = String(i + 1);
+      const r = label.length > 1 ? 10 : 9;
+      ctx.fillStyle = '#4F5BD5';
+      ctx.beginPath();
+      ctx.arc(a.x, a.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.fillText(label, a.x, a.y + 0.5);
+    });
+    ctx.restore();
   }
 
   private updateBuilderBar(): void {
@@ -2415,12 +2539,33 @@ export class CanvasView {
       ctx.fillText(label, bx + 16, y + 11.5);
       total += 4 + bw;
     }
+    // Approval status (other editors, item 9): a pill of its colour after the title and the work status.
+    const badge = this.approvalBadge?.(id);
+    if (badge && maxWidth - total > 60) {
+      ctx.font = '500 11px system-ui, -apple-system, "Segoe UI", sans-serif';
+      const label = ellipsize(ctx, badge.label, maxWidth - total - 32);
+      const bw = ctx.measureText(label).width + 22;
+      const bx = x + total + 4;
+      ctx.fillStyle = badge.color;
+      ctx.beginPath();
+      ctx.roundRect(bx, y, bw, 22, 5);
+      ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath();
+      ctx.arc(bx + 9, y + 11, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillText(label, bx + 16, y + 11.5);
+      total += 4 + bw;
+    }
     ctx.restore();
     this.labels.push({ id, rect: { x, y, width: total, height: 22 } });
   }
 
   /** Pointer is over the "+" handle (it fills in). */
   private hoverConnect = false;
+
+  /** Approval status of a frame or section, for its title (set by the app). */
+  approvalBadge: ((id: NodeId) => { label: string; color: string } | null) | null = null;
 
   /** The "+" handle of the selected layer on the Prototype tab, if any. */
   private connectHandle(): { id: NodeId; p: Point } | null {
@@ -2546,6 +2691,11 @@ export class CanvasView {
     if (e.button !== 0) return;
     this.lastMod = this.modKey(e);
 
+    if (this.annotate.pointerDown(world, screen)) {
+      if (this.annotate.active) this.mode = { kind: 'annotate' };
+      this.request(false);
+      return;
+    }
     if (editor.tool === 'eyedropper') {
       this.pickColor(screen, this.modKey(e));
       return;
@@ -2777,6 +2927,9 @@ export class CanvasView {
       case 'board':
         this.board.pointerMove(world, screen, e.shiftKey);
         return;
+      case 'annotate':
+        this.annotate.pointerMove(world);
+        return;
       case 'idle': {
         if (editor.shapeBuilder) {
           const cell = this.builderCellAt(world);
@@ -2785,6 +2938,12 @@ export class CanvasView {
             this.request();
           }
           this.canvas.style.cursor = cell >= 0 ? 'pointer' : 'default';
+          return;
+        }
+        const noteCursor = this.annotate.hover(world, screen);
+        if (noteCursor) {
+          this.canvas.style.cursor = noteCursor;
+          if (editor.tool !== 'annotate') editor.setHover(null);
           return;
         }
         const boardCursor = this.board.hover(world, screen);
@@ -3075,6 +3234,11 @@ export class CanvasView {
     if (mode.kind === 'board') {
       const screen = this.local(e);
       this.board.pointerUp(editor.viewport.screenToWorld(screen), screen);
+      this.updateCursor();
+      return;
+    }
+    if (mode.kind === 'annotate') {
+      this.annotate.pointerUp(this.local(e));
       this.updateCursor();
       return;
     }
@@ -4050,12 +4214,12 @@ export class CanvasView {
         'div',
         { class: 'vector-bar', role: 'toolbar', 'aria-label': tr('Правка точек') },
         tool('edit', 'select', tr('Править'), tr('Двигать точки и ручки, щелчок по сегменту добавляет точку, рамка выделяет точки (V)')),
-        tool('lasso', 'lasso', tr('Лассо'), tr('Обведите точки произвольной линией — они выделятся; Shift добавляет к выделенным (Q)')),
-        tool('pen', 'pen', tr('Перо'), tr('Рисовать дальше от любой точки — из одной точки может выходить сколько угодно сегментов (P)')),
+        tool('lasso', 'lasso', tr('Лассо'), tr('Обведите точки произвольной линией, и они выделятся; Shift добавляет к выделенным (Q)')),
+        tool('pen', 'pen', tr('Перо'), tr('Рисовать дальше от любой точки: из одной точки может выходить сколько угодно сегментов (P)')),
         tool('bucket', 'bucket', tr('Заливка'), tr('Щелчок по замкнутой области заливает её, повторный — убирает заливку (B)')),
         tool('scissors', 'scissors', tr('Ножницы'), tr('Щелчок по сегменту разрезает его, по точке — разъединяет сегменты в ней')),
         tool('width', 'width', tr('Ширина'), tr('Щелчок по линии ставит точку ширины, ручки по бокам меняют толщину, центр двигает точку вдоль линии; Delete убирает точку (Shift+W)')),
-        tool('eraser', 'eraser', tr('Ластик'), tr('Проведите по контуру — его часть сотрётся, на краях появятся новые точки. Толщина — в правой панели (Shift+E)')),
+        tool('eraser', 'eraser', tr('Ластик'), tr('Проведите по контуру, и его часть сотрётся, а на краях появятся новые точки. Толщина задаётся в правой панели (Shift+E)')),
         h('span', { class: 'vector-bar-sep' }),
         h('button', { class: 'vector-bar-tool', type: 'button', title: tr('Меньше точек при том же виде'), onclick: () => editor.simplifySelection() }, h('span', {}, tr('Упростить'))),
         h('button', { class: 'text-button primary', type: 'button', onclick: () => this.finishVectorEdit() }, tr('Готово')),
@@ -4529,7 +4693,7 @@ export class CanvasView {
       return;
     }
     if (d.get(id, 'strokeWeight') <= 0 || !d.get(id, 'strokes').some((p) => p.visible)) {
-      editor.toast(tr('Толщина вдоль линии — у обводки: добавьте слою обводку'));
+      editor.toast(tr('Толщина вдоль линии бывает только у обводки: добавьте слою обводку'));
       return;
     }
     const custom = d.get(id, 'strokeProfile') === 'CUSTOM';
@@ -5269,6 +5433,7 @@ export class CanvasView {
 const TOOL_TYPES: Partial<Record<string, NodeType>> = {
   frame: 'FRAME',
   section: 'SECTION',
+  slice: 'SLICE',
   rectangle: 'RECTANGLE',
   ellipse: 'ELLIPSE',
   polygon: 'POLYGON',

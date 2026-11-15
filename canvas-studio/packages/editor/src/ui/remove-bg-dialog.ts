@@ -106,7 +106,7 @@ class RemoveBgDialog {
       'div',
       { class: 'dialog crop-dialog cutout-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': tr('Удалить фон') },
       h('header', { class: 'dialog-header' }, h('h2', {}, tr('Удалить фон')), close),
-      h('p', { class: 'cutout-hint' }, tr('Затемнено то, что уйдёт. Не так — проведите кистью: «Оставить» по пропавшей части предмета, «Убрать» по оставшемуся фону. Alt — другая кисть.')),
+      h('p', { class: 'cutout-hint' }, tr('Затемнённое будет удалено. Поправить: кисть «Оставить» по предмету, «Убрать» по фону. Alt меняет кисть.')),
       stage,
       h('div', { class: 'crop-bar' }, brushes, size, this.status, h('span', { class: 'crop-spacer' }), reset, cancel, this.apply),
     );

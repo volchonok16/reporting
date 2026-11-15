@@ -14,7 +14,7 @@ export class TemplatesDialog {
       const card = h(
         'button',
         { class: 'tpl-card', type: 'button' },
-        h('span', { class: `tpl-shape${t.width > t.height ? ' wide' : ''}` }, icon(t.width > t.height ? 'slides' : 'frame', 22)),
+        h('span', { class: `tpl-shape${t.width > t.height ? ' wide' : ''}` }, icon(t.width > t.height ? 'desktop' : 'phone', 18)),
         h('strong', {}, t.name),
         h('small', {}, t.description),
         h('span', { class: 'tpl-size' }, `${t.width} × ${t.height}`),
@@ -22,7 +22,7 @@ export class TemplatesDialog {
       card.addEventListener('click', () => {
         this.close();
         editor.insertTemplate(t);
-        editor.toast(tr('Шаблон «{0}» добавлен. Всё на адаптивной раскладке — меняйте тексты и размеры.', t.name));
+        editor.toast(tr('Шаблон «{0}» добавлен. Всё на адаптивной раскладке, меняйте тексты и размеры.', t.name));
       });
       grid.append(card);
     }
@@ -31,7 +31,7 @@ export class TemplatesDialog {
       'div',
       { class: 'dialog tpl-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': tr('Шаблоны экранов') },
       h('header', { class: 'dialog-header' }, h('h2', {}, tr('Шаблоны экранов')), close),
-      h('p', { class: 'share-muted tpl-intro' }, tr('Готовая отправная точка вместо пустого холста. Шаблон встанет справа от того, что уже есть на странице.')),
+      h('p', { class: 'share-muted tpl-intro' }, tr('Шаблон появится справа от того, что уже есть на странице.')),
       grid,
     );
     this.overlay = h('div', { class: 'dialog-overlay' }, dialog);

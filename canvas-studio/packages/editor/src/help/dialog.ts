@@ -3,7 +3,7 @@
 // beginning, so «переменной» finds «переменные») in titles, keywords and text;
 // titles weigh most. "Mod"/"Alt" are written for this computer.
 
-import { lang, tr } from '#core';
+import { inMacApp, lang, tr } from '#core';
 import type { Command } from '../commands.ts';
 import { formatShortcut } from '../keyboard.ts';
 import { clear, h, icon } from '../ui/dom.ts';
@@ -11,6 +11,8 @@ import { ARTICLES_EN } from './articles-en.ts';
 import { ARTICLES_RU } from './articles-ru.ts';
 import { diagramArticles } from './diagram-articles.ts';
 import type { Article, Block } from './types.ts';
+import { forMacApp, MAC_ARTICLE_EN, MAC_ARTICLE_RU, MAC_EN, MAC_RU } from './mac.ts';
+import { appSockets } from '../mac-bridge.ts';
 
 const mac = () => typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 const keys = (text: string) => text.replace(/\bMod\b/g, mac() ? '⌘' : 'Ctrl').replace(/\bAlt\b/g, mac() ? '⌥' : 'Alt');
@@ -19,7 +21,12 @@ export function articles(): Article[] {
   const base = lang === 'en' && ARTICLES_EN.length ? ARTICLES_EN : ARTICLES_RU;
   // How to write each kind of diagram: right after the article on diagrams.
   const at = base.findIndex((a) => a.id === 'diagrams');
-  return at < 0 ? [...base, ...diagramArticles()] : [...base.slice(0, at + 1), ...diagramArticles(), ...base.slice(at + 1)];
+  const all = at < 0 ? [...base, ...diagramArticles()] : [...base.slice(0, at + 1), ...diagramArticles(), ...base.slice(at + 1)];
+  // The macOS app: its own texts where the site's speak of the browser and the server (mac.ts).
+  if (!inMacApp) return all;
+  const en = base === ARTICLES_EN;
+  // With a server set (the app's socket bridge is there) the app signs in and syncs as the site does.
+  return forMacApp(all, en ? MAC_EN : MAC_RU, en ? MAC_ARTICLE_EN : MAC_ARTICLE_RU, en ? 'en' : 'ru', appSockets()).articles;
 }
 
 const plainOf = (b: Block): string =>

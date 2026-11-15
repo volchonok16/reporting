@@ -12,6 +12,7 @@ import type { Editor } from '../editor.ts';
 import { applySlideTheme, createSlide, currentTheme, formatOf, gridBounds, setSlideFormat, slideFormats, slideIds, slideSize, slideInfo, slideLayouts, slideThemes, type SlideLayout, type SlideTheme } from '../slides.ts';
 import { ContextMenu } from './context-menu.ts';
 import { h, icon } from './dom.ts';
+import { fadeAway } from './motion-ui.ts';
 
 const VIEW_KEY = 'cs.slides.view';
 const THUMB_W = 176;
@@ -55,7 +56,7 @@ export class SlidesPanel {
     }
     // The view is on from the start, not only once switched (BUG-133: an opened file showed all slides under «Слайд»).
     if (this.view === 'slide') this.editor.slideStage = { current: () => this.currentSlide(), flip: (step) => this.next(step) };
-    const add = h('button', { class: 'text-button primary sl-add', type: 'button', title: tr('Новый слайд после текущего (раскладка — на выбор)') }, icon('plus', 14), h('span', {}, tr('Слайд')));
+    const add = h('button', { class: 'text-button sl-add', type: 'button', title: tr('Новый слайд после текущего (раскладка — на выбор)') }, icon('plus', 14), h('span', {}, tr('Слайд')));
     add.addEventListener('click', () => this.openLayouts(add));
     const present = h('button', { class: 'text-button sl-present', type: 'button', title: tr('Показ с текущего слайда (⌘⌥Enter)') }, icon('play', 14), h('span', {}, tr('Показ')));
     present.addEventListener('click', () => this.onPresent?.(this.current));
@@ -327,12 +328,6 @@ export class SlidesPanel {
     if (made) requestAnimationFrame(() => this.show(made));
   }
 
-  copySlide(id: NodeId): void {
-    this.editor.setSelection([id]);
-    document.execCommand('copy');
-    this.editor.toast(tr('Слайд скопирован. В другой презентации вставьте его: ⌘V'));
-  }
-
   duplicate(id: NodeId): void {
     const editor = this.editor;
     const [copy] = editor.duplicate([id]);
@@ -359,7 +354,6 @@ export class SlidesPanel {
       { kind: 'action' as const, label: tr('Показ с этого слайда'), run: () => this.onPresent?.(id) },
       { kind: 'separator' as const },
       { kind: 'submenu' as const, label: tr('Новый слайд после'), disabled: ro, items: slideLayouts().map((l) => ({ kind: 'action' as const, label: l.name, run: () => this.addSlide(l.id) })) },
-      { kind: 'action' as const, label: tr('Копировать слайд'), shortcut: '⌘C', run: () => this.copySlide(id) },
       { kind: 'action' as const, label: tr('Дублировать'), shortcut: '⌘D', disabled: ro, run: () => this.duplicate(id) },
       { kind: 'action' as const, label: info.skip ? tr('Показывать при показе') : tr('Пропускать при показе'), disabled: ro, run: () => this.toggleSkip(id) },
       { kind: 'separator' as const },
@@ -383,6 +377,7 @@ export class SlidesPanel {
   // ---------- popovers ----------
 
   private closePopover(): void {
+    fadeAway(this.popover);
     this.popover?.remove();
     this.popover = null;
     this.popoverCleanup?.();
@@ -416,21 +411,6 @@ export class SlidesPanel {
     };
   }
 
-  private async insertIdentitySlide(index: number): Promise<void> {
-    if (this.editor.doc.readOnly) return;
-    this.closePopover();
-    this.editor.toast(tr('Добавляю слайд…'));
-    try {
-      const { cachedIdentityFile, templateSlideNames } = await import('../slide-templates.ts');
-      const { importPptxInto } = await import('../pptx/import-run.ts');
-      const file = await cachedIdentityFile();
-      const { note } = await importPptxInto(this.editor, file, this.currentSlide(), index, templateSlideNames());
-      this.editor.toast(note);
-    } catch (error) {
-      this.editor.toast(error instanceof Error ? error.message : tr('Не удалось добавить слайд'), 'error');
-    }
-  }
-
   private openLayouts(anchor: HTMLElement): void {
     if (this.editor.doc.readOnly) return;
     const theme = currentTheme(this.editor.doc);
@@ -446,28 +426,7 @@ export class SlidesPanel {
         return b;
       }),
     );
-    const identity = h('div', { class: 'sl-layouts sl-template-slides', role: 'menu', 'aria-label': tr('Шаблон T2 B2B') });
-    identity.append(h('div', { class: 'sl-layout-note' }, tr('Загружаю шаблоны…')));
-    this.openPopover(anchor, h('div', {}, h('div', { class: 'new-kind-title' }, tr('Новый слайд')), grid, h('div', { class: 'new-kind-title' }, tr('Шаблон T2 B2B')), identity));
-    void this.fillIdentityLayouts(identity);
-  }
-
-  private async fillIdentityLayouts(host: HTMLElement): Promise<void> {
-    try {
-      const { identitySlides } = await import('../slide-templates.ts');
-      const slides = await identitySlides();
-      if (!host.isConnected) return;
-      host.replaceChildren(
-        ...slides.map((slide, index) => {
-          const b = h('button', { class: 'sl-layout', type: 'button', role: 'menuitem' }, h('span', {}, slide.name));
-          b.addEventListener('click', () => void this.insertIdentitySlide(index));
-          return b;
-        }),
-      );
-    } catch (error) {
-      if (!host.isConnected) return;
-      host.replaceChildren(h('div', { class: 'sl-layout-note' }, error instanceof Error ? error.message : tr('Не удалось открыть шаблон')));
-    }
+    this.openPopover(anchor, h('div', {}, h('div', { class: 'new-kind-title' }, tr('Новый слайд')), grid));
   }
 
   private openFormats(anchor: HTMLElement): void {

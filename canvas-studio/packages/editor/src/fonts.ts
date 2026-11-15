@@ -213,7 +213,7 @@ export async function embedFontFiles(doc: Document, files: { name: string; bytes
     try {
       await new FontFace('cs-probe', f.bytes as BufferSource).load();
     } catch {
-      errors.push(tr('«{0}» — браузер не смог прочитать шрифт', f.name));
+      errors.push(tr('Браузер не смог прочитать шрифт «{0}»', f.name));
       continue;
     }
     entries.push({ info, bytes: f.bytes, mime });

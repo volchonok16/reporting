@@ -4,6 +4,7 @@
 // chosen scale, losslessly compressed (Flate) with an alpha mask, so the PDF
 // looks exactly like the canvas. Vector PDF output is planned separately.
 
+import { context2d } from './color-space.ts';
 import { tr } from '#core';
 import type { NodeId } from '#core';
 import type { Canvas2DRenderer } from './canvas-renderer.ts';
@@ -138,7 +139,7 @@ export async function exportPdf(renderer: Canvas2DRenderer, scene: SceneGraph, i
   const pages: PdfPageImage[] = [];
   for (const id of ids) {
     const { canvas, bounds } = await rasterize(renderer, scene, id, scale);
-    const ctx = canvas.getContext('2d');
+    const ctx = context2d(canvas);
     if (!ctx) throw new Error(tr('Canvas 2D недоступен'));
     const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
     pages.push({ width: bounds.width, height: bounds.height, pixels: { width: image.width, height: image.height, data: image.data } });

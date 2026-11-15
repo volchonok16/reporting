@@ -7,6 +7,7 @@ import { tr } from '#core';
 import type { Editor } from '../editor.ts';
 import { when } from './comments.ts';
 import { h } from './dom.ts';
+import { fadeAway } from './motion-ui.ts';
 
 export class HistoryPopover {
   private readonly el: HTMLElement;
@@ -57,6 +58,7 @@ export class HistoryPopover {
     this.off();
     document.removeEventListener('pointerdown', this.outside, true);
     document.removeEventListener('keydown', this.keys, true);
+    fadeAway(this.el);
     this.el.remove();
   }
 }

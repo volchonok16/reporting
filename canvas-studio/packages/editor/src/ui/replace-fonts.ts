@@ -88,7 +88,7 @@ export function openReplaceFonts(editor: Editor, toast: (message: string) => voi
     'div',
     { class: 'dialog rf-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': tr('Заменить шрифты') },
     h('header', { class: 'dialog-header' }, h('h2', {}, tr('Заменить шрифты')), closeButton),
-    h('div', { class: 'dialog-body' }, used.length ? h('p', { class: 'hint small' }, tr('Выберите новый шрифт напротив старого — заменится во всём файле: в текстах, их частях и текстовых стилях.')) : h('p', {}, tr('В файле нет текстов.')), h('div', { class: 'rf-list' }, ...rows)),
+    h('div', { class: 'dialog-body' }, used.length ? h('p', { class: 'hint small' }, tr('Выберите новый шрифт напротив старого. Он заменится во всём файле, включая текстовые стили.')) : h('p', {}, tr('В файле нет текстов.')), h('div', { class: 'rf-list' }, ...rows)),
     h('footer', { class: 'dialog-footer' }, h('button', { class: 'text-button', type: 'button', onclick: close }, tr('Отмена')), apply),
   );
   const overlay = h('div', { class: 'dialog-overlay' }, dialog);

@@ -39,17 +39,17 @@ export async function importFig(file: File): Promise<FigImport> {
     : [tr('Импортировано из Figma: страниц — {0}, слоёв — {1}.', pages, result.count)];
   // Stickies fit their text, shapes their outline, connectors their ends: the board pass over everything.
   if (board) result.doc.transact((tx) => refreshBoard(result.doc, tx, new CanvasTextMeasurer()), { undoable: false });
-  if (result.components > 0 || result.instances > 0) parts.push(tr('Компонентов: {0}, экземпляров: {1} — связаны, переопределения сохранены.', result.components, result.instances));
-  if (result.styles > 0) parts.push(tr('Стилей: {0} — слои к ним привязаны.', result.styles));
-  if (result.unlinked > 0) parts.push(tr('Экземпляров без компонента в файле: {0} — остались пустыми рамками.', result.unlinked));
+  if (result.components > 0 || result.instances > 0) parts.push(tr('Компонентов: {0}, экземпляров: {1}. Связи и переопределения сохранены.', result.components, result.instances));
+  if (result.styles > 0) parts.push(tr('Стилей: {0}, слои к ним привязаны.', result.styles));
+  if (result.unlinked > 0) parts.push(tr('Экземпляров без компонента в файле: {0}. Они остались пустыми рамками.', result.unlinked));
   const other = [...result.skipped].reduce((s, [, n]) => s + n, 0);
   if (other > 0) parts.push(tr('Не перенесено элементов: {0}.', other));
-  if (result.missingImages > 0) parts.push(tr('Картинок нет в файле: {0} — на их месте серая заливка.', result.missingImages));
+  if (result.missingImages > 0) parts.push(tr('Картинок нет в файле: {0}. На их месте серая заливка.', result.missingImages));
   const lacking = [...result.fonts].filter((f) => !isFontAvailable(f));
   // Fonts this computer lacks come from Google Fonts when it has them: embedded, the text looks as in Figma for everyone.
   const google = lacking.length ? await embedGoogleFamilies(result.doc, lacking, false) : { embedded: [], missing: [], failed: [] };
   if (google.embedded.length > 0) parts.push(tr('Шрифты загружены из Google Fonts и встроены в файл: {0}.', google.embedded.join(', ')));
   const missing = [...google.missing, ...google.failed];
-  if (missing.length > 0) parts.push(tr('Нет шрифтов на этом компьютере: {0} — текст показан заменой; шрифт можно встроить в файл.', missing.join(', ')));
+  if (missing.length > 0) parts.push(tr('Нет шрифтов на этом компьютере: {0}. Текст показан заменой, шрифт можно встроить в файл.', missing.join(', ')));
   return { doc: result.doc, note: parts.join(' ') };
 }

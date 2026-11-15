@@ -7,19 +7,21 @@
 import { linkAt, openLink } from '../text-links.ts';
 import { locale, tr } from '#core';
 import { processTransaction } from '#components';
-import { deserialize, serialize, type Color, type Document, type NodeId, type Reaction, type Transition } from '#core';
+import { deserialize, serialize, type Color, type Document, type NodeId, type Reaction, type Transition, type VideoOp } from '#core';
 import { apply, invert, type Point } from '#geometry';
 import type { TextMeasurer } from '#layout';
-import { Canvas2DRenderer, cssColor, SceneGraph } from '#render';
+import { Canvas2DRenderer, cssColor, SceneGraph, type Pose, context2d } from '#render';
 import { h, icon } from '../ui/dom.ts';
-import { easingFunction } from './easing.ts';
-import { flows, interactiveLayers, isScreen, PrototypeSession, reachable, screens, type Effect, type OpenOverlay } from './model.ts';
+import { easingFunction, resolveTiming } from './easing.ts';
+import { fullPose } from '../motion/model.ts';
+import { flows, interactiveLayers, isScreen, PrototypeSession, reachable, screens, type Effect, type OpenOverlay, VIDEO_OPS } from './model.ts';
 import { ScrollState } from './scroll.ts';
 import { allVariables } from '#components';
 import type { PrototypeDevice } from '#core';
 import { deviceInsets, drawDevice, drawDeviceOverlay, screenRadius } from './devices.ts';
 import { formatValue, type ExprValue } from '#components';
 import { readVariable } from './vars.ts';
+import { a11yItems, flatItems, spoken, type A11yItem } from './a11y.ts';
 import { applySmartAnimate, planFromSnapshot, planSmartAnimate, snapshotLayers, type SmartPlan } from './smart.ts';
 
 export type ScaleMode = 'fit' | 'actual' | 'width';
@@ -32,6 +34,29 @@ export interface PlayerOptions {
   measurer: TextMeasurer;
   /** Shown as a close button and on Esc; absent in a separate tab. */
   onClose?: () => void;
+  /** The file is on the server: the bar gets «Комментарии» (C) — pins on the screens, a click drops a new one. */
+  comments?: boolean;
+  /**
+   * Testing on people: no bar, no hints where to press, no keys that skip screens — the respondent finds
+   * the way only through the prototype itself.
+   */
+  bare?: boolean;
+}
+
+/** A tap on a screen (testing on people): where, in the screen's own units, and whether anything answered it. */
+export interface PlayerTap {
+  screen: NodeId;
+  x: number;
+  y: number;
+  hit: boolean;
+}
+
+/** Where a comment is pinned: a layer of a screen and the offset from its top-left corner (as kept by the server). */
+export interface PinPlace {
+  pageId: string;
+  nodeId: string | null;
+  x: number;
+  y: number;
 }
 
 const DEFAULT_BG: Color = { r: 0.118, g: 0.118, b: 0.118, a: 1 };
@@ -43,14 +68,16 @@ const DRAG_SLOP = 5;
 interface Prefs {
   scale: ScaleMode;
   hotspots: boolean;
+  /** Screen reader mode (step 8). */
+  reader: boolean;
 }
 
 function loadPrefs(): Prefs {
   try {
     const p = JSON.parse(localStorage.getItem(PREFS) ?? 'null') as Partial<Prefs> | null;
-    return { scale: p?.scale ?? 'fit', hotspots: p?.hotspots ?? true };
+    return { scale: p?.scale ?? 'fit', hotspots: p?.hotspots ?? true, reader: p?.reader ?? false };
   } catch {
-    return { scale: 'fit', hotspots: true };
+    return { scale: 'fit', hotspots: true, reader: false };
   }
 }
 
@@ -107,7 +134,8 @@ export class PrototypePlayer {
   private tweens: Tween[] = [];
   /** What a "while hovering" / "while pressing" interaction undoes when it ends. */
   private revert: { node: NodeId; kind: 'ON_HOVER' | 'ON_PRESS'; undo: () => void } | null = null;
-  private press: { x: number; y: number; chain: NodeId[]; dragging: boolean; pointer: number } | null = null;
+  /** The button held: where, over what, whether it scrolls, and whether a drag already fired an «On drag» reaction. */
+  private press: { x: number; y: number; chain: NodeId[]; dragging: boolean; pointer: number; dragFired: boolean } | null = null;
   private suppressClick = false;
   private readonly resize: ResizeObserver;
   private readonly keyHandler: (e: KeyboardEvent) => void;
@@ -115,6 +143,33 @@ export class PrototypePlayer {
   private readonly debugButton: HTMLButtonElement;
   /** Interactions that fired and what they did, newest last (FR-PRT-043). */
   private journal: { time: number; cause: string; lines: string[] }[] = [];
+  /** Pins and discussions over the screen (comments right in the viewer, step 8). */
+  readonly commentLayer: HTMLElement;
+  /** Commenting: the prototype does not react, a click drops a pin. */
+  private commenting = false;
+  private readonly commentButton: HTMLButtonElement | null;
+  private readonly commentCount: HTMLElement;
+  /** Told after every frame drawn (pins follow the screen) and when commenting starts or ends. */
+  onDrawn?: () => void;
+  onCommentMode?: (on: boolean) => void;
+  /** A click on the screen while commenting, in CSS pixels of the stage. */
+  onCommentClick?: (p: Point) => void;
+  /** Every tap on a screen (testing on people). */
+  onTap?: (tap: PlayerTap) => void;
+  /** After every interaction that ran (the screen or the overlays may have changed). */
+  onChange?: () => void;
+  private readonly bare: boolean;
+  /** Screen reader mode: hidden elements over the screen a screen reader reads and Tab walks (step 8). */
+  private readonly a11yLayer: HTMLElement;
+  /** What the reader says for the item in focus, shown under the screen for those who do not hear it. */
+  private readonly caption: HTMLElement;
+  /** Polite announcements: «Экран «Оплата»». */
+  private readonly live: HTMLElement;
+  private readonly readerButton: HTMLButtonElement;
+  /** What the hidden elements were built from, to rebuild only when it changes. */
+  private a11yKey = '';
+  /** Focus goes to the first item once the new screen is built (after a press from the keyboard). */
+  private focusFirst = false;
 
   constructor(options: PlayerOptions) {
     // A private copy: playing must not edit the file (and must not land in its undo history).
@@ -122,6 +177,8 @@ export class PrototypePlayer {
     this.pageId = options.pageId;
     this.measurer = options.measurer;
     this.onClose = options.onClose;
+    this.bare = options.bare ?? false;
+    if (this.bare) this.prefs = { scale: 'fit', hotspots: false, reader: false };
     this.renderer = new Canvas2DRenderer(options.measurer);
     this.renderer.images.onLoad = () => this.request();
     this.doc = deserialize(this.snapshot);
@@ -132,7 +189,7 @@ export class PrototypePlayer {
     this.session = this.newSession(options.start);
 
     this.canvas = h('canvas', { class: 'player-canvas', 'aria-label': tr('Экран прототипа') });
-    this.ctx = this.canvas.getContext('2d')!;
+    this.ctx = context2d(this.canvas)!;
     this.title = h('span', { class: 'player-title' });
     this.flowSelect = h('select', { class: 'field-select player-flows', 'aria-label': tr('Поток') });
     this.flowSelect.addEventListener('change', () => this.startAt(this.flowSelect.value));
@@ -157,11 +214,23 @@ export class PrototypePlayer {
     const hotspotLabel = h('label', { class: 'checkbox player-check', title: tr('Щелчок мимо подсвечивает, где можно нажать') }, hotspots, h('span', {}, tr('Подсказки')));
     const close = this.onClose ? button('close', tr('Закрыть (Esc)'), () => this.close()) : null;
     const debug = button('variable', tr('Отладка: переменные и журнал (D)'), () => this.toggleDebug());
+    this.readerButton = button('speaker', tr('Экранный диктор'), () => this.setReader(!this.prefs.reader));
     this.debugButton = debug;
-    const bar = h('header', { class: 'player-bar' }, this.flowSelect, prev, this.title, next, h('span', { class: 'player-spacer' }), this.backButton, restart, debug, scale, hotspotLabel, ...(close ? [close] : []));
+    this.commentCount = h('span', { class: 'player-comment-count', hidden: true });
+    this.commentButton = options.comments ? button('comment', tr('Комментарии (C)'), () => this.setCommentMode(!this.commenting)) : null;
+    this.commentButton?.append(this.commentCount);
+    this.commentButton?.setAttribute('aria-pressed', 'false');
+    const bar = h('header', { class: 'player-bar' }, this.flowSelect, prev, this.title, next, h('span', { class: 'player-spacer' }), this.backButton, restart, ...(this.commentButton ? [this.commentButton] : []), this.readerButton, debug, scale, hotspotLabel, ...(close ? [close] : []));
     for (const el of [scale, this.flowSelect]) el.addEventListener('keydown', (e) => e.stopPropagation());
+    bar.hidden = this.bare;
     this.debugPanel = h('aside', { class: 'player-debug', hidden: true, 'aria-label': tr('Отладка прототипа') });
-    this.el = h('div', { class: 'player', role: 'dialog', 'aria-label': tr('Просмотр прототипа') }, bar, h('div', { class: 'player-body' }, h('div', { class: 'player-stage' }, this.canvas), this.debugPanel));
+    this.commentLayer = h('div', { class: 'comment-overlay player-comments' });
+    this.a11yLayer = h('div', { class: 'player-a11y', hidden: true });
+    this.caption = h('div', { class: 'player-caption', hidden: true, 'aria-hidden': 'true' });
+    this.live = h('div', { class: 'visually-hidden', role: 'status', 'aria-live': 'polite' });
+    this.el = h('div', { class: 'player', role: 'dialog', 'aria-modal': 'true', 'aria-label': tr('Просмотр прототипа') }, bar, h('div', { class: 'player-body' }, h('div', { class: 'player-stage' }, this.canvas, this.a11yLayer, this.commentLayer, this.caption, this.live), this.debugPanel));
+    this.a11yLayer.addEventListener('focusin', (e) => this.onItemFocus(e.target as HTMLElement));
+    this.a11yLayer.addEventListener('focusout', () => queueMicrotask(() => !this.a11yLayer.contains(document.activeElement) && (this.caption.hidden = true)));
 
     this.canvas.addEventListener('pointerdown', (e) => this.onDown(e));
     this.canvas.addEventListener('pointermove', (e) => this.onMove(e));
@@ -176,6 +245,7 @@ export class PrototypePlayer {
     this.resize.observe(this.canvas);
     this.fillFlows();
     this.arrive();
+    this.setReader(this.prefs.reader, false);
   }
 
   /**
@@ -203,6 +273,11 @@ export class PrototypePlayer {
     return this.session.current;
   }
 
+  /** The screen and the overlays open over it, bottom first. */
+  get openScreens(): NodeId[] {
+    return [this.session.current, ...this.session.overlays.map((o) => o.screen)];
+  }
+
   /** The private document being played (for tests). */
   get playing(): Document {
     return this.doc;
@@ -221,6 +296,212 @@ export class PrototypePlayer {
     window.removeEventListener('keydown', this.keyHandler, true);
     cancelAnimationFrame(this.frame);
     this.el.remove();
+  }
+
+  // ---------- screen reader mode (step 8) ----------
+
+  get readerMode(): boolean {
+    return this.prefs.reader;
+  }
+
+  /** Screen reader mode on or off (remembered): the screen becomes headings, texts, buttons and images in reading order. */
+  setReader(on: boolean, save = true): void {
+    this.prefs.reader = on;
+    if (save) this.savePrefs();
+    this.readerButton.classList.toggle('active', on);
+    this.readerButton.setAttribute('aria-pressed', String(on));
+    this.a11yLayer.hidden = !on;
+    this.caption.hidden = true;
+    this.a11yKey = '';
+    if (!on) this.a11yLayer.replaceChildren();
+    else this.focusFirst = true;
+    this.request();
+  }
+
+  /** The screen read now: the top overlay when one is open (it is modal), else the screen. */
+  private readScreens(): { screen: NodeId; box: Box }[] {
+    const open = this.overlayLayers().filter((o) => this.session.overlays.includes(o.overlay));
+    const top = open.at(-1);
+    return top ? [{ screen: top.overlay.screen, box: top.box }] : [{ screen: this.session.current, box: this.box }];
+  }
+
+  /** Builds the hidden elements again when what is read, or where it is, changed. */
+  private syncReader(): void {
+    if (!this.prefs.reader || this.anim) return;
+    const rect = (id: NodeId) => this.scene.bounds(id);
+    const parts = this.readScreens().map(({ screen, box }) => ({ screen, box, items: a11yItems(this.doc, screen, rect) }));
+    const place = (id: NodeId, screen: NodeId, box: Box) => {
+      const r = this.layerRect(id, screen, box);
+      return `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.width)},${Math.round(r.height)}`;
+    };
+    const key = parts.map((p) => `${p.screen}|${flatItems(p.items).map((i) => `${i.id}:${i.kind}:${i.name}:${place(i.id, p.screen, p.box)}`).join(';')}`).join('#');
+    if (key === this.a11yKey) return;
+    this.a11yKey = key;
+    const focused = document.activeElement instanceof HTMLElement && this.a11yLayer.contains(document.activeElement) ? document.activeElement.dataset.id : undefined;
+    const build = (item: A11yItem, screen: NodeId, box: Box): HTMLElement => {
+      const r = this.layerRect(item.id, screen, box);
+      const style = { left: `${r.x}px`, top: `${r.y}px`, width: `${r.width}px`, height: `${r.height}px` };
+      const data = { id: item.id, say: spoken(item) };
+      switch (item.kind) {
+        case 'button':
+        case 'link': {
+          const el = h('button', { class: 'a11y-item', type: 'button', style, dataset: data, role: item.kind === 'link' ? 'link' : undefined }, item.name);
+          el.addEventListener('click', () => this.activate(item.id));
+          return el;
+        }
+        case 'heading':
+          return h('div', { class: 'a11y-item', role: 'heading', 'aria-level': String(item.level ?? 2), tabindex: -1, style, dataset: data }, item.name);
+        case 'image':
+          return h('div', { class: 'a11y-item', role: 'img', 'aria-label': item.unlabeled ? tr('Изображение без описания') : item.name, tabindex: -1, style, dataset: data });
+        case 'group':
+          return h('div', { class: 'a11y-group', role: 'group', 'aria-label': item.name || undefined, dataset: data }, ...(item.children ?? []).map((c) => build(c, screen, box)));
+        default:
+          return h('p', { class: 'a11y-item', tabindex: -1, style, dataset: data }, item.name);
+      }
+    };
+    const nodes = parts.map((p) => h('div', { role: 'region', 'aria-label': tr('Экран {0}', this.name(p.screen)) }, ...p.items.map((i) => build(i, p.screen, p.box))));
+    this.a11yLayer.replaceChildren(...nodes);
+    const again = focused ? this.a11yLayer.querySelector<HTMLElement>(`[data-id="${CSS.escape(focused)}"]`) : null;
+    if (again) again.focus({ preventScroll: true });
+    else if (this.focusFirst) this.moveReader(1, true);
+    this.focusFirst = false;
+  }
+
+  /** Keeps Tab inside the viewer; true when it moved the focus itself. */
+  private trapTab(e: KeyboardEvent): boolean {
+    const all = [...this.el.querySelectorAll<HTMLElement>('button:not([disabled]), select, input, textarea, [tabindex="0"]')].filter((el) => el.offsetParent !== null || el.closest('.player-a11y'));
+    if (all.length === 0) return false;
+    const active = document.activeElement as HTMLElement | null;
+    const at = active ? all.indexOf(active) : -1;
+    let next: HTMLElement | null = null;
+    if (at < 0) next = (e.shiftKey ? all.at(-1) : (this.a11yLayer.querySelector<HTMLElement>('button') ?? all[0])) ?? null;
+    else if (!e.shiftKey && at === all.length - 1) next = all[0]!;
+    else if (e.shiftKey && at === 0) next = all.at(-1)!;
+    if (!next) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    next.focus({ preventScroll: true });
+    return true;
+  }
+
+  /** The items a reader goes through with ↑ ↓ (groups are read through their layers). */
+  private readerItems(): HTMLElement[] {
+    return [...this.a11yLayer.querySelectorAll<HTMLElement>('.a11y-item')];
+  }
+
+  /** ↓ / ↑ in screen reader mode: the next or previous item, as a reader's cursor moves. */
+  private moveReader(delta: number, fromStart = false): void {
+    const items = this.readerItems();
+    if (items.length === 0) {
+      this.say(tr('На экране нечего читать'));
+      return;
+    }
+    const at = fromStart ? -1 : items.indexOf(document.activeElement as HTMLElement);
+    const next = items[Math.max(0, Math.min(items.length - 1, at < 0 ? (delta > 0 ? 0 : items.length - 1) : at + delta))]!;
+    next.focus({ preventScroll: true });
+  }
+
+  private onItemFocus(el: HTMLElement): void {
+    const text = el.dataset.say;
+    if (!text) return;
+    this.caption.textContent = text;
+    this.caption.hidden = false;
+  }
+
+  /** Announces to a screen reader and shows it under the screen. */
+  private say(text: string): void {
+    this.live.textContent = text;
+    this.caption.textContent = text;
+    this.caption.hidden = !this.prefs.reader;
+  }
+
+  /** Enter or Space on a button: what a click on the layer does. */
+  private activate(id: NodeId): void {
+    if (this.busy() || !this.doc.store.isAlive(id)) return;
+    for (const trigger of ['ON_CLICK', 'MOUSE_DOWN', 'MOUSE_UP'] as const) {
+      const found = this.session.findReaction(id, trigger);
+      if (!found) continue;
+      this.focusFirst = true;
+      this.apply(this.session.run(found.reaction.actions, found.node), tr('{0} · с клавиатуры', this.name(found.node)));
+      return;
+    }
+    this.say(tr('Нажатие ничего не делает'));
+  }
+
+  // ---------- comments (step 8) ----------
+
+  get commentMode(): boolean {
+    return this.commenting;
+  }
+
+  /** Commenting on or off: the prototype stops (or starts again) reacting to the pointer. */
+  setCommentMode(on: boolean): void {
+    if (!this.commentButton || on === this.commenting) return;
+    this.commenting = on;
+    this.commentButton.classList.toggle('active', on);
+    this.commentButton.setAttribute('aria-pressed', String(on));
+    this.el.classList.toggle('commenting', on);
+    if (on) {
+      this.endWhile();
+      this.setHovered([]);
+      this.press = null;
+    }
+    this.canvas.style.cursor = on ? 'crosshair' : 'default';
+    this.onCommentMode?.(on);
+    this.request();
+  }
+
+  /** Open discussions on what is shown, on the button. */
+  setCommentCount(n: number): void {
+    this.commentCount.hidden = n === 0;
+    this.commentCount.textContent = n > 99 ? '99+' : String(n);
+  }
+
+  /** A layer's name in the file (for «На слое …»). */
+  layerName(id: string): string {
+    return this.doc.store.isAlive(id) ? String(this.doc.get(id, 'name') ?? '') : '';
+  }
+
+  /** The screen (current or an open overlay) holding a layer, with its place; null — not on show. */
+  private shownBoxOf(id: NodeId): { screen: NodeId; box: Box } | null {
+    if (!this.doc.store.isAlive(id)) return null;
+    for (const o of [...this.overlayLayers()].reverse()) {
+      if (this.session.overlays.includes(o.overlay) && o.shown >= 1 && this.doc.store.isAncestorOrSelf(o.overlay.screen, id)) return { screen: o.overlay.screen, box: o.box };
+    }
+    const screen = this.session.current;
+    return this.doc.store.isAncestorOrSelf(screen, id) ? { screen, box: this.box } : null;
+  }
+
+  /**
+   * Where a pin of this place is on the stage: on a layer of the screen shown
+   * (or of an open overlay), inside the visible part of the screen. Not while
+   * screens change, and not for pins on the page outside any screen.
+   */
+  commentPoint(place: PinPlace): Point | null {
+    if (this.anim || place.pageId !== this.pageId || !place.nodeId) return null;
+    const host = this.shownBoxOf(place.nodeId);
+    if (!host) return null;
+    const b = this.scene.bounds(place.nodeId);
+    const local = apply(invert(this.scene.world(host.screen))!, { x: b.x + place.x, y: b.y + place.y });
+    const p = { x: host.box.x + local.x * host.box.scale, y: host.box.y + local.y * host.box.scale };
+    const base = this.box;
+    const inside = (r: Box) => p.x >= r.x - 1 && p.y >= r.y - 1 && p.x <= r.x + r.width + 1 && p.y <= r.y + r.height + 1;
+    // Scrolled out of sight, or outside the device screen: not shown.
+    return inside(host.box) && inside(base) ? p : null;
+  }
+
+  /** The place a click at this stage point pins to: the layer under it (the screen itself over its background). */
+  commentPlace(p: Point): PinPlace | null {
+    if (this.anim) return null;
+    const t = this.targetAt(p);
+    if (!t.screen) return null;
+    const layer = this.overlayLayers().find((o) => o.overlay.screen === t.screen && this.session.overlays.includes(o.overlay));
+    const box = layer ? layer.box : this.box;
+    const world = apply(this.scene.world(t.screen), { x: (p.x - box.x) / box.scale, y: (p.y - box.y) / box.scale });
+    const node = t.hits[0] ?? t.screen;
+    const b = this.scene.bounds(node);
+    const round = (n: number) => Math.round(n * 10) / 10;
+    return { pageId: this.pageId, nodeId: node, x: round(world.x - b.x), y: round(world.y - b.y) };
   }
 
   private savePrefs(): void {
@@ -313,6 +594,12 @@ export class PrototypePlayer {
         case 'change':
           this.changeVariant(e.instance, e.variant, e.transition);
           break;
+        case 'video':
+          this.controlVideo(e.node, e.op, e.seconds);
+          break;
+        case 'variable-mode':
+          this.setVariableMode(e.collection, e.mode);
+          break;
         case 'variable':
         case 'error':
           // Already done by the session; shown in the debugger.
@@ -330,6 +617,7 @@ export class PrototypePlayer {
       this.updateChrome();
       this.request();
     }
+    if (effects.length > 0) this.onChange?.();
   }
 
   private updateChrome(): void {
@@ -371,6 +659,115 @@ export class PrototypePlayer {
         return `${this.name(e.variable)} = ${formatValue(e.value as ExprValue)}`;
       case 'error':
         return `⚠ ${e.message}`;
+      case 'video':
+        return tr('видео {0}: {1}', this.name(e.node), VIDEO_OPS.find(([op]) => op === e.op)?.[1] ?? e.op);
+      case 'variable-mode':
+        return tr('{0}: режим «{1}»', this.name(e.collection), this.doc.get(e.collection, 'modes').find((m) => m.id === e.mode)?.name ?? '?');
+    }
+  }
+
+  /**
+   * «Сменить режим переменных» (step 8): the collection takes the mode for the whole prototype — set on
+   * the page, and taken off screens and layers that chose another one themselves. Only in the private copy.
+   */
+  private setVariableMode(collection: NodeId, mode: string): void {
+    const d = this.doc;
+    const page = d.pageOf(this.session.current);
+    if (!page) return;
+    this.scroll.unscrolled(() => {
+      d.transact(
+        (tx) => {
+          tx.set(page, 'variableModes', { ...d.get(page, 'variableModes'), [collection]: mode });
+          d.store.walk(page, (id) => {
+            const own = d.get(id, 'variableModes');
+            if (id !== page && own && collection in own) {
+              const { [collection]: _, ...rest } = own;
+              tx.set(id, 'variableModes', rest);
+            }
+          });
+          processTransaction(tx, this.measurer);
+        },
+        { undoable: false },
+      );
+    });
+    this.request();
+  }
+
+  // ---------- video (step 8) ----------
+
+  /** The playing videos of a layer's fills. */
+  private videosOf(id: NodeId): HTMLVideoElement[] {
+    if (!this.doc.store.isAlive(id)) return [];
+    const out: HTMLVideoElement[] = [];
+    for (const p of this.doc.get(id, 'fills')) {
+      if (p.type !== 'IMAGE' || !p.visible) continue;
+      const v = this.renderer.images.videoOf(p.imageHash);
+      if (v && !out.includes(v)) out.push(v);
+    }
+    return out;
+  }
+
+  /** Play, pause, sound and seeking of a layer's video. Sound is allowed: the action comes from the viewer's click or key. */
+  private controlVideo(id: NodeId, op: VideoOp, seconds: number): void {
+    for (const v of this.videosOf(id)) {
+      const end = Number.isFinite(v.duration) ? v.duration : Infinity;
+      switch (op) {
+        case 'PLAY':
+          void v.play().catch(() => undefined);
+          break;
+        case 'PAUSE':
+          v.pause();
+          break;
+        case 'TOGGLE_PLAY':
+          if (v.paused) void v.play().catch(() => undefined);
+          else v.pause();
+          break;
+        case 'MUTE':
+          v.muted = true;
+          break;
+        case 'UNMUTE':
+          v.muted = false;
+          break;
+        case 'TOGGLE_MUTE':
+          v.muted = !v.muted;
+          break;
+        case 'SEEK_FORWARD':
+          v.currentTime = Math.min(end, v.currentTime + seconds);
+          break;
+        case 'SEEK_BACKWARD':
+          v.currentTime = Math.max(0, v.currentTime - seconds);
+          break;
+        case 'SEEK_TO':
+          v.currentTime = Math.max(0, Math.min(end, seconds));
+          break;
+      }
+    }
+    this.request();
+  }
+
+  /** Last seen time of each watched video: a jump back to the start is the end of a loop. */
+  private readonly videoTimes = new Map<HTMLVideoElement, number>();
+
+  /** «Когда видео закончилось»: layers of the shown screen whose video just ended (or looped round). */
+  private watchVideoEnds(): void {
+    const screen = this.session.current;
+    if (!screen || this.busy()) return;
+    const fired: NodeId[] = [];
+    this.doc.store.walk(screen, (id) => {
+      if (!this.doc.get(id, 'reactions').some((r) => r.trigger.type === 'VIDEO_END')) return;
+      for (const v of this.videosOf(id)) {
+        const last = this.videoTimes.get(v);
+        const now = v.currentTime;
+        this.videoTimes.set(v, now);
+        if (last === undefined) continue;
+        const looped = now + 0.25 < last && last > 0.5;
+        if (v.ended || looped) fired.push(id);
+      }
+    });
+    for (const id of fired) {
+      if (this.session.current !== screen) break;
+      const found = this.session.findReaction(id, 'VIDEO_END');
+      if (found) this.apply(this.session.run(found.reaction.actions, found.node), tr('{0} · видео закончилось', this.name(found.node)));
     }
   }
 
@@ -407,7 +804,8 @@ export class PrototypePlayer {
   private startTransition(from: NodeId, to: NodeId, transition: Transition | null): void {
     this.finishTransition();
     if (!this.animates(transition) || from === to) return;
-    const { ease, duration } = easingFunction(transition!.easing, transition!.duration);
+    const timing = resolveTiming(this.doc, transition!, this.session.current);
+    const { ease, duration } = easingFunction(timing.easing, timing.duration);
     const smart = transition!.type === 'SMART_ANIMATE' ? planSmartAnimate(this.doc, from, to) : null;
     if (smart) applySmartAnimate(this.doc, smart, 0);
     this.anim = { from, to, transition: transition!, ease, duration, start: performance.now(), smart };
@@ -432,7 +830,8 @@ export class PrototypePlayer {
       this.request();
       return;
     }
-    const { ease, duration } = easingFunction(transition!.easing, transition!.duration);
+    const timing = resolveTiming(this.doc, transition!, this.session.current);
+    const { ease, duration } = easingFunction(timing.easing, timing.duration);
     this.tweens.push({ start: performance.now(), duration, ease, step, done });
     this.request();
   }
@@ -513,6 +912,7 @@ export class PrototypePlayer {
     this.flash = null;
     const screen = this.session.current;
     this.updateChrome();
+    if (this.prefs.reader) this.live.textContent = tr('Экран {0}', this.name(screen));
     for (const { delay, reaction } of this.session.timeouts()) {
       this.timers.push(setTimeout(() => this.runReaction(screen, reaction), delay));
     }
@@ -650,7 +1050,10 @@ export class PrototypePlayer {
    * outside it nothing on the screen below reacts.
    */
   private target(e: MouseEvent): { screen: NodeId | null; hits: NodeId[]; outside: OpenOverlay | null } {
-    const p = this.local(e);
+    return this.targetAt(this.local(e));
+  }
+
+  private targetAt(p: Point): { screen: NodeId | null; hits: NodeId[]; outside: OpenOverlay | null } {
     const overlays = this.overlayLayers().filter((o) => this.session.overlays.includes(o.overlay));
     const top = overlays[overlays.length - 1];
     if (top) {
@@ -686,36 +1089,68 @@ export class PrototypePlayer {
     return [top, ...this.doc.store.ancestors(top).filter((a) => this.doc.store.isAncestorOrSelf(screen, a))];
   }
 
+  /** Tells `onTap` where a tap landed on a screen (base or overlay). */
+  private tell(e: MouseEvent, screen: NodeId | null, hit: boolean): void {
+    if (!this.onTap || !screen) return;
+    const layer = this.overlayLayers().find((o) => o.overlay.screen === screen && this.session.overlays.includes(o.overlay));
+    const box = layer ? layer.box : this.box;
+    const p = this.local(e);
+    this.onTap({ screen, x: Math.round((p.x - box.x) / box.scale), y: Math.round((p.y - box.y) / box.scale), hit });
+  }
+
   private busy(): boolean {
     return this.anim !== null;
   }
 
   private onDown(e: PointerEvent): void {
-    if (this.busy() || e.button !== 0) return;
+    if (this.busy() || e.button !== 0 || this.commenting) return;
     const t = this.target(e);
     const chain = this.chainOf(t.hits, t.screen);
-    this.press = { ...this.local(e), chain, dragging: false, pointer: e.pointerId };
+    this.press = { ...this.local(e), chain, dragging: false, pointer: e.pointerId, dragFired: false };
     this.suppressClick = false;
+    // «Кнопка нажата» (Mouse down, step 8): fires once, as the button goes down.
+    const down = t.hits[0] ? this.session.findReaction(t.hits[0], 'MOUSE_DOWN') : null;
+    if (down) {
+      this.apply(this.session.run(down.reaction.actions, down.node), tr('{0} · кнопка нажата', this.name(down.node)));
+      return;
+    }
     // "While pressing" (FR-PRT-003): runs now, undone on release.
     if (t.hits[0]) this.startWhile(t.hits[0], 'ON_PRESS');
   }
 
   private onUp(e: PointerEvent): void {
-    if (this.press?.dragging) {
+    const press = this.press;
+    if (press?.dragging || press?.dragFired) {
       this.suppressClick = true;
       if (this.canvas.hasPointerCapture(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId);
     }
     this.press = null;
     if (this.revert?.kind === 'ON_PRESS') this.endWhile();
+    // «Кнопка отпущена» (Mouse up, step 8): over the layer, not after a drag that fired its own reaction.
+    if (!press?.dragFired && !this.busy() && !this.commenting && e.button === 0) {
+      const t = this.target(e);
+      const up = t.hits[0] ? this.session.findReaction(t.hits[0], 'MOUSE_UP') : null;
+      if (up) {
+        this.suppressClick = true;
+        this.tell(e, t.screen, true);
+        this.apply(this.session.run(up.reaction.actions, up.node), tr('{0} · кнопка отпущена', this.name(up.node)));
+      }
+    }
   }
 
   private onClick(e: MouseEvent): void {
     if (this.busy()) return;
+    if (this.commenting) {
+      this.onCommentClick?.(this.local(e));
+      return;
+    }
     if (this.suppressClick) {
       this.suppressClick = false;
       return;
     }
     const t = this.target(e);
+    const top0 = t.hits[0];
+    this.tell(e, t.screen, !!top0 && !!(this.linkUnder(e, t.screen, top0) || this.session.findReaction(top0, 'ON_CLICK') || this.session.findReaction(top0, 'MOUSE_DOWN')));
     if (t.outside) {
       // A click outside an overlay closes it when it is set to (FR-PRT-011).
       if (t.outside.settings.closeOnClickOutside) this.apply(this.session.run([{ type: 'CLOSE_OVERLAY' }]), tr('щелчок вне оверлея'));
@@ -744,10 +1179,22 @@ export class PrototypePlayer {
   }
 
   private onMove(e: PointerEvent): void {
-    if (this.busy()) return;
+    if (this.busy() || this.commenting) return;
     const press = this.press;
     if (press && (e.buttons & 1) !== 0) {
       const p = this.local(e);
+      // «При перетаскивании» (On drag, step 8): a layer that reacts to a drag takes it before any scrolling — a swipe.
+      if (!press.dragging && !press.dragFired && Math.hypot(p.x - press.x, p.y - press.y) > DRAG_SLOP) {
+        const drag = press.chain[0] ? this.session.findReaction(press.chain[0], 'ON_DRAG') : null;
+        if (drag) {
+          press.dragFired = true;
+          this.canvas.setPointerCapture(press.pointer);
+          if (this.revert?.kind === 'ON_PRESS') this.endWhile();
+          this.apply(this.session.run(drag.reaction.actions, drag.node), tr('{0} · перетаскивание', this.name(drag.node)));
+          return;
+        }
+      }
+      if (press.dragFired) return;
       if (!press.dragging && Math.hypot(p.x - press.x, p.y - press.y) > DRAG_SLOP && press.chain.some((id) => this.scroll.isContainer(id))) {
         press.dragging = true;
         this.canvas.setPointerCapture(press.pointer);
@@ -766,8 +1213,9 @@ export class PrototypePlayer {
     const t = this.target(e);
     const chain = this.chainOf(t.hits, t.screen);
     this.setHovered(chain);
-    const clickable = chain.some((id) => this.doc.get(id, 'reactions').some((r) => r.trigger.type === 'ON_CLICK')) || (t.outside?.settings.closeOnClickOutside ?? false) || (!!t.hits[0] && !!this.linkUnder(e, t.screen, t.hits[0]));
-    this.canvas.style.cursor = clickable ? 'pointer' : 'default';
+    const draggable = chain.some((id) => this.doc.get(id, 'reactions').some((r) => r.trigger.type === 'ON_DRAG'));
+    const clickable = chain.some((id) => this.doc.get(id, 'reactions').some((r) => r.trigger.type === 'ON_CLICK' || r.trigger.type === 'MOUSE_DOWN' || r.trigger.type === 'MOUSE_UP')) || (t.outside?.settings.closeOnClickOutside ?? false) || (!!t.hits[0] && !!this.linkUnder(e, t.screen, t.hits[0]));
+    this.canvas.style.cursor = clickable ? 'pointer' : draggable ? 'grab' : 'default';
   }
 
   /** Mouse enter / leave and "while hovering" reactions of layers the pointer entered or left. */
@@ -837,12 +1285,43 @@ export class PrototypePlayer {
     if (!this.el.isConnected) return;
     const target = e.target as HTMLElement | null;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA')) return;
+    // Tab stays inside the viewer (it is a modal window over the editor): from outside it goes to the screen's first button.
+    if (e.key === 'Tab' && this.trapTab(e)) return;
+    // Screen reader mode: Tab, Enter and Space on the items work as on any page.
+    if (this.prefs.reader && (e.key === 'Tab' || ((e.key === 'Enter' || e.key === ' ') && target?.closest('.player-a11y, .player-bar')))) return;
+    if (this.prefs.reader && !this.commenting && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.stopPropagation();
+      e.preventDefault();
+      this.moveReader(e.key === 'ArrowDown' ? 1 : -1);
+      return;
+    }
     e.stopPropagation();
+    // Esc already taken (a discussion closed): one step per press.
+    if (e.key === 'Escape' && e.defaultPrevented) return;
+    // Commenting: the prototype does not hear keys; C or Esc ends it.
+    if (this.commenting && (e.key === 'Escape' || (!e.metaKey && !e.ctrlKey && !e.altKey && (e.key.toLowerCase() === 'c' || e.key.toLowerCase() === 'с')))) {
+      e.preventDefault();
+      this.setCommentMode(false);
+      return;
+    }
     // Keys the prototype itself reacts to come first.
-    const effects = this.session.key(e.key);
+    const effects = this.commenting ? null : this.session.key(e.key);
     if (effects && effects.length > 0) {
       e.preventDefault();
       this.apply(effects, tr('клавиша {0}', e.key));
+      return;
+    }
+    if (this.commentButton && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key.toLowerCase() === 'c' || e.key.toLowerCase() === 'с')) {
+      e.preventDefault();
+      this.setCommentMode(true);
+      return;
+    }
+    // Testing on people: no debugger, no skipping screens, no restart — only the prototype's own keys and Esc on an overlay.
+    if (this.bare) {
+      if (e.key === 'Escape' && this.session.overlays.length > 0) {
+        e.preventDefault();
+        this.apply(this.session.run([{ type: 'CLOSE_OVERLAY' }]));
+      }
       return;
     }
     if (e.key.toLowerCase() === 'd' || e.key.toLowerCase() === 'в') {
@@ -877,6 +1356,40 @@ export class PrototypePlayer {
     this.frame = requestAnimationFrame(() => this.draw());
   }
 
+  /** When each timeline on show started (and the component an instance showed then: another variant starts it again). */
+  private motionClocks = new Map<NodeId, { start: number; main: NodeId | null }>();
+
+  /**
+   * Poses the scene for every timeline on the screen and its overlays — a frame's own, animated components'
+   * instances (each from when it appeared, again when its variant changes). Whether anything is still moving.
+   */
+  private playMotion(now: number, screen: NodeId): boolean {
+    const doc = this.doc;
+    const roots = [screen, ...this.session.overlays.map((o) => o.screen)].filter((id) => doc.store.isAlive(id));
+    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const seen = new Set<NodeId>();
+    let moving = false;
+    const played = (id: NodeId): number => {
+      seen.add(id);
+      const main = doc.type(id) === 'INSTANCE' ? doc.get(id, 'mainComponent') : null;
+      let clock = this.motionClocks.get(id);
+      if (!clock || clock.main !== main) {
+        clock = { start: now, main };
+        this.motionClocks.set(id, clock);
+      }
+      const motion = doc.get(id, 'motion');
+      const t = now - clock.start;
+      if (motion && (motion.loop || t < motion.duration)) moving = true;
+      return reduced ? 0 : t;
+    };
+    const pose = new Map<NodeId, Pose>();
+    for (const root of roots) fullPose(doc, root, played, pose);
+    // What left the screen starts from the beginning when it is back.
+    for (const id of [...this.motionClocks.keys()]) if (!seen.has(id)) this.motionClocks.delete(id);
+    this.scene.setPose(pose.size ? pose : null);
+    return moving && !reduced;
+  }
+
   private draw(): void {
     const dpr = window.devicePixelRatio || 1;
     const cw = this.canvas.clientWidth;
@@ -890,6 +1403,8 @@ export class PrototypePlayer {
     this.runTweens(now);
     const ctx = this.ctx;
     const screen = this.session.current;
+    // Timelines on what is shown (Motion, stage 4): frames and animated components play by themselves.
+    const moving = this.playMotion(now, screen);
     this.scene.ensure();
     const box = this.place(screen, cw, ch);
     this.box = box;
@@ -903,7 +1418,7 @@ export class PrototypePlayer {
     ctx.save();
     this.clipScreen(box.x, box.y, box.width, box.height);
     const anim = this.anim;
-    let more = this.tweens.length > 0;
+    let more = this.tweens.length > 0 || moving;
     if (anim && anim.to === screen) {
       const t = Math.min(1, (now - anim.start) / anim.duration);
       this.drawTransition(anim, t >= 1 ? 1 : anim.ease(t), box, cw, ch, dpr);
@@ -952,10 +1467,13 @@ export class PrototypePlayer {
     } else if (this.flash) {
       this.flash = null;
     }
+    this.onDrawn?.();
+    this.syncReader();
     if (more) this.request();
     else if (this.renderer.animated.size > 0) {
       // A video or an animated GIF on the screen: about 30 frames a second.
       this.renderer.animated.clear();
+      this.watchVideoEnds();
       setTimeout(() => this.request(), 33);
     }
   }

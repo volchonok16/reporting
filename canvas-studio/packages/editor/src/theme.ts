@@ -16,12 +16,20 @@ export function savedTheme(): ThemeChoice {
   }
 }
 
+/** One query object for the page: `.matches` follows the system by itself (asked every frame — no new object each time). */
+let darkQuery: MediaQueryList | null = null;
+const systemDark = (): boolean => {
+  if (typeof matchMedia !== 'function') return false;
+  darkQuery ??= matchMedia(DARK_QUERY);
+  return darkQuery.matches;
+};
+
 /** Whether the interface is dark now. */
 export function isDark(): boolean {
   const set = typeof document !== 'undefined' ? document.documentElement.dataset.theme : undefined;
   if (set === 'dark') return true;
   if (set === 'light') return false;
-  return typeof matchMedia === 'function' && matchMedia(DARK_QUERY).matches;
+  return systemDark();
 }
 
 /** Applies a choice (and remembers it when asked); everyone drawing by theme hears 'cs-theme'. */

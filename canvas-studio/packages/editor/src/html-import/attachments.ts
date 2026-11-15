@@ -139,9 +139,9 @@ export async function readAttachment(name: string, bytes: Uint8Array): Promise<A
     else throw new Error('kind');
   } catch (error) {
     if (error instanceof Error && error.message === 'kind') {
-      throw new Error(/\.(png|jpe?g|gif|webp|svg|heic)$/i.test(name) ? tr('«{0}»: картинки нейросеть не видит — опишите, что на ней, словами', name) : tr('«{0}»: такой файл не прочитать — подойдут .xlsx, .csv, .docx, .pptx, .txt, .json', name));
+      throw new Error(/\.(png|jpe?g|gif|webp|svg|heic)$/i.test(name) ? tr('«{0}»: картинки нейросеть не видит, опишите, что на ней, словами', name) : tr('«{0}»: такой файл не прочитать. Подойдут .xlsx, .csv, .docx, .pptx, .txt, .json', name));
     }
-    throw new Error(tr('«{0}» не открылся — возможно, файл повреждён', name));
+    throw new Error(tr('«{0}» не открылся. Возможно, файл повреждён', name));
   }
   text = text.trim();
   if (!text) throw new Error(tr('«{0}»: в файле нет текста', name));

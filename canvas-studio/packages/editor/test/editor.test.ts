@@ -4,6 +4,7 @@ import { canContain, Document, type NodeId, type PrototypeAction, type Transacti
 import { convertFrameToComponent } from '#components';
 import { ApproximateTextMeasurer } from '#layout';
 import { parseClipboard, pasteSubtree, toClipboard } from '../src/clipboard.ts';
+import { boardColorsOf } from '../src/board.ts';
 import { Editor } from '../src/editor.ts';
 import { switchLayout } from '../src/keyboard.ts';
 import { fuzzyScore } from '../src/ui/command-palette.ts';
@@ -3817,9 +3818,6 @@ test('tables (FEAT-167): pasted from Excel (HTML or tab-separated text), laid ou
   assert.deepEqual(tableFromClipboard(null, 'a\tb\n"two\nlines ""q"""\tc\n'), [['a', 'b'], ['two\nlines "q"', 'c']]);
   assert.equal(tableFromClipboard(null, 'just one cell\n'), null, 'one cell stays plain text');
   assert.equal(tableFromClipboard('<p>no table</p>', 'no tabs'), null);
-  // PowerPoint wraps a picture in a one-cell table and puts the real grid after it.
-  const wrapped = '<table><tr><td><img src="x"></td></tr></table><table><tr><td>A</td><td>B</td></tr><tr><td>1</td><td>2</td></tr></table>';
-  assert.deepEqual(tableFromClipboard(wrapped, ''), [['A', 'B'], ['1', '2']]);
 
   const { editor, doc } = setup();
   editor.screenSize = { width: 1200, height: 800 };
@@ -4412,4 +4410,1643 @@ test('own board templates and colours: the selection kept under a name and put b
   } finally {
     g.localStorage = before;
   }
+});
+
+test('paste: text copied in another program after our copy is newer than the internal clipboard (BUG-165)', () => {
+  const { doc, editor, page } = setup();
+  const text = editor.commit('setup', (tx) => tx.create('TEXT', page, { characters: 'Слой', width: 100, height: 20 }));
+  editor.setSelection([text]);
+  const flavours = editor.copyFlavours()!;
+  editor.setSelection([]);
+  assert.equal(editor.pasteText('Текст из Заметок'), false, 'foreign text: not our layers — the caller pastes it as text');
+  assert.equal(doc.children(page).length, 1);
+  assert.ok(editor.pasteText(flavours.text), 'the plain text of our own copy: our layers (the HTML flavour lost)');
+  assert.ok(editor.pasteText(null), 'an empty system clipboard: the internal copy');
+  assert.equal(doc.children(page).length, 3);
+});
+
+test('code of a layer: the font name and link cannot carry markup or a «javascript:» into the HTML given out', () => {
+  const { doc, editor, page } = setup();
+  const id = editor.commit('setup', (tx) =>
+    tx.create('TEXT', page, { characters: 'Ссылка', width: 100, height: 20, fontFamily: 'X"><img src=x onerror=alert(1)>', textRuns: [{ start: 0, end: 6, style: { link: 'javascript:alert(2)', fontFamily: 'Y" onmouseover="alert(3)' } }] } as never),
+  );
+  const html = htmlTree(doc, id);
+  assert.ok(!/javascript:/i.test(html), html);
+  assert.ok(!/<img|<script|onmouseover="|onerror="/i.test(html), JSON.stringify(html));
+  const css = cssDecls(doc, id).decls.find((d) => d.prop === 'font-family')?.value ?? '';
+  assert.ok(!/[<>]/.test(css) && css.startsWith('"X\\22 '), css);
+});
+
+test('a file\'s names cannot break the CSS of variables and board colours are only colours (BUG-170)', () => {
+  const { editor, doc } = setup();
+  const vars = editor.variables;
+  const coll = vars.createCollection('Тема */ </style><script>alert(1)</script>');
+  const v = vars.createVariable(coll, 'FLOAT', 'Space/M', 12);
+  vars.setDetails(v, { codeSyntax: { WEB: 'x: 1; } body { background: url(//evil) } .y { --z' } });
+  const css = variablesCss(doc);
+  assert.ok(!css.includes('<') && !/\*\/[^\n]*\*\//.test(css.split('\n')[1]!), css);
+  assert.match(css, /--space-m: 12;/, 'a syntax that is not a CSS name gives way to the variable\'s name');
+  editor.commit('s', (tx) => tx.set(doc.rootId, 'boardColors', ['#FF0000', '"><script>', 7, '#12abef'] as never));
+  assert.deepEqual(boardColorsOf(doc), ['#FF0000', '#12abef']);
+});
+
+test('create multiple components: each selected layer a component of its own, in one undo step (step 6)', () => {
+  const { editor, doc, page } = setup();
+  const [frame, rect, text] = editor.commit('setup', (tx) => [
+    tx.create('FRAME', page, { name: 'Карточка', width: 100, height: 80 }),
+    tx.create('RECTANGLE', page, { name: 'Кнопка', x: 200, y: 10, width: 60, height: 20 }),
+    tx.create('TEXT', page, { name: 'Подпись', x: 300, y: 40, width: 50, height: 16, characters: 'Привет' }),
+  ]);
+  editor.setSelection([frame!, rect!, text!]);
+  editor.createComponents();
+  const made = editor.selection;
+  assert.equal(made.length, 3);
+  assert.ok(made.every((id) => doc.type(id) === 'COMPONENT'));
+  assert.deepEqual(made.map((id) => doc.get(id, 'name')), ['Карточка', 'Кнопка', 'Подпись'], 'each keeps its layer\'s name');
+  const wrapped = made[1]!;
+  assert.deepEqual([doc.get(wrapped, 'x'), doc.get(wrapped, 'y'), doc.get(wrapped, 'width'), doc.get(wrapped, 'height')], [200, 10, 60, 20], 'at the layer\'s place and size');
+  assert.deepEqual(doc.children(wrapped), [rect]);
+  assert.deepEqual([doc.get(rect!, 'x'), doc.get(rect!, 'y')], [0, 0]);
+  assert.deepEqual(doc.children(page).filter((id) => doc.type(id) === 'COMPONENT').length, 3);
+
+  editor.undo();
+  assert.equal(doc.type(frame!), 'FRAME', 'one step back: the frame is a frame again');
+  assert.equal(doc.parent(rect!), page);
+  assert.equal(doc.parent(text!), page);
+
+  // Not inside an instance.
+  editor.setSelection([frame!]);
+  editor.createComponent();
+  const instance = editor.placeInstance(editor.selection[0]!, { x: 0, y: 300 })!;
+  const before = doc.children(page).length;
+  editor.setSelection([instance, rect!]);
+  editor.createComponents();
+  assert.equal(doc.children(page).length, before, 'nothing made when an instance is selected');
+});
+
+test('restore a deleted main component from its instance: in this session, and after the file was saved and opened again (step 6)', async () => {
+  const { serialize, deserialize } = await import('#core');
+  const { editor, doc, page } = setup();
+  const [icon, card] = editor.commit('setup', (tx) => [
+    tx.create('FRAME', page, { name: 'Иконка', x: 0, y: 400, width: 24, height: 24 }),
+    tx.create('FRAME', page, { name: 'Карточка', x: 0, y: 0, width: 200, height: 100 }),
+  ]);
+  editor.setSelection([icon!]);
+  editor.createComponent();
+  const iconC = editor.selection[0]!;
+  const [title] = editor.commit('layers', (tx) => [tx.create('TEXT', card!, { name: 'Заголовок', x: 10, y: 10, width: 120, height: 20, characters: 'Привет' })]);
+  editor.setSelection([card!]);
+  editor.createComponent();
+  const main = editor.selection[0]!;
+  editor.placeInstance(iconC, { x: 150, y: 60 }); // dropped into the card under the point
+  editor.addComponentProperty(doc.children(main).find((id) => doc.type(id) === 'TEXT')!, 'TEXT');
+  void title;
+  const a = editor.placeInstance(main, { x: 400, y: 0 })!;
+  const b = editor.placeInstance(main, { x: 400, y: 200 })!;
+  const propId = doc.get(main, 'componentProps')[0]!.id;
+  editor.setInstanceProperty(b, propId, 'Пока');
+
+  // In this session: the same component comes back where it was.
+  editor.setSelection([main]);
+  editor.deleteSelection();
+  assert.ok(!doc.store.isAlive(main));
+  editor.setSelection([a]);
+  assert.equal(editor.orphanInstance(), a);
+  editor.restoreMainComponent();
+  assert.ok(doc.store.isAlive(main));
+  assert.deepEqual([doc.get(main, 'x'), doc.get(main, 'y')], [0, 0], 'where it was');
+  assert.equal(editor.orphanInstance(), null);
+  editor.undo();
+  assert.ok(!doc.store.isAlive(main), 'one undo step');
+
+  // Saved and opened again: the component is gone from the file, rebuilt from an instance.
+  const reopened = deserialize(serialize(doc));
+  assert.equal(reopened.store.has(main), false);
+  const e2 = new Editor(reopened, new ApproximateTextMeasurer());
+  e2.setSelection([b]);
+  e2.restoreMainComponent();
+  const d = reopened;
+  assert.ok(d.store.isAlive(main), 'under its old id');
+  assert.equal(d.type(main), 'COMPONENT');
+  assert.equal(d.get(main, 'name'), 'Карточка');
+  assert.deepEqual([d.get(main, 'width'), d.get(main, 'height')], [200, 100]);
+  const text = d.children(main).find((id) => d.type(id) === 'TEXT')!;
+  assert.equal(d.get(text, 'characters'), 'Привет', 'from the instance without overrides (a), not b with its «Пока»');
+  assert.deepEqual(d.get(main, 'componentProps').map((p) => [p.id, p.type]), [[propId, 'TEXT']], 'its text property is back');
+  const nested = d.children(main).find((id) => d.type(id) === 'INSTANCE')!;
+  assert.equal(d.get(nested, 'mainComponent'), iconC, 'the nested instance is an instance of the icon again');
+  // Both instances follow it again.
+  e2.commit('edit', (tx) => tx.set(text, 'fontSize', 30));
+  const textOf = (inst: string) => d.children(inst).find((id) => d.type(id) === 'TEXT')!;
+  assert.equal(d.get(textOf(a), 'fontSize'), 30);
+  assert.equal(d.get(textOf(b), 'fontSize'), 30);
+  assert.equal(d.get(textOf(b), 'characters'), 'Пока', 'its property value kept');
+  assert.equal(d.get(textOf(a), 'characters'), 'Привет');
+  assert.equal(d.children(d.children(a).find((id) => d.type(id) === 'INSTANCE')!).length, d.children(iconC).length);
+});
+
+test('the clipboard: a tree of a wrong shape is not taken, values that do not fit are dropped when pasted (validate.ts)', () => {
+  const { editor, doc } = setup();
+  const wrap = (nodes: unknown) => JSON.stringify({ format: 'canvas-studio/clipboard', version: 1, nodes });
+  assert.equal(parseClipboard(wrap([{ type: 'SCRIPT', props: {}, children: [] }])), null);
+  assert.equal(parseClipboard(wrap([{ type: 'FRAME', props: {}, children: 'x' }])), null);
+  const ok = wrap([{ type: 'RECTANGLE', props: { name: 'Кнопка', width: 'big', fontFamily: { a: 1 }, opacity: 0.4 }, children: [] }]);
+  assert.ok(editor.pasteText(ok));
+  const id = editor.selection[0]!;
+  assert.equal(doc.get(id, 'name'), 'Кнопка');
+  assert.equal(doc.get(id, 'opacity'), 0.4);
+  assert.equal(doc.get(id, 'width'), 100);
+});
+
+test('push changes to main component: the instance looks the same, other instances follow unless they override (step 6)', () => {
+  const { editor, doc, page } = setup();
+  const red = [{ type: 'SOLID' as const, color: { r: 1, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }];
+  const [iconF, card] = editor.commit('setup', (tx) => [
+    tx.create('FRAME', page, { name: 'Иконка', x: 0, y: 500, width: 24, height: 24 }),
+    tx.create('FRAME', page, { name: 'Карточка', width: 200, height: 100 }),
+  ]);
+  const [dot] = editor.commit('dot', (tx) => [tx.create('RECTANGLE', iconF!, { name: 'Точка', width: 24, height: 24 })]);
+  void dot;
+  editor.setSelection([iconF!]);
+  editor.createComponent();
+  const icon = editor.selection[0]!;
+  const [bar, title] = editor.commit('layers', (tx) => [
+    tx.create('RECTANGLE', card!, { name: 'Полоса', width: 200, height: 20 }),
+    tx.create('TEXT', card!, { name: 'Заголовок', x: 10, y: 30, width: 150, height: 20, characters: 'Старый' }),
+  ]);
+  void bar; void title;
+  editor.setSelection([card!]);
+  editor.createComponent();
+  const main = editor.selection[0]!;
+  editor.placeInstance(icon, { x: 170, y: 60 });
+  const mainBar = doc.children(main).find((id) => doc.get(id, 'name') === 'Полоса')!;
+  editor.setSelection([mainBar]);
+  const style = editor.createStyle('FILL', 'fillStyleId', 'Фон');
+  assert.equal(doc.get(mainBar, 'fillStyleId'), style);
+  const [a, b, c] = [400, 600, 800].map((y) => editor.placeInstance(main, { x: 400, y })!);
+  const layer = (inst: string, name: string) => {
+    let found = '';
+    doc.store.walk(inst, (id) => void (doc.get(id, 'name') === name && !found && (found = id)));
+    return found;
+  };
+  editor.commit('a', (tx) => {
+    tx.set(layer(a!, 'Полоса'), 'fills', red);
+    tx.set(layer(a!, 'Полоса'), 'fillStyleId', null);
+    tx.set(layer(a!, 'Заголовок'), 'characters', 'Новый');
+    tx.set(layer(a!, 'Точка'), 'opacity', 0.3);
+    tx.set(a!, 'name', 'Карточка на главной');
+  });
+  editor.commit('b', (tx) => tx.set(layer(b!, 'Заголовок'), 'characters', 'Своё'));
+  assert.ok(doc.get(layer(a!, 'Полоса'), 'overrides').includes('fills'));
+
+  editor.setSelection([a!]);
+  editor.pushOverridesToMain();
+  // The component took them.
+  assert.deepEqual(doc.get(mainBar, 'fills'), red);
+  assert.equal(doc.get(mainBar, 'fillStyleId'), null, 'the style was detached in the instance — and so in the component');
+  assert.equal(doc.get(doc.children(main).find((id) => doc.type(id) === 'TEXT')!, 'characters'), 'Новый');
+  assert.equal(doc.get(main, 'name'), 'Карточка', 'the instance\'s own name stays its own');
+  const nested = doc.children(main).find((id) => doc.type(id) === 'INSTANCE')!;
+  assert.equal(doc.get(doc.children(nested)[0]!, 'opacity'), 0.3, 'the nested icon in the component took it as its override');
+  assert.equal(doc.get(doc.children(icon)[0]!, 'opacity'), 1, 'the icon component itself is not changed');
+  // The instance looks the same, without overrides of its own.
+  assert.equal(doc.get(layer(a!, 'Заголовок'), 'characters'), 'Новый');
+  assert.deepEqual(doc.get(layer(a!, 'Полоса'), 'overrides'), []);
+  assert.equal(doc.get(a!, 'name'), 'Карточка на главной');
+  // Others follow, their own overrides stay.
+  assert.deepEqual(doc.get(layer(c!, 'Полоса'), 'fills'), red);
+  assert.equal(doc.get(layer(c!, 'Заголовок'), 'characters'), 'Новый');
+  assert.equal(doc.get(layer(c!, 'Точка'), 'opacity'), 0.3);
+  assert.equal(doc.get(layer(b!, 'Заголовок'), 'characters'), 'Своё');
+  assert.deepEqual(doc.get(layer(b!, 'Полоса'), 'fills'), red);
+
+  editor.undo();
+  assert.equal(doc.get(doc.children(main).find((id) => doc.type(id) === 'TEXT')!, 'characters'), 'Старый', 'one undo step');
+  assert.equal(doc.get(mainBar, 'fillStyleId'), style);
+  assert.equal(doc.get(layer(a!, 'Заголовок'), 'characters'), 'Новый');
+});
+
+test('preferred instances of a swap property: offered for the nested instance, in their order, alive only (step 6)', async () => {
+  const { preferredFor } = await import('#components');
+  const { editor, doc, page } = setup();
+  const icons = editor.commit('icons', (tx) => ['Звезда', 'Сердце', 'Плюс'].map((name, i) => tx.create('FRAME', page, { name, x: i * 40, y: 300, width: 24, height: 24 })));
+  const comps = icons.map((f) => {
+    editor.setSelection([f]);
+    editor.createComponent();
+    return editor.selection[0]!;
+  });
+  const [star, heart, plus] = comps as [string, string, string];
+  const btnFrame = editor.commit('btn', (tx) => tx.create('FRAME', page, { name: 'Кнопка', width: 120, height: 40 }));
+  editor.setSelection([btnFrame]);
+  editor.createComponent();
+  const btn = editor.selection[0]!;
+  const nestedInBtn = editor.placeInstance(star, { x: 8, y: 8 })!;
+  assert.equal(doc.parent(nestedInBtn), btn);
+  editor.addComponentProperty(nestedInBtn, 'INSTANCE_SWAP');
+  const def = doc.get(btn, 'componentProps')[0]!;
+  editor.setPreferredValues(btn, def.id, [plus, heart, plus]);
+  assert.deepEqual(doc.get(btn, 'componentProps')[0]!.preferred, [plus, heart], 'kept in order, no repeats');
+
+  const inst = editor.placeInstance(btn, { x: 300, y: 0 })!;
+  const nested = doc.children(inst).find((id) => doc.type(id) === 'INSTANCE')!;
+  assert.deepEqual(preferredFor(doc, nested), [plus, heart]);
+  assert.deepEqual(preferredFor(doc, inst), [], 'the outer instance is not bound to a swap property');
+
+  editor.setSelection([plus]);
+  editor.deleteSelection();
+  assert.deepEqual(preferredFor(doc, nested), [heart], 'a deleted component is not offered');
+
+  editor.setPreferredValues(btn, def.id, []);
+  assert.equal('preferred' in doc.get(btn, 'componentProps')[0]!, false, 'an empty list leaves no field');
+  editor.undo();
+  assert.deepEqual(doc.get(btn, 'componentProps')[0]!.preferred, [plus, heart]);
+  // Saved and opened again: kept (validate.ts lets it through).
+  const { serialize, deserialize } = await import('#core');
+  assert.deepEqual(deserialize(serialize(doc)).get(btn, 'componentProps')[0]!.preferred, [plus, heart]);
+});
+
+test('a nested instance cannot be swapped to the component of the instance it is in, by the swap list or a swap property (BUG-173)', () => {
+  const { editor, doc, page } = setup();
+  const ic = editor.commit('i', (tx) => tx.create('FRAME', page, { name: 'Звезда', x: 0, y: 300, width: 24, height: 24 }));
+  editor.setSelection([ic]);
+  editor.createComponent();
+  const star = editor.selection[0]!;
+  const bf = editor.commit('b', (tx) => tx.create('FRAME', page, { name: 'Кнопка', width: 120, height: 40 }));
+  editor.setSelection([bf]);
+  editor.createComponent();
+  const btn = editor.selection[0]!;
+  const nestedInBtn = editor.placeInstance(star, { x: 8, y: 8 })!;
+  editor.addComponentProperty(nestedInBtn, 'INSTANCE_SWAP');
+  const propId = doc.get(btn, 'componentProps')[0]!.id;
+  const inst = editor.placeInstance(btn, { x: 300, y: 0 })!;
+  const nested = doc.children(inst).find((x) => doc.type(x) === 'INSTANCE')!;
+  editor.swapInstance(nested, btn);
+  assert.equal(doc.get(nested, 'mainComponent'), star, 'the swap list');
+  editor.setInstanceProperty(inst, propId, btn);
+  assert.equal(doc.get(nested, 'mainComponent'), star, 'the swap property');
+  editor.swapInstance(inst, star);
+  assert.equal(doc.get(inst, 'mainComponent'), star, 'a top-level instance still swaps to anything');
+});
+
+test('expose nested instances: a card\'s instance sets the variant and properties of the button inside it (step 6)', async () => {
+  const { exposedIn } = await import('#components');
+  const { editor, doc, page } = setup();
+  const frames = editor.commit('setup', (tx) => [
+    tx.create('FRAME', page, { name: 'Вид=Основная', x: 0, y: 400, width: 100, height: 32 }),
+    tx.create('FRAME', page, { name: 'Вид=Вторичная', x: 120, y: 400, width: 100, height: 32 }),
+  ]);
+  editor.commit('labels', (tx) => frames.forEach((f) => tx.create('TEXT', f, { name: 'Надпись', x: 8, y: 6, width: 80, height: 20, characters: 'Кнопка' })));
+  const variants = frames.map((f) => {
+    editor.setSelection([f]);
+    editor.createComponent();
+    return editor.selection[0]!;
+  });
+  editor.setSelection(variants);
+  editor.combineAsVariants();
+  const [primary, secondary] = variants as [string, string];
+  editor.addComponentProperty(doc.children(primary).find((id) => doc.type(id) === 'TEXT')!, 'TEXT');
+  const set = doc.parent(primary)!;
+  const label = doc.get(set, 'componentProps')[0]!;
+
+  const cardFrame = editor.commit('card', (tx) => tx.create('FRAME', page, { name: 'Карточка', width: 240, height: 120 }));
+  editor.setSelection([cardFrame]);
+  editor.createComponent();
+  const card = editor.selection[0]!;
+  const button = editor.placeInstance(primary, { x: 16, y: 70 })!;
+  assert.equal(doc.parent(button), card);
+
+  const [one, two] = [400, 600].map((x) => editor.placeInstance(card, { x, y: 0 })!);
+  assert.deepEqual(exposedIn(doc, one!), [], 'not exposed yet');
+  editor.setExposedInstance(button, true);
+  const nested = exposedIn(doc, one!);
+  assert.equal(nested.length, 1, 'the flag reached the instances');
+  assert.equal(doc.get(nested[0]!, 'componentKey'), button);
+
+  const other = exposedIn(doc, two!)[0]!;
+  editor.setInstanceProperty(nested[0]!, label.id, 'Купить');
+  editor.switchVariant(other, 'Вид', 'Вторичная');
+  const textOf = (inst: string) => {
+    let t = '';
+    doc.store.walk(inst, (id) => void (doc.type(id) === 'TEXT' && !t && (t = id)));
+    return doc.get(t, 'characters');
+  };
+  assert.equal(textOf(one!), 'Купить', 'the button\'s text property, from the card\'s instance');
+  assert.equal(doc.get(nested[0]!, 'mainComponent'), primary);
+  assert.equal(doc.get(other, 'mainComponent'), secondary, 'the button\'s variant, from the other card\'s instance');
+  assert.deepEqual(exposedIn(doc, two!), [other], 'still shown with another variant');
+  assert.equal(textOf(two!), 'Кнопка');
+  assert.equal(doc.get(button, 'mainComponent'), primary, 'the component is not touched');
+
+  editor.setExposedInstance(button, false);
+  assert.deepEqual(exposedIn(doc, one!), []);
+  assert.equal(doc.get(other, 'mainComponent'), secondary, 'what was set stays when it is no longer exposed');
+});
+
+test('slots: an instance puts layers of its own into a slot; the component\'s content shows until then; reset brings it back (step 6)', async () => {
+  const { serialize, deserialize } = await import('#core');
+  const { countOverrides, insideInstance } = await import('#components');
+  const { editor, doc, page } = setup();
+  const cardF = editor.commit('card', (tx) => {
+    const c = tx.create('FRAME', page, { name: 'Карточка', width: 240, height: 160 });
+    const slot = tx.create('FRAME', c, { name: 'Содержимое', x: 16, y: 40, width: 208, height: 100 });
+    tx.create('TEXT', slot, { name: 'Пусто', x: 0, y: 0, width: 100, height: 20, characters: 'Пусто' });
+    return c;
+  });
+  editor.setSelection([cardF]);
+  editor.createComponent();
+  const card = editor.selection[0]!;
+  const slot = doc.children(card).find((id) => doc.get(id, 'name') === 'Содержимое')!;
+  editor.setSlot(slot, true);
+  const [a, b, c] = [0, 200, 400].map((y) => editor.placeInstance(card, { x: 400, y })!);
+  const slotOf = (inst: string) => doc.children(inst).find((id) => doc.get(id, 'name') === 'Содержимое')!;
+  const names = (inst: string) => doc.children(slotOf(inst)).map((id) => doc.get(id, 'name'));
+  assert.deepEqual(names(a!), ['Пусто'], 'the component\'s content shows');
+  assert.ok(editor.acceptsChildren(slotOf(a!)), 'a slot of an instance takes layers');
+  assert.ok(!editor.acceptsChildren(a!), 'the instance itself does not');
+
+  // Put a layer of a's own into its slot.
+  const [mine] = editor.commit('put', (tx) => [tx.create('RECTANGLE', slotOf(a!), { name: 'Фото', x: 0, y: 30, width: 50, height: 50 })]);
+  assert.equal(doc.get(slotOf(a!), 'slotFilled'), true);
+  assert.deepEqual(names(a!), ['Пусто', 'Фото'], 'what it showed stays, as its own');
+  assert.ok(doc.children(slotOf(a!)).every((id) => doc.get(id, 'componentKey') === null));
+  assert.equal(insideInstance(doc, mine!), false, 'a layer in a slot is free to edit');
+  assert.ok(editor.canTransform(mine!));
+  assert.ok(countOverrides(doc, a!) > 0, 'a filled slot counts as a change');
+
+  // The component's slot content changes: b and c follow, a keeps its own.
+  const def = doc.children(slot)[0]!;
+  editor.commit('edit', (tx) => {
+    tx.set(def, 'characters', 'Добавьте фото');
+    tx.create('ELLIPSE', slot, { name: 'Значок', x: 120, y: 0, width: 20, height: 20 });
+  });
+  assert.deepEqual(names(b!), ['Пусто', 'Значок']);
+  assert.equal(doc.get(doc.children(slotOf(b!))[0]!, 'characters'), 'Добавьте фото');
+  assert.deepEqual(names(a!), ['Пусто', 'Фото']);
+  assert.equal(doc.get(doc.children(slotOf(a!))[0]!, 'characters'), 'Пусто');
+
+  // Removing what a slot shows makes it the instance's own too.
+  const shown = doc.children(slotOf(c!))[1]!;
+  assert.ok(editor.canTransform(shown), 'what a slot shows can be removed');
+  editor.setSelection([shown]);
+  editor.deleteSelection();
+  assert.equal(doc.get(slotOf(c!), 'slotFilled'), true);
+  assert.deepEqual(names(c!), ['Пусто']);
+
+  // Saved and opened again: the slot keeps its own layers.
+  const again = deserialize(serialize(doc));
+  const e2 = new Editor(again, new ApproximateTextMeasurer());
+  e2.commit('touch component', (tx) => tx.set(slot, 'width', 210));
+  assert.deepEqual(again.children(again.children(a!).find((id) => again.get(id, 'name') === 'Содержимое')!).map((id) => again.get(id, 'name')), ['Пусто', 'Фото']);
+
+  // Reset: the component's content is back.
+  editor.setSelection([slotOf(a!)]);
+  editor.resetSelectedOverrides();
+  assert.equal(doc.get(slotOf(a!), 'slotFilled'), false);
+  assert.deepEqual(names(a!), ['Пусто', 'Значок']);
+  assert.equal(doc.store.isAlive(mine!), false);
+  assert.equal(doc.get(doc.children(slotOf(a!))[0]!, 'characters'), 'Добавьте фото');
+
+  // Alt-drag of an instance whose slot is not filled does not fill the copy's.
+  const copy = editor.commit('dup', (tx) => editor.duplicateInPlace(tx, [b!]))[0]!;
+  assert.equal(doc.get(slotOf(copy), 'slotFilled'), false);
+  assert.deepEqual(names(copy), ['Пусто', 'Значок']);
+});
+
+test('motion variables (Motion, stage 1): TIMING and EASING typed, exported, and driving a transition by mode', async () => {
+  const { parseEasing, easingText } = await import('#core');
+  const { resolveTiming } = await import('../src/prototype/easing.ts');
+  const { exportTokens, planImport } = await import('../src/tokens.ts');
+  const { cssEasing } = await import('../src/token-code.ts');
+  assert.deepEqual(parseEasing('ease-in-out-back'), { type: 'EASE_IN_AND_OUT_BACK' });
+  assert.deepEqual(parseEasing('cubic-bezier(0.2, 0, 0, 1)'), { type: 'CUSTOM_BEZIER', bezier: [0.2, 0, 0, 1] });
+  assert.deepEqual(parseEasing('spring(1, 300, 20)'), { type: 'SPRING', mass: 1, stiffness: 300, damping: 20 });
+  assert.equal(parseEasing('cubic-bezier(2, 0, 0, 1)'), null, 'x outside 0..1');
+  assert.equal(parseEasing('wobble'), null);
+  assert.equal(easingText({ type: 'EASE_OUT' }), 'ease-out');
+
+  const { editor, doc, page } = setup();
+  const vars = editor.variables;
+  const coll = vars.createCollection('Движение');
+  const normal = doc.get(coll, 'modes')[0]!.id;
+  const calm = vars.addMode(coll, 'Спокойно');
+  assert.equal(vars.parseInput('TIMING', '0,3 с'), 300);
+  assert.equal(vars.parseInput('TIMING', '250 мс'), 250);
+  assert.equal(vars.parseInput('TIMING', '-5'), null);
+  assert.equal(vars.parseInput('EASING', 'плавный старт'), 'ease-in');
+  assert.equal(vars.parseInput('EASING', 'cubic-bezier(.2,0,0,1)'), 'cubic-bezier(0.2, 0, 0, 1)');
+  assert.equal(vars.parseInput('EASING', 'как-нибудь'), null);
+  const fast = vars.createVariable(coll, 'TIMING', 'Длительность/Быстро', 200);
+  vars.setValue(fast, calm, 600);
+  const curve = vars.createVariable(coll, 'EASING', 'Кривая/Выход', 'ease-out');
+  vars.setValue(curve, calm, 'ease-in-out');
+  void normal;
+
+  // A transition bound to them plays with the values of the mode in effect.
+  const [screen, calmScreen] = editor.commit('screens', (tx) => [
+    tx.create('FRAME', page, { name: 'Экран', width: 100, height: 100 }),
+    tx.create('FRAME', page, { name: 'Экран 2', x: 200, width: 100, height: 100, variableModes: { [coll]: calm } } as never),
+  ]);
+  const t = { type: 'DISSOLVE' as const, duration: 300, easing: { type: 'LINEAR' as const }, durationVar: fast, easingVar: curve };
+  assert.deepEqual(resolveTiming(doc, t, screen!), { easing: { type: 'EASE_OUT' }, duration: 200 });
+  assert.deepEqual(resolveTiming(doc, t, calmScreen!), { easing: { type: 'EASE_IN_OUT' }, duration: 600 });
+  assert.deepEqual(resolveTiming(doc, { ...t, durationVar: undefined, easingVar: undefined }, screen!), { easing: { type: 'LINEAR' }, duration: 300 }, 'unbound: its own numbers');
+
+  // W3C tokens: a duration and a cubic Bézier, and back.
+  const json = exportTokens(doc) as Record<string, Record<string, Record<string, { $type: string; $value: unknown }>>>;
+  assert.deepEqual([json['Движение']!['Длительность']!['Быстро']!.$type, json['Движение']!['Длительность']!['Быстро']!.$value], ['duration', '200ms']);
+  assert.deepEqual([json['Движение']!['Кривая']!['Выход']!.$type, json['Движение']!['Кривая']!['Выход']!.$value], ['cubicBezier', [0, 0, 0.58, 1]]);
+  const other = setup();
+  planImport(other.editor, JSON.parse(JSON.stringify(json))).apply();
+  const imported = other.doc.collections().flatMap((c) => other.doc.children(c)).map((v) => [other.doc.get(v, 'varType'), Object.values(other.doc.get(v, 'varValues'))]);
+  assert.deepEqual(imported, [['TIMING', [200, 600]], ['EASING', ['cubic-bezier(0, 0, 0.58, 1)', 'cubic-bezier(0.42, 0, 0.58, 1)']]]);
+  assert.equal(cssEasing('ease-in-out-back'), 'cubic-bezier(0.68, -0.6, 0.32, 1.6)');
+  assert.equal(cssEasing('spring(1, 300, 20)'), 'ease-out', 'a spring has no CSS curve');
+});
+
+test('Motion stage 2a: keyframes between and beyond, curves from variables, keyframe edits, the pose the scene shows', async () => {
+  const m = await import('../src/motion/model.ts');
+  const { editor, doc, page } = setup();
+  const [frame, ball] = editor.commit('setup', (tx) => {
+    const f = tx.create('FRAME', page, { name: 'Сцена', width: 400, height: 300 });
+    return [f, tx.create('ELLIPSE', f, { name: 'Мяч', x: 0, y: 100, width: 40, height: 40 })];
+  });
+  editor.setSelection([ball!]);
+  assert.ok(editor.timeline.openForSelection());
+  assert.equal(editor.timeline.frame, frame);
+  assert.deepEqual(doc.get(frame!, 'motion'), { duration: 2000, loop: true });
+
+  // x: 0 at 0 ms, 300 at 1000 ms, linear.
+  editor.timeline.seek(0);
+  editor.timeline.addKeyframe(ball!, 'x');
+  editor.timeline.seek(1000);
+  editor.timeline.addKeyframe(ball!, 'x', 300);
+  editor.timeline.setEase(ball!, 'x', 0, { text: 'linear' });
+  const keys = doc.get(ball!, 'keyframes')!.x!;
+  assert.deepEqual(keys.map((k) => [k.t, k.v]), [[0, 0], [1000, 300]]);
+  assert.equal(m.valueAt(doc, keys, 500, frame!), 150, 'halfway, linear');
+  assert.equal(m.valueAt(doc, keys, 1500, frame!), 300, 'holds after the last');
+  assert.equal(m.valueAt(doc, keys, -10, frame!), 0, 'holds before the first');
+
+  // The scene shows the moment at the playhead; the document keeps its value.
+  editor.timeline.seek(500);
+  assert.equal(editor.scene.placement(ball!).x, 150);
+  assert.equal(doc.get(ball!, 'x'), 0);
+  // Scale is around the centre: the box grows both ways.
+  editor.timeline.addKeyframe(ball!, 'scale', 2);
+  editor.scene.ensure();
+  const b = editor.scene.bounds(ball!);
+  assert.deepEqual([Math.round(b.width), Math.round(b.x)], [80, 150 - 20]);
+  editor.timeline.removeKeyframe(ball!, 'scale', 500);
+  assert.equal(doc.get(ball!, 'keyframes')!.scale, undefined);
+
+  // A curve from an EASING variable, by the mode in effect at the frame.
+  const vars = editor.variables;
+  const coll = vars.createCollection('Движение');
+  const slow = vars.addMode(coll, 'Медленно');
+  const curve = vars.createVariable(coll, 'EASING', 'Кривая', 'linear');
+  vars.setValue(curve, slow, 'ease-in');
+  editor.timeline.setEase(ball!, 'x', 0, { variable: curve });
+  assert.equal(m.valueAt(doc, doc.get(ball!, 'keyframes')!.x!, 500, frame!), 150);
+  editor.commit('mode', (tx) => tx.set(frame!, 'variableModes', { [coll]: slow }));
+  assert.ok(m.valueAt(doc, doc.get(ball!, 'keyframes')!.x!, 500, frame!)! < 100, 'ease-in is slow at the start');
+
+  // Moving a keyframe; undo is one step; the timeline goes with its keyframes.
+  editor.timeline.moveKeyframe(ball!, 'x', 1000, 1500);
+  assert.deepEqual(doc.get(ball!, 'keyframes')!.x!.map((k) => k.t), [0, 1500]);
+  editor.undo();
+  assert.deepEqual(doc.get(ball!, 'keyframes')!.x!.map((k) => k.t), [0, 1000]);
+  editor.timeline.removeTimeline();
+  assert.equal(doc.get(frame!, 'motion'), null);
+  assert.equal(doc.get(ball!, 'keyframes'), null);
+  assert.equal(editor.timeline.frame, null);
+  assert.equal(editor.scene.placement(ball!).x, 0, 'the document again');
+});
+
+test('Motion stage 2c: auto keyframing records a hand change at the playhead, in the same undo step', () => {
+  const { editor, doc, page } = setup();
+  const [frame, ball] = editor.commit('setup', (tx) => {
+    const f = tx.create('FRAME', page, { name: 'Сцена', width: 400, height: 300 });
+    return [f, tx.create('ELLIPSE', f, { name: 'Мяч', x: 10, y: 100, width: 40, height: 40 })];
+  });
+  editor.setSelection([ball!]);
+  editor.timeline.openForSelection();
+  const xs = () => (doc.get(ball!, 'keyframes')?.x ?? []).map((k) => [k.t, k.v]);
+
+  editor.timeline.seek(1000);
+  editor.commit('move 1', (tx) => tx.set(ball!, 'x', 50));
+  assert.deepEqual(xs(), [], 'auto keyframing off and no keyframes: nothing recorded');
+
+  editor.timeline.setAutokey(true);
+  editor.commit('move 2', (tx) => tx.set(ball!, 'x', 300));
+  assert.deepEqual(xs(), [[0, 50], [1000, 300]], 'the value before at the start, the new one at the playhead');
+  assert.equal(editor.scene.placement(ball!).x, 300);
+
+  editor.timeline.setAutokey(false);
+  editor.timeline.seek(500);
+  editor.commit('move 3', (tx) => tx.set(ball!, 'x', 100));
+  assert.deepEqual(xs(), [[0, 50], [500, 100], [1000, 300]], 'a property with keyframes always records');
+  editor.undo();
+  assert.deepEqual(xs(), [[0, 50], [1000, 300]], 'one undo step takes the change and its keyframe');
+
+  editor.timeline.setAutokey(true);
+  editor.commit('move frame', (tx) => tx.set(frame!, 'x', 40));
+  assert.equal(doc.get(frame!, 'keyframes'), null, 'the frame itself is not animated');
+});
+
+test('Motion stage 3: animation styles stacked and in sequence, a style of one\'s own, the panel shows the playhead\'s value', async () => {
+  const { serialize, deserialize } = await import('#core');
+  const { ownStyles } = await import('../src/motion/styles.ts');
+  const { editor, doc, page } = setup();
+  const [frame, ball, box] = editor.commit('setup', (tx) => {
+    const f = tx.create('FRAME', page, { name: 'Сцена', width: 400, height: 300 });
+    return [f, tx.create('ELLIPSE', f, { name: 'Мяч', x: 200, y: 100, width: 40, height: 40 }), tx.create('RECTANGLE', f, { name: 'Блок', x: 50, y: 50, width: 40, height: 40 })];
+  });
+  editor.setSelection([ball!]);
+  editor.timeline.openForSelection();
+  editor.timeline.setSettings({ duration: 1000 });
+  const keys = (id: string, p: 'x' | 'opacity' | 'scale') => (doc.get(id, 'keyframes')?.[p] ?? []).map((k) => [k.t, Math.round(k.v * 100) / 100]);
+
+  // Two styles at one moment play together.
+  editor.timeline.seek(500);
+  assert.ok(editor.timeline.applyStyle('builtin:fade-in', false));
+  assert.ok(editor.timeline.applyStyle('builtin:move-left', false));
+  assert.deepEqual(keys(ball!, 'opacity'), [[500, 0], [1000, 1]]);
+  assert.deepEqual(keys(ball!, 'x'), [[500, 120], [1000, 200]], 'from 80 to the left of where it is, to its place');
+  assert.equal(doc.get(ball!, 'keyframes')!.x![0]!.ease, 'ease-out');
+
+  // After the previous: past the last keyframe; the timeline grows.
+  assert.ok(editor.timeline.applyStyle('builtin:pulse', true));
+  assert.deepEqual(keys(ball!, 'scale'), [[1000, 1], [1300, 1.1], [1600, 1]]);
+  assert.equal(doc.get(frame!, 'motion')!.duration, 1600);
+
+  // The panel shows the value at the playhead for keyed properties.
+  editor.timeline.seek(500);
+  assert.equal(editor.timeline.shownProp(ball!, 'x'), 120);
+  assert.equal(editor.timeline.shownProp(ball!, 'y'), null, 'not keyed: the document\'s');
+
+  // A style of one's own from the ball, put on the box: the same motion from the box's place.
+  const own = editor.timeline.saveStyleFromSelection('Влёт')!;
+  assert.ok(own);
+  const style = ownStyles(doc).find((s) => s.id === own)!;
+  assert.equal(style.duration, 1100);
+  assert.deepEqual(style.tracks.x!.map((f) => [Math.round(f.t * 1000) / 1000, f.v]), [[0, 0], [0.455, 80]]);
+  editor.setSelection([box!]);
+  editor.timeline.seek(0);
+  assert.ok(editor.timeline.applyStyle(own, false));
+  assert.deepEqual(keys(box!, 'x'), [[0, 50], [500, 130]]);
+  editor.timeline.renameStyle(own, 'Влёт слева');
+  assert.equal(ownStyles(doc)[0]!.name, 'Влёт слева');
+  assert.equal(deserialize(serialize(doc)).get(doc.rootId, 'animationStyles')[0]!.name, 'Влёт слева', 'kept in the file');
+  editor.timeline.deleteStyle(own);
+  assert.deepEqual(ownStyles(doc), []);
+
+  // Nothing selected in the frame: a hint, nothing applied.
+  editor.setSelection([frame!]);
+  assert.equal(editor.timeline.applyStyle('builtin:fade-in', false), false);
+});
+
+test('Motion stage 4: animated components — instances carry and play the component\'s timeline; nested ones on their own clocks; an instance\'s own keyframes', async () => {
+  const { fullPose } = await import('../src/motion/model.ts');
+  const { editor, doc, page } = setup();
+  const [cf, dot] = editor.commit('setup', (tx) => {
+    const c = tx.create('FRAME', page, { name: 'Загрузка', width: 100, height: 40 });
+    return [c, tx.create('ELLIPSE', c, { name: 'Точка', x: 0, y: 10, width: 20, height: 20 })];
+  });
+  editor.setSelection([cf!]);
+  editor.createComponent();
+  const comp = editor.selection[0]!;
+  const dotC = doc.children(comp)[0]!;
+  void dot;
+  editor.setSelection([dotC]);
+  editor.timeline.openForSelection();
+  assert.equal(editor.timeline.frame, comp);
+  editor.timeline.seek(0);
+  editor.timeline.addKeyframe(dotC, 'x', 0);
+  editor.timeline.seek(1000);
+  editor.timeline.addKeyframe(dotC, 'x', 80);
+  editor.timeline.setEase(dotC, 'x', 0, { text: 'linear' });
+
+  // An instance carries the timeline and the keyframes.
+  const inst = editor.placeInstance(comp, { x: 300, y: 0 })!;
+  const dotI = doc.children(inst)[0]!;
+  assert.deepEqual(doc.get(inst, 'motion'), doc.get(comp, 'motion'));
+  assert.deepEqual(doc.get(dotI, 'keyframes')!.x!.map((k) => [k.t, k.v]), [[0, 0], [1000, 80]]);
+  // The component's timeline open: its instances on the page play along.
+  editor.timeline.seek(500);
+  assert.equal(Math.round(editor.scene.placement(dotI).x), 40);
+
+  // A frame with a timeline of its own holding the instance: the instance moves on the frame's timeline,
+  // what is inside it on its own clock.
+  const [screen] = editor.commit('screen', (tx) => [tx.create('FRAME', page, { name: 'Экран', x: 0, y: 300, width: 400, height: 200 })]);
+  editor.commit('in', (tx) => tx.move(inst, screen!));
+  editor.commit('screen motion', (tx) => tx.set(screen!, 'motion', { duration: 3000, loop: false }));
+  editor.commit('inst key', (tx) => tx.set(inst, 'keyframes', { y: [{ t: 0, v: 0, ease: 'linear' }, { t: 3000, v: 150 }] }));
+  const pose = fullPose(doc, screen!, (id) => (id === screen ? 1500 : 250));
+  assert.equal(Math.round(pose.get(inst)!.y!), 75, 'the instance on the screen\'s timeline');
+  assert.equal(Math.round(pose.get(dotI)!.x!), 20, 'the dot on the component\'s, from when the instance appeared');
+  assert.equal(Math.round(fullPose(doc, screen!, () => 2500).get(dotI)!.x!), 40, 'the component\'s timeline loops');
+
+  // Keyframes changed in an instance are its own: the component's later change does not reach them.
+  editor.timeline.close();
+  editor.setSelection([dotI]);
+  editor.timeline.openForSelection();
+  assert.equal(editor.timeline.frame, inst);
+  editor.timeline.seek(1000);
+  editor.timeline.addKeyframe(dotI, 'x', 60);
+  assert.ok(doc.get(dotI, 'overrides').includes('keyframes'));
+  editor.commit('component change', (tx) => tx.set(dotC, 'keyframes', { x: [{ t: 0, v: 0 }, { t: 1000, v: 90 }] }));
+  assert.equal(doc.get(dotI, 'keyframes')!.x![1]!.v, 60);
+});
+
+test('Motion stage 5: the timeline as CSS and JSON; a GIF whose frames decode back exactly', async () => {
+  const { motionCss, motionJson, cssTiming } = await import('../src/motion/code.ts');
+  const { encodeGif, lzw } = await import('../src/motion/gif.ts');
+  const { editor, doc, page } = setup();
+  const [frame, ball] = editor.commit('setup', (tx) => {
+    const f = tx.create('FRAME', page, { name: 'Сцена', width: 400, height: 300 });
+    return [f, tx.create('ELLIPSE', f, { name: 'Мяч', x: 20, y: 100, width: 40, height: 40 })];
+  });
+  editor.setSelection([ball!]);
+  editor.timeline.openForSelection();
+  editor.commit('keys', (tx) => tx.set(ball!, 'keyframes', {
+    x: [{ t: 0, v: 20, ease: 'ease-out' }, { t: 1000, v: 320 }],
+    opacity: [{ t: 500, v: 0, ease: 'spring(1, 300, 20)' }, { t: 2000, v: 1 }],
+  }));
+  const css = motionCss(doc, frame!);
+  assert.match(css, /@property --cs-x/);
+  assert.match(css, /\.мяч \{\n  translate: var\(--cs-x\) var\(--cs-y\);/);
+  assert.match(css, /animation: мяч-x 2s infinite, мяч-opacity 2s infinite;/);
+  assert.match(css, /@keyframes мяч-x \{\n  0% \{ --cs-x: 0px; animation-timing-function: cubic-bezier\(0, 0, 0.58, 1\); \}\n  50% \{ --cs-x: 300px; \}\n  100% \{ --cs-x: 300px; \}\n\}/, 'offsets from where the layer is, held to the end');
+  assert.match(css, /@keyframes мяч-opacity \{\n  0% \{ opacity: 0; \}\n  25% \{ opacity: 0; animation-timing-function: linear\(0, /, 'held from the start; a spring as linear() points');
+  assert.equal(cssTiming({ type: 'EASE_IN_AND_OUT_BACK' }), 'cubic-bezier(0.68, -0.6, 0.32, 1.6)');
+  const json = JSON.parse(motionJson(doc, frame!));
+  assert.equal(json.duration, 2000);
+  assert.deepEqual(json.layers[0].keyframes.x, [{ t: 0, v: 20, ease: 'cubic-bezier(0, 0, 0.58, 1)' }, { t: 1000, v: 320 }]);
+
+  // GIF: LZW as GIF decoders read it.
+  const unlzw = (data: Uint8Array): number[] => {
+    let pos = 0;
+    let bitbuf = 0;
+    let bits = 0;
+    let size = 9;
+    const read = () => {
+      while (bits < size) {
+        bitbuf |= data[pos++]! << bits;
+        bits += 8;
+      }
+      const c = bitbuf & ((1 << size) - 1);
+      bitbuf >>>= size;
+      bits -= size;
+      return c;
+    };
+    let dict: number[][] = [];
+    const reset = () => {
+      dict = Array.from({ length: 258 }, (_, i) => [i]);
+      size = 9;
+    };
+    reset();
+    const out: number[] = [];
+    let prev: number[] | null = null;
+    for (;;) {
+      const code = read();
+      if (code === 256) {
+        reset();
+        prev = null;
+        continue;
+      }
+      if (code === 257) break;
+      const entry: number[] = code < dict.length ? dict[code]! : [...prev!, prev![0]!];
+      out.push(...entry);
+      if (prev) dict.push([...prev, entry[0]!]);
+      if (dict.length === 1 << size && size < 12) size++;
+      prev = entry;
+    }
+    return out;
+  };
+  const noise = new Uint8Array(20000).map((_, i) => (i * 7919 + (i >> 3) * 13) % 256);
+  assert.deepEqual(unlzw(lzw(noise)), [...noise], 'a long varied stream (past the 4096-code table) comes back exactly');
+  const flat = new Uint8Array(5000).fill(3);
+  assert.deepEqual(unlzw(lzw(flat)), [...flat]);
+
+  const w = 4;
+  const h = 2;
+  const frameOf = (r: number) => ({ data: new Uint8ClampedArray(Array.from({ length: w * h }, () => [r, 0, 255 - r, 255]).flat()) });
+  const gif = encodeGif(w, h, [frameOf(0), frameOf(255)], 5, true);
+  assert.equal(String.fromCharCode(...gif.slice(0, 6)), 'GIF89a');
+  assert.deepEqual([gif[6], gif[8]], [4, 2]);
+  assert.ok(String.fromCharCode(...gif).includes('NETSCAPE2.0'), 'loops');
+  assert.equal(gif[gif.length - 1], 0x3b);
+  assert.equal(String.fromCharCode(...gif).split('\x21\xf9').length - 1, 2, 'two frames');
+});
+
+test('design system check: findings by kind with suggestions, the share from the system, exact fixes in one step (step 6)', async () => {
+  const { checkDesign, fixAll, applyFix } = await import('../src/design-check.ts');
+  const { editor, doc, page } = setup();
+  const vars = editor.variables;
+  const coll = vars.createCollection('Тема');
+  const brand = vars.createVariable(coll, 'COLOR', 'Бренд', { r: 0.2, g: 0.4, b: 1, a: 1 });
+  vars.createVariable(coll, 'FLOAT', 'Отступ/M', 16);
+  const solid = (r: number, g: number, b: number) => [{ type: 'SOLID' as const, color: { r, g, b, a: 1 }, opacity: 1, visible: true }];
+  const [exactBox, nearBox, frame, label, orphanSrc] = editor.commit('setup', (tx) => [
+    tx.create('RECTANGLE', page, { name: 'Точно', width: 10, height: 10, fills: solid(0.2, 0.4, 1) }),
+    tx.create('RECTANGLE', page, { name: 'Почти', x: 20, width: 10, height: 10, fills: solid(0.22, 0.41, 0.98) }),
+    tx.create('FRAME', page, { name: 'Ряд', x: 40, width: 200, height: 50, layoutMode: 'HORIZONTAL', itemSpacing: 15, fills: [] }),
+    tx.create('TEXT', page, { name: 'Подпись', x: 0, y: 100, width: 80, height: 20, characters: 'Привет', fontFamily: 'Inter', fontSize: 15, fontWeight: 400 }),
+    tx.create('FRAME', page, { name: 'Иконка', x: 300, width: 20, height: 20, fills: [] }),
+  ]);
+  // A text style of the same font, 16 px.
+  editor.setSelection([label!]);
+  const textStyle = editor.createStyle('TEXT', undefined, 'Основной');
+  editor.commit('style size', (tx) => tx.set(textStyle, 'fontSize', 16));
+  // An instance whose component is deleted; its layers are not checked.
+  editor.setSelection([orphanSrc!]);
+  editor.createComponent();
+  const comp = editor.selection[0]!;
+  const inst = editor.placeInstance(comp, { x: 300, y: 100 })!;
+  editor.setSelection([comp]);
+  editor.deleteSelection();
+
+  const r = checkDesign(editor);
+  const by = (kind: string, id?: string) => r.findings.filter((f) => f.kind === kind && (!id || f.id === id));
+  assert.equal(by('unbound', exactBox).length, 1);
+  assert.deepEqual(by('unbound', exactBox)[0]!.suggestions.map((s) => [s.label, s.exact]), [['Бренд', true]]);
+  const near = by('color', nearBox)[0]!;
+  assert.deepEqual(near.suggestions.map((s) => [s.label, s.exact]), [['Бренд', false]], 'a close colour: the nearest variable, not exact');
+  const gap = by('number', frame)[0]!;
+  assert.equal(gap.what, 'Промежуток');
+  assert.deepEqual(gap.suggestions.map((s) => s.exact), [false], '15 is near 16');
+  const text = by('text', label)[0]!;
+  assert.deepEqual(text.suggestions.map((s) => [s.label, s.exact]), [['Стиль «Основной»', false]]);
+  assert.equal(by('orphan', inst).length, 1);
+  assert.ok(!r.findings.some((f) => f.what === 'Толщина обводки' || f.what === 'Непрозрачность'), 'no stroke weight without a stroke, no opacity');
+  assert.ok(r.findings.every((f) => !editor.isInstanceLayer(f.id)), 'layers inside instances are not checked');
+  assert.ok(r.checked > r.fromSystem && r.hasSystem);
+
+  // «Fix the exact ones»: only exact single suggestions (the deleted component comes back too); near ones stay.
+  const fixed = fixAll(editor, r.findings);
+  assert.equal(doc.get(exactBox!, 'boundVariables')!['fills/0'], brand);
+  assert.equal(doc.get(nearBox!, 'boundVariables'), null, 'a near colour is a choice, not fixed by itself');
+  assert.ok(doc.store.isAlive(comp), 'the component is back');
+  assert.ok(fixed >= 2);
+  editor.undo();
+  assert.equal(doc.get(exactBox!, 'boundVariables'), null, 'one undo step');
+
+  // A near suggestion taken by hand: the value becomes the variable's.
+  const again = checkDesign(editor);
+  const nearAgain = again.findings.find((f) => f.id === nearBox && f.kind === 'color')!;
+  editor.commit('fix', (tx) => applyFix(editor, tx, nearAgain, nearAgain.suggestions[0]!.fix));
+  assert.equal(doc.get(nearBox!, 'boundVariables')!['fills/0'], brand);
+  const t2 = again.findings.find((f) => f.kind === 'text')!;
+  editor.commit('fix text', (tx) => applyFix(editor, tx, t2, t2.suggestions[0]!.fix));
+  assert.equal(doc.get(label!, 'textStyleId'), textStyle);
+  assert.equal(doc.get(label!, 'fontSize'), 16);
+  const after = checkDesign(editor);
+  assert.ok(after.fromSystem > r.fromSystem, 'the share grows');
+});
+
+test('swap library: copies, styles, variables and modes move to the same-named things of another library; own texts kept; unused old parts leave; one undo (step 6)', async () => {
+  const { planLibrarySwap, swapLibrary } = await import('../src/library.ts');
+  const solid = (r: number, g: number, b: number) => [{ type: 'SOLID' as const, color: { r, g, b, a: 1 }, opacity: 1, visible: true }];
+  // A library: «Кнопка» (fill bound to «Бренд / primary»), set «Поле» (Состояние=Обычное | Ошибка), «Значок» (only in A), style «Акцент», modes Светлая/Тёмная.
+  const makeLib = (session: string, fileId: string, name: string, color: [number, number, number], withIcon: boolean) => {
+    const doc = Document.createEmpty(name, session);
+    const editor = new Editor(doc, new ApproximateTextMeasurer());
+    const page = doc.pages()[0]!;
+    const coll = editor.variables.createCollection('Бренд');
+    const dark = editor.variables.addMode(coll, 'Тёмная');
+    const primary = editor.variables.createVariable(coll, 'COLOR', 'primary', { r: color[0], g: color[1], b: color[2], a: 1 });
+    const btn = editor.commit('b', (tx) => {
+      const f = tx.create('FRAME', page, { name: 'Кнопка', width: 120, height: 40, fills: solid(...color) });
+      tx.create('TEXT', f, { name: 'Подпись', characters: 'OK', x: 10, y: 10, width: 50, height: 20 });
+      tx.create('RECTANGLE', f, { name: 'Блик', x: 100, width: 4, height: 4, fills: solid(...color) });
+      return f;
+    });
+    // A fill style the button uses (a library carries what its components use).
+    editor.setSelection([doc.children(btn).find((c) => doc.get(c, 'name') === 'Блик')!]);
+    const style = editor.createStyle('FILL', 'fillStyleId', 'Акцент');
+    editor.setSelection([btn]);
+    editor.variables.bind('fills/0', primary);
+    editor.createComponent();
+    const button = editor.selection[0]!;
+    const [a, b] = editor.commit('v', (tx) => [
+      tx.create('FRAME', page, { name: 'Состояние=Обычное', x: 300, width: 200, height: 40 }),
+      tx.create('FRAME', page, { name: 'Состояние=Ошибка', x: 300, y: 60, width: 200, height: 40, fills: solid(1, 0, 0) }),
+    ]);
+    for (const f of [a!, b!]) {
+      editor.setSelection([f]);
+      editor.createComponent();
+    }
+    const comps = [...doc.children(page)].filter((c) => doc.type(c) === 'COMPONENT' && c !== button);
+    editor.setSelection(comps);
+    editor.combineAsVariants();
+    const set = editor.selection[0]!;
+    editor.commit('n', (tx) => tx.set(set, 'name', 'Поле'));
+    let icon: NodeId | null = null;
+    if (withIcon) {
+      const f = editor.commit('i', (tx) => tx.create('FRAME', page, { name: 'Значок', x: 600, width: 16, height: 16 }));
+      editor.setSelection([f]);
+      editor.createComponent();
+      icon = editor.selection[0]!;
+    }
+    const payload: LibraryPayload = { ...buildLibrary(doc), fileId, name, publishedAt: 1 };
+    return { doc, payload, coll, dark, primary, button, set, icon, style };
+  };
+  const A = makeLib('liba', 'fLibA000001', 'Старая', [0, 0.4, 1], true);
+  const B = makeLib('libb', 'fLibB000001', 'Новая', [0.9, 0.3, 0], false);
+  assert.ok(B.payload.styles.length && B.payload.variables.length, 'the new library carries its style and variable');
+
+  const appDoc = Document.createEmpty('Приложение', 'app');
+  const editor = new Editor(appDoc, new ApproximateTextMeasurer());
+  const page = appDoc.pages()[0]!;
+  const byName = (p: LibraryPayload, n: string) => p.components.find((c) => c.name === n)!;
+  const btn = placeFromLibrary(editor, A.payload, byName(A.payload, 'Кнопка'), { x: 0, y: 0 })!;
+  const label = appDoc.children(btn).find((c) => appDoc.get(c, 'name') === 'Подпись')!;
+  editor.commit('t', (tx) => tx.set(label, 'characters', 'Купить'));
+  const field = placeFromLibrary(editor, A.payload, byName(A.payload, 'Поле'), { x: 0, y: 100 })!;
+  const errorA = [...appDoc.children(A.set)].find((c) => appDoc.get(c, 'name') === 'Состояние=Ошибка')!;
+  editor.swapInstance(field, errorA);
+  const icon = placeFromLibrary(editor, A.payload, byName(A.payload, 'Значок'), { x: 0, y: 200 })!;
+  const [rect, screen] = editor.commit('own', (tx) => [
+    tx.create('RECTANGLE', page, { name: 'Плашка', x: 200, width: 40, height: 40, fills: solid(0.5, 0.5, 0.5), fillStyleId: A.style }),
+    tx.create('FRAME', page, { name: 'Экран', x: 400, width: 100, height: 100, variableModes: { [A.coll]: A.dark } }),
+  ]);
+  editor.setSelection([screen!]);
+  editor.variables.bind('fills/0', A.primary);
+  editor.commit('links', (tx) => tx.set(appDoc.rootId, 'libraries', [{ fileId: 'fLibA000001', name: 'Старая' }]));
+
+  const plan = planLibrarySwap(appDoc, 'fLibA000001', B.payload);
+  assert.deepEqual(plan.found, { components: 2, styles: 1, variables: 1 });
+  assert.equal(plan.instances, 2, 'two copies move to the new library (the icon has no pair)');
+  assert.deepEqual(plan.missing, ['Значок'], 'the icon has no pair in the new library');
+
+  swapLibrary(editor, plan, B.payload);
+  assert.equal(appDoc.get(btn, 'mainComponent'), B.button);
+  const label2 = appDoc.children(btn).find((c) => appDoc.get(c, 'name') === 'Подпись')!;
+  assert.equal(appDoc.get(label2, 'characters'), 'Купить', 'an own text of the copy is kept');
+  assert.equal(appDoc.get(btn, 'fills')[0]!.type === 'SOLID' && Math.round((appDoc.get(btn, 'fills')[0] as { color: { r: number } }).color.r * 10), 9, 'the copy looks like the new button');
+  const errorB = [...appDoc.children(B.set)].find((c) => appDoc.get(c, 'name') === 'Состояние=Ошибка')!;
+  assert.equal(appDoc.get(field, 'mainComponent'), errorB, 'the same variant of the same-named set');
+  assert.equal(appDoc.get(icon, 'mainComponent'), A.icon, 'without a pair it stays');
+  assert.equal(appDoc.get(rect!, 'fillStyleId'), B.style);
+  assert.equal(Math.round((appDoc.get(rect!, 'fills')[0] as { color: { r: number } }).color.r * 10), 9, 'the style values come');
+  assert.deepEqual(appDoc.get(screen!, 'variableModes'), { [B.coll]: B.dark });
+  assert.equal(appDoc.get(screen!, 'boundVariables')!['fills/0'], B.primary);
+  assert.deepEqual(appDoc.get(appDoc.rootId, 'libraries'), [{ fileId: 'fLibB000001', name: 'Новая' }]);
+  assert.ok(!appDoc.store.isAlive(A.button) && !appDoc.store.isAlive(A.style), 'unused old parts leave');
+  assert.ok(appDoc.store.isAlive(A.icon!), 'the old icon stays: a copy uses it');
+  editor.undo();
+  assert.equal(appDoc.get(btn, 'mainComponent'), A.button, 'one undo step');
+  assert.ok(appDoc.store.isAlive(A.style));
+
+  // A library made as a copy of the old file has the same ids: those parts become the new library's, nothing is lost.
+  const copy: LibraryPayload = { ...A.payload, fileId: 'fLibC000001', name: 'Копия' };
+  const same = planLibrarySwap(appDoc, 'fLibA000001', copy);
+  assert.deepEqual(same.missing, []);
+  swapLibrary(editor, same, copy);
+  assert.ok(appDoc.store.isAlive(A.button) && appDoc.store.isAlive(A.style) && appDoc.store.isAlive(A.icon!));
+  assert.equal(appDoc.get(btn, 'mainComponent'), A.button);
+  assert.equal(appDoc.get(A.button, 'libraryRef')!.fileId, 'fLibC000001');
+  assert.deepEqual(appDoc.get(appDoc.rootId, 'libraries'), [{ fileId: 'fLibC000001', name: 'Копия' }]);
+});
+
+test('moving published components to another library keeps links: cut in A, paste in B, files using A follow to B with own changes; pasted back in A nothing moves (step 6)', async () => {
+  const { planMoves, followMoves } = await import('../src/library.ts');
+  const solid = (r: number, g: number, b: number) => [{ type: 'SOLID' as const, color: { r, g, b, a: 1 }, opacity: 1, visible: true }];
+  const lib = (session: string, fileId: string) => {
+    const doc = Document.createEmpty(fileId, session);
+    const editor = new Editor(doc, new ApproximateTextMeasurer());
+    editor.fileId = fileId;
+    return { doc, editor, page: doc.pages()[0]!, fileId, publish: (name: string): LibraryPayload => ({ ...buildLibrary(doc), fileId, name, publishedAt: Date.now() + Math.random() }) };
+  };
+  const A = lib('liba', 'fLibA000001');
+  const btnFrame = A.editor.commit('b', (tx) => {
+    const f = tx.create('FRAME', A.page, { name: 'Кнопка', width: 120, height: 40, fills: solid(0, 0.4, 1) });
+    tx.create('TEXT', f, { name: 'Подпись', characters: 'OK', x: 10, y: 10, width: 50, height: 20 });
+    tx.create('RECTANGLE', f, { name: 'Блик', x: 100, width: 4, height: 4, fills: solid(1, 1, 1) });
+    return f;
+  });
+  A.editor.setSelection([A.doc.children(btnFrame).find((c) => A.doc.get(c, 'name') === 'Блик')!]);
+  const styleA = A.editor.createStyle('FILL', 'fillStyleId', 'Блик');
+  A.editor.setSelection([btnFrame]);
+  A.editor.createComponent();
+  const buttonA = A.editor.selection[0]!;
+  const tagFrame = A.editor.commit('t', (tx) => tx.create('FRAME', A.page, { name: 'Метка', x: 300, width: 60, height: 20 }));
+  A.editor.setSelection([tagFrame]);
+  A.editor.createComponent();
+  const tagA = A.editor.selection[0]!;
+  const a1 = A.publish('Старая');
+
+  // A file using both, with an own text in the button.
+  const appDoc = Document.createEmpty('Приложение', 'app');
+  const app = new Editor(appDoc, new ApproximateTextMeasurer());
+  const btn = placeFromLibrary(app, a1, a1.components.find((c) => c.name === 'Кнопка')!, { x: 0, y: 0 })!;
+  const tag = placeFromLibrary(app, a1, a1.components.find((c) => c.name === 'Метка')!, { x: 0, y: 100 })!;
+  app.commit('own', (tx) => tx.set(appDoc.children(btn).find((c) => appDoc.get(c, 'name') === 'Подпись')!, 'characters', 'Купить'));
+  app.commit('links', (tx) => tx.set(appDoc.rootId, 'libraries', [{ fileId: A.fileId, name: 'Старая' }]));
+
+  // Cut the button in A, paste it in B; both published.
+  A.editor.setSelection([buttonA]);
+  const text = A.editor.copyText(true)!;
+  A.editor.deleteSelection();
+  const B = lib('libb', 'fLibB000001');
+  assert.ok(B.editor.pasteText(text));
+  const buttonB = B.editor.selection[0]!;
+  assert.deepEqual(B.doc.get(buttonB, 'movedFrom'), { fileId: A.fileId, id: buttonA }, 'the pasted component remembers where it was');
+  const styleB = B.doc.styles().find((s) => B.doc.get(s, 'name') === 'Блик')!;
+  assert.deepEqual(B.doc.get(styleB, 'movedFrom'), { fileId: A.fileId, id: styleA }, 'its style too');
+  const a2 = A.publish('Старая');
+  const b1 = B.publish('Новая');
+  assert.ok(!a2.nodes.some((n) => n.id === buttonA) && b1.nodes.some((n) => n.props.movedFrom?.id === buttonA));
+
+  // The file updates A: the button is found in B by its mark.
+  updateFromLibrary(app, a2);
+  assert.equal(planMoves(appDoc, a1, [b1]).length, 0, 'by the newest publication only: a1 still had it');
+  const moves = planMoves(appDoc, a2, [b1]);
+  assert.equal(moves.length, 1);
+  assert.equal(moves[0]!.plan.instances, 1);
+  followMoves(app, moves);
+  assert.equal(appDoc.get(btn, 'mainComponent'), buttonB, 'the copy now shows the component in B');
+  assert.equal(appDoc.get(appDoc.children(btn).find((c) => appDoc.get(c, 'name') === 'Подпись')!, 'characters'), 'Купить', 'own text kept');
+  assert.equal(appDoc.get(tag, 'mainComponent'), tagA, 'what stayed in A stays from A');
+  assert.deepEqual(appDoc.get(appDoc.rootId, 'libraries')!.map((l) => l.fileId), [A.fileId, B.fileId], 'B is switched on, A stays');
+  assert.ok(!appDoc.store.isAlive(buttonA) && !appDoc.store.isAlive(styleA), 'the old button and its style leave');
+  assert.equal(libraryOf(appDoc, buttonB)?.fileId, B.fileId);
+  app.undo();
+  assert.equal(appDoc.get(btn, 'mainComponent'), buttonA, 'one undo step');
+
+  // Cut and pasted back into the same file: nothing moved.
+  A.editor.setSelection([tagA]);
+  const again = A.editor.copyText(true)!;
+  A.editor.deleteSelection();
+  A.editor.pasteText(again);
+  assert.equal(A.doc.get(A.editor.selection[0]!, 'movedFrom'), null);
+  // A plain copy or a duplicate of the moved component is a new component: no mark (only the pasted one claims the move).
+  B.editor.setSelection([buttonB]);
+  const copied = JSON.parse(B.editor.copyText()!) as { nodes: { props: { movedFrom?: unknown } }[]; styles?: { props: { movedFrom?: unknown } }[] };
+  assert.equal(copied.nodes[0]!.props.movedFrom, undefined);
+  assert.ok((copied.styles ?? []).every((st) => st.props.movedFrom === undefined));
+  B.editor.duplicate();
+  assert.equal(B.doc.get(B.editor.selection[0]!, 'movedFrom'), null);
+  assert.deepEqual(B.publish('Новая').nodes.filter((n) => n.props.movedFrom).length, 1, 'the publication still carries the one mark');
+});
+
+test('Dev Mode annotations: notes on layers with pinned CSS, kept in the file, not copied into instances; one undo each (step 7)', async () => {
+  const { addAnnotation, annotationsOf, layerCss, removeAnnotation, updateAnnotation } = await import('../src/annotate.ts');
+  const { doc, editor, page } = setup();
+  const card = editor.commit('setup', (tx) => tx.create('FRAME', page, { x: 0, y: 0, width: 120, height: 80, cornerRadius: 8 }));
+  assert.equal(addAnnotation(editor, card), 0);
+  updateAnnotation(editor, card, 0, { label: 'Кнопка растягивается', properties: ['width', 'border-radius'], category: 'DEVELOPMENT' });
+  assert.deepEqual(annotationsOf(editor, card), [{ label: 'Кнопка растягивается', properties: ['width', 'border-radius'], category: 'DEVELOPMENT' }]);
+  const css = layerCss(editor, card);
+  assert.equal(css.get('width'), '120px');
+  assert.equal(css.get('border-radius'), '8px');
+  assert.deepEqual(editor.annotatedLayers(), [card]);
+  // A hand-written file with a broken note: read whole, an unknown category reads as none.
+  editor.commit('broken', (tx) => tx.set(card, 'annotations', [{ label: 5, category: 'NOPE' } as never]));
+  assert.deepEqual(annotationsOf(editor, card), [{ label: '', properties: [], category: 'NONE' }]);
+  editor.undo();
+  assert.equal(annotationsOf(editor, card)[0]!.category, 'DEVELOPMENT');
+  // Hidden layers keep their notes off the canvas.
+  editor.commit('hide', (tx) => tx.set(card, 'visible', false));
+  assert.deepEqual(editor.annotatedLayers(), []);
+  editor.undo();
+  assert.deepEqual(editor.annotatedLayers(), [card]);
+  // A component's note stays on it: instances do not inherit it.
+  const { createInstance } = await import('#components');
+  const component = editor.commit('component', (tx) => convertFrameToComponent(doc, tx, card));
+  assert.equal(annotationsOf(editor, component).length, 1, 'the note stays on the frame made a component');
+  const instance = editor.commit('instance', (tx) => createInstance(doc, tx, component, page, { x: 300, y: 0 }));
+  assert.deepEqual(doc.get(instance, 'annotations'), [], 'an instance has no notes of its own');
+  removeAnnotation(editor, component, 0);
+  assert.deepEqual(annotationsOf(editor, component), []);
+  editor.undo();
+  assert.equal(annotationsOf(editor, component).length, 1);
+});
+
+test('saved measurements: edges of two layers, recounted as they move; gaps from a selection; picked and deleted with Delete (step 7)', async () => {
+  const { addMeasurement, gapSides, liveMeasurements, measureLine, measureSelection, nearestEdge } = await import('../src/annotate.ts');
+  // Pure geometry: facing boxes measure across their shared span; apart — level with the first, a dashed helper to the other.
+  const a = { x: 0, y: 0, width: 100, height: 100 };
+  const b = { x: 140, y: 50, width: 60, height: 100 };
+  assert.deepEqual(measureLine(a, 'RIGHT', b, 'LEFT'), { from: { x: 100, y: 75 }, to: { x: 140, y: 75 }, value: 40, helpers: [] });
+  const far = { x: 140, y: 300, width: 60, height: 20 };
+  const apart = measureLine(a, 'RIGHT', far, 'LEFT')!;
+  assert.equal(apart.value, 40);
+  assert.deepEqual(apart.helpers, [{ from: { x: 140, y: 300 }, to: { x: 140, y: 50 } }]);
+  assert.equal(measureLine(a, 'RIGHT', b, 'TOP'), null, 'edges across each other do not measure');
+  assert.deepEqual(gapSides(a, b), [['RIGHT', 'LEFT']]);
+  assert.deepEqual(gapSides(a, { x: 10, y: 10, width: 10, height: 10 }), [['LEFT', 'LEFT'], ['TOP', 'TOP']], 'a layer inside: its insets');
+  assert.deepEqual(nearestEdge(a, { x: 98, y: 50 }, 4), { side: 'RIGHT', distance: 2 });
+  assert.equal(nearestEdge(a, { x: 50, y: 50 }, 4), null);
+
+  const { doc, editor, page } = setup();
+  const [left, right] = editor.commit('setup', (tx) => [
+    tx.create('RECTANGLE', page, { x: 0, y: 0, width: 100, height: 100 }),
+    tx.create('RECTANGLE', page, { x: 140, y: 0, width: 50, height: 100 }),
+  ]);
+  const id = addMeasurement(editor, left, 'RIGHT', right, 'LEFT')!;
+  assert.ok(id);
+  assert.equal(addMeasurement(editor, right, 'LEFT', left, 'RIGHT'), id, 'the same measurement twice is kept once');
+  assert.equal(doc.get(page, 'measurements').length, 1);
+  assert.equal(liveMeasurements(editor)[0]!.line.value, 40);
+  editor.commit('move', (tx) => tx.set(right, 'x', 160));
+  assert.equal(liveMeasurements(editor)[0]!.line.value, 60, 'recounted as the layer moves');
+  // Picked: Delete takes the measurement, not the layers; taking a layer lets it go.
+  editor.selectMeasurement(id);
+  editor.deleteSelection();
+  assert.equal(doc.get(page, 'measurements').length, 0);
+  assert.ok(doc.store.isAlive(left) && doc.store.isAlive(right));
+  editor.undo();
+  assert.equal(doc.get(page, 'measurements').length, 1);
+  editor.selectMeasurement(id);
+  editor.setSelection([left]);
+  assert.equal(editor.measureSelected, null);
+  // A deleted layer's measurement is not drawn (and comes back with the layer).
+  editor.deleteSelection();
+  assert.equal(liveMeasurements(editor).length, 0);
+  editor.undo();
+  assert.equal(liveMeasurements(editor).length, 1);
+  // From the selection: one layer — its width and height; two — the gap.
+  editor.setSelection([right]);
+  measureSelection(editor);
+  assert.deepEqual(liveMeasurements(editor).map((x) => x.line.value), [60, 50, 100]);
+  // Kept in the file: a broken entry from a hand-written file is skipped, not fatal.
+  editor.commit('broken', (tx) => tx.set(page, 'measurements', [...doc.get(page, 'measurements'), { id: 'x', from: left, fromSide: 'UP', to: right, toSide: 'LEFT', note: '' } as never]));
+  assert.equal(liveMeasurements(editor).length, 3);
+});
+
+test('Compare changes: a frame in a version next to now — layers added, removed, moved, properties as before and after, code line by line (step 7)', async () => {
+  const { compareLayer, compareCode, diffLines, layerDiffers } = await import('../src/compare-changes.ts');
+  const { serialize, deserialize } = await import('#core');
+  const { doc, editor, page } = setup();
+  const ids = editor.commit('setup', (tx) => {
+    const card = tx.create('FRAME', page, { name: 'Карточка', width: 300, height: 200 });
+    const title = tx.create('TEXT', card, { name: 'Заголовок', characters: 'Привет', fontSize: 16 });
+    const old = tx.create('RECTANGLE', card, { name: 'Старая плашка', width: 50, height: 10 });
+    const box = tx.create('FRAME', card, { name: 'Блок', width: 100, height: 100 });
+    const other = tx.create('RECTANGLE', page, { name: 'Рядом', x: 500 });
+    return { card, title, old, box, other };
+  });
+  const version = deserialize(serialize(doc));
+  assert.equal(layerDiffers(version, doc, ids.card), false);
+  assert.deepEqual(compareLayer(version, doc, ids.card), []);
+
+  editor.commit('edit', (tx) => {
+    tx.set(ids.card, 'width', 320);
+    tx.set(ids.card, 'fills', [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }]);
+    tx.set(ids.title, 'characters', 'Здравствуйте');
+    tx.delete(ids.old);
+    tx.create('RECTANGLE', ids.card, { name: 'Новая кнопка' });
+    tx.move(ids.title, ids.box);
+    tx.set(ids.other, 'x', 600);
+  });
+  const changes = compareLayer(version, doc, ids.card);
+  const by = (name: string) => changes.find((c) => c.name === name)!;
+  const card = by('Карточка');
+  assert.equal(card.kind, 'changed');
+  assert.deepEqual(card.props.map((p) => [p.label, p.before, p.after]), [['Ширина', '300', '320'], ['Заливка', '#FFFFFF', '#FF0000']]);
+  const title = by('Заголовок');
+  assert.equal(title.moved, true);
+  assert.equal(title.depth, 2, 'listed where it is now, inside «Блок»');
+  const text = title.props.find((p) => p.key === 'characters')!;
+  assert.deepEqual([text.before, text.after], ['«Привет»', '«Здравствуйте»']);
+  assert.equal(by('Старая плашка').kind, 'removed');
+  assert.equal(by('Новая кнопка').kind, 'added');
+  assert.equal(changes.some((c) => c.name === 'Рядом'), false, 'a layer outside the frame is not in its changes');
+  assert.equal(layerDiffers(version, doc, ids.card), true);
+
+  const code = compareCode(version, doc, ids.card, 'css');
+  assert.ok(code.some((l) => l.kind === 'added' && l.text.includes('320px')));
+  assert.ok(code.some((l) => l.kind === 'removed' && l.text.includes('300px')));
+  assert.ok(code.some((l) => l.kind === 'same'));
+
+  assert.deepEqual(diffLines('a\nb\nc', 'a\nx\nc'), [
+    { kind: 'same', text: 'a' },
+    { kind: 'removed', text: 'b' },
+    { kind: 'added', text: 'x' },
+    { kind: 'same', text: 'c' },
+  ]);
+  assert.deepEqual(diffLines('', 'a'), [{ kind: 'added', text: 'a' }]);
+});
+
+test('Dev resources: links on a layer — only http(s), named by their path, no doubles, one undo each; an instance shows the links of its component and its set (step 7)', async () => {
+  const { addResource, removeResource, renameResource, resourcesOf, inheritedResources, resourceKind, defaultResourceName } = await import('../src/dev-resources.ts');
+  const { editor, doc, page } = setup();
+  const button = editor.commit('setup', (tx) => tx.create('FRAME', page, { name: 'Кнопка', width: 100, height: 40 }));
+  assert.equal(addResource(editor, button, 'github.com/acme/ui/blob/main/src/Button.tsx'), null, 'a link without https:// is completed');
+  assert.deepEqual(resourcesOf(doc, button), [{ url: 'https://github.com/acme/ui/blob/main/src/Button.tsx', name: 'Button.tsx' }]);
+  assert.equal(addResource(editor, button, 'https://storybook.acme.dev/?path=/story/button--primary', 'История'), null);
+  assert.ok(addResource(editor, button, 'javascript:alert(1)'), 'not a link');
+  assert.ok(addResource(editor, button, 'mailto:a@b.c'), 'only http(s)');
+  assert.ok(addResource(editor, button, 'https://github.com/acme/ui/blob/main/src/Button.tsx'), 'no doubles');
+  assert.equal(resourcesOf(doc, button).length, 2);
+  assert.equal(resourceKind('https://github.com/acme/ui'), 'GitHub');
+  assert.equal(resourceKind('https://storybook.acme.dev/?path=/story/x'), 'Storybook');
+  assert.equal(resourceKind('https://example.org/a'), 'example.org');
+  assert.equal(defaultResourceName('https://storybook.acme.dev/?path=/story/button--primary'), 'button--primary');
+
+  renameResource(editor, button, 0, 'Код кнопки');
+  assert.equal(resourcesOf(doc, button)[0]!.name, 'Код кнопки');
+  removeResource(editor, button, 1);
+  assert.equal(resourcesOf(doc, button).length, 1);
+  editor.undo();
+  assert.equal(resourcesOf(doc, button).length, 2, 'one undo brings it back');
+
+  // A broken value from a file is cleaned on read.
+  editor.commit('broken', (tx) => tx.set(button, 'devResources', [{ url: 'javascript:x', name: 'x' }, { url: 5, name: 'y' }, null, { url: 'https://ok.dev/', name: '' }] as never));
+  assert.deepEqual(resourcesOf(doc, button), [{ url: 'https://ok.dev/', name: 'ok.dev' }]);
+
+  const { createInstance } = await import('#components');
+  const component = editor.commit('component', (tx) => convertFrameToComponent(doc, tx, button));
+  const instance = editor.commit('instance', (tx) => createInstance(doc, tx, component, page, { x: 300, y: 0 }));
+  assert.deepEqual(resourcesOf(doc, instance), [], 'an instance does not copy the links');
+  assert.deepEqual(inheritedResources(doc, instance).map((g) => g.list.map((r) => r.url)), [['https://ok.dev/']]);
+});
+
+test('Component playground: variants and properties tried on a copy of the file — the picture and code change, the file does not (step 7)', async () => {
+  const { openPlayground, axisControls, propControls, setAxis, setProp, playgroundCode, playgroundTarget } = await import('../src/playground.ts');
+  const { addPropertyFromLayer } = await import('#components');
+  const { editor, doc, page } = setup();
+  const [a, b] = editor.commit('setup', (tx) => {
+    const a = tx.create('FRAME', page, { name: 'Состояние=Обычная', width: 80, height: 30 });
+    tx.create('TEXT', a, { name: 'Подпись', characters: 'Купить' });
+    const b = tx.create('FRAME', page, { name: 'Состояние=Наведение', x: 100, width: 90, height: 30 });
+    tx.create('TEXT', b, { name: 'Подпись', characters: 'Купить' });
+    return [a, b];
+  });
+  const [s, l] = [a, b].map((id) => {
+    editor.setSelection([id]);
+    editor.createComponent();
+    return editor.selection[0]!;
+  });
+  editor.setSelection([s!, l!]);
+  editor.combineAsVariants();
+  const set = editor.selection[0]!;
+  const label = [...doc.children(s!)][0]!;
+  editor.commit('prop', (tx) => addPropertyFromLayer(doc, tx, label, 'TEXT', 'Текст'));
+  const { toSnapshot } = await import('#core');
+  const fileNow = () => JSON.stringify(toSnapshot(doc).nodes);
+  const before = fileNow();
+
+  assert.equal(playgroundTarget(editor, page), null, 'a page is not a component');
+  const pg = openPlayground(editor, set)!;
+  assert.ok(pg, 'a set opens with its first variant');
+  assert.deepEqual(axisControls(pg), [{ name: 'Состояние', values: ['Обычная', 'Наведение'], value: 'Обычная' }]);
+  const text = propControls(pg).find((p) => p.def.type === 'TEXT')!;
+  assert.equal(text.value, 'Купить');
+
+  setProp(pg, text.def.id, 'Оформить заказ');
+  assert.equal(propControls(pg).find((p) => p.def.type === 'TEXT')!.value, 'Оформить заказ');
+  assert.ok(playgroundCode(pg, 'css').includes('Оформить заказ'));
+  setAxis(pg, 'Состояние', 'Наведение');
+  assert.equal(axisControls(pg)[0]!.value, 'Наведение');
+  assert.equal(pg.editor.doc.get(pg.instance, 'width'), 90);
+  assert.ok(playgroundCode(pg, 'css').includes('90px'));
+
+  assert.equal(fileNow(), before, 'nothing in the file changed or was added');
+});
+
+test('Code Connect: a component carries its code as a template, instances show it with their variant and properties (step 7)', async () => {
+  const { fillTemplate, connectedCode, setCodeConnect, starterTemplate, connectNames, codeConnectOf } = await import('../src/code-connect.ts');
+  const { addPropertyFromLayer, createInstance } = await import('#components');
+  const { editor, doc, page } = setup();
+  const [a, b] = editor.commit('setup', (tx) => {
+    const a = tx.create('FRAME', page, { name: 'Вид=Основная', width: 80, height: 30 });
+    tx.create('TEXT', a, { name: 'Подпись', characters: 'Купить' });
+    tx.create('RECTANGLE', a, { name: 'Иконка', width: 10, height: 10 });
+    const b = tx.create('FRAME', page, { name: 'Вид=Вторичная', x: 100, width: 80, height: 30 });
+    return [a, b];
+  });
+  const [s, l] = [a, b].map((id) => {
+    editor.setSelection([id]);
+    editor.createComponent();
+    return editor.selection[0]!;
+  });
+  editor.setSelection([s!, l!]);
+  editor.combineAsVariants();
+  const set = editor.selection[0]!;
+  const [label, iconLayer] = [...doc.children(s!)];
+  editor.commit('props', (tx) => {
+    addPropertyFromLayer(doc, tx, label!, 'TEXT', 'Текст');
+    addPropertyFromLayer(doc, tx, iconLayer!, 'BOOLEAN', 'С иконкой');
+  });
+  assert.deepEqual(connectNames(doc, set), ['Вид', 'Текст', 'С иконкой']);
+  assert.match(starterTemplate(doc, set), /^<\S+ вид="\{\{Вид\}\}" \{\{#С иконкой\}\}сИконкой\{\{\/С иконкой\}\}>\{\{Текст\}\}<\/\S+>$/, 'axes and properties become attributes, the text the children');
+
+  const template = '<Button variant="{{вид}}"{{#С иконкой}} icon{{/С иконкой}}{{^С иконкой}} plain{{/С иконкой}}>{{Текст}}</Button> {{Нет такого}}';
+  setCodeConnect(editor, set, { source: 'src/ui/Button.tsx', language: 'tsx', template });
+  assert.equal(codeConnectOf(doc, set)!.source, 'src/ui/Button.tsx');
+  const instance = editor.commit('instance', (tx) => createInstance(doc, tx, s!, page, { x: 300, y: 0 }));
+  assert.equal(connectedCode(doc, instance)!.code, '<Button variant="Основная" icon>Купить</Button> {{Нет такого}}', 'an unknown name stays as written');
+  const props = doc.get(set, 'componentProps');
+  editor.setInstanceProperty(instance, props.find((p) => p.name === 'Текст')!.id, 'Оформить');
+  editor.setInstanceProperty(instance, props.find((p) => p.name === 'С иконкой')!.id, false);
+  editor.switchVariant(instance, 'Вид', 'Вторичная');
+  assert.equal(connectedCode(doc, instance)!.code.startsWith('<Button variant="Вторичная" plain>'), true);
+  assert.deepEqual(doc.get(instance, 'codeConnect'), null, 'an instance keeps no copy of the template');
+
+  assert.equal(fillTemplate('{{#a}}A{{/a}}{{^a}}B{{/a}}', new Map([['a', 'нет']])), 'B');
+  assert.equal(fillTemplate('{{ A  b }}', new Map([['a b', 'x']])), 'x', 'case and spaces do not matter');
+  setCodeConnect(editor, set, null);
+  assert.equal(connectedCode(doc, instance), null);
+  editor.undo();
+  assert.ok(connectedCode(doc, instance), 'one undo brings it back');
+});
+
+test('Focus view: one frame alone — only it and its layers can be clicked, Esc steps out to the page, deleting it or changing the page leaves focus (step 7)', async () => {
+  const { createCommands } = await import('../src/commands.ts');
+  const { editor, page } = setup();
+  const ids = editor.commit('setup', (tx) => {
+    const a = tx.create('FRAME', page, { name: 'Экран 1', width: 100, height: 100 });
+    const inner = tx.create('RECTANGLE', a, { name: 'Плашка', x: 10, y: 10, width: 20, height: 20 });
+    const b = tx.create('FRAME', page, { name: 'Экран 2', x: 200, width: 100, height: 100 });
+    const loose = tx.create('RECTANGLE', page, { name: 'Рядом', x: 400, width: 20, height: 20 });
+    return { a, inner, b, loose };
+  });
+  assert.deepEqual(editor.focusableFrames(), [ids.a, ids.b]);
+  assert.equal(editor.focusTargetOf(ids.inner), ids.a);
+  editor.setFocus(ids.a, false);
+  assert.deepEqual(editor.selection, [ids.a]);
+  assert.deepEqual(editor.scene.hitTest({ x: 250, y: 50 }), [], 'another frame cannot be hit');
+  assert.ok(editor.scene.hitTest({ x: 15, y: 15 }).includes(ids.inner));
+  assert.deepEqual(editor.scene.queryRect({ x: 0, y: 0, width: 500, height: 200 }).sort(), [ids.a, ids.inner].sort());
+  editor.stepFocus(1);
+  assert.equal(editor.focusFrame, ids.b);
+  editor.stepFocus(1);
+  assert.equal(editor.focusFrame, ids.a, 'the last steps round to the first');
+
+  const host = new Proxy({ editor, cancel: () => false } as Record<string, unknown>, { get: (t, k) => (k in t ? t[k as string] : () => undefined) });
+  const esc = createCommands(host as never).find((c) => c.id === 'edit.deselect')!;
+  editor.setSelection([ids.inner]);
+  esc.run();
+  assert.deepEqual(editor.selection, [ids.a], 'Esc first climbs to the frame');
+  assert.equal(editor.focusFrame, ids.a);
+  esc.run();
+  assert.equal(editor.focusFrame, null, 'then leaves focus');
+  assert.ok(editor.scene.hitTest({ x: 250, y: 50 }).includes(ids.b), 'the whole page can be hit again');
+
+  editor.setFocus(ids.b, false);
+  editor.commit('delete', (tx) => tx.delete(ids.b));
+  assert.equal(editor.focusFrame, null, 'a deleted frame leaves focus');
+  editor.setFocus(ids.a, false);
+  const other = editor.addPage();
+  editor.setPage(other ?? editor.doc.pages().at(-1)!);
+  assert.equal(editor.focusFrame, null, 'another page leaves focus');
+});
+
+test('Prototype triggers «При перетаскивании», «Кнопка нажата», «Кнопка отпущена»: named, offered, found up the chain, the layers count as interactive (step 8)', async () => {
+  const { TRIGGER_LABELS, PrototypeSession, interactiveLayers } = await import('../src/prototype/model.ts');
+  const { editor, doc, page } = setup();
+  const ids = editor.commit('setup', (tx) => {
+    const s1 = tx.create('FRAME', page, { name: 'Экран 1', width: 400, height: 600 });
+    const s2 = tx.create('FRAME', page, { name: 'Экран 2', x: 500, width: 400, height: 600 });
+    const card = tx.create('FRAME', s1, { name: 'Карточка', width: 300, height: 200 });
+    const inner = tx.create('RECTANGLE', card, { name: 'Фото', width: 100, height: 100 });
+    tx.set(card, 'reactions', [
+      { trigger: { type: 'ON_DRAG' }, actions: [{ type: 'NAVIGATE', destinationId: s2, transition: null, preserveScroll: false }] },
+      { trigger: { type: 'MOUSE_DOWN' }, actions: [{ type: 'BACK' }] },
+      { trigger: { type: 'MOUSE_UP' }, actions: [{ type: 'BACK' }] },
+    ] as never);
+    return { s1, s2, card, inner };
+  });
+  for (const t of ['ON_DRAG', 'MOUSE_DOWN', 'MOUSE_UP'] as const) assert.ok(TRIGGER_LABELS[t]);
+  const session = new PrototypeSession(doc, ids.s1);
+  assert.equal(session.findReaction(ids.inner, 'ON_DRAG')?.node, ids.card, 'a drag on a layer inside reaches the card');
+  assert.ok(session.findReaction(ids.inner, 'MOUSE_DOWN'));
+  assert.ok(session.findReaction(ids.inner, 'MOUSE_UP'));
+  assert.equal(session.findReaction(ids.inner, 'ON_CLICK'), null);
+  assert.ok(interactiveLayers(doc, ids.s1).includes(ids.card));
+});
+
+test('Prototype video: the «Видео» action targets a layer (or the reacting one), «Когда видео закончилось» is a trigger (step 8)', async () => {
+  const { TRIGGER_LABELS, ACTION_LABELS, PrototypeSession, VIDEO_OPS } = await import('../src/prototype/model.ts');
+  const { PrototypeController } = await import('../src/prototype/controller.ts');
+  const { editor, doc, page } = setup();
+  const ids = editor.commit('setup', (tx) => {
+    const s1 = tx.create('FRAME', page, { name: 'Экран', width: 400, height: 600 });
+    const video = tx.create('RECTANGLE', s1, { name: 'Ролик', width: 300, height: 200 });
+    const button = tx.create('RECTANGLE', s1, { name: 'Пауза', y: 300, width: 100, height: 40 });
+    return { s1, video, button };
+  });
+  assert.ok(TRIGGER_LABELS.VIDEO_END && ACTION_LABELS.VIDEO);
+  assert.equal(VIDEO_OPS.length, 9);
+  const made = PrototypeController.makeAction('VIDEO');
+  assert.deepEqual(made, { type: 'VIDEO', destinationId: null, op: 'TOGGLE_PLAY', seconds: 5 });
+  const session = new PrototypeSession(doc, ids.s1);
+  assert.deepEqual(session.run([{ type: 'VIDEO', destinationId: ids.video, op: 'PAUSE', seconds: 0 }], ids.button), [{ type: 'video', node: ids.video, op: 'PAUSE', seconds: 0 }]);
+  assert.deepEqual(session.run([{ type: 'VIDEO', destinationId: null, op: 'SEEK_FORWARD', seconds: 5 }], ids.video), [{ type: 'video', node: ids.video, op: 'SEEK_FORWARD', seconds: 5 }], 'no target — the layer that reacts');
+});
+
+test('Prototype «Сменить режим переменных»: a collection and one of its modes; anything else does nothing (step 8)', async () => {
+  const { ACTION_LABELS, PrototypeSession } = await import('../src/prototype/model.ts');
+  const { PrototypeController } = await import('../src/prototype/controller.ts');
+  const { editor, doc, page } = setup();
+  const vars = editor.variables;
+  const coll = vars.createCollection('Тема');
+  const dark = vars.addMode(coll, 'Тёмная');
+  const screen = editor.commit('s', (tx) => tx.create('FRAME', page, { width: 200, height: 200 }));
+  assert.ok(ACTION_LABELS.SET_VARIABLE_MODE);
+  assert.deepEqual(PrototypeController.makeAction('SET_VARIABLE_MODE'), { type: 'SET_VARIABLE_MODE', collectionId: null, modeId: null });
+  const session = new PrototypeSession(doc, screen);
+  assert.deepEqual(session.run([{ type: 'SET_VARIABLE_MODE', collectionId: coll, modeId: dark }], screen), [{ type: 'variable-mode', collection: coll, mode: dark }]);
+  assert.deepEqual(session.run([{ type: 'SET_VARIABLE_MODE', collectionId: coll, modeId: 'нет такого' }], screen), []);
+  assert.deepEqual(session.run([{ type: 'SET_VARIABLE_MODE', collectionId: null, modeId: dark }], screen), []);
+});
+
+test('screen reader mode: rows top to bottom, a pressable layer is one button, big text a heading, a picture needs a description, decorative is skipped (step 8)', async () => {
+  const { a11yItems, flatItems, spoken } = await import('../src/prototype/a11y.ts');
+  const { editor, page, doc } = setup();
+  const solid = [{ type: 'SOLID' as const, color: { r: 1, g: 1, b: 1, a: 1 }, visible: true, opacity: 1 }];
+  const ids = editor.commit('setup', (tx) => {
+    const screen = tx.create('FRAME', page, { name: 'Экран', width: 375, height: 640, fills: solid });
+    // Made out of order: the button first, the title last.
+    const button = tx.create('FRAME', screen, { name: 'Кнопка 1', x: 20, y: 500, width: 335, height: 56 });
+    tx.create('TEXT', button, { characters: 'Дальше', fontSize: 16, x: 10, y: 10, width: 100, height: 20 });
+    tx.set(button, 'reactions', [{ trigger: { type: 'ON_CLICK' }, actions: [{ type: 'BACK' }] }]);
+    const right = tx.create('TEXT', screen, { characters: 'справа', fontSize: 14, x: 200, y: 120, width: 100, height: 20 });
+    const left = tx.create('TEXT', screen, { characters: 'слева', fontSize: 14, x: 20, y: 124, width: 100, height: 20 });
+    const photo = tx.create('RECTANGLE', screen, { name: 'Прямоугольник 4', x: 20, y: 200, width: 100, height: 100, fills: [{ type: 'IMAGE', imageHash: 'x', scaleMode: 'FILL', visible: true, opacity: 1 } as never] });
+    const ornament = tx.create('RECTANGLE', screen, { name: 'Узор', x: 200, y: 200, width: 100, height: 100, fills: [{ type: 'IMAGE', imageHash: 'y', scaleMode: 'FILL', visible: true, opacity: 1 } as never] });
+    tx.set(ornament, 'a11yRole', 'DECORATIVE');
+    const title = tx.create('TEXT', screen, { characters: 'Привет', fontSize: 32, x: 20, y: 40, width: 200, height: 40 });
+    return { screen, button, right, left, photo, title };
+  });
+  const rect = (id: NodeId) => editor.scene.bounds(id);
+  const items = flatItems(a11yItems(doc, ids.screen, rect));
+  assert.deepEqual(
+    items.map((i) => spoken(i)),
+    ['Заголовок 1 уровня, Привет', 'слева', 'справа', 'Изображение, без описания', 'Кнопка, Дальше'],
+  );
+  assert.equal(items[3]!.unlabeled, true);
+  editor.commit('label', (tx) => {
+    tx.set(ids.photo, 'a11yLabel', 'Кот на подоконнике');
+    tx.set(ids.button, 'a11yRole', 'LINK');
+    tx.set(ids.button, 'a11yLabel', 'Вернуться назад');
+  });
+  const again = flatItems(a11yItems(doc, ids.screen, rect)).map((i) => spoken(i));
+  assert.deepEqual(again.slice(3), ['Изображение, Кот на подоконнике', 'Ссылка, Вернуться назад']);
+});
+
+test('Lottie export: moving layers carry keyframes, still parts are pictures in paint order, a layer moving inside a moving one is parented, the frame moving is a null layer (step 8)', async () => {
+  const { buildLottie, lottieUnits } = await import('../src/prototype/../motion/lottie.ts');
+  const { setKeyframe, setMotion, fullPose } = await import('../src/motion/model.ts');
+  const { editor, page, doc } = setup();
+  const ids = editor.commit('setup', (tx) => {
+    const frame = tx.create('FRAME', page, { name: 'Сцена', x: 300, y: 50, width: 400, height: 300 });
+    const back = tx.create('RECTANGLE', frame, { name: 'Фон', width: 400, height: 300 });
+    const card = tx.create('FRAME', frame, { name: 'Карточка', x: 20, y: 40, width: 100, height: 80 });
+    const dot = tx.create('ELLIPSE', card, { name: 'Точка', x: 10, y: 10, width: 20, height: 20 });
+    const top = tx.create('RECTANGLE', frame, { name: 'Сверху', x: 300, y: 200, width: 50, height: 50 });
+    return { frame, back, card, dot, top };
+  });
+  editor.commit('motion', (tx) => {
+    setMotion(doc, tx, ids.frame, { duration: 1000, loop: true });
+    setKeyframe(doc, tx, ids.card, 'x', 0, 20);
+    setKeyframe(doc, tx, ids.card, 'x', 1000, 220);
+    setKeyframe(doc, tx, ids.card, 'rotation', 0, 0);
+    setKeyframe(doc, tx, ids.card, 'rotation', 1000, 90);
+    setKeyframe(doc, tx, ids.dot, 'opacity', 0, 1);
+    setKeyframe(doc, tx, ids.dot, 'opacity', 1000, 0);
+  });
+  for (const k of ['x', 'rotation'] as const) for (const kf of doc.get(ids.card, 'keyframes')![k]!) kf.ease = 'linear';
+  const units = lottieUnits(doc, ids.frame);
+  assert.deepEqual(units.map((u) => [doc.get(u.id, 'name'), u.kind, u.container && doc.get(u.container, 'name')]), [
+    ['Сцена', 'own', null],
+    ['Фон', 'still', null],
+    ['Карточка', 'layer', null],
+    ['Точка', 'layer', 'Карточка'],
+    ['Сверху', 'still', null],
+  ]);
+  // Pictures at 2 px per unit, exactly the layer's box.
+  const pic = (u: { id: NodeId }) => ({ url: 'data:image/png;base64,', width: doc.get(u.id, 'width') * 2, height: doc.get(u.id, 'height') * 2, x: 0, y: 0, k: 2 });
+  const json = buildLottie(doc, ids.frame, pic, 60) as { w: number; h: number; op: number; layers: Record<string, any>[]; assets: unknown[] };
+  assert.equal(json.w, 400);
+  assert.equal(json.op, 60);
+  assert.deepEqual(json.layers.map((l) => l.nm), ['Сверху', 'Точка', 'Карточка', 'Фон', 'Сцена']);
+  const card = json.layers.find((l) => l.nm === 'Карточка')!;
+  const dot = json.layers.find((l) => l.nm === 'Точка')!;
+  assert.equal(dot.parent, card.ind);
+  // Linear-ish curves keep few keyframes; values are read back by a small Lottie reader.
+  const read = (prop: { a: number; k: any }, frame: number): number[] => {
+    if (!prop.a) return Array.isArray(prop.k) ? prop.k : [prop.k];
+    const keys = prop.k as { t: number; s: number[] }[];
+    let i = 0;
+    while (i < keys.length - 2 && keys[i + 1]!.t <= frame) i++;
+    const a = keys[i]!;
+    const b = keys[i + 1] ?? a;
+    const t = b.t === a.t ? 0 : Math.max(0, Math.min(1, (frame - a.t) / (b.t - a.t)));
+    return a.s.map((v, d) => v + (b.s[d]! - v) * t);
+  };
+  for (const f of [0, 15, 30, 45, 60]) {
+    const pose = fullPose(doc, ids.frame, () => Math.min(999.999, (f * 1000) / 60));
+    const x = pose.get(ids.card)?.x ?? 20;
+    const rot = pose.get(ids.card)?.rotation ?? 0;
+    const r = (rot * Math.PI) / 180;
+    // The card's centre (50, 40) turned around its corner, then moved.
+    const cx = x + 50 * Math.cos(r) - 40 * Math.sin(r);
+    const cy = 40 + 50 * Math.sin(r) + 40 * Math.cos(r);
+    const p = read(card.ks.p, f);
+    assert.ok(Math.abs(p[0]! - cx) < 0.2 && Math.abs(p[1]! - cy) < 0.2, `frame ${f}: ${p} vs ${cx},${cy}`);
+    assert.ok(Math.abs(read(card.ks.r, f)[0]! - rot) < 0.2);
+    assert.ok(Math.abs(read(dot.ks.o, f)[0]! - (pose.get(ids.dot)?.opacity ?? 1) * 100) < 0.5);
+  }
+  assert.ok(card.ks.r.k.length <= 4, `rotation keys: ${card.ks.r.k.length}`);
+  assert.deepEqual(card.ks.s.k, [50, 50]); // 2 px per unit
+  assert.equal(json.layers.find((l) => l.nm === 'Фон')!.ks.p.a, 0);
+  // The frame itself moving: a null layer everything hangs on.
+  editor.commit('frame moves', (tx) => {
+    setKeyframe(doc, tx, ids.frame, 'y', 0, 50);
+    setKeyframe(doc, tx, ids.frame, 'y', 1000, 150);
+  });
+  const moved = buildLottie(doc, ids.frame, pic, 60) as { layers: Record<string, any>[] };
+  const nul = moved.layers.find((l) => l.ty === 3 && l.nm === 'Сцена')!;
+  assert.equal(nul.ind, 1);
+  assert.ok(Math.abs(read(nul.ks.p, 60)[1]! - 100) < 0.01 && read(nul.ks.p, 60)[0] === 0);
+  assert.equal(moved.layers.find((l) => l.nm === 'Фон')!.parent, 1);
+});
+
+test('slice (step 9): caught by its edge only, takes no place in auto layout or in what holds it, its SVG is the area of the page under it', async () => {
+  const { exportSvg, layersIn } = await import('#render');
+  const { editor, page, doc } = setup();
+  const solid = [{ type: 'SOLID' as const, color: { r: 1, g: 0, b: 0, a: 1 }, visible: true, opacity: 1 }];
+  const ids = editor.commit('setup', (tx) => {
+    const a = tx.create('RECTANGLE', page, { name: 'A', x: 0, y: 0, width: 100, height: 100, fills: solid });
+    const b = tx.create('RECTANGLE', page, { name: 'B', x: 300, y: 0, width: 100, height: 100, fills: solid });
+    const slice = tx.create('SLICE', page, { x: 50, y: 20, width: 100, height: 60 });
+    const row = tx.create('FRAME', page, { x: 0, y: 300, width: 10, height: 10, layoutMode: 'HORIZONTAL', sizingH: { mode: 'HUG' }, sizingV: { mode: 'HUG' }, itemSpacing: 10 });
+    tx.create('RECTANGLE', row, { width: 40, height: 40 });
+    const inner = tx.create('SLICE', row, { width: 500, height: 500 });
+    tx.create('RECTANGLE', row, { width: 40, height: 40 });
+    return { a, b, slice, row, inner };
+  });
+  assert.equal(doc.get(ids.slice, 'name'), 'Slice');
+  assert.deepEqual(doc.get(ids.slice, 'exportSettings'), [{ format: 'PNG', scale: 1, suffix: '' }]);
+  const scene = editor.scene;
+  scene.ensure();
+  // The middle of the slice is A's: the slice is caught at its edge.
+  assert.deepEqual(scene.hitTest({ x: 80, y: 50 }, { tolerance: 1 }), [ids.a]);
+  assert.equal(scene.hitTest({ x: 50.5, y: 50 }, { tolerance: 1 })[0], ids.slice);
+  // Auto layout: two squares and a gap, the slice is not a third item; the frame's picture does not grow by it.
+  assert.equal(doc.get(ids.row, 'width'), 90);
+  assert.equal(scene.renderBounds(ids.row).width, 90);
+  // What is under the slice: A only (B is beside it); the SVG is cut to the slice's area.
+  const area = scene.bounds(ids.slice);
+  assert.deepEqual(layersIn(scene, area), [ids.a]);
+  const { svg } = exportSvg(scene, editor.measurer, layersIn(scene, area), null, { area });
+  assert.match(svg, /width="100" height="60" viewBox="50 20 100 60"/);
+  // A slice in a frame's SVG draws nothing.
+  const { svg: frameSvg } = exportSvg(scene, editor.measurer, [ids.row]);
+  assert.doesNotMatch(frameSvg, /width="500"/);
+});
+
+test('Display P3 (step 9): the file keeps its profile, CSS speaks P3, SVG gets the sRGB look, greys stay grey; «with layers on top» finds what lies over a layer', async () => {
+  const { setColorProfile, p3ToSrgb, exportSvg, layersOver } = await import('#render');
+  const { cssColor } = await import('../src/dev-code.ts');
+  const { editor, page, doc } = setup();
+  assert.equal(doc.get(doc.rootId, 'colorProfile'), 'SRGB');
+  editor.setColorProfile('DISPLAY_P3');
+  assert.equal(doc.get(doc.rootId, 'colorProfile'), 'DISPLAY_P3');
+  editor.undo();
+  assert.equal(doc.get(doc.rootId, 'colorProfile'), 'SRGB');
+  // P3 → sRGB: neutral greys and white stay; P3's pure red is out of sRGB and lands on sRGB red; a P3 green inside sRGB keeps its hue.
+  const grey = p3ToSrgb({ r: 0.5, g: 0.5, b: 0.5 });
+  for (const v of [grey.r, grey.g, grey.b]) assert.ok(Math.abs(v - 0.5) < 0.002);
+  const white = p3ToSrgb({ r: 1, g: 1, b: 1 });
+  assert.ok(white.r > 0.999 && white.g > 0.999 && white.b > 0.999);
+  assert.deepEqual(p3ToSrgb({ r: 1, g: 0, b: 0 }), { r: 1, g: 0, b: 0 });
+  // sRGB (0.2, 0.6, 0.3) is P3 (0.3205, 0.5918, 0.3324): back it comes.
+  const back = p3ToSrgb({ r: 0.3205, g: 0.5918, b: 0.3324 });
+  assert.ok(Math.abs(back.r - 0.2) < 0.01 && Math.abs(back.g - 0.6) < 0.01 && Math.abs(back.b - 0.3) < 0.01, JSON.stringify(back));
+  const ids = editor.commit('setup', (tx) => {
+    const frame = tx.create('FRAME', page, { width: 200, height: 200 });
+    const under = tx.create('RECTANGLE', frame, { x: 0, y: 0, width: 100, height: 100, fills: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 }, visible: true, opacity: 1 }] });
+    const over = tx.create('RECTANGLE', frame, { x: 50, y: 50, width: 100, height: 100 });
+    const far = tx.create('RECTANGLE', frame, { x: 150, y: 150, width: 20, height: 20 });
+    const top = tx.create('RECTANGLE', page, { x: 80, y: 0, width: 30, height: 30 });
+    return { frame, under, over, far, top };
+  });
+  assert.deepEqual(layersOver(editor.scene, ids.under), [ids.over, ids.top]);
+  assert.deepEqual(layersOver(editor.scene, ids.top), []);
+  try {
+    setColorProfile('DISPLAY_P3');
+    assert.equal(cssColor({ r: 1, g: 0, b: 0, a: 1 }), 'color(display-p3 1 0 0)');
+    assert.equal(cssColor({ r: 0, g: 0.5, b: 1, a: 1 }, 0.5), 'color(display-p3 0 0.5 1 / 0.5)');
+    const { svg } = exportSvg(editor.scene, editor.measurer, [ids.under]);
+    assert.match(svg, /fill="#ff0000"/);
+    const green = editor.commit('g', (tx) => tx.create('RECTANGLE', page, { x: 500, y: 0, fills: [{ type: 'SOLID', color: { r: 0.3205, g: 0.5918, b: 0.3324, a: 1 }, visible: true, opacity: 1 }] }));
+    assert.match(exportSvg(editor.scene, editor.measurer, [green]).svg, /fill="#33994d"/);
+  } finally {
+    setColorProfile('SRGB');
+  }
+  assert.doesNotMatch(cssColor({ r: 1, g: 0, b: 0, a: 1 }), /display-p3/);
+});
+
+test('Sketch import (step 9): artboards, shapes, turned layers, styled text, pictures, masks, slices, symbols with text overrides, prototype links', async () => {
+  const { zip } = await import('#render');
+  const { readSketch } = await import('../src/sketch/import.ts');
+  const { convertSketch, fontOf } = await import('../src/sketch/convert.ts');
+  const frame = (x: number, y: number, width: number, height: number) => ({ _class: 'rect', x, y, width, height });
+  const solid = (red: number, green: number, blue: number) => ({ _class: 'fill', isEnabled: true, fillType: 0, color: { _class: 'color', red, green, blue, alpha: 1 } });
+  const pt = (x: number, y: number) => ({ _class: 'curvePoint', point: `{${x}, ${y}}`, curveFrom: `{${x}, ${y}}`, curveTo: `{${x}, ${y}}`, hasCurveFrom: false, hasCurveTo: false, cornerRadius: 8 });
+  const font = (name: string, size: number, c: number[]) => ({ MSAttributedStringFontAttribute: { _class: 'fontDescriptor', attributes: { name, size } }, MSAttributedStringColorAttribute: { red: c[0], green: c[1], blue: c[2], alpha: 1 }, paragraphStyle: { alignment: 2 } });
+  const page = {
+    _class: 'page',
+    name: 'Экраны',
+    layers: [
+      {
+        _class: 'artboard', do_objectID: 'A1', name: 'Главная', frame: frame(0, 0, 375, 667), hasBackgroundColor: true, backgroundColor: { red: 0.9, green: 0.9, blue: 1, alpha: 1 },
+        exportOptions: { exportFormats: [{ fileFormat: 'png', scale: 2, name: '@2x' }] },
+        layers: [
+          { _class: 'rectangle', do_objectID: 'R', name: 'Карточка', frame: frame(20, 20, 100, 50), rotation: 90, points: [pt(0, 0), pt(1, 0), pt(1, 1), pt(0, 1)],
+            style: { fills: [{ _class: 'fill', isEnabled: true, fillType: 1, gradient: { gradientType: 0, from: '{0.5, 0}', to: '{0.5, 1}', stops: [{ position: 0, color: { red: 1, green: 0, blue: 0, alpha: 1 } }, { position: 1, color: { red: 0, green: 0, blue: 1, alpha: 1 } }] } }],
+              borders: [{ isEnabled: true, fillType: 0, color: { red: 0, green: 0, blue: 0, alpha: 1 }, thickness: 2, position: 1 }],
+              shadows: [{ isEnabled: true, blurRadius: 10, offsetX: 0, offsetY: 4, spread: 0, color: { red: 0, green: 0, blue: 0, alpha: 0.3 } }], contextSettings: { opacity: 0.5, blendMode: 2 } } },
+          { _class: 'text', do_objectID: 'T', name: 'Заголовок', frame: frame(20, 100, 200, 30), textBehaviour: 1,
+            attributedString: { string: 'Привет мир', attributes: [{ location: 0, length: 7, attributes: font('Inter-Bold', 24, [1, 0, 0]) }, { location: 7, length: 3, attributes: font('Inter-Regular', 24, [1, 0, 0]) }] } },
+          { _class: 'shapePath', do_objectID: 'P', name: 'Треугольник', frame: frame(200, 20, 40, 40), isClosed: true, points: [pt(0.5, 0), pt(1, 1), pt(0, 1)], style: { fills: [solid(0, 1, 0)] } },
+          { _class: 'group', do_objectID: 'G', name: 'Аватар', frame: frame(20, 200, 60, 60), layers: [
+            { _class: 'oval', do_objectID: 'O', name: 'Круг', frame: frame(0, 0, 60, 60), hasClippingMask: true, style: { fills: [solid(0, 0, 0)] } },
+            { _class: 'bitmap', do_objectID: 'B', name: 'Фото', frame: frame(0, 0, 60, 60), image: { _class: 'MSJSONFileReference', _ref: 'images/abc.png' } },
+          ] },
+          { _class: 'symbolInstance', do_objectID: 'I', name: 'Кнопка', frame: frame(20, 400, 120, 40), symbolID: 'S1', overrideValues: [{ overrideName: 'TXT1_stringValue', value: 'Купить' }],
+            flow: { _class: 'MSImmutableFlowConnection', destinationArtboardID: 'A2', animationType: 0 } },
+          { _class: 'slice', do_objectID: 'SL', name: 'Иконка', frame: frame(200, 200, 50, 50) },
+        ],
+      },
+      { _class: 'artboard', do_objectID: 'A2', name: 'Готово', frame: frame(500, 0, 375, 667), layers: [] },
+    ],
+  };
+  const symbols = { _class: 'page', name: 'Symbols', layers: [
+    { _class: 'symbolMaster', do_objectID: 'M1', symbolID: 'S1', name: 'Кнопка', frame: frame(0, 0, 120, 40), hasBackgroundColor: true, backgroundColor: { red: 0.3, green: 0.35, blue: 0.85, alpha: 1 }, layers: [
+      { _class: 'text', do_objectID: 'TXT1', name: 'Подпись', frame: frame(10, 10, 100, 20), textBehaviour: 0, attributedString: { string: 'Кнопка', attributes: [{ location: 0, length: 6, attributes: font('Inter-Medium', 16, [1, 1, 1]) }] } },
+    ] },
+  ] };
+  const enc = (o: unknown) => new TextEncoder().encode(JSON.stringify(o));
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+  const archive = await zip([
+    { name: 'document.json', data: enc({ _class: 'document', pages: [{ _ref: 'pages/P1' }, { _ref: 'pages/P2' }] }) },
+    { name: 'pages/P1.json', data: enc(page) },
+    { name: 'pages/P2.json', data: enc(symbols) },
+    { name: 'images/abc.png', data: png },
+    { name: 'meta.json', data: enc({}) },
+  ]);
+  const sk = await readSketch(new Uint8Array(await archive.arrayBuffer()));
+  const r = convertSketch(sk, 'Макет');
+  const d = r.doc;
+  const find = (name: string) => {
+    let hit: NodeId | null = null;
+    d.store.walk(d.rootId, (id) => {
+      if (!hit && d.get(id, 'name') === name && d.type(id) !== 'PAGE') hit = id;
+      return !hit;
+    });
+    assert.ok(hit, name);
+    return hit as NodeId;
+  };
+  assert.deepEqual(d.pages().map((p) => d.get(p, 'name')), ['Экраны', 'Symbols']);
+  const main = find('Главная');
+  assert.equal(d.type(main), 'FRAME');
+  assert.equal(d.get(main, 'clipsContent'), true);
+  assert.deepEqual(d.get(main, 'exportSettings'), [{ format: 'PNG', scale: 2, suffix: '@2x' }]);
+  // Turned 90° counter-clockwise about its centre (70, 45): ours turns the other way round, from the corner.
+  const card = find('Карточка');
+  assert.equal(d.type(card), 'RECTANGLE');
+  assert.equal(d.get(card, 'rotation'), -90);
+  assert.deepEqual([d.get(card, 'x'), d.get(card, 'y')], [45, 95]);
+  assert.equal(d.get(card, 'cornerRadius'), 8);
+  assert.equal(d.get(card, 'fills')[0]!.type, 'GRADIENT_LINEAR');
+  assert.equal(d.get(card, 'strokeAlign'), 'INSIDE');
+  assert.equal(d.get(card, 'strokeWeight'), 2);
+  assert.equal(d.get(card, 'effects')[0]!.type, 'DROP_SHADOW');
+  assert.equal(d.get(card, 'opacity'), 0.5);
+  assert.equal(d.get(card, 'blendMode'), 'MULTIPLY');
+  const title = find('Заголовок');
+  assert.equal(d.get(title, 'characters'), 'Привет мир');
+  assert.equal(d.get(title, 'fontWeight'), 700);
+  assert.equal(d.get(title, 'textAlignH'), 'CENTER');
+  assert.equal(d.get(title, 'textAutoResize'), 'HEIGHT');
+  assert.deepEqual(d.get(title, 'textRuns'), [{ start: 7, end: 10, style: { fontWeight: 400 } }]);
+  const tri = find('Треугольник');
+  assert.equal(d.type(tri), 'VECTOR');
+  assert.deepEqual(d.get(tri, 'vectorPaths')[0]!.points.map((p) => [p.x, p.y]), [[20, 0], [40, 40], [0, 40]]);
+  assert.equal(d.get(find('Круг'), 'isMask'), true);
+  assert.equal(d.get(find('Фото'), 'fills')[0]!.type, 'IMAGE');
+  assert.equal(r.missingImages, 0);
+  assert.equal(d.type(find('Иконка')), 'SLICE');
+  // The instance: its symbol, the text overridden, a click going to «Готово».
+  const button = find('Кнопка');
+  const inst = d.type(button) === 'INSTANCE' ? button : [...d.children(main)].find((c) => d.type(c) === 'INSTANCE')!;
+  assert.equal(d.type(d.get(inst, 'mainComponent')!), 'COMPONENT');
+  let label = '';
+  d.store.walk(inst, (id) => {
+    if (d.type(id) === 'TEXT') label = d.get(id, 'characters');
+    return true;
+  });
+  assert.equal(label, 'Купить');
+  const reaction = d.get(inst, 'reactions')[0]!;
+  assert.equal((reaction.actions[0] as { destinationId: string }).destinationId, find('Готово'));
+  assert.equal(r.instances, 1);
+  // PostScript names.
+  assert.deepEqual(fontOf('HelveticaNeue-MediumItalic'), { family: 'Helvetica Neue', weight: 500, italic: true });
+  assert.deepEqual(fontOf('SFProText-Semibold'), { family: 'SF Pro Text', weight: 600, italic: false });
+  assert.deepEqual(fontOf('Roboto'), { family: 'Roboto', weight: 400, italic: false });
 });

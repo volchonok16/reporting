@@ -14,7 +14,8 @@
 // only the values it overrides.
 // Import is two-step: plan (what will be added or changed, for a preview) and apply.
 
-import { isGradient, tr } from '#core';
+import { easingText, isGradient, parseEasing, tr } from '#core';
+import { BEZIER_PRESETS } from './prototype/easing.ts';
 import { baseCollection, isExtension, isVariable, mapReferences, resolveInMode } from '#components';
 import {
   colorToHex,
@@ -41,7 +42,8 @@ const STYLES_GROUP = tr('Стили');
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 type JsonObject = { [key: string]: Json };
 
-const DTCG_TYPE: Record<VariableType, string> = { COLOR: 'color', FLOAT: 'number', STRING: 'string', BOOLEAN: 'boolean' };
+// W3C design tokens: a duration and a cubic Bézier are their own types.
+const DTCG_TYPE: Record<VariableType, string> = { COLOR: 'color', FLOAT: 'number', STRING: 'string', BOOLEAN: 'boolean', TIMING: 'duration', EASING: 'cubicBezier' };
 
 function isObject(v: unknown): v is JsonObject {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -73,7 +75,14 @@ function aliasRef(doc: Document, id: NodeId): string {
   return `{${[doc.get(doc.parent(id)!, 'name'), ...splitName(doc.get(id, 'name'))].join('.')}}`;
 }
 
-function literal(value: VariableValue, doc: Document): Json {
+function literal(value: VariableValue, doc: Document, type?: VariableType): Json {
+  // Motion values as W3C tokens write them: a duration with its unit, a curve as four numbers (a spring stays text).
+  if (type === 'TIMING' && typeof value === 'number') return `${value}ms`;
+  if (type === 'EASING' && typeof value === 'string') {
+    const e = parseEasing(value);
+    if (e && e.type !== 'SPRING') return e.type === 'CUSTOM_BEZIER' ? [...e.bezier] : [...BEZIER_PRESETS[e.type]];
+    return value;
+  }
   if (isExpression(value)) return `= ${mapReferences(value.expr, (ref) => (ref.startsWith('#') && isVariable(doc, ref.slice(1)) ? aliasRef(doc, ref.slice(1)).slice(1, -1) : null))}`;
   if (isAlias(value)) return isVariable(doc, value.id) ? `${aliasRef(doc, value.id)}${value.opacity !== undefined ? ` @ ${Math.round(value.opacity * 100)}%` : ''}` : null;
   if (isColorValue(value)) return colorToHex(value, value.a < 1);
@@ -134,12 +143,12 @@ export function exportTokens(doc: Document): JsonObject {
       const type = doc.get(v, 'varType');
       const values = extension ? overrides[v]! : doc.get(v, 'varValues');
       const def = values[modes[0]?.id ?? ''];
-      const ext: JsonObject = { modes: Object.fromEntries(modes.map((m) => [m.name, values[m.id] !== undefined ? literal(values[m.id]!, doc) : null])) };
+      const ext: JsonObject = { modes: Object.fromEntries(modes.map((m) => [m.name, values[m.id] !== undefined ? literal(values[m.id]!, doc, type) : null])) };
       if (doc.get(v, 'scopes').length > 0) ext.scopes = [...doc.get(v, 'scopes')];
       if (Object.keys(doc.get(v, 'codeSyntax')).length > 0) ext.codeSyntax = { ...doc.get(v, 'codeSyntax') };
       if (doc.get(v, 'hiddenFromPublishing')) ext.hidden = true;
       // An alias with changed opacity and an expression are not plain DTCG: $value gets the result.
-      let value: Json = def === undefined ? null : literal(def, doc);
+      let value: Json = def === undefined ? null : literal(def, doc, type);
       if (def !== undefined && ((isAlias(def) && def.opacity !== undefined) || isExpression(def))) {
         const resolved = resolveInMode(doc, v, modes[0]!.id, extension ? c : undefined);
         value = resolved === undefined ? null : isColorValue(resolved) ? colorToHex(resolved, resolved.a < 1) : resolved;
@@ -205,7 +214,8 @@ const TYPE_FROM_DTCG: Record<string, VariableType> = {
   number: 'FLOAT',
   dimension: 'FLOAT',
   fontWeight: 'FLOAT',
-  duration: 'FLOAT',
+  duration: 'TIMING',
+  cubicBezier: 'EASING',
   string: 'STRING',
   fontFamily: 'STRING',
   boolean: 'BOOLEAN',
@@ -282,7 +292,7 @@ export function planImport(editor: Editor, json: unknown): ImportPlan {
       continue;
     }
     if ('$value' in group) {
-      warnings.push(tr('«{0}»: токен на верхнем уровне — положите его в группу-коллекцию', key));
+      warnings.push(tr('«{0}»: токен на верхнем уровне. Положите его в группу-коллекцию', key));
       continue;
     }
     const modes = Array.isArray(ext.modes) ? ext.modes.filter((m): m is string => typeof m === 'string') : [];
@@ -420,6 +430,11 @@ export function planImport(editor: Editor, json: unknown): ImportPlan {
             else warnings.push(tr('«{0}/{1}»: ссылка {2} не найдена', t.collection, t.name, raw));
           } else if (t.type === 'COLOR') value = typeof raw === 'string' ? parseColor(raw) : null;
           else if (t.type === 'FLOAT') value = dimension(raw);
+          else if (t.type === 'TIMING') value = dimension(raw);
+          else if (t.type === 'EASING') {
+            const e = Array.isArray(raw) && raw.length === 4 && raw.every((n) => typeof n === 'number') ? parseEasing(`cubic-bezier(${raw.join(',')})`) : typeof raw === 'string' ? parseEasing(raw) : null;
+            value = e ? easingText(e) : null;
+          }
           else if (t.type === 'BOOLEAN') value = typeof raw === 'boolean' ? raw : raw === 'true' ? true : raw === 'false' ? false : null;
           else value = typeof raw === 'string' ? raw : typeof raw === 'number' ? String(raw) : null;
           if (value !== null) values[mode] = value;

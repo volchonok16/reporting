@@ -11,7 +11,7 @@
 // snapshot.json) are read as they are and take this form on the next save.
 
 import { fromSnapshot, toSnapshot, type Document, type Snapshot } from '../../core/src/index.ts';
-import type { BlobStore } from './storage.ts';
+import type { FileBlobs } from './storage.ts';
 
 const HASH = /^[a-f0-9]{64}$/;
 
@@ -20,9 +20,9 @@ type Stored = Snapshot & { blobMimes?: Record<string, string> };
 export const imageName = (hash: string) => `i${hash}`;
 
 export class Documents {
-  private readonly files: BlobStore;
+  private readonly files: FileBlobs;
 
-  constructor(files: BlobStore) {
+  constructor(files: FileBlobs) {
     this.files = files;
   }
 

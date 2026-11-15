@@ -8,9 +8,11 @@
 // platform when set, else its name made into an identifier. Styles are named
 // in comments, as in Figma's Dev Mode.
 
-import { colorToHex, isAlias, isGradient, type Color, type Document, type Effect, type GridTrack, type NodeId, type Paint, type Sizing, type VariableLiteral } from '#core';
+import { colorToHex, cssComment, cssNoTags, cssString, isAlias, isGradient, safeLink, type Color, type Document, type Effect, type GridTrack, type NodeId, type Paint, type Sizing, type VariableLiteral } from '#core';
 import { resolveInMode } from '#components';
+import { colorProfile } from '#render';
 import { featureString, variationString } from '#layout';
+import { cssEasing } from './token-code.ts';
 
 export type CodeLang = 'css' | 'swiftui' | 'compose';
 
@@ -54,8 +56,9 @@ function camel(name: string): string {
 export function cssVarName(doc: Document, variable: NodeId): string {
   const web = doc.get(variable, 'codeSyntax').WEB?.trim();
   if (web) {
-    const inner = /^var\(\s*(--[^,\s)]+)/.exec(web)?.[1];
-    return inner ?? (web.startsWith('--') ? web : `--${web}`);
+    const inner = /^var\(\s*(--[^,\s)]+)/.exec(web)?.[1] ?? (web.startsWith('--') ? web : `--${web}`);
+    // A name as CSS writes them, else from the variable's name (a file's syntax is not code to splice in).
+    if (/^--[A-Za-z0-9_-]{1,120}$/.test(inner)) return inner;
   }
   return `--${slug(doc.get(variable, 'name')) || 'var'}`;
 }
@@ -75,6 +78,8 @@ function bound(doc: Document, id: NodeId, field: string): NodeId | null {
 
 export function cssColor(c: Color, opacity = 1): string {
   const a = round(c.a * opacity, 3);
+  // A Display P3 file (step 9): the colour as P3 in CSS, as the designer sees it.
+  if (colorProfile() === 'DISPLAY_P3') return `color(display-p3 ${round(c.r, 4)} ${round(c.g, 4)} ${round(c.b, 4)}${a < 1 ? ` / ${a}` : ''})`;
   if (a >= 1) return colorToHex(c);
   const ch = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255);
   return `rgba(${ch(c.r)}, ${ch(c.g)}, ${ch(c.b)}, ${a})`;
@@ -384,7 +389,7 @@ export function cssDecls(doc: Document, id: NodeId, o: CodeOptions = DEFAULT_COD
     if (tree) out.push({ prop: 'margin', value: '0' });
     const textStyle = styleName(d.get(id, 'textStyleId'));
     if (textStyle) comments.push(`Текст: ${textStyle}`);
-    out.push({ prop: 'font-family', value: `"${d.get(id, 'fontFamily')}", sans-serif` });
+    out.push({ prop: 'font-family', value: `${cssString(d.get(id, 'fontFamily'))}, sans-serif` });
     out.push({ prop: 'font-size', value: numberCss(d, id, 'fontSize', d.get(id, 'fontSize'), o) });
     if (d.get(id, 'italic')) out.push({ prop: 'font-style', value: 'italic' });
     out.push({ prop: 'font-weight', value: numberCss(d, id, 'fontWeight', d.get(id, 'fontWeight'), o, (n) => String(n)) });
@@ -421,7 +426,7 @@ export function cssDecls(doc: Document, id: NodeId, o: CodeOptions = DEFAULT_COD
 
 /** The declarations as a CSS block body (comments first). */
 export function formatCss(decls: readonly Decl[], comments: readonly string[] = []): string {
-  return [...comments.map((c) => `/* ${c.replace(/\*\//g, '* /')} */`), ...decls.map((x) => `${x.prop}: ${x.value};`)].join('\n');
+  return [...comments.map((c) => `/* ${cssComment(c)} */`), ...decls.map((x) => `${x.prop}: ${cssNoTags(x.value)};`)].join('\n');
 }
 
 // ---------- SwiftUI and Compose ----------
@@ -447,7 +452,7 @@ const SWIFT_WEIGHT: Record<number, string> = { 100: 'ultraLight', 200: 'thin', 3
 
 /** Visible children in paint order (bottom first). */
 function shownChildren(doc: Document, id: NodeId): NodeId[] {
-  return doc.children(id).filter((c) => doc.get(c, 'visible') !== false && !doc.get(c, 'isMask'));
+  return doc.children(id).filter((c) => doc.get(c, 'visible') !== false && !doc.get(c, 'isMask') && doc.type(c) !== 'SLICE');
 }
 
 const indent = (code: string, by = '    ') => code.split('\n').map((l) => (l ? by + l : l)).join('\n');
@@ -657,7 +662,7 @@ function richText(d: Document, id: NodeId): string {
     if (r.start > at) out += piece(chars.slice(at, r.start));
     const st = r.style;
     const css: string[] = [];
-    if (st.fontFamily) css.push(`font-family: "${st.fontFamily}", sans-serif`);
+    if (st.fontFamily) css.push(`font-family: ${cssString(st.fontFamily)}, sans-serif`);
     if (st.fontWeight) css.push(`font-weight: ${st.fontWeight}`);
     if (st.italic) css.push('font-style: italic');
     if (st.fontSize) css.push(`font-size: ${round(st.fontSize)}px`);
@@ -666,8 +671,10 @@ function richText(d: Document, id: NodeId): string {
     if (st.textDecoration === 'UNDERLINE') css.push('text-decoration: underline');
     if (st.textDecoration === 'STRIKETHROUGH') css.push('text-decoration: line-through');
     const text = piece(chars.slice(Math.max(at, r.start), r.end));
-    const span = css.length ? `<span style="${css.join('; ')}">${text}</span>` : text;
-    out += st.link ? `<a href="${escapeHtml(st.link)}">${span}</a>` : span;
+    const span = css.length ? `<span style="${escapeHtml(css.join('; '))}">${text}</span>` : text;
+    // A link of the file goes out only if it is a web, mail or phone one (a «javascript:» from a file never reaches a site).
+    const link = st.link ? safeLink(st.link) : null;
+    out += link ? `<a href="${escapeHtml(link)}">${span}</a>` : span;
     at = Math.max(at, r.end);
   }
   if (at < chars.length) out += piece(chars.slice(at));
@@ -692,6 +699,8 @@ function literalCss(doc: Document, value: VariableLiteral | undefined, raw: unkn
   if (type === 'FLOAT' && typeof value === 'number') return String(round(value, 4));
   if (type === 'STRING' && typeof value === 'string') return quote(value);
   if (type === 'BOOLEAN' && typeof value === 'boolean') return value ? '1' : '0';
+  if (type === 'TIMING' && typeof value === 'number') return `${round(value, 0)}ms`;
+  if (type === 'EASING' && typeof value === 'string') return cssEasing(value);
   return null;
 }
 
@@ -709,7 +718,7 @@ export function variablesCss(doc: Document): string {
     const modes = d.get(collection, 'modes');
     const vars = d.children(collection).filter((v) => d.type(v) === 'VARIABLE');
     if (vars.length === 0 || modes.length === 0) continue;
-    root.push(`  /* ${d.get(collection, 'name')} */`);
+    root.push(`  /* ${cssComment(d.get(collection, 'name'))} */`);
     const base = modes[0]!.id;
     const values = (mode: string) =>
       vars.map((v) => ({ name: cssVarName(d, v), value: literalCss(d, resolveInMode(d, v, mode), d.get(v, 'varValues')[mode], d.get(v, 'varType')) }));
@@ -719,9 +728,9 @@ export function variablesCss(doc: Document): string {
       const lines = values(m.id)
         .filter((x, i) => x.value !== null && x.value !== first[i]!.value)
         .map((x) => `  ${x.name}: ${x.value};`);
-      if (lines.length) blocks.push(`[data-${slug(d.get(collection, 'name')) || 'mode'}="${slug(m.name) || m.id}"] {\n${lines.join('\n')}\n}`);
+      if (lines.length) blocks.push(`[data-${slug(d.get(collection, 'name')) || 'mode'}="${slug(m.name) || slug(m.id) || 'mode'}"] {\n${lines.join('\n')}\n}`);
     }
   }
   if (root.length === 0) return '';
-  return [`:root {\n${root.join('\n')}\n}`, ...blocks].join('\n\n');
+  return cssNoTags([`:root {\n${root.join('\n')}\n}`, ...blocks].join('\n\n'));
 }

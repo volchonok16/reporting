@@ -61,7 +61,7 @@ export class SlideNotesBar {
     this.current = current;
     this.text = h('textarea', {
       class: 'sn-text',
-      placeholder: tr('Заметки докладчика: что сказать на этом слайде. Видны только вам — в окне докладчика при показе'),
+      placeholder: tr('Заметки докладчика: что сказать на этом слайде. Видны только вам, в окне докладчика при показе'),
       'aria-label': tr('Заметки докладчика'),
       spellcheck: true,
     }) as HTMLTextAreaElement;
@@ -154,7 +154,8 @@ export class SlideNotesBar {
         this.drawTab();
       }
     } catch (error) {
-      this.editor.toast(error instanceof Error ? error.message : String(error));
+      const { toastAiError } = await import('../own-ai.ts');
+      toastAiError(this.editor, error);
     } finally {
       this.magic.disabled = false;
       this.el.classList.remove('sn-busy');

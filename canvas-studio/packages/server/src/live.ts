@@ -27,12 +27,12 @@
 
 import type { IncomingMessage } from 'node:http';
 import type { Socket } from 'node:net';
-import { toSnapshot, type Document, type Op } from '../../core/src/index.ts';
+import { toSnapshot, validOps, type Document, type Op } from '../../core/src/index.ts';
 import { atLeast, type Role } from './access.ts';
 import { AUTO_EVERY } from './versions.ts';
 import type { Api, FileMeta } from './api.ts';
 import { Documents } from './documents.ts';
-import type { BlobStore } from './storage.ts';
+import type { FileBlobs } from './storage.ts';
 import { HttpError, parseCookies } from './http.ts';
 import { HIDDEN_NAME, tokenHash } from './auth.ts';
 import { acceptWebSocket, rejectUpgrade, VIEWER_MESSAGE, MAX_MESSAGE, type WebSocketConnection } from './websocket.ts';
@@ -59,8 +59,6 @@ interface Peer {
   insider: boolean;
   color: string;
   role: Role;
-  /** Employee photo. Sent with the peer list so the avatar is the same picture as in reporting. */
-  avatar?: string;
   /** Last presence, so a newcomer sees everyone's pointer at once. */
   presence: string | null;
   /** Page of the last presence (pointers go only to people on the same page). */
@@ -107,12 +105,12 @@ function cleanPresence(msg: { page?: unknown; cursor?: unknown; selection?: unkn
 /** Pictures of an open file: written to the file's picture store, kept in memory only until written. */
 export class RoomImages {
   private readonly docs: Documents;
-  private readonly files: BlobStore;
+  private readonly files: FileBlobs;
   private readonly fileId: string;
   /** Pictures still being written (their data is kept until then). */
   private readonly writing = new Map<string, Promise<void>>();
 
-  constructor(docs: Documents, files: BlobStore, fileId: string) {
+  constructor(docs: Documents, files: FileBlobs, fileId: string) {
     this.docs = docs;
     this.files = files;
     this.fileId = fileId;
@@ -190,7 +188,7 @@ class Room {
     this.versions.set(version, 0);
   }
 
-  join(conn: WebSocketConnection, who: Pick<Peer, 'userId' | 'session' | 'name' | 'outsideName' | 'insider' | 'role' | 'recheck' | 'avatar'>): void {
+  join(conn: WebSocketConnection, who: Pick<Peer, 'userId' | 'session' | 'name' | 'outsideName' | 'insider' | 'role' | 'recheck'>): void {
     const used = new Set([...this.peers.values()].map((p) => p.color));
     const color = COLORS.find((c) => !used.has(c)) ?? COLORS[this.nextPeer % COLORS.length]!;
     const peer: Peer = { id: `p${++this.nextPeer}`, conn, color, presence: null, page: null, queue: null, emotes: [], ...who };
@@ -329,7 +327,9 @@ class Room {
       this.out(peer, JSON.stringify({ type: 'error', id, message: 'Неверные операции' }));
       return;
     }
-    this.apply(ops as Op[], peer.id);
+    // Only what fits the schema is applied, kept and passed on to the others (core validate.ts).
+    const valid = validOps(ops);
+    if (valid.length) this.apply(valid, peer.id);
     if (peer.userId) this.authors.add(peer.userId);
     this.out(peer, JSON.stringify({ type: 'ack', id, seq: this.seq }));
   }
@@ -437,7 +437,7 @@ class Room {
   }
 
   sendPeers(): void {
-    const list = (insider: boolean) => JSON.stringify({ type: 'peers', peers: [...this.peers.values()].map((p) => ({ id: p.id, userId: p.userId, name: insider ? p.name : p.outsideName, color: p.color, role: p.role, ...(p.avatar ? { avatar: p.avatar } : {}) })) });
+    const list = (insider: boolean) => JSON.stringify({ type: 'peers', peers: [...this.peers.values()].map((p) => ({ id: p.id, userId: p.userId, name: insider ? p.name : p.outsideName, color: p.color, role: p.role })) });
     const inside = list(true);
     const outside = list(false);
     for (const p of this.peers.values()) this.out(p, p.insider ? inside : outside);
@@ -527,7 +527,6 @@ export class LiveHub {
       insider,
       role,
       recheck,
-      avatar: user?.avatar && /^https?:\/\//i.test(user.avatar) ? user.avatar : undefined,
     });
   }
 

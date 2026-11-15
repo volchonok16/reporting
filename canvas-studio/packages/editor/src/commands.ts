@@ -2,8 +2,9 @@
 // shortcuts. Menus, the command palette (FR-UI-020) and keyboard handling all
 // read from here, so an action is never reachable from only one place.
 
-import { tr } from '#core';
+import { tr, type NodeId } from '#core';
 import { IS_MAC } from './keyboard.ts';
+import { measureSelection, removeMeasurements } from './annotate.ts';
 import type { Editor, ToolId } from './editor.ts';
 import { editableTextOf, isBoardObjectOrConnector, SHAPE_KINDS, STAMPS } from './board.ts';
 import { sortIntoSections, textToStickies } from './board-smart.ts';
@@ -11,6 +12,10 @@ import { selectMatching } from './batch-rename.ts';
 import { variantSetOf } from './multi-edit.ts';
 import { changeLang, savedNudge } from './prefs.ts';
 import { flipTextOnPath, putTextOnPath, takeTextOffPath } from './text-on-path.ts';
+import { VISIONS } from './vision.ts';
+
+/** The handwritten font of «От руки» (FEAT-223). */
+const HANDWRITTEN_FONT = 'Caveat';
 import { copyBoardLook, fitSections, pasteBoardLook, toggleSectionContents } from './board-actions.ts';
 
 export interface Command {
@@ -28,6 +33,8 @@ export interface Command {
   repeat?: boolean;
   /** Only in designs or only on boards (FEAT-083); none — everywhere. */
   mode?: 'design' | 'board';
+  /** One of a choice: shown with a ✓ in the menu when chosen. */
+  checked?: () => boolean;
 }
 
 export interface CommandHost {
@@ -35,7 +42,11 @@ export interface CommandHost {
   openPalette: () => void;
   newFile: () => void;
   openFile: (accept?: string) => void;
-  saveFile: () => void;
+  saveFile: (anonymous?: boolean) => void;
+  /** «Проверка по дизайн-системе»: the report over the canvas (step 6). */
+  checkDesign?: () => void;
+  /** «Проверка доступности»: the report over the canvas (FEAT-222). */
+  checkAccessibility?: () => void;
   exportSelection: () => void;
   copyAs: (format: 'PNG' | 'SVG' | 'CSS') => void;
   importSvg: () => void;
@@ -45,7 +56,12 @@ export interface CommandHost {
   editLayout: () => void;
   /** A .fig from Figma → a new file. */
   importFig: () => void;
+  importSketch: () => void;
   exportPptx: () => void;
+  /** «Экспорт для печати (PDF)…»: bleed, crop marks, CMYK and the check before printing (FEAT-225). */
+  exportPrint?: () => void;
+  /** «Сайт дизайн-системы…»: the page of colours, type, effects, components and tokens (FEAT-226). */
+  openDsSite?: () => void;
   openHelp: () => void;
   openExample: () => void;
   openTemplates: () => void;
@@ -84,6 +100,18 @@ export interface CommandHost {
   showHistory: () => void;
   findReplace: () => void;
   showVersions: () => void;
+  /** «История просмотров…» (step 9). */
+  showViewHistory: () => void;
+  /** «Тестирование на людях…»: tasks over the prototype, a link for respondents, results and heat maps. */
+  showUserTests?: () => void;
+  /** «Сравнить изменения»: the selected layer in a saved version next to it now (step 7). */
+  compareChanges?: () => void;
+  /** «Отправить на согласование…»: one person of the file approves the selected frame (other editors, item 9). */
+  requestApproval?: () => void;
+  /** «Песочница компонента»: the selected component's variants and properties tried on a copy (step 7). */
+  openPlayground?: () => void;
+  /** A named version in the history, without opening it (as Figma's «Save to version history»). */
+  saveVersion: () => void;
   /** Branches of the file; `create` — with the new-branch form ready. */
   showBranches: (create: boolean) => void;
   /** In a branch: bring the main file's changes in. */
@@ -149,6 +177,7 @@ export function createCommands(host: CommandHost): Command[] {
     // Prototype (section 13)
     { id: 'prototype.present', mode: 'design', label: tr('Просмотр прототипа'), group: tr('Прототип'), keys: ['Mod+Alt+Enter'], run: () => host.present(false) },
     { id: 'prototype.presentTab', mode: 'design', label: tr('Просмотр прототипа в новой вкладке'), group: tr('Прототип'), run: () => host.present(true) },
+    { id: 'prototype.userTests', mode: 'design', label: tr('Тестирование на людях…'), group: tr('Прототип'), keywords: 'тест юзабилити респонденты задание тепловая карта maze usability test heatmap', run: () => host.showUserTests?.() },
     { id: 'view.comments', label: tr('Показать или скрыть комментарии'), group: tr('Вид'), keys: ['Shift+C'], keywords: 'комментарии обсуждения метки comments pins', run: () => host.toggleComments() },
     { id: 'panel.design', mode: 'design', label: tr('Вкладка «Дизайн»'), group: tr('Вид'), run: () => e.prototype.setMode('design') },
     { id: 'panel.prototype', mode: 'design', label: tr('Вкладка «Прототип»'), group: tr('Вид'), keys: ['Shift+E'], run: () => {
@@ -196,6 +225,7 @@ export function createCommands(host: CommandHost): Command[] {
       e.commit(on ? tr('Показать авторов стикеров') : tr('Скрыть авторов стикеров'), (tx) => tx.set(e.doc.rootId, 'boardAuthors', on));
     } },
     { id: 'tool.section', label: tr('Инструмент: Секция'), group: tr('Инструменты'), keys: ['Shift+S'], run: tool('section') },
+    { id: 'tool.slice', mode: 'design', label: tr('Инструмент: Нарезка'), group: tr('Инструменты'), keys: ['S'], run: tool('slice') },
     { id: 'tool.text', label: tr('Инструмент: Текст'), group: tr('Инструменты'), keys: ['T'], run: tool('text') },
     { id: 'tool.image', label: tr('Вставить изображение…'), group: tr('Инструменты'), keys: ['Mod+Shift+K'], run: () => host.placeImage() },
     { id: 'tool.bigImage', label: tr('Вставить большое изображение…'), group: tr('Инструменты'), run: () => host.placeBigImage() },
@@ -205,6 +235,39 @@ export function createCommands(host: CommandHost): Command[] {
     { id: 'tool.pencil', mode: 'design', label: tr('Инструмент: Карандаш'), group: tr('Инструменты'), keys: ['Shift+P'], keywords: 'рисовать от руки набросок draw sketch freehand', run: tool('pencil') },
     { id: 'tool.hand', label: tr('Инструмент: Рука'), group: tr('Инструменты'), keys: ['H'], run: tool('hand') },
     { id: 'tool.comment', label: tr('Комментарии: оставить комментарий на холсте'), group: tr('Инструменты'), keys: ['C'], run: tool('comment') },
+    // Dev Mode (step 7): notes for developers and measurements kept in the file, keys as in Figma.
+    { id: 'tool.annotate', mode: 'design', label: tr('Инструмент: Аннотация и замер'), group: tr('Инструменты'), keys: ['Shift+T'], keywords: 'аннотация заметка разработчик замер расстояние annotate measure dev mode', run: tool('annotate') },
+    { id: 'view.annotations', mode: 'design', label: tr('Аннотации и замеры: показать или скрыть'), group: tr('Вид'), keys: ['Shift+Y'], keywords: 'аннотации замеры разработчик annotations measurements dev mode', run: () => {
+      const on = !e.view.annotations;
+      e.setView({ annotations: on });
+      e.toast(on ? tr('Аннотации и замеры показаны') : tr('Аннотации и замеры скрыты (Shift+Y — показать)'));
+    } },
+    { id: 'view.focusFrame', label: tr('Фокус на фрейме: показать его одного'), group: tr('Вид'), keywords: 'фокус фрейм один изолировать режим разработчика focus view isolate frame dev mode', run: () => {
+      if (e.focusFrame) return e.setFocus(null);
+      const target = e.selection.length ? e.focusTargetOf(e.selection[0]!) : null;
+      if (!target) return e.toast(tr('Выделите фрейм (или слой в нём), чтобы показать его одного'));
+      e.setFocus(target);
+    } },
+    { id: 'view.focusNext', label: tr('Фокус: следующий фрейм'), group: tr('Вид'), keywords: 'фокус следующий фрейм focus next', run: () => e.stepFocus(1) },
+    { id: 'view.focusPrev', label: tr('Фокус: предыдущий фрейм'), group: tr('Вид'), keywords: 'фокус предыдущий фрейм focus previous', run: () => e.stepFocus(-1) },
+    { id: 'dev.addResource', mode: 'design', label: tr('Добавить ссылку на ресурс…'), group: tr('Объект'), keywords: 'ссылка ресурс github storybook gitlab jira документация код разработчик dev resources link', run: () => {
+      if (e.selection.length !== 1) return e.toast(tr('Выделите один слой, чтобы добавить к нему ссылку'));
+      void import('./ui/code-panel.ts').then(({ focusResourceForm }) => {
+        focusResourceForm();
+        // Already in the «Код» tab: the panel builds again on a mode change only, so go through «Дизайн».
+        if (e.prototype.mode === 'code') e.prototype.setMode('design');
+        e.prototype.setMode('code');
+      });
+    } },
+    { id: 'dev.playground', label: tr('Открыть компонент в песочнице…'), group: tr('Объект'), keywords: 'песочница компонент варианты свойства попробовать код разработчик playground component variants dev mode', run: () => host.openPlayground?.() },
+    { id: 'object.requestApproval', label: tr('Отправить на согласование…'), group: tr('Объект'), keywords: 'согласование утвердить утверждено согласовать заказчик статус проверка approval approve review sign off', run: () => host.requestApproval?.() },
+    { id: 'dev.compareChanges', label: tr('Сравнить изменения слоя с версией…'), group: tr('Объект'), keywords: 'сравнить изменения версия было стало разработчик код compare changes diff dev mode', run: () => host.compareChanges?.() },
+    { id: 'dev.measureSelection', mode: 'design', label: tr('Сохранить замер между двумя выделенными слоями'), group: tr('Объект'), keywords: 'замер расстояние отступ разработчик measure distance', run: () => measureSelection(e) },
+    { id: 'dev.clearMeasurements', mode: 'design', label: tr('Удалить все замеры на странице'), group: tr('Объект'), keywords: 'замеры очистить measurements clear', run: () => {
+      const ids = e.doc.get(e.pageId, 'measurements').map((m) => m.id);
+      if (ids.length === 0) e.toast(tr('На странице нет сохранённых замеров'));
+      else removeMeasurements(e, ids);
+    } },
     { id: 'tool.eyedropper', label: tr('Пипетка: взять цвет с холста'), group: tr('Инструменты'), keys: ['I'], run: tool('eyedropper') },
     // Precision (stage 5)
     { id: 'help.open', label: tr('Справка: как пользоваться редактором'), group: tr('Справка'), keys: ['F1'], run: () => host.openHelp() },
@@ -222,6 +285,39 @@ export function createCommands(host: CommandHost): Command[] {
     { id: 'text.link', label: tr('Ссылка в тексте…'), group: tr('Текст'), run: () => host.editLink() },
     { id: 'smart.open', mode: 'design', label: tr('Умные действия для выделения ✦'), group: tr('Объект'), keys: ['Mod+J'], run: () => host.openSmart() },
     { id: 'text.translate', label: tr('Перевести текст…'), group: tr('Текст'), run: () => host.translateText() },
+    {
+      id: 'text.handwritten',
+      mode: 'design',
+      label: tr('Рукописный шрифт'),
+      group: tr('Текст'),
+      keywords: 'от руки эскиз набросок рукописный caveat handwritten sketch font',
+      run: () => {
+        if (e.doc.readOnly) return;
+        const d = e.doc;
+        const texts: NodeId[] = [];
+        const walk = (id: NodeId) => (d.type(id) === 'TEXT' ? texts.push(id) : d.children(id).forEach(walk));
+        (e.selection.length ? e.topLevelSelection() : [...d.children(e.pageId)]).forEach(walk);
+        const own = texts;
+        if (!own.length) return e.toast(tr('Нет текстов в выделении.'));
+        // FEAT-223: Caveat (OFL, Cyrillic) — goes into the file, so everyone sees the same letters.
+        e.commit(tr('Рукописный шрифт'), (tx) => {
+          for (const id of own) {
+            tx.set(id, 'fontFamily', HANDWRITTEN_FONT);
+            tx.set(id, 'fontWeight', Math.min(700, Math.max(400, d.get(id, 'fontWeight'))));
+            tx.set(id, 'italic', false);
+            const runs = d.get(id, 'textRuns');
+            if (runs.some((r) => r.style.fontFamily)) tx.set(id, 'textRuns', runs.map((r) => ({ ...r, style: { ...r.style, fontFamily: undefined } })));
+          }
+        });
+        void import('./fonts.ts').then(({ embedGoogleFamilies, embeddedFonts, registerEmbeddedFonts }) => {
+          if (embeddedFonts(d).some((f) => f.family === HANDWRITTEN_FONT)) return;
+          void embedGoogleFamilies(d, [HANDWRITTEN_FONT], false).then((g) => {
+            registerEmbeddedFonts(d);
+            if (!g.embedded.length) e.toast(tr('Шрифт Caveat не загрузился: нет связи с сервером. Текст показан заменой.'));
+          });
+        });
+      },
+    },
     { id: 'text.replaceFonts', mode: 'design', label: tr('Заменить шрифты…'), group: tr('Текст'), keywords: 'шрифт замена старый новый replace fonts missing', run: () => host.replaceFonts() },
     { id: 'component.similar', label: tr('Найти похожие компоненты'), group: tr('Компоненты'), run: () => host.findSimilar() },
     { id: 'image.removeBg', label: tr('Удалить фон у картинки'), group: tr('Объект'), run: () => host.removeBackground() },
@@ -272,7 +368,7 @@ export function createCommands(host: CommandHost): Command[] {
           const fixed = e.doc.readOnly ? 0 : fixContrastIssues(e, issues);
           const rest = issues.length - fixed;
           e.toast(
-            [fixed ? tr('Исправлено текстов: {0} — цвет затемнён или осветлён до нормы, оттенок тот же.', fixed) : '', rest ? tr('Ещё {0} — цвет из переменной или стиля: поправьте его там.', rest) : ''].filter(Boolean).join(' '),
+            [fixed ? tr('Исправлено текстов: {0}. Цвет затемнён или осветлён до нормы, оттенок тот же.', fixed) : '', rest ? tr('Ещё {0}: цвет из переменной или стиля, поправьте его там.', rest) : ''].filter(Boolean).join(' '),
           );
           if (rest) e.setSelection(issues.filter((i) => !i.fix && e.doc.pageOf(i.id) === e.pageId).map((i) => i.id));
         });
@@ -344,7 +440,7 @@ export function createCommands(host: CommandHost): Command[] {
         void import('./smart.ts').then(({ textStyleName }) => {
           const name = textStyleName(e.doc.get(id, 'fontSize'));
           e.createStyle('TEXT', 'textStyleId', name);
-          e.toast(tr('Стиль «{0}» создан, текст к нему привязан. Для других текстов — кнопка стилей у шрифта.', name));
+          e.toast(tr('Стиль «{0}» создан, текст к нему привязан. Для других текстов есть кнопка стилей у шрифта.', name));
         });
       },
     },
@@ -426,8 +522,8 @@ export function createCommands(host: CommandHost): Command[] {
           const n = createDarkTheme(e, collection, show);
           e.toast(
             show.length
-              ? tr('Режим «Тёмная» добавлен в «{0}» ({1} цветов) и включён у выделенного. Поправить цвета — в таблице переменных.', e.doc.get(collection, 'name'), n)
-              : tr('Режим «Тёмная» добавлен в «{0}» ({1} цветов). Включить — у фрейма или страницы в «Режимах переменных».', e.doc.get(collection, 'name'), n),
+              ? tr('Режим «Тёмная» добавлен в «{0}» ({1} цветов) и включён у выделенного. Поправить цвета можно в таблице переменных.', e.doc.get(collection, 'name'), n)
+              : tr('Режим «Тёмная» добавлен в «{0}» ({1} цветов). Включить его можно у фрейма или страницы в «Режимах переменных».', e.doc.get(collection, 'name'), n),
           );
         });
       },
@@ -447,6 +543,16 @@ export function createCommands(host: CommandHost): Command[] {
     ...[0.9, 1, 1.1, 1.25].map((scale) => ({ id: `view.uiScale${Math.round(scale * 100)}`, label: tr('Размер интерфейса: {0}%', Math.round(scale * 100)), group: tr('Вид'), run: () => host.setUiScale(scale) })),
     { id: 'view.rulers', label: tr('Линейки'), group: tr('Вид'), keys: ['Shift+R'], run: () => e.setView({ rulers: !e.view.rulers }) },
     { id: 'view.layoutGrids', label: tr('Показать / скрыть сетки колонок'), group: tr('Вид'), keys: [IS_MAC ? 'Ctrl+G' : 'Ctrl+Shift+4'], run: () => e.setView({ layoutGrids: !e.view.layoutGrids }) },
+    { id: 'design.formats', mode: 'design', label: tr('Подогнать под форматы…'), group: tr('Объект'), keywords: 'форматы размеры пост сторис обложка вк телеграм ютуб превью баннер ресайз magic resize canva formats social', run: () => void import('./ui/formats-dialog.ts').then(({ openFormatsDialog }) => openFormatsDialog(e)) },
+    { id: 'a11y.check', mode: 'design', label: tr('Проверить доступность'), group: tr('Вид'), keywords: 'доступность контраст мелкий текст область нажатия кнопки экранный диктор порядок чтения дальтонизм accessibility a11y wcag stark tap target', run: () => host.checkAccessibility?.() },
+    ...VISIONS.map(([v, label]) => ({
+      id: `view.vision.${v}`,
+      label: v === 'normal' ? label : tr('Как видит человек: {0}', label.toLowerCase()),
+      group: tr('Вид'),
+      keywords: 'дальтонизм цветовое зрение симуляция протанопия дейтеранопия тританопия монохром color blindness vision simulator',
+      run: () => e.setView({ vision: v }),
+      checked: () => e.view.vision === v,
+    })),
     { id: 'view.outlines', label: tr('Контурный режим'), group: tr('Вид'), keys: ['Mod+Shift+O'], keywords: 'outline view outlines контуры каркас рентген скелет wireframe', run: () => e.setView({ outlines: !e.view.outlines }) },
     { id: 'view.outlineHidden', label: tr('Контурный режим: показывать скрытые слои'), group: tr('Вид'), keywords: 'outline hidden контуры скрытые', run: () => e.setView({ outlineHidden: !e.view.outlineHidden, outlines: true }) },
     { id: 'view.outlineBounds', label: tr('Контурный режим: показывать рамки объектов'), group: tr('Вид'), keywords: 'outline bounds контуры рамки границы', run: () => e.setView({ outlineBounds: !e.view.outlineBounds, outlines: true }) },
@@ -474,7 +580,12 @@ export function createCommands(host: CommandHost): Command[] {
 
     // Edit
     { id: 'edit.undo', label: tr('Отменить'), group: tr('Правка'), keys: ['Mod+Z'], run: () => e.undo(), repeat: true },
+    // The file's colour profile (step 9, as in Figma): the numbers stay, they are read as sRGB or Display P3.
+    { id: 'file.colorSrgb', label: 'sRGB', group: tr('Файл'), run: () => host.editor.setColorProfile('SRGB'), checked: () => host.editor.doc.get(host.editor.doc.rootId, 'colorProfile') !== 'DISPLAY_P3' },
+    { id: 'file.colorP3', label: 'Display P3', group: tr('Файл'), run: () => host.editor.setColorProfile('DISPLAY_P3'), checked: () => host.editor.doc.get(host.editor.doc.rootId, 'colorProfile') === 'DISPLAY_P3' },
+    { id: 'file.views', label: tr('История просмотров…'), group: tr('Файл'), run: () => host.showViewHistory() },
     { id: 'file.versions', label: tr('История версий…'), group: tr('Файл'), keys: ['Mod+Alt+H'], run: () => host.showVersions() },
+    { id: 'file.saveVersion', label: tr('Сохранить версию в истории…'), group: tr('Файл'), keys: ['Mod+Alt+S'], keywords: 'сохранить версию отметить название save version history снимок', run: () => host.saveVersion() },
     { id: 'file.branches', label: tr('Ветки…'), group: tr('Файл'), run: () => host.showBranches(false) },
     { id: 'file.newBranch', label: tr('Создать ветку…'), group: tr('Файл'), run: () => host.showBranches(true) },
     { id: 'file.branchUpdate', label: tr('Получить изменения из основного файла'), group: tr('Файл'), run: () => host.updateBranch() },
@@ -488,6 +599,7 @@ export function createCommands(host: CommandHost): Command[] {
     { id: 'file.importSvg', label: tr('Импортировать SVG…'), group: tr('Файл'), run: () => host.importSvg() },
     { id: 'file.importNative', label: tr('Импорт файла Симметрики (.csdoc.json) — новым файлом…'), group: tr('Файл'), run: () => host.openFile('.json,.csdoc,application/json') },
     { id: 'file.importFig', label: tr('Импорт из Figma (.fig) — новым файлом…'), group: tr('Файл'), run: () => host.importFig() },
+    { id: 'file.importSketch', label: tr('Импорт из Sketch (.sketch) — новым файлом…'), group: tr('Файл'), run: () => host.importSketch() },
     { id: 'file.importPptx', mode: 'design', label: tr('Импорт PowerPoint (.pptx): презентация…'), group: tr('Файл'), keywords: 'powerpoint pptx keynote импорт import презентация', run: () => host.openFile('.pptx') },
     { id: 'file.importHtml', mode: 'design', label: tr('Импорт HTML: страница или сайт → слои…'), group: tr('Файл'), run: () => host.importHtml() },
     { id: 'smart.editLayout', mode: 'design', label: tr('Изменить выделенный макет по описанию…'), group: tr('Объект'), run: () => host.editLayout() },
@@ -511,6 +623,7 @@ export function createCommands(host: CommandHost): Command[] {
     { id: 'design.table', mode: 'design', label: tr('Таблица: вставить новую'), group: tr('Вставка'), keywords: 'table таблица ячейки строки столбцы excel сетка данные', run: () => host.openTable() },
     { id: 'design.doodle', mode: 'design', label: tr('Каракули: подчёркивание, обводка, стрелка от руки'), group: tr('Вставка'), keywords: 'doodle scribble underline circle arrow sparkle marker каракули подчеркнуть обвести стрелка искры звёздочка маркер галочка от руки', run: () => host.openDoodle() },
     { id: 'design.mockups', mode: 'design', label: tr('Макеты устройств: телефон, планшет, ноутбук, десктоп, часы…'), group: tr('Вставка'), keywords: 'mockup iphone android телефон планшет ноутбук', run: () => host.openDeviceMockups() },
+    { id: 'file.exportPrint', mode: 'design', label: tr('Экспорт для печати (PDF)…'), group: tr('Файл'), keywords: 'печать типография вылеты метки реза cmyk 300 dpi preflight проверка перед печатью print bleed crop marks', run: () => host.exportPrint?.() },
     { id: 'file.exportPptx', mode: 'design', label: tr('Экспорт в PowerPoint (PPTX): фреймы → слайды…'), group: tr('Файл'), run: () => host.exportPptx() },
     { id: 'edit.cut', label: tr('Вырезать'), group: tr('Правка'), keys: ['Mod+X'], run: () => e.cut() },
     { id: 'edit.paste', label: tr('Вставить'), group: tr('Правка'), keys: ['Mod+V'], run: () => void e.paste(false) },
@@ -522,6 +635,8 @@ export function createCommands(host: CommandHost): Command[] {
     { id: 'edit.deselect', label: tr('Снять выделение'), group: tr('Правка'), keys: ['Escape'], run: () => {
       if (host.cancel()) return;
       if (e.tool !== 'select' || e.scaleMode) e.setTool('select');
+      // Focus view: on the focused frame itself (or nothing) Esc leaves it, back to the page (step 7).
+      else if (e.focusFrame && (e.selection.length === 0 || (e.selection.length === 1 && e.selection[0] === e.focusFrame))) e.setFocus(null);
       // Esc climbs to the parent layer, on a top-level layer it clears the selection. Figma's Esc clears at once;
       // stepping up (as in Sketch) was chosen on purpose, 14 October (BUG-062).
       else if (e.selection.some((id) => e.doc.parent(id) !== e.pageId)) e.selectParent();
@@ -583,14 +698,18 @@ export function createCommands(host: CommandHost): Command[] {
     { id: 'vector.scissors', label: tr('Ножницы: разрезать сегмент или точку (в правке точек)'), group: tr('Фигуры'), run: () => { const only = e.selection[0]; if (e.vectorEdit) e.setVectorTool('scissors'); else if (only) e.enterVectorEdit(only, 'scissors'); } },
     { id: 'object.frame', label: tr('Обернуть во фрейм'), group: tr('Объект'), keys: ['Mod+Alt+G'], run: () => e.frameSelection(false) },
     { id: 'object.section', label: tr('Обернуть в секцию'), group: tr('Объект'), run: () => e.sectionSelection() },
+    { id: 'motion.timeline', mode: 'design', label: tr('Таймлайн: анимация фрейма'), group: tr('Объект'), keywords: 'motion анимация таймлайн ключевые кадры keyframes timeline', run: () => (e.timeline.frame ? e.timeline.close() : void e.timeline.openForSelection()) },
     { id: 'object.autoLayout', mode: 'design', label: tr('Добавить или убрать адаптивную раскладку'), group: tr('Объект'), keys: ['Shift+A'], run: () => e.addAutoLayout() },
     { id: 'object.codeLayer', mode: 'design', label: tr('Код-слой'), group: tr('Объект'), keywords: 'code layer код html css javascript react живой код', run: () => void import('./code-layer.ts').then(({ addCodeLayer }) => addCodeLayer(e)) },
     { id: 'object.suggestAutoLayout', mode: 'design', label: tr('Предложить адаптивную раскладку'), group: tr('Объект'), keywords: 'suggest auto layout подобрать раскладку автоматически ряды столбцы', run: () => void import('./suggest-layout.ts').then(({ suggestAutoLayout }) => suggestAutoLayout(e)) },
     { id: 'object.removeAllAutoLayout', mode: 'design', label: tr('Убрать всю адаптивную раскладку'), group: tr('Объект'), keys: ['Alt+Shift+A'], keywords: 'remove all auto layout убрать раскладку везде вложенные', run: () => e.removeAllAutoLayout() },
     { id: 'component.create', label: tr('Создать компонент'), group: tr('Компоненты'), keys: ['Mod+Alt+K'], run: () => e.createComponent() },
+    { id: 'component.createMany', label: tr('Создать несколько компонентов'), group: tr('Компоненты'), run: () => e.createComponents() },
     { id: 'component.instance', label: tr('Поставить копию компонента'), group: tr('Компоненты'), run: () => e.createInstanceOfSelection() },
     { id: 'component.detach', label: tr('Отвязать от компонента'), group: tr('Компоненты'), keys: ['Mod+Alt+B'], run: () => e.detachSelection() },
     { id: 'component.goToMain', label: tr('Перейти к компоненту-оригиналу'), group: tr('Компоненты'), run: () => e.goToMainComponent() },
+    { id: 'component.restore', label: tr('Восстановить компонент'), group: tr('Компоненты'), run: () => e.restoreMainComponent() },
+    { id: 'component.push', label: tr('Перенести изменения в компонент'), group: tr('Компоненты'), run: () => e.pushOverridesToMain() },
     { id: 'component.reset', label: tr('Сбросить изменения копии'), group: tr('Компоненты'), run: () => e.resetSelectedOverrides() },
     { id: 'view.collapseLayers', label: tr('Свернуть все слои'), group: tr('Вид'), keys: ['Alt+L'], run: () => host.collapseLayers() },
     { id: 'view.expandLayers', label: tr('Развернуть все слои'), group: tr('Вид'), keys: ['Shift+Alt+L'], run: () => host.expandLayers() },
@@ -648,6 +767,8 @@ export function createCommands(host: CommandHost): Command[] {
     { id: 'view.variables', label: tr('Таблица переменных'), group: tr('Вид'), keys: [], run: () => host.openVariables() },
     { id: 'variables.toCode', label: tr('Переменные в код: CSS, SCSS, JS, Tailwind, Swift, Kotlin, Android…'), group: tr('Переменные'), keywords: 'токены код экспорт css scss tailwind swift kotlin android xml typescript javascript tokens code export', run: () => host.variablesToCode() },
     { id: 'variables.fromStyles', mode: 'design', label: tr('Преобразовать стили в переменные…'), group: tr('Переменные'), keywords: 'стили токены переменные styles to variables convert составные', run: () => host.stylesToVariables() },
+    { id: 'design.site', mode: 'design', label: tr('Сайт дизайн-системы…'), group: tr('Переменные'), keywords: 'документация дизайн-система сайт zeroheight supernova токены компоненты стили гайдлайн styleguide docs', run: () => host.openDsSite?.() },
+    { id: 'design.check', mode: 'design', label: tr('Проверить по дизайн-системе'), group: tr('Переменные'), keywords: 'проверка линтер дизайн-система отчёт переменные стили check designs lint audit design system', run: () => host.checkDesign?.() },
     {
       id: 'variables.bindUnbound',
       label: tr('Найти непривязанные значения и привязать к переменным'),
@@ -655,7 +776,7 @@ export function createCommands(host: CommandHost): Command[] {
       keys: [],
       run: () => {
         const [bound, ambiguous] = e.variables.bindUnbound(e.selection);
-        e.toast(bound + ambiguous === 0 ? tr('Значений, совпадающих с переменными, не найдено') : tr('Привязано: {0}{1}', bound, ambiguous > 0 ? tr('; ещё {0} совпадают с несколькими переменными — выберите вручную', ambiguous) : ''));
+        e.toast(bound + ambiguous === 0 ? tr('Значений, совпадающих с переменными, не найдено') : tr('Привязано: {0}{1}', bound, ambiguous > 0 ? tr('; ещё {0} совпадают с несколькими переменными, выберите вручную', ambiguous) : ''));
       },
     },
     { id: 'view.toggleRight', label: tr('Скрыть / показать правую панель'), group: tr('Вид'), keys: ['Mod+Alt+\\'], run: () => host.toggleUi('right') },
@@ -668,6 +789,7 @@ export function createCommands(host: CommandHost): Command[] {
     { id: 'file.new', label: tr('Новый файл'), group: tr('Файл'), keys: [], run: () => host.newFile() },
     { id: 'file.open', label: tr('Открыть файл с диска…'), group: tr('Файл'), keys: [], run: () => host.openFile() },
     { id: 'file.save', label: tr('Сохранить копию файла…'), group: tr('Файл'), keys: ['Mod+S'], run: () => host.saveFile() },
+    { id: 'file.saveAnonymous', label: tr('Сохранить копию без авторов…'), group: tr('Файл'), keywords: 'анонимно без имён авторы стикеров голоса приватно anonymous', run: () => host.saveFile(true) },
     { id: 'file.export', label: tr('Экспортировать картинками: слои с настройками экспорта или выделение'), group: tr('Файл'), keys: ['Mod+Shift+E'], run: () => host.exportSelection() },
     { id: 'page.add', label: tr('Добавить страницу'), group: tr('Файл'), run: () => e.addPage() },
   ];
@@ -702,6 +824,11 @@ const SYNONYMS: Record<string, string> = {
   'object.frame': 'обернуть контейнер wrap frame',
   'component.create': 'компонент мастер символ symbol create component',
   'component.detach': 'отвязать разорвать связь detach instance',
+  'component.createMany': 'несколько компонентов каждый слой свой компонент create multiple components',
+  'component.restore': 'восстановить удалённый главный компонент оригинал restore main component',
+  'component.push': 'перенести изменения копии в главный компонент применить к оригиналу push overrides changes to main component',
+  'motion.timeline': 'анимация движение таймлайн ключевые кадры motion timeline keyframes',
+  'design.check': 'проверить дизайн систему отчёт линтер непривязанные цвета стили check designs lint',
   'component.combine': 'варианты набор вариантов состояния variants',
   'shape.union': 'склеить соединить union merge',
   'shape.subtract': 'вырезать вычесть subtract minus',
@@ -713,6 +840,7 @@ const SYNONYMS: Record<string, string> = {
   'file.exportPptx': 'презентация слайды powerpoint keynote pptx slides presentation',
   'file.importNative': 'симметрика csdoc json свой файл копия резервная открыть импорт import backup',
   'file.importFig': 'figma фигма fig импорт перенести открыть import',
+  'file.importSketch': 'sketch скетч импорт перенести открыть import',
   'file.importHtml': 'сайт вёрстка код html to design import website',
   'smart.editLayout': 'ии ai нейросеть правка доработать изменить текстом промпт prompt edit layout',
   'smart.generate': 'ии ai нейросеть генерация сгенерировать текст промпт prompt generate layout',

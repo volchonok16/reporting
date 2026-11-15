@@ -122,6 +122,10 @@ export class PrototypeController {
         return { type };
       case 'SET_VARIABLE':
         return { type, variableId: previous?.type === 'SET_VARIABLE' ? previous.variableId : null, expression: previous?.type === 'SET_VARIABLE' ? previous.expression : '' };
+      case 'SET_VARIABLE_MODE':
+        return { type, collectionId: previous?.type === 'SET_VARIABLE_MODE' ? previous.collectionId : null, modeId: previous?.type === 'SET_VARIABLE_MODE' ? previous.modeId : null };
+      case 'VIDEO':
+        return { type, destinationId: previous?.type === 'VIDEO' ? previous.destinationId : null, op: previous?.type === 'VIDEO' ? previous.op : 'TOGGLE_PLAY', seconds: previous?.type === 'VIDEO' ? previous.seconds : 5 };
       case 'CONDITIONAL':
         return { type, branches: [{ condition: '', actions: [] }, { condition: null, actions: [] }] };
       default:

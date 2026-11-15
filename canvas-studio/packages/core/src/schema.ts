@@ -23,11 +23,13 @@ export type NodeType =
   | 'BOOLEAN_OPERATION'
   | 'LINE'
   | 'TEXT'
+  /** An area to export (step 9, Figma's slice): draws nothing, exports whatever is under it. */
+  | 'SLICE'
   | 'STYLE'
   | 'VARIABLE_COLLECTION'
   | 'VARIABLE';
 
-export const SCENE_TYPES: readonly NodeType[] = ['SECTION', 'FRAME', 'COMPONENT', 'COMPONENT_SET', 'INSTANCE', 'GROUP', 'RECTANGLE', 'ELLIPSE', 'POLYGON', 'STAR', 'VECTOR', 'BOOLEAN_OPERATION', 'LINE', 'TEXT'];
+export const SCENE_TYPES: readonly NodeType[] = ['SECTION', 'FRAME', 'COMPONENT', 'COMPONENT_SET', 'INSTANCE', 'GROUP', 'RECTANGLE', 'ELLIPSE', 'POLYGON', 'STAR', 'VECTOR', 'BOOLEAN_OPERATION', 'LINE', 'TEXT', 'SLICE'];
 export const CONTAINER_TYPES: readonly NodeType[] = ['DOCUMENT', 'PAGE', 'SECTION', 'FRAME', 'COMPONENT', 'COMPONENT_SET', 'INSTANCE', 'GROUP', 'BOOLEAN_OPERATION'];
 
 /** Types without a size of their own: their box is the union of their children. */
@@ -61,6 +63,12 @@ export interface LibraryLink {
 }
 
 /** Where a component (style, variables) taken from a library comes from. */
+/** A component, set or style cut from a library file and pasted here: where it was (its links follow it, step 6). */
+export interface MovedFrom {
+  fileId: string;
+  id: string;
+}
+
 export interface LibraryRef {
   fileId: string;
   name: string;
@@ -254,6 +262,57 @@ export interface GuideLine {
   offset: number;
 }
 
+/** Kind of a Dev Mode annotation (step 7, as Figma's categories): the colour of its card and outline. */
+/**
+ * A layer's role for a screen reader in the prototype viewer (step 8, screen reader mode).
+ * AUTO: a layer with a click is a button, a large text a heading, a text a text, a picture an image;
+ * DECORATIVE: not read at all (with what is inside); GROUP: read as one named group around its layers.
+ */
+export type A11yRole = 'AUTO' | 'BUTTON' | 'LINK' | 'HEADING' | 'TEXT' | 'IMAGE' | 'GROUP' | 'DECORATIVE';
+
+export type AnnotationCategory = 'NONE' | 'DEVELOPMENT' | 'INTERACTION' | 'ACCESSIBILITY' | 'CONTENT';
+
+/** A note on a layer for developers (step 7): text and the layer's CSS properties pinned to it, drawn beside the layer. */
+export interface Annotation {
+  label: string;
+  /** CSS property names («width», «padding», «background»…): their current values are shown on the card. */
+  properties: string[];
+  category: AnnotationCategory;
+}
+
+/** A link a developer needs beside a layer (step 7, Figma's Dev resources): its code on GitHub, its story in Storybook, a ticket, a doc. */
+export interface DevResource {
+  url: string;
+  name: string;
+}
+
+/**
+ * Code Connect (step 7): the real code of a component from the team's repository, as a template.
+ * `{{Name}}` takes the value of a variant axis or a property of the instance; `{{#Name}}…{{/Name}}`
+ * is kept only when it is on (true, or a value other than «false»/«no»/«нет»/«off»), `{{^Name}}…{{/Name}}` only when off.
+ */
+export interface CodeConnect {
+  /** Where the code lives: a link or a path in the repository («src/ui/Button.tsx»). */
+  source: string;
+  /** For highlighting and the file kind: tsx, vue, swift… */
+  language: string;
+  template: string;
+}
+
+/** An edge of a layer a saved measurement runs from or to. */
+export type MeasureSide = 'LEFT' | 'RIGHT' | 'TOP' | 'BOTTOM';
+
+/** A measurement kept in the file (step 7): between edges of two layers (or two edges of one), recounted as they move. */
+export interface SavedMeasurement {
+  id: string;
+  from: string;
+  fromSide: MeasureSide;
+  to: string;
+  toSide: MeasureSide;
+  /** Words shown after the number («мин.», «≥ 16»…); empty — the number alone. */
+  note: string;
+}
+
 /** A layout grid of a frame (FR-GRD-001). Overlays only: never exported or printed. */
 export type LayoutGrid =
   | { pattern: 'GRID'; sectionSize: number; color: Color; visible: boolean }
@@ -347,6 +406,8 @@ export interface ExportSetting {
   svgResponsive?: boolean;
   /** SVG: text as letter outlines (needs the font's file: kept in the file, or Inter). */
   svgOutlineText?: boolean;
+  /** PNG, JPG, WebP: what lies over the layer comes into the picture too (Figma's «Ignore overlapping layers» off). */
+  withOverlaps?: boolean;
 }
 /** The scale an export setting gives a w × h layer (a fixed width or height, or the scale itself). */
 export function exportScale(s: ExportSetting, w: number, h: number): number {
@@ -402,6 +463,17 @@ export type MaskType = 'ALPHA' | 'VECTOR' | 'LUMINANCE';
  * in all — in a row with `gap` px between copies, or round a circle of `radius` px
  * (the layers at the top, copies turned evenly round the centre below them).
  */
+/**
+ * A screen in several widths (breakpoints, as in Framer): every frame of a set shows the same layers — texts,
+ * colours and pictures are one for all, the layout is each width's own.
+ */
+export interface BreakpointInfo {
+  /** The set: the same for every width of the screen. */
+  set: string;
+  /** This width in the set (a copy of the frame made by hand gets a new set of its own). */
+  id: string;
+}
+
 export interface RepeatSettings {
   kind: 'LINEAR' | 'RADIAL';
   count: number;
@@ -536,7 +608,11 @@ export type Warp =
 // ---------- Prototyping (section 13 of the spec) ----------
 
 /** What starts an interaction (FR-PRT-003). */
-export type TriggerType = 'ON_CLICK' | 'ON_HOVER' | 'ON_PRESS' | 'MOUSE_ENTER' | 'MOUSE_LEAVE' | 'AFTER_TIMEOUT' | 'ON_KEY';
+/** ON_DRAG — the layer is dragged (a swipe); MOUSE_DOWN / MOUSE_UP — the button goes down / up on it (step 8, as in Figma). */
+export type TriggerType = 'ON_CLICK' | 'ON_DRAG' | 'ON_HOVER' | 'ON_PRESS' | 'MOUSE_ENTER' | 'MOUSE_LEAVE' | 'MOUSE_DOWN' | 'MOUSE_UP' | 'AFTER_TIMEOUT' | 'ON_KEY' | 'VIDEO_END';
+
+/** What an action does to a video in the prototype (step 8, as Figma's video actions). */
+export type VideoOp = 'PLAY' | 'PAUSE' | 'TOGGLE_PLAY' | 'MUTE' | 'UNMUTE' | 'TOGGLE_MUTE' | 'SEEK_FORWARD' | 'SEEK_BACKWARD' | 'SEEK_TO';
 
 export interface Trigger {
   type: TriggerType;
@@ -551,7 +627,7 @@ export type TransitionDirection = 'LEFT' | 'RIGHT' | 'TOP' | 'BOTTOM';
 
 /** Timing curve (FR-PRT-021). */
 export type Easing =
-  | { type: 'LINEAR' | 'EASE_IN' | 'EASE_OUT' | 'EASE_IN_OUT' | 'EASE_IN_BACK' | 'EASE_OUT_BACK' }
+  | { type: 'LINEAR' | 'EASE_IN' | 'EASE_OUT' | 'EASE_IN_OUT' | 'EASE_IN_BACK' | 'EASE_OUT_BACK' | 'EASE_IN_AND_OUT_BACK' }
   | { type: 'CUSTOM_BEZIER'; bezier: [number, number, number, number] }
   | { type: 'SPRING'; mass: number; stiffness: number; damping: number };
 
@@ -561,6 +637,10 @@ export interface Transition {
   /** 1–10 000 ms. */
   duration: number;
   easing: Easing;
+  /** A TIMING variable: its value (in the mode in effect) is the duration (Motion, stage 1). */
+  durationVar?: string;
+  /** An EASING variable: its value is the curve. */
+  easingVar?: string;
 }
 
 export type OverlayPosition = 'CENTER' | 'TOP_LEFT' | 'TOP_CENTER' | 'TOP_RIGHT' | 'BOTTOM_LEFT' | 'BOTTOM_CENTER' | 'BOTTOM_RIGHT' | 'MANUAL' | 'RELATIVE';
@@ -587,7 +667,11 @@ export type PrototypeAction =
   /** FR-PRT-040: the expression refers to variables as `{#<id>}`; the editor shows names. */
   | { type: 'SET_VARIABLE'; variableId: string | null; expression: string }
   /** FR-PRT-041: if / else if / else; a branch with condition null is "else". */
-  | { type: 'CONDITIONAL'; branches: { condition: string | null; actions: PrototypeAction[] }[] };
+  | { type: 'CONDITIONAL'; branches: { condition: string | null; actions: PrototypeAction[] }[] }
+  /** Step 8: play, pause, mute or seek the video of a layer (`destinationId`; null — the layer that reacts). `seconds` — for the seeks. */
+  | { type: 'VIDEO'; destinationId: string | null; op: VideoOp; seconds: number }
+  /** Step 8: switches a variable collection to a mode for the whole prototype (a light / dark theme, a language). */
+  | { type: 'SET_VARIABLE_MODE'; collectionId: string | null; modeId: string | null };
 
 export type PrototypeDevice = 'NONE' | 'IPHONE' | 'PIXEL' | 'IPAD' | 'MACBOOK';
 
@@ -688,6 +772,28 @@ export interface TextRunStyle {
   link?: string;
 }
 
+/**
+ * A file's picture or font (from a .csdoc, an import, a co-editor's operation) goes into data: addresses, CSS
+ * and SVG: its data must be base64 (else it could close the string it is put in), its type a type — any other
+ * type becomes application/octet-stream (the picture stays, nothing is spliced in).
+ */
+export const safeBlobData = (data: unknown): data is string => typeof data === 'string' && /^[A-Za-z0-9+/]*={0,2}$/.test(data);
+export const safeMime = (mime: unknown): string => (typeof mime === 'string' && /^[a-z]+\/[a-z0-9.+-]{1,80}$/i.test(mime) ? mime : 'application/octet-stream');
+
+/** A name (a font family) as a CSS string, quotes included: nothing in it closes the string, the rule or a <style>. */
+export function cssString(value: string): string {
+  return `"${value.replace(/[\\"<>\n\r\f]/g, (c) => `\\${c.charCodeAt(0).toString(16)} `)}"`;
+}
+
+/**
+ * A name of a file (a style, a collection, a mode) as the text of a CSS comment: it ends no comment, opens
+ * no tag (the CSS goes into <style> of exported HTML) and breaks no line (a // comment of SCSS).
+ */
+export const cssComment = (value: string): string => value.replace(/\*\//g, '* /').replace(/</g, '\\3c ').replace(/[\r\n\f]+/g, ' ');
+
+/** CSS given out (into <style> of exported HTML, into a person's project): no "<" — no "</style>" in it, whatever a file's names hold. */
+export const cssNoTags = (css: string): string => css.replace(/</g, '\\3c ');
+
 /** Whether an address may be a hyperlink: web, mail and phone links only (no "javascript:"). */
 export function safeLink(value: string): string | null {
   let v = value.trim();
@@ -722,6 +828,8 @@ export interface ComponentPropDef {
   name: string;
   type: ComponentPropType;
   description?: string;
+  /** INSTANCE_SWAP: components offered first when an instance swaps this layer (step 6, Figma's preferred values). */
+  preferred?: string[];
 }
 
 /** Which layer property a component property drives. */
@@ -754,7 +862,46 @@ export const TEXT_STYLE_KEYS = [
 
 // ---------- Variables (section 11, FR-VAR) ----------
 
-export type VariableType = 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN';
+// ---------- Motion: a timeline of a frame (Figma Motion, stage 2) ----------
+
+/** What a keyframe animates: where a layer is, how big, turned and seen (scale is around its centre, 1 = as is). */
+export type MotionProp = 'x' | 'y' | 'rotation' | 'scale' | 'opacity';
+export const MOTION_PROPS: readonly MotionProp[] = ['x', 'y', 'rotation', 'scale', 'opacity'];
+
+/** A value at a moment; `ease` (text, as an EASING variable holds it) or `easeVar` (an EASING variable) — the curve to the next keyframe. */
+export interface Keyframe {
+  /** ms from the start. */
+  t: number;
+  v: number;
+  ease?: string;
+  easeVar?: string;
+}
+
+/** A layer's keyframes by property, each list in time order. */
+export type LayerKeyframes = Partial<Record<MotionProp, Keyframe[]>>;
+
+/**
+ * An animation style (Motion, stage 3): keyframes relative to a layer — `t` a part (0..1) of `duration`; x, y and
+ * rotation as offsets from where the layer is, scale and opacity as values; `ease` per keyframe or for all.
+ */
+export interface AnimationStyle {
+  id: string;
+  name: string;
+  /** ms. */
+  duration: number;
+  ease: string;
+  tracks: Partial<Record<MotionProp, { t: number; v: number; ease?: string }[]>>;
+}
+
+/** A frame with a timeline: how long it plays and whether it starts again. */
+export interface MotionSettings {
+  /** ms. */
+  duration: number;
+  loop: boolean;
+}
+
+/** TIMING — a duration in ms; EASING — a curve as text (`ease-out`, `cubic-bezier(…)`, `spring(…)`), Figma Motion's motion variables. */
+export type VariableType = 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN' | 'TIMING' | 'EASING';
 
 /** A mode of a collection ("Светлая", "Тёмная"); the first mode is the default. */
 export interface VariableMode {
@@ -804,6 +951,46 @@ export type VariableScope =
   | 'FONT_FAMILY'
   | 'GRID';
 
+// ---------- Motion: easing as text (variables of type EASING) ----------
+
+const EASING_WORDS: Record<string, Easing['type']> = {
+  linear: 'LINEAR',
+  'ease-in': 'EASE_IN',
+  'ease-out': 'EASE_OUT',
+  'ease-in-out': 'EASE_IN_OUT',
+  'ease-in-back': 'EASE_IN_BACK',
+  'ease-out-back': 'EASE_OUT_BACK',
+  'ease-in-out-back': 'EASE_IN_AND_OUT_BACK',
+};
+
+/** A curve written as text — a word (`ease-out`), `cubic-bezier(x1, y1, x2, y2)` or `spring(mass, stiffness, damping)` — or null. */
+export function parseEasing(text: string): Easing | null {
+  const t = text.trim().toLowerCase();
+  const word = EASING_WORDS[t];
+  if (word) return { type: word } as Easing;
+  const nums = (body: string) => body.split(',').map((x) => Number(x.trim()));
+  let m = /^cubic-bezier\(([^)]*)\)$/.exec(t);
+  if (m) {
+    const n = nums(m[1]!);
+    if (n.length !== 4 || n.some((x) => !Number.isFinite(x)) || n[0]! < 0 || n[0]! > 1 || n[2]! < 0 || n[2]! > 1) return null;
+    return { type: 'CUSTOM_BEZIER', bezier: n as [number, number, number, number] };
+  }
+  m = /^spring\(([^)]*)\)$/.exec(t);
+  if (m) {
+    const n = nums(m[1]!);
+    if (n.length !== 3 || n.some((x) => !Number.isFinite(x) || x <= 0)) return null;
+    return { type: 'SPRING', mass: n[0]!, stiffness: n[1]!, damping: n[2]! };
+  }
+  return null;
+}
+
+/** A curve as the text an EASING variable holds. */
+export function easingText(e: Easing): string {
+  if (e.type === 'CUSTOM_BEZIER') return `cubic-bezier(${e.bezier.map((x) => Math.round(x * 1000) / 1000).join(', ')})`;
+  if (e.type === 'SPRING') return `spring(${e.mass}, ${e.stiffness}, ${e.damping})`;
+  return Object.keys(EASING_WORDS).find((k) => EASING_WORDS[k] === e.type) ?? 'linear';
+}
+
 export function isAlias(v: unknown): v is VariableAlias {
   return typeof v === 'object' && v !== null && (v as { type?: unknown }).type === 'ALIAS';
 }
@@ -835,22 +1022,11 @@ export interface SlideTransition {
   duration: number;
 }
 
-/** A file kept on a slide: click opens it or downloads it. The bytes live in the document. */
-export interface SlideFile {
-  name: string;
-  hash: string;
-  mime: string;
-  /** Where the icon sits on the slide, in the slide's own coordinates. Absent — a default stack. */
-  x?: number;
-  y?: number;
-}
-
 /** A slide of a presentation (a top-level frame): the speaker's notes, how it comes in, skipped in the show. */
 export interface SlideInfo {
   notes: string;
   transition?: SlideTransition;
   skip?: boolean;
-  files?: SlideFile[];
 }
 
 /** A table (FEAT-167): a grid frame of cells, each a frame with a text; the first row may be the header. */
@@ -1098,8 +1274,14 @@ export interface NodeProps {
   repeat: RepeatSettings | null;
   /** A copy a repeat group made of its own layers: rebuilt with them, not edited by hand. */
   repeatCopy: boolean;
+  /** Top frame: one of the widths of a screen (breakpoints); null — a frame of its own. */
+  breakpoint: BreakpointInfo | null;
+  /** Layer of a breakpoint frame: the same key in every width marks the same layer. */
+  bpKey: string | null;
   /** How a mask hides: by its opacity, by its outline (any opacity counts as full), by its brightness. */
   maskType: MaskType;
+  /** «От руки» (FEAT-223): the layer and everything inside drawn as a hand sketch; the geometry does not change. */
+  sketch: boolean;
   exportSettings: ExportSetting[];
   /** Line ends. */
   startCap: LineCap;
@@ -1222,6 +1404,8 @@ export interface NodeProps {
   libraryPage: boolean;
   /** Component, component set, style, variable collection taken from a library: where from, which publication. */
   libraryRef: LibraryRef | null;
+  /** Component, set or style moved here from another library file by cut and paste: files using it there follow it here. */
+  movedFrom: MovedFrom | null;
 
   // Components (section 10)
   /** INSTANCE: the component it shows. */
@@ -1282,8 +1466,34 @@ export interface NodeProps {
   codeSyntax: Record<string, string>;
   /** VARIABLE: not published to libraries. */
   hiddenFromPublishing: boolean;
+  /** An instance nested in a component: its variants and properties are shown in the panel of the component's instances (step 6, Figma's Expose nested instances). */
+  exposedInstance: boolean;
+  /** A frame in a component: in its instances, layers of their own can be put here (step 6, Figma's slots). */
+  slot: boolean;
+  /** A slot in an instance whose content is the instance's own (put, removed or moved there): not synced from the component. */
+  slotFilled: boolean;
+  /** A frame with a timeline (Motion, stage 2). */
+  motion: MotionSettings | null;
+  /** A layer's keyframes on the timeline of the frame it is in. */
+  keyframes: LayerKeyframes | null;
+  /** The document node: animation styles of the file's own (Motion, stage 3). */
+  animationStyles: AnimationStyle[];
+  /** Scene node: Dev Mode annotations (step 7). */
+  annotations: Annotation[];
+  /** PAGE: measurements kept in the file (step 7). */
+  measurements: SavedMeasurement[];
+  /** Scene node: links for developers — code, stories, tickets (step 7). An instance shows its component's. */
+  devResources: DevResource[];
+  /** COMPONENT or COMPONENT_SET: its code from the repository (step 7, Code Connect); instances show it filled in. */
+  codeConnect: CodeConnect | null;
   /** SECTION (and later frames): work status shown on the title and in filters (FR-CNV-071, FR-DEV-002). */
   devStatus: DevStatus;
+  /** DOCUMENT: how colour numbers are read (step 9, as in Figma): sRGB, or Display P3 — wider, for wide-gamut screens. */
+  colorProfile: 'SRGB' | 'DISPLAY_P3';
+  /** Scene node: what a screen reader takes it for in the prototype viewer (step 8); AUTO — guessed from the layer. */
+  a11yRole: A11yRole;
+  /** Scene node: what a screen reader says for it (a picture's description, a button's name); empty — its text or name. */
+  a11yLabel: string;
   /** Scene node: prototype interactions (FR-PRT-001, 003). */
   reactions: Reaction[];
   /** Frame: scrolling of its content in the prototype (FR-PRT-030). */
@@ -1345,7 +1555,7 @@ export function solid(color: Color, opacity = 1): SolidPaint {
   return { type: 'SOLID', color, opacity, visible: true };
 }
 
-const BASE_DEFAULTS: NodeProps = {
+export const BASE_DEFAULTS: NodeProps = {
   name: '',
   visible: true,
   locked: false,
@@ -1386,9 +1596,12 @@ const BASE_DEFAULTS: NodeProps = {
   isMask: false,
   repeat: null,
   repeatCopy: false,
+  breakpoint: null,
+  bpKey: null,
   brushes: [],
   customBrush: null,
   maskType: 'ALPHA',
+  sketch: false,
   exportSettings: [],
   startCap: 'NONE',
   endCap: 'NONE',
@@ -1447,6 +1660,7 @@ const BASE_DEFAULTS: NodeProps = {
   libraries: [],
   libraryPage: false,
   libraryRef: null,
+  movedFrom: null,
   fontVariantCaps: 'NORMAL',
   kerning: true,
   fontFeatures: {},
@@ -1490,7 +1704,20 @@ const BASE_DEFAULTS: NodeProps = {
   scopes: [],
   codeSyntax: {},
   hiddenFromPublishing: false,
+  exposedInstance: false,
+  slot: false,
+  slotFilled: false,
+  motion: null,
+  keyframes: null,
+  animationStyles: [],
+  annotations: [],
+  measurements: [],
+  devResources: [],
+  codeConnect: null,
   devStatus: 'NONE',
+  colorProfile: 'SRGB',
+  a11yRole: 'AUTO',
+  a11yLabel: '',
   reactions: [],
   overflowDirection: 'NONE',
   scrollBehavior: 'SCROLLS',
@@ -1539,6 +1766,8 @@ const TYPE_DEFAULTS: Record<NodeType, Partial<NodeProps>> = {
   BOOLEAN_OPERATION: { name: 'Union', fills: [solid(SHAPE_GREY)] },
   LINE: { name: 'Line', strokes: [solid(rgba(0, 0, 0))], strokeAlign: 'CENTER', width: 100, height: 0 },
   TEXT: { name: 'Text', fills: [solid(rgba(0, 0, 0))], characters: '', width: 0, height: 0 },
+  // Exported as PNG 1x from the start, as in Figma: a slice exists to be exported.
+  SLICE: { name: 'Slice', width: 100, height: 100, exportSettings: [{ format: 'PNG', scale: 1, suffix: '' }] },
   STYLE: { name: 'Style' },
   VARIABLE_COLLECTION: { name: tr('Коллекция') },
   VARIABLE: { name: tr('Переменная') },

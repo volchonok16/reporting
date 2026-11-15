@@ -1,14 +1,17 @@
 // Raster export (FR-EXP-001): renders a node with the same renderer as the canvas.
 
+import { context2d } from './color-space.ts';
 import { tr } from '#core';
 import type { Document, NodeId } from '#core';
 import { hasFilters } from './pixels.ts';
-import { inflate, warpExtent, type Rect } from '#geometry';
+import { inflate, intersects, warpExtent, type Rect } from '#geometry';
 import type { Canvas2DRenderer } from './canvas-renderer.ts';
 import type { SceneGraph } from './scene.ts';
 
 export interface ExportOptions {
   scale: number;
+  /** Layers lying over the node are drawn over it too, cut to its picture (step 9). */
+  withOverlaps?: boolean;
   format: 'image/png' | 'image/jpeg' | 'image/webp';
   quality?: number;
   /** Background for formats without alpha. */
@@ -16,13 +19,32 @@ export interface ExportOptions {
 }
 
 /** Renders a node (with strokes and shadows) into an offscreen canvas at `scale`. */
-export async function rasterize(renderer: Canvas2DRenderer, scene: SceneGraph, id: NodeId, scale: number, background?: string, options: { children?: boolean } = {}): Promise<{ canvas: OffscreenCanvas; bounds: Rect }> {
+/**
+ * The layers over a node in paint order: at each level up, the siblings after it — with what they hold —
+ * that reach into its picture. Slices are left out.
+ */
+export function layersOver(scene: SceneGraph, id: NodeId): NodeId[] {
+  scene.ensure();
+  const d = scene.doc;
+  const area = scene.renderBounds(id);
+  const out: NodeId[] = [];
+  for (let at: NodeId = id, parent = d.parent(at); parent !== null && d.type(at) !== 'PAGE'; at = parent, parent = d.parent(at)) {
+    const kids = d.children(parent);
+    for (const c of kids.slice(kids.indexOf(at) + 1)) {
+      if (d.get(c, 'visible') && d.type(c) !== 'SLICE' && intersects(scene.renderBounds(c), area)) out.push(c);
+    }
+    if (d.type(parent) === 'PAGE') break;
+  }
+  return out;
+}
+
+export async function rasterize(renderer: Canvas2DRenderer, scene: SceneGraph, id: NodeId, scale: number, background?: string, options: { children?: boolean; withOverlaps?: boolean } = {}): Promise<{ canvas: OffscreenCanvas; bounds: Rect }> {
   scene.ensure();
   const bounds = inflate(scene.renderBounds(id), 0);
   const width = Math.max(1, Math.ceil(bounds.width * scale));
   const height = Math.max(1, Math.ceil(bounds.height * scale));
   const canvas = new OffscreenCanvas(width, height);
-  const ctx = canvas.getContext('2d');
+  const ctx = context2d(canvas);
   if (!ctx) throw new Error(tr('Canvas 2D недоступен'));
   const draw = () => {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -39,6 +61,16 @@ export async function rasterize(renderer: Canvas2DRenderer, scene: SceneGraph, i
       ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
     }
     renderer.renderNode(ctx, scene, id, bounds, scale, options);
+    // «Со слоями поверх»: what lies over it, each in its own parent's space, cut to this picture.
+    for (const over of options.withOverlaps ? layersOver(scene, id) : []) {
+      ctx.setTransform(scale, 0, 0, scale, -bounds.x * scale, -bounds.y * scale);
+      const p = scene.doc.parent(over);
+      if (p && scene.doc.type(p) !== 'PAGE') {
+        const m = scene.world(p);
+        ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+      }
+      renderer.renderNode(ctx, scene, over, bounds, scale);
+    }
   };
   draw();
   // Image fills decode asynchronously: wait for them and draw again so the file has the real pixels.
@@ -47,9 +79,44 @@ export async function rasterize(renderer: Canvas2DRenderer, scene: SceneGraph, i
   return { canvas, bounds };
 }
 
+/** The layers of the page that show in an area (a slice's), bottom first; slices themselves are left out. */
+export function layersIn(scene: SceneGraph, area: Rect): NodeId[] {
+  scene.ensure();
+  const d = scene.doc;
+  return d.children(scene.pageId).filter((id) => d.get(id, 'visible') && d.type(id) !== 'SLICE' && intersects(scene.renderBounds(id), area));
+}
+
+/** Whatever lies in an area of the page, as on the canvas (step 9: a slice's export). */
+export async function exportArea(renderer: Canvas2DRenderer, scene: SceneGraph, area: Rect, options: ExportOptions): Promise<Blob> {
+  const background = options.background ?? (options.format === 'image/jpeg' ? '#FFFFFF' : undefined);
+  const scale = options.scale;
+  const width = Math.max(1, Math.round(area.width * scale));
+  const height = Math.max(1, Math.round(area.height * scale));
+  const canvas = new OffscreenCanvas(width, height);
+  const ctx = context2d(canvas);
+  if (!ctx) throw new Error(tr('Canvas 2D недоступен'));
+  const ids = layersIn(scene, area);
+  const draw = () => {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    if (background) {
+      ctx.fillStyle = background;
+      ctx.fillRect(0, 0, width, height);
+    }
+    for (const id of ids) {
+      ctx.setTransform(scale, 0, 0, scale, -area.x * scale, -area.y * scale);
+      renderer.renderNode(ctx, scene, id, area, scale);
+    }
+  };
+  draw();
+  await renderer.images.settled();
+  draw();
+  return canvas.convertToBlob({ type: options.format, quality: options.quality });
+}
+
 export async function exportNode(renderer: Canvas2DRenderer, scene: SceneGraph, id: NodeId, options: ExportOptions): Promise<Blob> {
   const background = options.background ?? (options.format === 'image/jpeg' ? '#FFFFFF' : undefined);
-  const { canvas } = await rasterize(renderer, scene, id, options.scale, background);
+  const { canvas } = await rasterize(renderer, scene, id, options.scale, background, { withOverlaps: options.withOverlaps });
   return canvas.convertToBlob({ type: options.format, quality: options.quality });
 }
 
@@ -61,7 +128,7 @@ export function renderThumbnail(renderer: Canvas2DRenderer, scene: SceneGraph, i
   const dpr = typeof devicePixelRatio === 'number' ? devicePixelRatio : 1;
   canvas.width = Math.round(cssWidth * dpr);
   canvas.height = Math.round(cssHeight * dpr);
-  const ctx = canvas.getContext('2d');
+  const ctx = context2d(canvas);
   if (!ctx) return;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -111,7 +178,7 @@ export function layerPicture(renderer: Canvas2DRenderer, scene: SceneGraph, id: 
   const side = Math.max(rect.width, rect.height);
   const k = Math.min(scale, 4096 / Math.max(1, side));
   const canvas = Object.assign(document.createElement('canvas'), { width: Math.max(1, Math.ceil(rect.width * k)), height: Math.max(1, Math.ceil(rect.height * k)) });
-  const ctx = canvas.getContext('2d');
+  const ctx = context2d(canvas);
   if (!ctx) return null;
   // The layer's own space: drawing it puts it at its place, so that place is undone first.
   ctx.setTransform(k, 0, 0, k, -rect.x * k, -rect.y * k);

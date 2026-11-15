@@ -23,7 +23,7 @@ import { valuePreview } from './variable-ui.ts';
 const ROW_H = 32;
 const NAME_W = 240;
 
-const TYPE_ICONS: Record<VariableType, string> = { COLOR: 'opacity', FLOAT: 'gap', STRING: 'text', BOOLEAN: 'eye' };
+const TYPE_ICONS: Record<VariableType, string> = { COLOR: 'opacity', FLOAT: 'gap', STRING: 'text', BOOLEAN: 'eye', TIMING: 'clock', EASING: 'routeCurve' };
 
 const SCOPES: Record<VariableType, { value: VariableScope; label: string }[]> = {
   COLOR: [
@@ -50,6 +50,8 @@ const SCOPES: Record<VariableType, { value: VariableScope; label: string }[]> = 
     { value: 'FONT_FAMILY', label: tr('Шрифт') },
   ],
   BOOLEAN: [],
+  TIMING: [],
+  EASING: [],
 };
 
 const PLATFORMS: { key: string; label: string; example: (name: string) => string }[] = [
@@ -105,7 +107,7 @@ export class VariablesDialog {
       'select',
       { class: 'field-select', 'aria-label': tr('Тип') },
       h('option', { value: '' }, tr('Все типы')),
-      ...(['COLOR', 'FLOAT', 'STRING', 'BOOLEAN'] as const).map((t) => h('option', { value: t }, TYPE_NAMES[t])),
+      ...(['COLOR', 'FLOAT', 'STRING', 'BOOLEAN', 'TIMING', 'EASING'] as const).map((t) => h('option', { value: t }, TYPE_NAMES[t])),
     );
     this.showFilter = h(
       'select',
@@ -455,7 +457,7 @@ export class VariablesDialog {
     const { createDarkTheme } = await import('../smart-ops.ts');
     const n = createDarkTheme(this.editor, this.collection!, []);
     this.refresh();
-    this.editor.toast(tr('Режим «Тёмная»: подобрано цветов — {0}. Это черновик — поправьте цвета прямо в таблице.', n));
+    this.editor.toast(tr('Режим «Тёмная»: подобрано цветов — {0}. Это черновик, поправьте цвета прямо в таблице.', n));
   }
 
   private renderEmpty(): void {
@@ -464,7 +466,7 @@ export class VariablesDialog {
     const has = this.rows.length > 0;
     this.empty.hidden = has;
     this.addVariable.disabled = !this.collection || !!this.scope();
-    this.addVariable.title = this.scope() ? tr('Переменные добавляются в родительскую коллекцию — расширение получит их само') : '';
+    this.addVariable.title = this.scope() ? tr('Переменные добавляются в родительскую коллекцию, расширение получит их само') : '';
     if (has) return;
     if (!this.collection) {
       this.empty.append(
@@ -478,7 +480,7 @@ export class VariablesDialog {
         h('button', { class: 'link-button', type: 'button', onclick: () => window.dispatchEvent(new CustomEvent('cs-help', { detail: 'variables-theme' })) }, tr('Как пользоваться переменными — пошагово')),
       );
     } else if (this.scope() && d.children(baseCollection(d, this.collection)).length === 0) {
-      this.empty.append(h('p', {}, tr('В родительской коллекции пока нет переменных. Добавьте их там — расширение получит их само.')));
+      this.empty.append(h('p', {}, tr('В родительской коллекции пока нет переменных. Добавьте их там, и расширение получит их само.')));
     } else if (d.children(this.collection).length === 0 && !this.scope()) {
       this.empty.append(h('p', {}, tr('В коллекции пока нет переменных. Добавьте первую кнопкой «+ Переменная» или вставьте столбец значений из таблицы (⌘V).')));
     } else {
@@ -922,7 +924,7 @@ export class VariablesDialog {
     if (!this.collection) return;
     const list = h('div', { class: 'style-menu', role: 'menu' });
     let close = () => {};
-    for (const t of ['COLOR', 'FLOAT', 'STRING', 'BOOLEAN'] as const) {
+    for (const t of ['COLOR', 'FLOAT', 'STRING', 'BOOLEAN', 'TIMING', 'EASING'] as const) {
       const b = h('button', { class: 'style-menu-item', type: 'button', role: 'menuitem' }, icon(TYPE_ICONS[t], 14), h('span', {}, TYPE_NAMES[t]));
       b.addEventListener('click', () => {
         close();
@@ -1080,7 +1082,7 @@ export class VariablesDialog {
     this.collection = this.editor.variables.createThemeExample();
     this.group = null;
     this.refresh();
-    this.editor.toast(tr('Готово. Теперь привяжите цвета слоёв к переменным (шестиугольник в поле цвета) и переключите режим у экрана — подробнее в справке.'));
+    this.editor.toast(tr('Готово. Теперь привяжите цвета слоёв к переменным (шестиугольник в поле цвета) и переключите режим у экрана. Подробнее в справке.'));
   }
 
   private createCollection(): void {
@@ -1213,7 +1215,7 @@ export class VariablesDialog {
     this.detailsFor = key;
     clear(this.details);
     if (!v || !isVariable(d, v)) {
-      this.details.append(h('p', { class: 'hint small' }, tr('Выберите переменную, чтобы увидеть описание, область применения, имена в коде, где она используется и от чего зависит.')));
+      this.details.append(h('p', { class: 'hint small' }, tr('Выберите переменную, чтобы увидеть подробности и где она используется.')));
       return;
     }
     const type = d.get(v, 'varType');

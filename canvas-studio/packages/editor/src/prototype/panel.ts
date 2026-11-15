@@ -5,7 +5,7 @@
 // interactions change (see PropertiesPanel's signature).
 
 import { tr } from '#core';
-import { isFrameLike, type Easing, type NodeId, type OverlayPosition, type OverlaySettings, type PrototypeAction, type Reaction, type Transition, type TransitionDirection, type TransitionType, type TriggerType } from '#core';
+import { isFrameLike, type Easing, type NodeId, type OverlayPosition, type OverlaySettings, type PrototypeAction, type Reaction, type Transition, type TransitionDirection, type TransitionType, type TriggerType, type VideoOp } from '#core';
 import type { Editor } from '../editor.ts';
 import { openColorPicker } from '../ui/color-picker.ts';
 import { h, icon } from '../ui/dom.ts';
@@ -30,24 +30,28 @@ function swatchButton(label: string, value: { r: number; g: number; b: number },
 import { PrototypeController } from './controller.ts';
 import { curveEditor } from './curve-editor.ts';
 import type { OverflowDirection, ScrollBehavior } from '#core';
-import { BEZIER_PRESETS, clampDuration, DIRECTIONAL, SPRING_PRESETS, TRANSITION_LABELS } from './easing.ts';
-import { allVariables } from '#components';
-import type { PrototypeDevice, VariableType } from '#core';
+import { BEZIER_PRESETS, clampDuration, DIRECTIONAL, resolveTiming, SPRING_PRESETS, TRANSITION_LABELS } from './easing.ts';
+import { allVariables, resolveVariable } from '#components';
+import type { Document, PrototypeDevice, VariableLiteral, VariableType } from '#core';
 import { DEVICE_LABELS } from './devices.ts';
+import { A11Y_ROLES, a11yItems, flatItems, spoken } from './a11y.ts';
+import type { A11yRole } from '#core';
 import { formatValue, tryEvaluate } from '#components';
 import { readVariable, toDisplay, toStored } from './vars.ts';
-import { ACTION_LABELS, DEFAULT_TRANSITION, MAX_CONDITION_DEPTH, flows, isScreen, screenOf, screens, TRIGGER_LABELS, variantChoices } from './model.ts';
+import { ACTION_LABELS, DEFAULT_TRANSITION, MAX_CONDITION_DEPTH, flows, isScreen, screenOf, screens, TRIGGER_LABELS, variantChoices, VIDEO_OPS } from './model.ts';
 
 export interface PrototypePanelHost {
   editor: Editor;
   section(title: string, ...actions: HTMLElement[]): HTMLElement;
   /** Opens the viewer at a screen. */
   present(start: NodeId | null, newTab?: boolean): void;
+  /** «Тестирование на людях…» (tasks, a link for respondents, results). */
+  userTests?(): void;
 }
 
 /** Triggers offered now; "while hovering / pressing" come with overlays and "Change to". */
-const TRIGGERS: TriggerType[] = ['ON_CLICK', 'ON_HOVER', 'ON_PRESS', 'MOUSE_ENTER', 'MOUSE_LEAVE', 'AFTER_TIMEOUT', 'ON_KEY'];
-const ACTIONS: PrototypeAction['type'][] = ['NAVIGATE', 'BACK', 'SCROLL_TO', 'URL', 'OPEN_OVERLAY', 'SWAP_OVERLAY', 'CLOSE_OVERLAY', 'CHANGE_TO', 'SET_VARIABLE', 'CONDITIONAL'];
+const TRIGGERS: TriggerType[] = ['ON_CLICK', 'ON_DRAG', 'ON_HOVER', 'ON_PRESS', 'MOUSE_ENTER', 'MOUSE_LEAVE', 'MOUSE_DOWN', 'MOUSE_UP', 'VIDEO_END', 'AFTER_TIMEOUT', 'ON_KEY'];
+const ACTIONS: PrototypeAction['type'][] = ['NAVIGATE', 'BACK', 'SCROLL_TO', 'URL', 'OPEN_OVERLAY', 'SWAP_OVERLAY', 'CLOSE_OVERLAY', 'CHANGE_TO', 'SET_VARIABLE', 'SET_VARIABLE_MODE', 'VIDEO', 'CONDITIONAL'];
 
 /** What the tab depends on: rebuilt when any of it changes. */
 export function prototypeSignature(editor: Editor): string {
@@ -55,7 +59,7 @@ export function prototypeSignature(editor: Editor): string {
   const ids = editor.topLevelSelection();
   const page = editor.pageId;
   const screenNames = screens(d, page).map((s) => `${s}=${d.get(s, 'name')}`).join(',');
-  return ['proto', page, ids.join(','), ids.map((id) => JSON.stringify(d.get(id, 'reactions'))).join('|'), JSON.stringify(d.get(page, 'flowStartingPoints')), screenNames, JSON.stringify(d.get(page, 'prototypeBackground')), d.get(page, 'prototypeDevice'), allVariables(d).map((v) => `${v}=${d.get(v, 'name')}`).join(',')].join(':');
+  return ['proto', page, ids.join(','), ids.map((id) => JSON.stringify(d.get(id, 'reactions')) + d.get(id, 'a11yRole') + d.get(id, 'a11yLabel')).join('|'), JSON.stringify(d.get(page, 'flowStartingPoints')), screenNames, JSON.stringify(d.get(page, 'prototypeBackground')), d.get(page, 'prototypeDevice'), allVariables(d).map((v) => `${v}=${d.get(v, 'name')}`).join(',')].join(':');
 }
 
 export function buildPrototypePanel(host: PrototypePanelHost): void {
@@ -75,6 +79,31 @@ export function buildPrototypePanel(host: PrototypePanelHost): void {
   buildScrolling(host, id);
   if (editor.prototype.canInteract(id)) buildReactions(host, id);
   else host.section(tr('Взаимодействия')).append(h('p', { class: 'hint' }, tr('У секции нет взаимодействий')));
+  if (!isScreen(editor.doc, id) && editor.doc.type(id) !== 'SECTION') buildReader(host, id);
+}
+
+// ---------- screen reader (step 8) ----------
+
+/** How a screen reader takes the layer in the viewer: its role, what is said, and a line of how it will sound. */
+function buildReader(host: PrototypePanelHost, id: NodeId): void {
+  const { editor } = host;
+  const d = editor.doc;
+  const body = host.section(tr('Экранный диктор'));
+  const role = select(tr('Роль для экранного диктора'), A11Y_ROLES, d.get(id, 'a11yRole'), (v) => editor.commit(tr('Роль для диктора'), (tx) => tx.set(id, 'a11yRole', v as A11yRole)));
+  body.append(h('label', { class: 'proto-line' }, h('span', { class: 'field-label' }, tr('Роль')), role));
+  if (d.get(id, 'a11yRole') !== 'DECORATIVE') {
+    const label = h('input', { class: 'proto-input', type: 'text', value: d.get(id, 'a11yLabel'), placeholder: tr('Описание'), 'aria-label': tr('Описание для экранного диктора'), spellcheck: true, maxLength: 500 });
+    label.addEventListener('keydown', (e) => e.stopPropagation());
+    label.addEventListener('change', () => {
+      const v = label.value.trim();
+      if (v !== d.get(id, 'a11yLabel')) editor.commit(tr('Описание для диктора'), (tx) => tx.set(id, 'a11yLabel', v));
+    });
+    body.append(label);
+  }
+  const items = flatItems(a11yItems(d, id, (n) => editor.scene.bounds(n), false));
+  const first = items[0];
+  // One quiet line: how it sounds, or that a picture has no description. Nothing when the reader skips it.
+  if (first) body.append(h('p', { class: 'hint small' }, first.unlabeled ? tr('Нет описания картинки') : `${tr('Прочтёт')}: «${spoken(first)}»`));
 }
 
 // ---------- page: flows and viewer settings ----------
@@ -109,6 +138,11 @@ function buildPage(host: PrototypePanelHost): void {
   const tab = h('button', { class: 'text-button proto-present', type: 'button', title: tr('Отдельная вкладка: удобно показать на втором мониторе') }, h('span', {}, tr('В новой вкладке')));
   tab.addEventListener('click', () => host.present(null, true));
   view.append(h('div', { class: 'proto-buttons' }, open, tab));
+  if (host.userTests) {
+    const test = h('button', { class: 'text-button proto-present', type: 'button' }, h('span', {}, tr('Тест на людях…')));
+    test.addEventListener('click', () => host.userTests?.());
+    view.append(h('div', { class: 'proto-buttons' }, test));
+  }
 }
 
 function hex(c: { r: number; g: number; b: number }): string {
@@ -226,6 +260,11 @@ function reactionCard(host: PrototypePanelHost, id: NodeId, reaction: Reaction, 
 /** Edits the list of actions a row belongs to (an interaction's, or a condition branch's). */
 type ListEdit = (fn: (list: PrototypeAction[]) => void, label?: string) => void;
 
+/** Whether a layer shows a video (a fill made of a video file). */
+function hasVideo(d: Document, id: NodeId): boolean {
+  return d.get(id, 'fills').some((p) => p.type === 'IMAGE' && !!d.store.blobs.get(p.imageHash)?.mime.startsWith('video/'));
+}
+
 function actionRow(host: PrototypePanelHost, id: NodeId, action: PrototypeAction, ai: number, count: number, update: ListEdit, depth: number): HTMLElement {
   const { editor } = host;
   const d = editor.doc;
@@ -248,7 +287,7 @@ function actionRow(host: PrototypePanelHost, id: NodeId, action: PrototypeAction
     }, tr('Изменить экран')));
     if (!dest) target.classList.add('proto-missing');
     row.append(target);
-    row.append(transitionEditor(action.transition, (fn, label) => update((list) => {
+    row.append(transitionEditor(d, action.transition, (fn, label) => update((list) => {
       const a = list[ai];
       if (a?.type === 'NAVIGATE') a.transition = fn(a.transition ?? { ...DEFAULT_TRANSITION });
     }, label)));
@@ -284,10 +323,63 @@ function actionRow(host: PrototypePanelHost, id: NodeId, action: PrototypeAction
       const a = list[ai];
       if (a?.type === 'OPEN_OVERLAY' || a?.type === 'SWAP_OVERLAY') a.overlay = fn(a.overlay);
     }, label)));
-    row.append(transitionEditor(action.transition, (fn, label) => update((list) => {
+    row.append(transitionEditor(d, action.transition, (fn, label) => update((list) => {
       const a = list[ai];
       if (a?.type === 'OPEN_OVERLAY' || a?.type === 'SWAP_OVERLAY') a.transition = fn(a.transition ?? { ...DEFAULT_TRANSITION });
     }, label), OVERLAY_TRANSITIONS));
+  } else if (action.type === 'SET_VARIABLE_MODE') {
+    // Collections with more than one mode: a theme, a language, a brand.
+    const collections = [...new Set(allVariables(d).map((v) => d.parent(v)).filter((c): c is NodeId => !!c && d.store.isAlive(c)))].filter((c) => d.get(c, 'modes').length > 1);
+    if (!collections.length) {
+      row.append(h('p', { class: 'hint' }, tr('В файле нет коллекции переменных с несколькими режимами (например, «Светлая» и «Тёмная»).')));
+    } else {
+      const coll = action.collectionId && collections.includes(action.collectionId) ? action.collectionId : '';
+      const cSel = select(tr('Коллекция'), [['', tr('Выберите коллекцию…')], ...collections.map((c): [string, string] => [c, String(d.get(c, 'name'))])], coll, (v) => update((list) => {
+        const a = list[ai];
+        if (a?.type === 'SET_VARIABLE_MODE') {
+          a.collectionId = v || null;
+          a.modeId = null;
+        }
+      }, tr('Коллекция переменных')));
+      if (!coll) cSel.classList.add('proto-missing');
+      row.append(cSel);
+      if (coll) {
+        const modes = d.get(coll, 'modes');
+        const mode = action.modeId && modes.some((m) => m.id === action.modeId) ? action.modeId : '';
+        const mSel = select(tr('Режим'), [['', tr('Выберите режим…')], ...modes.map((m): [string, string] => [m.id, m.name])], mode, (v) => update((list) => {
+          const a = list[ai];
+          if (a?.type === 'SET_VARIABLE_MODE') a.modeId = v || null;
+        }, tr('Режим переменных')));
+        if (!mode) mSel.classList.add('proto-missing');
+        row.append(mSel);
+      }
+    }
+  } else if (action.type === 'VIDEO') {
+    // The video layers of the screen (a fill with a video); «this layer» — the one that reacts.
+    const screen = screenOf(d, id);
+    const videos: [string, string][] = [['', tr('Этот слой')]];
+    if (screen) d.store.walk(screen, (n) => void (hasVideo(d, n) && n !== id && videos.push([n, String(d.get(n, 'name'))])));
+    const dest = action.destinationId && d.store.isAlive(action.destinationId) ? action.destinationId : '';
+    const target = select(tr('Видео'), videos, dest, (v) => update((list) => {
+      const a = list[ai];
+      if (a?.type === 'VIDEO') a.destinationId = v || null;
+    }, tr('Какое видео')));
+    if (!(dest ? hasVideo(d, dest) : hasVideo(d, id))) target.classList.add('proto-missing');
+    const op = select(tr('Что сделать'), VIDEO_OPS, action.op, (v) => update((list) => {
+      const a = list[ai];
+      if (a?.type === 'VIDEO') a.op = v as VideoOp;
+    }, tr('Действие с видео')));
+    row.append(target, op);
+    if (action.op === 'SEEK_FORWARD' || action.op === 'SEEK_BACKWARD' || action.op === 'SEEK_TO') {
+      const secs = h('input', { class: 'proto-input', type: 'number', min: '0', step: '0.5', value: String(action.seconds), 'aria-label': tr('Секунд') });
+      secs.addEventListener('keydown', (e) => e.stopPropagation());
+      secs.addEventListener('change', () => update((list) => {
+        const a = list[ai];
+        const v = Number(secs.value);
+        if (a?.type === 'VIDEO' && Number.isFinite(v) && v >= 0) a.seconds = Math.min(36_000, v);
+      }, tr('Секунды')));
+      row.append(h('label', { class: 'proto-inline' }, secs, h('span', {}, tr('с'))));
+    }
   } else if (action.type === 'SCROLL_TO') {
     const screen = screenOf(d, id);
     const layers: [string, string][] = [['', tr('Выберите слой…')]];
@@ -307,7 +399,7 @@ function actionRow(host: PrototypePanelHost, id: NodeId, action: PrototypeAction
       const a = list[ai];
       if (a?.type === 'SCROLL_TO') a.offset = offset;
     }, tr('Отступ прокрутки')), tr('Отступ от края')));
-    row.append(transitionEditor(action.transition, (fn, label) => update((list) => {
+    row.append(transitionEditor(d, action.transition, (fn, label) => update((list) => {
       const a = list[ai];
       if (a?.type === 'SCROLL_TO') a.transition = fn(a.transition ?? { ...DEFAULT_TRANSITION });
     }, label), SCROLL_TRANSITIONS));
@@ -323,7 +415,7 @@ function actionRow(host: PrototypePanelHost, id: NodeId, action: PrototypeAction
       }, tr('Вариант')));
       if (!dest) target.classList.add('proto-missing');
       row.append(target);
-      row.append(transitionEditor(action.transition, (fn, label) => update((list) => {
+      row.append(transitionEditor(d, action.transition, (fn, label) => update((list) => {
         const a = list[ai];
         if (a?.type === 'CHANGE_TO') a.transition = fn(a.transition ?? { ...DEFAULT_TRANSITION });
       }, label), CHANGE_TRANSITIONS));
@@ -453,7 +545,7 @@ function offsetFields(offset: { x: number; y: number }, onChange: (v: { x: numbe
 }
 
 
-type EasingChoice = 'LINEAR' | 'EASE_IN' | 'EASE_OUT' | 'EASE_IN_OUT' | 'EASE_IN_BACK' | 'EASE_OUT_BACK' | 'CUSTOM_BEZIER' | 'GENTLE' | 'QUICK' | 'BOUNCY' | 'SLOW' | 'SPRING';
+type EasingChoice = 'LINEAR' | 'EASE_IN' | 'EASE_OUT' | 'EASE_IN_OUT' | 'EASE_IN_BACK' | 'EASE_OUT_BACK' | 'EASE_IN_AND_OUT_BACK' | 'CUSTOM_BEZIER' | 'GENTLE' | 'QUICK' | 'BOUNCY' | 'SLOW' | 'SPRING';
 
 const EASING_OPTIONS: [EasingChoice, string][] = [
   ['LINEAR', tr('Линейная')],
@@ -462,6 +554,7 @@ const EASING_OPTIONS: [EasingChoice, string][] = [
   ['EASE_IN_OUT', tr('Плавно в начале и в конце')],
   ['EASE_IN_BACK', tr('С откатом в начале')],
   ['EASE_OUT_BACK', tr('С перелётом в конце')],
+  ['EASE_IN_AND_OUT_BACK', tr('С откатом и перелётом')],
   ['CUSTOM_BEZIER', tr('Своя кривая')],
   ['GENTLE', tr('Пружина: мягкая')],
   ['QUICK', tr('Пружина: быстрая')],
@@ -496,7 +589,7 @@ const DIRECTIONS: [TransitionDirection, string, string][] = [
 ];
 
 /** Animation of a navigation: kind, direction, curve and duration (FR-PRT-020, 021). */
-function transitionEditor(transition: Transition | null, update: (fn: (t: Transition) => Transition, label: string) => void, allowed: readonly TransitionType[] = Object.keys(TRANSITION_LABELS) as TransitionType[]): HTMLElement {
+function transitionEditor(doc: Document, transition: Transition | null, update: (fn: (t: Transition) => Transition, label: string) => void, allowed: readonly TransitionType[] = Object.keys(TRANSITION_LABELS) as TransitionType[]): HTMLElement {
   const raw = transition ?? { ...DEFAULT_TRANSITION };
   // A kind this action does not offer shows as the nearest one it does.
   const t: Transition = allowed.includes(raw.type) ? raw : { ...raw, type: raw.type === 'INSTANT' ? 'INSTANT' : allowed.includes('SMART_ANIMATE') ? 'SMART_ANIMATE' : (allowed[1] ?? 'INSTANT') };
@@ -516,16 +609,23 @@ function transitionEditor(transition: Transition | null, update: (fn: (t: Transi
     }
     box.append(h('div', { class: 'proto-line' }, h('span', { class: 'field-label' }, tr('Направление')), dirs));
   }
-  const curve = select(tr('Кривая'), EASING_OPTIONS, easingChoice(t.easing), (v) => update((old) => ({ ...old, easing: easingFor(v as EasingChoice, old.easing) }), tr('Кривая анимации')));
+  // Bound to TIMING / EASING variables: what plays is theirs (in the default mode here), shown and not editable.
+  const shown = resolveTiming(doc, t, null);
+  const easingBound = !!t.easingVar && doc.store.isAlive(t.easingVar);
+  const durationBound = !!t.durationVar && doc.store.isAlive(t.durationVar);
+  const curve = select(tr('Кривая'), EASING_OPTIONS, easingChoice(shown.easing), (v) => update((old) => ({ ...old, easing: easingFor(v as EasingChoice, old.easing) }), tr('Кривая анимации')));
+  curve.disabled = easingBound;
   box.append(h('label', { class: 'proto-line' }, h('span', { class: 'field-label' }, tr('Кривая')), curve));
-  if (t.easing.type !== 'SPRING') {
-    const ms = h('input', { class: 'proto-input proto-number', type: 'number', min: 1, max: 10000, step: 50, value: String(t.duration), 'aria-label': tr('Длительность, мс') });
+  box.append(...motionVarRow(doc, 'EASING', t, update));
+  if (shown.easing.type !== 'SPRING') {
+    const ms = h('input', { class: 'proto-input proto-number', type: 'number', min: 1, max: 10000, step: 50, value: String(shown.duration), 'aria-label': tr('Длительность, мс'), disabled: durationBound });
     ms.addEventListener('keydown', (e) => e.stopPropagation());
     ms.addEventListener('change', () => update((old) => ({ ...old, duration: clampDuration(Number(ms.value)) }), tr('Длительность')));
     box.append(h('label', { class: 'proto-line' }, h('span', { class: 'field-label' }, tr('Длительность, мс')), ms));
+    box.append(...motionVarRow(doc, 'TIMING', t, update));
   } else {
     // A spring runs as long as its physics says; mass, stiffness and damping shape it.
-    const spring = t.easing;
+    const spring = shown.easing;
     const grid = h('div', { class: 'proto-spring' });
     for (const [key, label, min, max, step] of [['mass', tr('Масса'), 0.1, 10, 0.1], ['stiffness', tr('Жёсткость'), 1, 1000, 10], ['damping', tr('Затухание'), 0, 100, 1]] as const) {
       const input = h('input', { class: 'proto-input', type: 'number', min, max, step, value: String(spring[key]), 'aria-label': label });
@@ -535,11 +635,37 @@ function transitionEditor(transition: Transition | null, update: (fn: (t: Transi
     }
     box.append(grid);
   }
-  box.append(curveEditor(t.easing, (bezier) => update((old) => ({ ...old, easing: { type: 'CUSTOM_BEZIER', bezier } }), tr('Своя кривая'))));
+  if (!easingBound) box.append(curveEditor(t.easing, (bezier) => update((old) => ({ ...old, easing: { type: 'CUSTOM_BEZIER', bezier } }), tr('Своя кривая'))));
+  else box.append(curveEditor(shown.easing, () => {}));
+  if (allVariables(doc).every((v) => !['TIMING', 'EASING'].includes(doc.get(v, 'varType')))) {
+    box.append(h('p', { class: 'hint small' }, tr('Привяжите к переменным «Время» и «Плавность», чтобы менять все переходы разом')));
+  }
   return box;
 }
 
-const TYPE_LABELS: Record<VariableType, string> = { COLOR: tr('цвет'), FLOAT: tr('число'), STRING: tr('строка'), BOOLEAN: tr('логическое') };
+/**
+ * The duration or the curve taken from a TIMING / EASING variable (Motion, stage 1, Figma's motion variables): the
+ * value of the mode in effect where the prototype plays wins over the transition's own; switching a mode changes
+ * every transition that uses the variable. Nothing when the file has no variable of that type.
+ */
+function motionVarRow(doc: Document, type: 'TIMING' | 'EASING', t: Transition, update: (fn: (t: Transition) => Transition, label: string) => void): HTMLElement[] {
+  const key = type === 'TIMING' ? 'durationVar' : 'easingVar';
+  const list = allVariables(doc)
+    .filter((v) => doc.get(v, 'varType') === type)
+    .map((v) => [v, doc.get(v, 'name')] as [string, string]);
+  if (list.length === 0) return [];
+  const current = t[key];
+  const label = type === 'TIMING' ? tr('Время из переменной') : tr('Кривая из переменной');
+  const pick = select(label, [['', tr('— нет —')], ...list], current && doc.store.isAlive(current) ? current : '', (v) =>
+    update((old) => {
+      const { [key]: _, ...rest } = old;
+      return v ? { ...rest, [key]: v } : rest;
+    }, label),
+  );
+  return [h('label', { class: 'proto-line proto-var' }, h('span', { class: 'field-label' }, icon(type === 'TIMING' ? 'clock' : 'routeCurve', 12), h('span', {}, label)), pick)];
+}
+
+const TYPE_LABELS: Record<VariableType, string> = { COLOR: tr('цвет'), FLOAT: tr('число'), STRING: tr('строка'), BOOLEAN: tr('логическое'), TIMING: tr('время'), EASING: tr('плавность') };
 
 /**
  * Expression input (FR-PRT-040, 041): variables are typed by name in braces,

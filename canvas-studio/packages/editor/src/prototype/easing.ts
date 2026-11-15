@@ -4,17 +4,20 @@
 // spring is the closed-form solution of a damped oscillator.
 
 import { tr } from '#core';
-import type { Easing, Transition, TransitionType } from '#core';
+import { parseEasing, type Document, type Easing, type NodeId, type Transition, type TransitionType } from '#core';
+import { resolveVariable } from '#components';
 
 export type Bezier = [number, number, number, number];
 
-export const BEZIER_PRESETS: Record<'LINEAR' | 'EASE_IN' | 'EASE_OUT' | 'EASE_IN_OUT' | 'EASE_IN_BACK' | 'EASE_OUT_BACK', Bezier> = {
+export const BEZIER_PRESETS: Record<'LINEAR' | 'EASE_IN' | 'EASE_OUT' | 'EASE_IN_OUT' | 'EASE_IN_BACK' | 'EASE_OUT_BACK' | 'EASE_IN_AND_OUT_BACK', Bezier> = {
   LINEAR: [0, 0, 1, 1],
   EASE_IN: [0.42, 0, 1, 1],
   EASE_OUT: [0, 0, 0.58, 1],
   EASE_IN_OUT: [0.42, 0, 0.58, 1],
   EASE_IN_BACK: [0.36, 0, 0.66, -0.56],
   EASE_OUT_BACK: [0.34, 1.56, 0.64, 1],
+  // Back at both ends (Figma's Ease In And Out Back): a small pull back, a small overshoot.
+  EASE_IN_AND_OUT_BACK: [0.68, -0.6, 0.32, 1.6],
 };
 
 export interface SpringParams {
@@ -109,6 +112,24 @@ export function springDuration(params: SpringParams): number {
 }
 
 /** A timing function over [0, 1] and the duration it runs for. */
+/**
+ * The curve and duration a transition plays with: its TIMING and EASING variables, when bound, in the mode in
+ * effect at `node` (Motion, stage 1); else its own numbers.
+ */
+export function resolveTiming(doc: Document, t: Transition, node: NodeId | null): { easing: Easing; duration: number } {
+  let { easing, duration } = t;
+  if (t.durationVar && doc.store.isAlive(t.durationVar)) {
+    const v = resolveVariable(doc, t.durationVar, node);
+    if (typeof v === 'number' && Number.isFinite(v)) duration = clampDuration(v);
+  }
+  if (t.easingVar && doc.store.isAlive(t.easingVar)) {
+    const v = resolveVariable(doc, t.easingVar, node);
+    const e = typeof v === 'string' ? parseEasing(v) : null;
+    if (e) easing = e;
+  }
+  return { easing, duration };
+}
+
 export function easingFunction(easing: Easing, duration: number): { ease: (p: number) => number; duration: number } {
   if (easing.type === 'SPRING') {
     const ms = springDuration(easing);

@@ -7,6 +7,7 @@
 import { tr } from '#core';
 import { colorToHex, hexToColor, type Color } from '#core';
 import { h, icon } from './dom.ts';
+import { fadeAway } from './motion-ui.ts';
 
 /** What the app gives the picker: the canvas eyedropper and the file's colours. */
 export const colorPickerHost: {
@@ -295,6 +296,7 @@ export function openColorPicker(options: ColorPickerOptions): void {
     }
   };
   const close = () => {
+    fadeAway(pop);
     pop.remove();
     document.removeEventListener('pointerdown', onDown, true);
     document.removeEventListener('keydown', onKey, true);

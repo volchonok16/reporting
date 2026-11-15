@@ -4,10 +4,10 @@
 // Policy hash, so no other inline script can run.
 
 import { createHash } from 'node:crypto';
-import { createReadStream, type Stats } from 'node:fs';
+import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, sep } from 'node:path';
-import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { ServerResponse } from 'node:http';
 import { frameAncestorsCsp, securityHeaders } from './http.ts';
 
 const MIME: Record<string, string> = {
@@ -26,6 +26,8 @@ const MIME: Record<string, string> = {
   '.wasm': 'application/wasm',
   '.onnx': 'application/octet-stream',
   '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.zip': 'application/zip',
+  '.dmg': 'application/x-apple-diskimage',
 };
 
 export interface Transform {
@@ -34,10 +36,27 @@ export interface Transform {
 }
 
 export interface StaticOptions {
+  /** The origin of the person's own neural network, from their cookie (aiOrigin): allowed to the page's requests. */
+  ai?: string | null;
   /** Project root (sources) — used in development. */
   root: string;
   /** Serve dist/ (production) or sources with a transform (development). */
   dev: Transform | null;
+}
+
+/** The cookie with the address of the person's own neural network (editor/own-ai.ts): its origin only, nothing secret. */
+export const AI_ORIGIN_COOKIE = 'cs-ai-origin';
+
+/** An https origin and nothing else («https://api.deepseek.com», a port allowed); anything else — null. */
+export function aiOrigin(value: string | undefined): string | null {
+  if (!value) return null;
+  let text: string;
+  try {
+    text = decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+  return /^https:\/\/[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(:\d{1,5})?$/i.test(text) ? text.toLowerCase() : null;
 }
 
 /** Employee photos live on the reporting site, not on the Симметрика port. */
@@ -55,8 +74,11 @@ function reportingImageOrigins(): string {
   return [...origins].join(' ');
 }
 
-/** CSP for the app: own scripts only (plus the hashed import map), images from data/blob URLs and the reporting site, WebSockets to itself. */
-function cspFor(html: string): string {
+/**
+ * CSP for the app: own scripts only (plus the hashed import map), images from data/blob URLs and the reporting site, WebSockets to itself.
+ * `ai` — the origin of the person's own neural network: the page may ask it directly (the key never goes through us).
+ */
+export function cspFor(html: string, ai: string | null = null): string {
   const hashes = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
     .filter((m) => m[1]!.trim().length > 0)
     .map((m) => `'sha256-${createHash('sha256').update(m[1]!).digest('base64')}'`);
@@ -68,7 +90,7 @@ function cspFor(html: string): string {
     `img-src 'self' data: blob: ${reportingImageOrigins()}`.trim(),
     "font-src 'self' data:",
     // data: — pictures of a file are decoded from it off the main thread (PERF-003); such an address sends nothing anywhere.
-    "connect-src 'self' data:",
+    `connect-src 'self' data:${ai ? ` ${ai}` : ''}`,
     "worker-src 'self' blob:",
     `frame-ancestors ${frameAncestorsCsp()}`,
     "base-uri 'none'",
@@ -84,7 +106,7 @@ function cspFor(html: string): string {
  * pictures and styles from anywhere. The editor sends the HTML by message.
  */
 // Changing it? Change the version in packages/editor/src/html-import/sandbox.ts too (browsers keep this page).
-const SANDBOX_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>
+export const SANDBOX_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>
 addEventListener('message', function (e) {
   if (e.source !== parent || !e.data || typeof e.data.h2dLoad !== 'string') return;
   document.open();
@@ -94,9 +116,11 @@ addEventListener('message', function (e) {
 parent.postMessage({ h2d: true, kind: 'sandbox' }, '*');
 </script></body></html>`;
 
+/** The sandbox page's CSP. `sandbox`: an opaque origin even when opened as a page of its own, not only in the editor's sandboxed frame (BUG-161). The macOS app sends the same (tools/build-macos.mjs). */
+export const SANDBOX_CSP = `default-src * data: blob: 'unsafe-inline' 'unsafe-eval'; frame-ancestors ${frameAncestorsCsp()}; base-uri *; form-action 'none'; sandbox allow-scripts allow-forms`;
+
 export function serveSandbox(res: ServerResponse): void {
-  // `sandbox`: an opaque origin even when opened as a page of its own, not only in the editor's sandboxed frame (BUG-161).
-  securityHeaders(res, `default-src * data: blob: 'unsafe-inline' 'unsafe-eval'; frame-ancestors ${frameAncestorsCsp()}; base-uri *; form-action 'none'; sandbox allow-scripts allow-forms`);
+  securityHeaders(res, SANDBOX_CSP);
   // Kept by the browser: a preview growing while a layout is written opens a frame every second, and
   // each one waited for the server (over a shaky VPN — seconds). The editor asks for ?v=<version>.
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=31536000, immutable', 'Content-Length': Buffer.byteLength(SANDBOX_HTML) });
@@ -109,9 +133,24 @@ export function serveSandbox(res: ServerResponse): void {
  * version or hash, so a year of caching is safe. Streamed, never read whole.
  */
 export async function serveHeavy(path: string, res: ServerResponse, dir: string, head: boolean): Promise<boolean> {
+  return serveFolder(path, '/heavy/', res, dir, head, () => 'public, max-age=31536000, immutable');
+}
+
+/**
+ * Downloads (/downloads/…, CS_DOWNLOADS): the macOS app — its disk image for the first
+ * installation, update archives each named by its build (kept a year), and macos/latest.json,
+ * which the app asks for its next version (never cached: a new build must be seen at once).
+ * tools/build-macos.mjs writes them, deploy.sh puts them here.
+ */
+export async function serveDownloads(path: string, res: ServerResponse, dir: string, head: boolean): Promise<boolean> {
+  return serveFolder(path, '/downloads/', res, dir, head, (file) => (/\.(zip)$/.test(file) ? 'public, max-age=31536000, immutable' : 'no-cache'));
+}
+
+/** A file of a folder of its own under a prefix of the address: streamed, never outside the folder, no hidden files. */
+async function serveFolder(path: string, prefix: string, res: ServerResponse, dir: string, head: boolean, cache: (file: string) => string): Promise<boolean> {
   let clean: string;
   try {
-    clean = decodeURIComponent(path.slice('/heavy/'.length));
+    clean = decodeURIComponent(path.slice(prefix.length));
   } catch {
     return false;
   }
@@ -127,7 +166,7 @@ export async function serveHeavy(path: string, res: ServerResponse, dir: string,
     return false;
   }
   securityHeaders(res);
-  res.writeHead(200, { 'Content-Type': MIME[extname(file)] ?? 'application/octet-stream', 'Content-Length': size, 'Cache-Control': 'public, max-age=31536000, immutable' });
+  res.writeHead(200, { 'Content-Type': MIME[extname(file)] ?? 'application/octet-stream', 'Content-Length': size, 'Cache-Control': cache(file) });
   if (head) {
     res.end();
     return true;
@@ -142,7 +181,7 @@ export function legalFile(path: string): string | null {
   return m ? `apps/web/legal/${m[2]}${m[1] ? '-en' : ''}.html` : null;
 }
 
-export async function serveStatic(path: string, res: ServerResponse, options: StaticOptions, req?: IncomingMessage): Promise<boolean> {
+export async function serveStatic(path: string, res: ServerResponse, options: StaticOptions): Promise<boolean> {
   const base = options.dev ? options.root : join(options.root, 'dist');
   let clean: string;
   try {
@@ -157,34 +196,24 @@ export async function serveStatic(path: string, res: ServerResponse, options: St
   // Server-only code and data never go to the browser.
   const rel = file.slice(base.length);
   if (/[\\/](packages[\\/]server|apps[\\/]server|data|tools|\.git)([\\/]|$)/.test(rel) || /[\\/]\./.test(rel)) return false;
-  let info: Stats;
   try {
-    info = await stat(file);
+    const info = await stat(file);
     if (!info.isFile()) return false;
   } catch {
     return false;
   }
   const ext = extname(file);
-  const cacheable = ext === '.woff2' || ext === '.ttf' || ext === '.pptx';
-  const etag = `W/"${info.size.toString(16)}-${Math.floor(info.mtimeMs).toString(16)}"`;
-  if (ext === '.pptx' && req?.headers['if-none-match'] === etag) {
-    securityHeaders(res);
-    res.writeHead(304, { ETag: etag, 'Cache-Control': 'public, max-age=604800' });
-    res.end();
-    return true;
-  }
   let body: Buffer = await readFile(file);
   if (options.dev && ext === '.ts') body = Buffer.from(options.dev.transformTs(body.toString('utf8')));
   if (options.dev && ext === '.html') body = Buffer.from(options.dev.transformHtml(body.toString('utf8')));
-  securityHeaders(res, ext === '.html' ? cspFor(body.toString('utf8')) : undefined);
+  securityHeaders(res, ext === '.html' ? cspFor(body.toString('utf8'), options.ai ?? null) : undefined);
   const headers: Record<string, string | number> = {
     'Content-Type': MIME[ext] ?? 'application/octet-stream',
     // HTML always fresh (it names the current modules); fonts can be cached.
-    'Cache-Control': cacheable ? 'public, max-age=604800' : 'no-cache',
+    'Cache-Control': ext === '.woff2' || ext === '.ttf' || ext === '.pptx' ? 'public, max-age=604800' : 'no-cache',
     'Content-Length': body.length,
   };
-  if (ext === '.pptx') headers.ETag = etag;
-  // Маркер для iframe reporting — родитель на другом origin читает текст.
+  // Маркер для iframe reporting — родитель на другом origin читает текст (CORS).
   if (clean === '/apps/web/reporting-canvas.txt') {
     headers['Access-Control-Allow-Origin'] = '*';
     headers['Cache-Control'] = 'no-store';

@@ -1,7 +1,7 @@
 // Copy and paste of node subtrees (FR-CMP-033: everything is copied with its properties).
 
-import { base64ToBytes, bytesToBase64, isAlias, isExpression, valueRefs, type Document, type NodeId, type NodeProps, type NodeType, type Position, type Transaction, type VariableMode, type VariableValue } from '#core';
-import { insideInstance, mapReferences, sanitizePasted } from '#components';
+import { base64ToBytes, bytesToBase64, isAlias, isExpression, isNodeType, LIMITS, valueRefs, type Document, type NodeId, type NodeProps, type NodeType, type Position, type Transaction, type VariableMode, type VariableValue } from '#core';
+import { insideInstance, isSlotMirror, mapReferences, sanitizePasted } from '#components';
 
 export const CLIPBOARD_FORMAT = 'canvas-studio/clipboard';
 
@@ -22,8 +22,6 @@ export interface ClipboardData {
   /** Variables the layers and styles use (with alias targets) and their collections. */
   variables?: { id: NodeId; collection: NodeId; props: Partial<NodeProps> }[];
   collections?: { id: NodeId; name: string; modes: VariableMode[] }[];
-  /** Картинки слоёв: в другом файле их хешей нет, без байтов вставка становится пустой. */
-  blobs?: { hash: string; mime: string; data: string }[];
 }
 
 const BINDING_KEYS = ['fillStyleId', 'strokeStyleId', 'effectStyleId', 'textStyleId', 'gridStyleId'] as const;
@@ -144,15 +142,17 @@ function remapBindings(props: Partial<NodeProps>, map: ReadonlyMap<string, strin
  * with the same name and kind is reused, or the style is created (as Figma does
  * when pasting between files). Variables follow the same rule.
  */
-export function resolvePastedStyles(tx: Transaction, doc: Document, data: ClipboardData): ClipNode[] {
+export function resolvePastedStyles(tx: Transaction, doc: Document, data: ClipboardData, fileId?: string | null): ClipNode[] {
   const map = resolvePastedVariables(tx, doc, data);
+  // Pasted back into the file it was cut from: nothing moved.
+  const here = (p: Partial<NodeProps>) => (p.movedFrom && p.movedFrom.fileId === fileId ? (({ movedFrom: _, ...rest }) => rest)(p) : p);
   for (const s of data.styles ?? []) {
     if (doc.store.isAlive(s.id) && doc.type(s.id) === 'STYLE') continue;
     const same = doc.styles().find((id) => doc.get(id, 'name') === s.props.name && doc.get(id, 'styleType') === (s.props.styleType ?? 'FILL'));
-    map.set(s.id, same ?? tx.create('STYLE', doc.rootId, remapBindings(s.props, map)));
+    map.set(s.id, same ?? tx.create('STYLE', doc.rootId, remapBindings(here(s.props), map)));
   }
   const rewrite = (n: ClipNode): ClipNode => {
-    const props = remapBindings({ ...n.props }, map);
+    const props = remapBindings(here({ ...n.props }), map);
     for (const k of BINDING_KEYS) {
       const id = props[k];
       if (id && map.has(id)) props[k] = map.get(id)!;
@@ -162,50 +162,34 @@ export function resolvePastedStyles(tx: Transaction, doc: Document, data: Clipbo
   return data.nodes.map(rewrite);
 }
 
-export function copySubtree(doc: Document, id: NodeId): ClipNode {
+/**
+ * `cutFrom` — a cut from this server file: components and sets remember where they were (step 6). Any other copy
+ * (copy, duplicate, a new variant) is a new component and carries no such mark.
+ */
+export function copySubtree(doc: Document, id: NodeId, cutFrom?: string): ClipNode {
   const record = doc.store.record(id);
   if (!record) throw new Error(`Unknown node ${id}`);
   const props = structuredClone(record.props);
   delete props.deleted;
+  delete props.movedFrom;
+  if (cutFrom && (record.type === 'COMPONENT' || record.type === 'COMPONENT_SET') && !props.libraryRef) props.movedFrom = { fileId: cutFrom, id };
   return {
     type: record.type,
     props,
-    children: doc.children(id).map((child) => copySubtree(doc, child)),
+    children: doc.children(id).map((child) => copySubtree(doc, child, cutFrom)),
   };
 }
 
-function imageHashes(node: ClipNode, out: Set<string>): void {
-  for (const key of ['fills', 'strokes'] as const) {
-    const paints = node.props[key];
-    if (!Array.isArray(paints)) continue;
-    for (const paint of paints) {
-      if (paint && typeof paint === 'object' && (paint as { type?: string }).type === 'IMAGE') {
-        const hash = (paint as { imageHash?: string }).imageHash;
-        if (hash) out.add(hash);
-      }
-    }
-  }
-  for (const child of node.children) imageHashes(child, out);
-}
-
-/** Кладёт байты картинок в файл, куда вставляют, если их там ещё нет. */
-export function restoreClipboardBlobs(tx: Transaction, doc: Document, data: ClipboardData): void {
-  for (const blob of data.blobs ?? []) {
-    if (doc.store.blobs.has(blob.hash)) continue;
-    tx.addBlob(base64ToBytes(blob.data), blob.mime);
-  }
-}
-
-export function toClipboard(doc: Document, ids: readonly NodeId[]): ClipboardData {
-  const nodes = ids.map((id) => copySubtree(doc, id));
-  const hashes = new Set<string>();
-  for (const node of nodes) imageHashes(node, hashes);
-  const blobs = [...hashes].flatMap((hash) => {
-    const blob = doc.store.blobs.get(hash);
-    return blob ? [{ hash, mime: blob.mime, data: blob.data }] : [];
-  });
+/** `cutFrom`: a string — a cut from that server file (marks set); null — a plain copy (marks dropped); left out — a publication (marks kept). */
+export function toClipboard(doc: Document, ids: readonly NodeId[], cutFrom?: string | null): ClipboardData {
+  const nodes = ids.map((id) => copySubtree(doc, id, cutFrom ?? undefined));
   const styles = new Map<NodeId, Partial<NodeProps>>();
   collectStyles(doc, nodes, styles);
+  // Styles of this file go along as moved too (ones taken from a library are that library's).
+  for (const [id, props] of styles) {
+    if (cutFrom === null) delete props.movedFrom;
+    else if (cutFrom && !props.libraryRef) props.movedFrom = { fileId: cutFrom, id };
+  }
   const variables = collectVariables(doc, [...allBindings(nodes), ...[...styles.values()].map((p) => p.boundVariables)]);
   const collections = new Set([...variables].map((v) => doc.parent(v)!));
   return {
@@ -220,7 +204,6 @@ export function toClipboard(doc: Document, ids: readonly NodeId[]): ClipboardDat
           collections: [...collections].map((id) => ({ id, name: doc.get(id, 'name'), modes: doc.get(id, 'modes') })),
         }
       : {}),
-    ...(blobs.length > 0 ? { blobs } : {}),
   };
 }
 
@@ -260,10 +243,19 @@ export function parseClipboard(text: string): ClipboardData | null {
   }
   try {
     const data = JSON.parse(text) as ClipboardData;
-    return data && data.format === CLIPBOARD_FORMAT && Array.isArray(data.nodes) ? data : null;
+    // Anything can be on the clipboard (any site puts text there): the tree's shape is checked here, the values
+    // when the layers are made (Transaction.create → core validate.ts).
+    return data && data.format === CLIPBOARD_FORMAT && Array.isArray(data.nodes) && data.nodes.length <= LIMITS.items && data.nodes.every((n) => clipShape(n, 0)) ? data : null;
   } catch {
     return null;
   }
+}
+
+/** A copied layer as the editor made it: a known type, props an object, children a list (bounded depth). */
+function clipShape(n: unknown, depth: number): boolean {
+  if (!n || typeof n !== 'object' || depth > LIMITS.depth * 4) return false;
+  const c = n as ClipNode;
+  return isNodeType(c.type) && !!c.props && typeof c.props === 'object' && !Array.isArray(c.props) && Array.isArray(c.children) && c.children.every((x) => clipShape(x, depth + 1));
 }
 
 /**
@@ -271,7 +263,8 @@ export function parseClipboard(text: string): ClipboardData | null {
  * Instance links are kept for copies of whole instances and dropped for loose layers.
  */
 export function pasteSubtree(tx: Transaction, node: ClipNode, parent: NodeId, position: Position = { at: 'end' }, doc?: Document, inside?: boolean): NodeId {
-  const within = inside ?? (doc ? insideInstance(doc, parent) || doc.type(parent) === 'INSTANCE' : false);
+  // Into a slot of an instance: layers of its own, not links (step 6).
+  const within = inside ?? (doc ? !isSlotMirror(doc, parent) && (insideInstance(doc, parent) || doc.type(parent) === 'INSTANCE') : false);
   const id = tx.create(node.type, parent, sanitizePasted(node.props, node.type, within), position);
   for (const child of node.children) pasteSubtree(tx, child, id, { at: 'end' }, doc, within || node.type === 'INSTANCE');
   return id;

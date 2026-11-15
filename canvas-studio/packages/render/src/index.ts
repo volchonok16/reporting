@@ -11,3 +11,4 @@ export * from './zip.ts';
 export * from './gradients.ts';
 export * from './font-file.ts';
 export * from './pixels.ts';
+export * from './color-space.ts';

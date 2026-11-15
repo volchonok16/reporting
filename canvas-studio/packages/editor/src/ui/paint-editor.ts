@@ -610,7 +610,7 @@ function buildImage(host: PaintHost, paint: ImagePaint, title: string): HTMLElem
     icon('rotate'),
   );
   side.append(rotate);
-  const removeBg = h('button', { class: 'text-button wide', type: 'button', title: tr('Однотонный фон уходит сразу; у фото — окно, где можно поправить вырезку кистями «Оставить» и «Убрать». Картинка никуда не загружается.') }, h('span', {}, tr('Удалить фон')));
+  const removeBg = h('button', { class: 'text-button wide', type: 'button', title: tr('Однотонный фон уходит сразу, а для фото откроется окно, где вырезку можно поправить кистями «Оставить» и «Убрать». Картинка никуда не загружается.') }, h('span', {}, tr('Удалить фон')));
   removeBg.addEventListener('click', () => (host.removeBg ? host.removeBg() : void removeBackground(host, removeBg)));
   const crop = host.crop ? h('button', { class: 'text-button wide', type: 'button', onclick: () => host.crop?.() }, h('span', {}, tr('Обрезать…'))) : null;
   const erase = host.erase ? h('button', { class: 'text-button wide', type: 'button', title: tr('Стереть часть картинки кистью — мягкой или рваной; стёртое можно вернуть'), onclick: () => host.erase?.() }, h('span', {}, tr('Стереть кистью…'))) : null;

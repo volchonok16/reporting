@@ -31,9 +31,31 @@ export function setLangForTests(next: Lang): void {
   lang = next;
 }
 
+/** The macOS app (apps/macos): its pages live at simmetrika://app. */
+export let inMacApp = globalThis.location?.protocol === 'simmetrika:';
+
+/** For tests: as if in the macOS app. */
+export function setMacAppForTests(next: boolean): void {
+  inMacApp = next;
+}
+
+// In the app the files are kept on the Mac, not in a browser: one rule for every
+// "в этом браузере" of the interface, instead of a second copy of each text.
+const MAC_WORDS: Record<Lang, [RegExp, string][]> = {
+  ru: [
+    [/в этом браузере/g, 'на этом Mac'],
+    [/из этого браузера/g, 'с этого Mac'],
+  ],
+  en: [
+    [/in this browser/g, 'on this Mac'],
+    [/from this browser/g, 'from this Mac'],
+  ],
+};
+
 /** Translated text with {0}, {1}… filled in. */
 export function tr(text: string, ...args: unknown[]): string {
-  const s = lang === 'en' ? (EN[text] ?? text) : text;
+  let s = lang === 'en' ? (EN[text] ?? text) : text;
+  if (inMacApp) for (const [from, to] of MAC_WORDS[lang]) s = s.replace(from, to);
   return args.length ? s.replace(/\{(\d+)\}/g, (m, i: string) => (Number(i) < args.length ? String(args[Number(i)]) : m)) : s;
 }
 

@@ -8,6 +8,7 @@ import { play, setSoundsEnabled } from '../sounds.ts';
 import { changeLang, NUDGE_KEY, prefsChanged, prefsSignedIn, savedNudge } from '../prefs.ts';
 import { applyTheme, savedTheme, type ThemeChoice } from '../theme.ts';
 import { h, icon } from './dom.ts';
+import { checkOwnAi, clearOwnAi, keyInApp, needsReload, OWN_AI_PRESETS, ownAiDraft, saveOwnAi } from '../own-ai.ts';
 
 export const UI_SCALE_KEY = 'cs-ui-scale';
 export const DOCK_KEY = 'cs-dock-place';
@@ -55,6 +56,8 @@ export interface SettingsOptions {
   onContextBar?: (mode: ContextBarMode) => void;
   /** In the editor: the view settings change there (and are kept by it); elsewhere they are written here. */
   onView?: (patch: Partial<ViewPrefs>) => void;
+  /** Open at a section: 'ai' — the neural network (from «Подключить нейросеть…»). */
+  section?: 'ai';
 }
 
 /** The view settings this window offers; the rest of `cs.view` is the editor's (rulers, grids…). */
@@ -110,6 +113,103 @@ function nudgeRow(): HTMLElement {
     { class: 'settings-row' },
     h('div', { class: 'settings-label' }, tr('Шаг сдвига стрелками')),
     h('div', { class: 'settings-fields' }, field(tr('Стрелка'), 'small'), field(tr('Shift + стрелка'), 'big')),
+  );
+}
+
+/**
+ * «Нейросеть»: the person's own API (own-ai.ts) for layouts by description, texts, notes and layer names.
+ * Never synced with the account: write() is not used here.
+ */
+function aiSection(): HTMLElement {
+  const url = h('input', { class: 'settings-text', type: 'url', placeholder: 'https://api.deepseek.com/', spellcheck: false, autocomplete: 'off', 'aria-label': tr('Адрес API') });
+  const model = h('input', { class: 'settings-text', type: 'text', placeholder: 'deepseek-chat', spellcheck: false, autocomplete: 'off', 'aria-label': tr('Модель') });
+  const key = h('input', { class: 'settings-text', type: 'password', placeholder: 'sk-…', spellcheck: false, autocomplete: 'off', 'aria-label': tr('Ключ API') });
+  const status = h('p', { class: 'settings-note settings-ai-status', role: 'status' });
+  const say = (text: string, error = false) => {
+    status.textContent = text;
+    status.classList.toggle('error', error);
+  };
+  let hasKey = false;
+  const save = h('button', { class: 'text-button primary', type: 'button' }, tr('Сохранить'));
+  const check = h('button', { class: 'text-button', type: 'button' }, tr('Проверить'));
+  const off = h('button', { class: 'text-button', type: 'button' }, tr('Отключить'));
+  const refresh = () => {
+    key.placeholder = hasKey ? tr('Ключ сохранён. Введите новый, чтобы заменить') : 'sk-…';
+    check.disabled = !hasKey;
+    off.disabled = !hasKey && !url.value && !model.value;
+  };
+  void ownAiDraft().then((d) => {
+    url.value = d.url;
+    model.value = d.model;
+    hasKey = d.hasKey;
+    refresh();
+    if (hasKey) say(tr('Подключена своя нейросеть: {0}.', d.model));
+  });
+  const presets = h(
+    'div',
+    { class: 'settings-ai-presets' },
+    ...OWN_AI_PRESETS.map((p) =>
+      h('button', {
+        class: 'text-button settings-ai-preset',
+        type: 'button',
+        onclick: () => {
+          url.value = p.url;
+          model.value = p.model;
+          key.focus();
+        },
+      }, p.name),
+    ),
+  );
+  save.addEventListener('click', async () => {
+    if (!hasKey && !key.value.trim()) return say(tr('Вставьте ключ API'), true), key.focus();
+    try {
+      await saveOwnAi(url.value, model.value, key.value || undefined);
+      hasKey = true;
+      key.value = '';
+      refresh();
+      say(needsReload(url.value) ? tr('Сохранено. Обновите страницу, и нейросеть заработает.') : tr('Сохранено. Нажмите «Проверить», чтобы убедиться, что всё работает.'));
+    } catch (error) {
+      say(error instanceof Error ? error.message : String(error), true);
+    }
+  });
+  let checking = false;
+  check.addEventListener('click', async () => {
+    // Not disabled while it runs: the focus stays in the window, so Esc still closes it.
+    if (checking) return;
+    checking = true;
+    say(tr('Проверяю…'));
+    try {
+      say(await checkOwnAi());
+    } catch (error) {
+      say(error instanceof Error ? error.message : String(error), true);
+    } finally {
+      checking = false;
+    }
+  });
+  off.addEventListener('click', async () => {
+    await clearOwnAi();
+    url.value = '';
+    model.value = '';
+    key.value = '';
+    hasKey = false;
+    refresh();
+    // The macOS app without a server has no other neural network to fall back on.
+    const serverless = keyInApp() && !(globalThis as { __csServer?: string }).__csServer;
+    say(serverless ? tr('Своя нейросеть отключена.') : tr('Своя нейросеть отключена. Нейросетевые функции снова идут через сервер Симметрики.'));
+  });
+  const field = (label: string, input: HTMLElement) => h('label', { class: 'settings-field settings-field-wide' }, h('span', {}, label), input);
+  return h(
+    'section',
+    { class: 'settings-ai', id: 'settings-ai' },
+    h('div', { class: 'settings-label' }, tr('Нейросеть')),
+    h('p', { class: 'settings-ai-intro' }, tr('Своя нейросеть для макетов по описанию, текстов, заметок к слайдам и имён слоёв. Подойдёт любой сервис с API как у OpenAI. Пользуетесь ею только вы, запросы оплачиваются по вашему ключу.')),
+    h('div', { class: 'settings-ai-presets' }, h('span', { class: 'settings-ai-presets-label' }, tr('Заполнить для:')), ...presets.children),
+    h('div', { class: 'settings-ai-fields' }, field(tr('Адрес API'), url), field(tr('Модель'), model), field(tr('Ключ API'), key)),
+    h('div', { class: 'settings-ai-buttons' }, save, check, off),
+    status,
+    h('p', { class: 'settings-note' }, keyInApp()
+      ? tr('Ключ хранится в Связке ключей этого Mac, запросы идут из приложения прямо в вашу нейросеть.')
+      : tr('Ключ хранится только в этом браузере и не попадает на сервер Симметрики: запросы идут прямо в вашу нейросеть.')),
   );
 }
 
@@ -184,13 +284,14 @@ export class SettingsDialog {
         smart,
         h('p', { class: 'settings-note' }, tr('При наборе: -- → —, -> → →, ... → …, кавычки — «ёлочки» в русском тексте. Backspace сразу после замены возвращает набранное.')),
         motion,
-        h('p', { class: 'settings-note' }, tr('Объект мягко доезжает до направляющей, вставленное слегка пружинит, переход к объекту — плавный. Если в системе включено «Уменьшить движение», анимаций нет.')),
+        h('p', { class: 'settings-note' }, tr('Плавное прилипание, вставка и переходы. Выключаются сами, если в системе включено «Уменьшить движение».')),
         sounds,
         h('p', { class: 'settings-note' }, tr('Тихие звуки: прилипание к направляющей, вставка, отмена, готовый экспорт.')),
         nudgeRow(),
         h('p', { class: 'settings-note' }, tr('Насколько стрелки сдвигают выделенные слои, в пикселях.')),
         mail,
         h('p', { class: 'settings-note' }, tr('Настройки запоминаются в вашем аккаунте, а без входа — в этом браузере.')),
+        aiSection(),
       ),
     );
     this.overlay = h('div', { class: 'dialog-overlay' }, dialog);
@@ -202,7 +303,11 @@ export class SettingsDialog {
       if (e.key === 'Escape') this.close();
     });
     document.body.append(this.overlay);
-    (dialog.querySelector('input:checked') as HTMLElement | null)?.focus();
+    if (options.section === 'ai') {
+      const ai = dialog.querySelector('#settings-ai') as HTMLElement;
+      ai.scrollIntoView({ block: 'start' });
+      (ai.querySelector('input') as HTMLElement).focus({ preventScroll: true });
+    } else (dialog.querySelector('input:checked') as HTMLElement | null)?.focus();
   }
 
   close(): void {

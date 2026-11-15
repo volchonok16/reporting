@@ -69,7 +69,7 @@ export async function openTableDialog(editor: Editor): Promise<void> {
       label,
       h('div', { class: 'gen-row' }, h('label', { class: 'dialog-field' }, h('span', {}, tr('Строк')), rowsInput), h('label', { class: 'dialog-field' }, h('span', {}, tr('Столбцов')), colsInput)),
       h('label', { class: 'dialog-check' }, headerBox, h('span', {}, tr('Первая строка — заголовок'))),
-      h('p', { class: 'dialog-hint' }, tr('Таблицу из Excel, Google Таблиц или Numbers можно просто вставить: скопируйте ячейки и нажмите ⌘V на холсте.')),
+      h('p', { class: 'dialog-hint' }, tr('Ячейки из Excel, Google Таблиц или Numbers вставляются на холст через ⌘V.')),
     ],
     focus: () => squares[(Math.min(rows, PICK_ROWS) - 1) * PICK_COLS + Math.min(cols, PICK_COLS) - 1]!,
   });
@@ -141,7 +141,7 @@ export function buildTableSection(editor: Editor, section: (title: string, ...ac
   if (!split) splitButton.title = tr('Выделите объединённую ячейку');
   body.append(
     h('div', { class: 'tb-actions' }, mergeButton, splitButton),
-    h('p', { class: 'tb-info' }, tr('Несколько ячеек — Shift+щелчок или протяните мышью; строку или столбец — ручкой слева или сверху от таблицы. Ширину столбца и высоту строки меняйте, потянув за линию между ними.')),
+    h('p', { class: 'tb-info' }, tr('Несколько ячеек выделяются Shift+щелчком или протяжкой мыши, строка или столбец — ручкой слева или сверху от таблицы. Ширину столбца и высоту строки меняйте, потянув за линию между ними.')),
   );
 }
 

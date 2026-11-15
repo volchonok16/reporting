@@ -1,3 +1,4 @@
+import { context2d } from './color-space.ts';
 // Blur without `ctx.filter` (BUG-129): Safari's canvas has no filters, so a layer
 // blur, a background blur and glass came out sharp there. The picture is shrunk
 // (a strong blur needs no detail), blurred by three box passes — close to the
@@ -45,23 +46,19 @@ function boxPass(src: Float32Array, dst: Float32Array, w: number, h: number, r: 
   }
 }
 
-/** `source` blurred by `radius` px (as CSS `blur()`), the same size. */
-export function softBlurred(source: Source, radius: number): OffscreenCanvas {
+/**
+ * `source` shrunk by `k` and blurred there (the blur left to do is about 6 px: its cost no longer
+ * grows with the radius, and the grid is still fine enough not to show as bands when stretched back).
+ */
+function blurredSmall(source: Source, radius: number): { small: OffscreenCanvas; k: number } {
   const W = source.width;
   const H = source.height;
-  const out = new OffscreenCanvas(W, H);
-  const octx = out.getContext('2d')!;
-  if (radius <= 0.1) {
-    octx.drawImage(source, 0, 0);
-    return out;
-  }
-  // Shrunk so the blur left to do is about 6 px: its cost no longer grows with the radius,
-  // and the grid is still fine enough not to show as bands when stretched back.
   const k = Math.max(1, radius / 6);
   const w = Math.max(1, Math.ceil(W / k));
   const h = Math.max(1, Math.ceil(H / k));
   const small = new OffscreenCanvas(w, h);
-  const sctx = small.getContext('2d')!;
+  // Read and written back at once: kept in memory (a GPU canvas is read back from the video card, PERF-009).
+  const sctx = context2d(small, { willReadFrequently: true })!;
   sctx.imageSmoothingEnabled = true;
   sctx.imageSmoothingQuality = 'high';
   sctx.drawImage(source, 0, 0, W / k, H / k);
@@ -91,9 +88,30 @@ export function softBlurred(source: Source, radius: number): OffscreenCanvas {
     px[i + 3] = alpha;
   }
   sctx.putImageData(img, 0, 0);
-  octx.imageSmoothingEnabled = true;
-  octx.imageSmoothingQuality = 'high';
-  octx.drawImage(small, 0, 0, w, h, 0, 0, w * k, h * k);
+  return { small, k };
+}
+
+/** The shrunk blur stretched back smoothly onto `ctx` at (dx, dy), `width` × `height` as its source was. */
+function stretchBack(ctx: Ctx2D, small: OffscreenCanvas, k: number, dx: number, dy: number, width: number, height: number): void {
+  const smooth = ctx.imageSmoothingEnabled;
+  const quality = ctx.imageSmoothingQuality;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(small, 0, 0, width / k, height / k, dx, dy, width, height);
+  ctx.imageSmoothingEnabled = smooth;
+  ctx.imageSmoothingQuality = quality;
+}
+
+/** `source` blurred by `radius` px (as CSS `blur()`), the same size. */
+export function softBlurred(source: Source, radius: number): OffscreenCanvas {
+  const out = new OffscreenCanvas(source.width, source.height);
+  const octx = context2d(out)!;
+  if (radius <= 0.1) {
+    octx.drawImage(source, 0, 0);
+    return out;
+  }
+  const { small, k } = blurredSmall(source, radius);
+  stretchBack(octx, small, k, 0, 0, source.width, source.height);
   return out;
 }
 
@@ -110,5 +128,7 @@ export function drawBlurred(ctx: Ctx2D, source: Source, radius: number, dx = 0, 
     ctx.filter = before;
     return;
   }
-  ctx.drawImage(softBlurred(source, radius), dx, dy);
+  // Read off `source` before anything is drawn: `source` may be the canvas of `ctx` itself.
+  const { small, k } = blurredSmall(source, radius);
+  stretchBack(ctx, small, k, dx, dy, source.width, source.height);
 }

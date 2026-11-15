@@ -14,6 +14,7 @@ import { IdGenerator, type NodeId } from './ids.ts';
 import { ChangeSet, type Op } from './ops.ts';
 import { cloneValue, valueEquals, type NodeProps, type NodeType, type PropKey } from './schema.ts';
 import { DocumentStore } from './store.ts';
+import { validOps, validProps } from './validate.ts';
 
 export type ChangeSource = 'local' | 'remote' | 'undo' | 'redo' | 'load';
 
@@ -240,7 +241,8 @@ export class Document {
   /** Applies operations received from other participants. They never enter local history. */
   applyRemote(ops: readonly Op[]): ChangeSet {
     const changes = new ChangeSet();
-    for (const op of ops) {
+    // From outside: only what fits the schema (validate.ts).
+    for (const op of validOps(ops)) {
       this.clock.observe(op.time);
       this.store.apply(op, changes);
     }
@@ -458,7 +460,8 @@ export class Transaction {
       type,
       parent,
       index: this.doc.indexFor(parent, position),
-      props: cloneValue(props),
+      // Layers made from pasted, imported or library data too: only values that fit the schema (validate.ts).
+      props: cloneValue(validProps(props)),
       time: this.doc.clock.tick(),
     });
     if (!ok) throw new Error(`Cannot create ${type} inside ${this.doc.type(parent)}`);
@@ -490,7 +493,9 @@ export class Transaction {
    * again with a fresh time, so participants who still hold the deleted node
    * take the restored values. One undo step deletes it again.
    */
-  revive(id: NodeId, type: NodeType, parent: NodeId, index: string, props: Partial<NodeProps>): boolean {
+  revive(id: NodeId, type: NodeType, parent: NodeId, index: string, given: Partial<NodeProps>): boolean {
+    // Versions, libraries, restored components: only values that fit the schema (validate.ts).
+    const props = validProps(given);
     const existed = this.doc.store.has(id);
     if (!existed) {
       const ok = this.doc.applyLocal(this, { kind: 'create', id, type, parent, index, props: cloneValue(props), time: this.doc.clock.tick() });

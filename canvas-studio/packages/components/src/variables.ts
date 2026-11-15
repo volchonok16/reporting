@@ -21,7 +21,7 @@
 // mode, with the extension's own values where it has them.
 // An expression (FR-VAR-003) is computed in the same context as an alias.
 
-import { tr } from '#core';
+import { parseEasing, tr } from '#core';
 import { evaluate, ExprError, formatValue, parseExpr, type Expr, type ExprValue } from './expr.ts';
 import {
   cloneValue,
@@ -483,17 +483,21 @@ function parsed(text: string): Expr | ExprError {
   return e;
 }
 
-const TYPE_WORDS: Record<VariableType, string> = { COLOR: tr('цвет'), FLOAT: tr('число'), STRING: tr('строка'), BOOLEAN: tr('логическое') };
+const TYPE_WORDS: Record<VariableType, string> = { COLOR: tr('цвет'), FLOAT: tr('число'), STRING: tr('строка'), BOOLEAN: tr('логическое'), TIMING: tr('время'), EASING: tr('плавность') };
 
 /** A computed value as the variable's type holds it; null when it does not fit. */
 export function coerceComputed(type: VariableType, v: ExprValue): VariableLiteral | null {
   switch (type) {
     case 'FLOAT':
       return typeof v === 'number' && Number.isFinite(v) ? v : null;
+    case 'TIMING':
+      return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
     case 'BOOLEAN':
       return typeof v === 'boolean' ? v : null;
     case 'STRING':
       return typeof v === 'object' ? null : formatValue(v);
+    case 'EASING':
+      return typeof v === 'string' && parseEasing(v) ? v : null;
     case 'COLOR':
       return typeof v === 'object' ? v : null;
   }
@@ -579,8 +583,12 @@ export function valueFits(type: VariableType, value: VariableValue): boolean {
       return isColorValue(value);
     case 'FLOAT':
       return typeof value === 'number' && Number.isFinite(value);
+    case 'TIMING':
+      return typeof value === 'number' && Number.isFinite(value) && value >= 0;
     case 'STRING':
       return typeof value === 'string';
+    case 'EASING':
+      return typeof value === 'string' && parseEasing(value) !== null;
     case 'BOOLEAN':
       return typeof value === 'boolean';
   }

@@ -49,6 +49,8 @@ const { server, live } = await createCanvasServer({
   dev,
   secure: env.CS_SECURE === '1',
   heavy: resolve(env.CS_HEAVY ?? `${root}/apps/web/heavy`),
+  // The macOS app and its updates (tools/build-macos.mjs → deploy.sh); locally — dist-macos/downloads.
+  downloads: resolve(env.CS_DOWNLOADS ?? `${root}/dist-macos/downloads`),
   trustProxy: env.CS_TRUST_PROXY === '1',
   openRegistration: reportingAuthOnly ? false : env.CS_OPEN_REGISTRATION !== '0',
   mailer: reportingMailUrl && reportingSsoSecret ? reportingMailer(reportingMailUrl, reportingSsoSecret) : smtp ? smtpMailer(smtp) : undefined,

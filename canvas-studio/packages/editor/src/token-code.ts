@@ -10,7 +10,8 @@
 // elsewhere, and for expressions, the computed value is written.
 
 import { allVariables, baseCollection, extensionsOf, isExtension, resolveInMode, rawValue } from '#components';
-import { isAlias, isColorValue, tr, type Color, type Document, type NodeId, type VariableLiteral, type VariableScope, type VariableType } from '#core';
+import { BEZIER_PRESETS } from './prototype/easing.ts';
+import { isAlias, isColorValue, parseEasing, tr, type Color, type Document, type NodeId, type VariableLiteral, type VariableScope, type VariableType, cssComment, cssNoTags } from '#core';
 
 export type TokenFormat = 'css' | 'scss' | 'js' | 'ts' | 'tailwind' | 'swift' | 'kotlin' | 'android';
 export type NameCase = 'kebab' | 'snake' | 'camel' | 'pascal' | 'constant';
@@ -99,7 +100,7 @@ export function tokenName(o: TokenCodeOptions, collection: string, variable: str
 
 // ---------- the model: collections, columns (modes and extensions), values ----------
 
-interface Column {
+export interface Column {
   /** The extension this column shows, or null for the collection itself. */
   scope: NodeId | null;
   mode: string;
@@ -108,7 +109,7 @@ interface Column {
   isDefaultMode: boolean;
 }
 
-interface Token {
+export interface Token {
   v: NodeId;
   type: VariableType;
   name: string;
@@ -119,7 +120,7 @@ interface Token {
   values: { value: VariableLiteral | undefined; alias: NodeId | null }[];
 }
 
-interface Group {
+export interface Group {
   collection: NodeId;
   name: string;
   columns: Column[];
@@ -134,6 +135,11 @@ function isDimension(doc: Document, v: NodeId): boolean {
   const scopes = doc.get(v, 'scopes');
   if (scopes.length > 0) return scopes.every((s) => SIZE_SCOPES.has(s));
   return SIZE_WORDS.test(doc.get(v, 'name'));
+}
+
+/** Collections, their mode columns and tokens with names as in code (the design system site reuses it, FEAT-226). */
+export function tokenModel(doc: Document, o: TokenCodeOptions): Group[] {
+  return modelOf(doc, o);
 }
 
 function modelOf(doc: Document, o: TokenCodeOptions): Group[] {
@@ -201,6 +207,9 @@ const jsString = (s: string) => JSON.stringify(s);
 
 function cssValue(t: Token, value: VariableLiteral): string {
   if (isColorValue(value)) return cssColor(value);
+  // Motion: a duration in ms, a curve as CSS writes it (a spring as its nearest Bézier, ease-out).
+  if (t.type === 'TIMING' && typeof value === 'number') return `${num(value)}ms`;
+  if (t.type === 'EASING' && typeof value === 'string') return cssEasing(value);
   if (typeof value === 'number') return t.dimension && value !== 0 ? `${num(value)}px` : num(value);
   if (typeof value === 'boolean') return value ? '1' : '0';
   return jsString(value);
@@ -213,6 +222,14 @@ function jsValue(t: Token, value: VariableLiteral): string {
   return jsString(value);
 }
 
+/** A curve of an EASING variable as a CSS timing function. */
+export function cssEasing(text: string): string {
+  const e = parseEasing(text);
+  if (!e || e.type === 'SPRING') return 'ease-out';
+  const b = e.type === 'CUSTOM_BEZIER' ? e.bezier : BEZIER_PRESETS[e.type];
+  return e.type === 'LINEAR' ? 'linear' : `cubic-bezier(${b.map((x) => num(x)).join(', ')})`;
+}
+
 const slugOf = (s: string) => applyCase(words(toLatin(s)), 'kebab') || 'mode';
 
 // ---------- formats ----------
@@ -222,7 +239,7 @@ function css(groups: Group[]): string {
   const blocks: string[] = [];
   for (const g of groups) {
     const attr = `data-${slugOf(g.name)}`;
-    root.push(`  /* ${g.name} */`);
+    root.push(`  /* ${cssComment(g.name)} */`);
     const base = g.columns.findIndex((c) => c.scope === null && c.isDefaultMode);
     const line = (t: Token, i: number) => {
       const x = t.values[i]!;
@@ -258,16 +275,16 @@ function css(groups: Group[]): string {
       if (lines.length === 0) return;
       const mode = col.isDefaultMode ? '' : `[${attr}="${slugOf(col.modeName)}"]`;
       const selector = col.scope === null ? mode : `[${attr}-extension="${slugOf(col.extName!)}"]${mode}`;
-      blocks.push(`/* ${g.name}${col.extName ? ` · ${col.extName}` : ''} · ${col.modeName} */\n${selector} {\n${lines.join('\n')}\n}`);
+      blocks.push(`/* ${cssComment(`${g.name}${col.extName ? ` · ${col.extName}` : ''} · ${col.modeName}`)} */\n${selector} {\n${lines.join('\n')}\n}`);
     });
   }
-  return [`:root {\n${root.join('\n')}\n}`, ...blocks].join('\n\n') + '\n';
+  return cssNoTags([`:root {\n${root.join('\n')}\n}`, ...blocks].join('\n\n')) + '\n';
 }
 
 function scss(groups: Group[]): string {
   const out: string[] = [];
   for (const g of groups) {
-    out.push(`// ${g.name}`);
+    out.push(`// ${cssComment(g.name)}`);
     const base = g.columns.findIndex((c) => c.scope === null && c.isDefaultMode);
     for (const t of g.tokens) {
       const x = t.values[base]!;

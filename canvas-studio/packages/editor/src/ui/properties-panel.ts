@@ -3,6 +3,7 @@
 
 import { buildCellTextSection, buildTableSection } from './table-ui.ts';
 import { tr } from '#core';
+import { layersOver } from '#render';
 import { colorToHex, DEV_STATUS_LABELS, exportScaleLabel, isFrameLike, parseExportScale, rgba, type DevStatus, solid, valueEquals, type Color, type Effect, type ExportSetting, type BlendMode, type GridTrack, type LayoutGrid, type Document, type NodeId, type NodeProps, type Paint, type PropKey, type TextRunStyle, type Sizing, type Transaction, type Warp, type EllipseArc, type HandleMirror, type RepeatSettings, type BrushKind, SHAPE_TYPES } from '#core';
 import { applyMirror, vertexMirror } from '#geometry';
 import { DEFAULT_EXPORT, packExports, renderExports } from '../exporter.ts';
@@ -38,8 +39,9 @@ import type { CanvasView } from '../canvas-view.ts';
 import { buildComponentSection, type ComponentSectionHost } from './component-section.ts';
 import { buildLocalStyles, closePopover, openStyleMenu, styleButton, stylePreview, StyleRow, type LocalStylesHost } from './styles-ui.ts';
 import type { StyleBinding } from '#components';
+import { breakpointFrames, countOverrides, exposedIn, nestedInstancesOf } from '#components';
 import { buildPrototypePanel, prototypeSignature } from '../prototype/panel.ts';
-import { buildCodePanel } from './code-panel.ts';
+import { buildCodePanel, focusNote } from './code-panel.ts';
 import { BindableField, buildModeRows, type VariableUiHost } from './variable-ui.ts';
 
 type Phase = 'commit' | 'start' | 'update' | 'end';
@@ -72,7 +74,7 @@ function helpArticleFor(title: string): string | null {
         ['Сетки', 'layout-grids'], ['Сетки колонок', 'layout-grids'], ['Экспорт', 'export'], ['Переменные', 'variables-basics'], ['Страница', 'variables-theme'],
         ['Использование', 'styles'], ['Стили', 'styles'], ['Стили цвета', 'styles'], ['Стили текста', 'styles'], ['Стили эффектов', 'styles'], ['Стили сеток', 'styles'],
         ['Копия компонента', 'components'], ['Компонент', 'components'], ['Набор вариантов', 'variants'], ['Свойства компонента', 'component-props'], ['Свойство компонента', 'component-props'], ['Слой копии компонента', 'components'],
-        ['Код', 'dev-mode'], ['Готово к разработке', 'dev-mode'], ['Взаимодействия', 'prototype-actions'], ['Потоки', 'prototype'], ['Просмотр', 'prototype'], ['Прокрутка', 'prototype-actions'],
+        ['Код', 'dev-mode'], ['Готово к разработке', 'dev-mode'], ['Аннотации', 'annotations'], ['Замер', 'annotations'], ['Аннотации и замеры', 'annotations'], ['Взаимодействия', 'prototype-actions'], ['Потоки', 'prototype'], ['Просмотр', 'prototype'], ['Прокрутка', 'prototype-actions'],
       ] as const
     ).map(([t, id]) => [tr(t), id]),
   );
@@ -98,6 +100,8 @@ export class PropertiesPanel {
   openVariables: (variable?: NodeId) => void = () => {};
   /** Opens the prototype viewer at a screen (null: where presenting would start); set by the app. */
   present: (start: NodeId | null, newTab?: boolean) => void = () => {};
+  /** «Тестирование на людях…»; set by the app. */
+  userTests: () => void = () => {};
   /** Asks for a hyperlink of the selected text; set by the app. */
   editLink: () => void = () => {};
   /** Folds the panel away (the bar over the selection stays); set by the app. */
@@ -125,6 +129,10 @@ export class PropertiesPanel {
     editor.events.on('editText', () => this.update());
     // Changes come many times a frame while dragging: the panel follows once per frame.
     editor.events.on('change', () => this.scheduleUpdate());
+    // The playhead moved: values of layers on the timeline are another moment's.
+    editor.events.on('motion', () => {
+      if (!editor.timeline.playing) this.scheduleUpdate();
+    });
     // Esc leaves the style editor (before the canvas handles it).
     document.addEventListener(
       'keydown',
@@ -140,6 +148,13 @@ export class PropertiesPanel {
     );
     editor.events.on('page', () => this.update());
     editor.events.on('mode', () => this.update());
+    editor.events.on('focus', () => this.update());
+    // Dev Mode notes (step 7): a note added or its card taken on the canvas — shown with its text in focus.
+    editor.events.on('annotate', (f) => {
+      focusNote(f.id, f.index);
+      this.rebuild();
+    });
+    editor.events.on('measure', () => this.update());
     editor.events.on('view', () => {
       this.signature = '';
       this.update();
@@ -199,6 +214,12 @@ export class PropertiesPanel {
     }
   }
 
+  /** Builds the panel again even though the selection is the same (a view choice of the panel's own changed). */
+  private rebuild(): void {
+    this.signature = '';
+    this.update();
+  }
+
   private computeSignature(): string {
     const d = this.editor.doc;
     if (this.editingStyle && !d.store.isAlive(this.editingStyle)) this.editingStyle = null;
@@ -223,6 +244,9 @@ export class PropertiesPanel {
           id,
           d.type(id),
           d.get(id, 'layoutMode'),
+          // A wrap shows «Между строками»; uneven sides show four padding fields (UI-005).
+          d.get(id, 'layoutWrap') ? 'wrap' : '',
+          d.get(id, 'paddingLeft') !== d.get(id, 'paddingRight') || d.get(id, 'paddingTop') !== d.get(id, 'paddingBottom') ? 'uneven' : '',
           (() => {
             const inert = alignInert(d, id);
             return `${inert.counter ?? ''}|${inert.main ?? ''}`;
@@ -254,12 +278,17 @@ export class PropertiesPanel {
           // Component structure: rebuild when links, properties or variants change.
           d.get(id, 'mainComponent') ?? '',
           d.get(id, 'componentKey') ? 'layer' : '',
+          // A slot (step 6): its toggle and whether an instance's slot holds layers of its own.
+          d.get(id, 'slot') ? (d.get(id, 'slotFilled') ? 'slot+' : 'slot') : '',
           d.get(id, 'overrides').length,
           JSON.stringify(d.get(id, 'propRefs')),
-          d.get(id, 'componentProps').map((p) => p.id + p.name).join(','),
+          // Properties of the component (or of its set, for a variant), with their preferred components (step 6).
+          (d.type(id) === 'COMPONENT' && parent && d.type(parent) === 'COMPONENT_SET' ? d.get(parent, 'componentProps') : d.get(id, 'componentProps')).map((p) => p.id + p.name + (p.preferred ?? []).join('+')).join(','),
           d.type(id) === 'COMPONENT_SET' ? d.children(id).map((c) => d.get(c, 'name')).join(';') : '',
           d.type(id) === 'COMPONENT' && parent && d.type(parent) === 'COMPONENT_SET' ? d.get(id, 'name') : '',
           d.type(id) === 'INSTANCE' ? this.instanceSignature(id) : '',
+          // Nested instances shown in instances (step 6): the list and its ticks.
+          d.type(id) === 'COMPONENT' ? nestedInstancesOf(d, id).map((n) => `${n}${d.get(n, 'exposedInstance') ? '+' : ''}${d.get(n, 'mainComponent')}`).join(',') : '',
           d.get(id, 'fillStyleId') ?? '',
           d.get(id, 'strokeStyleId') ?? '',
           d.get(id, 'effectStyleId') ?? '',
@@ -282,6 +311,18 @@ export class PropertiesPanel {
     return `|edit:${start === end ? 'caret' : 'range'}`;
   }
 
+  /** «Сравнить изменения» in the «Код» tab; set by the app (it knows the file's versions). */
+  compareChanges: (() => void) | null = null;
+  /** «Открыть в песочнице» in the «Код» tab; set by the app (it has the renderer). */
+  openPlayground: (() => void) | null = null;
+  /** «Согласование» (other editors, item 9) for a frame with a status; set by the app (statuses live on the server). */
+  approvalSection: ((section: (title: string, ...actions: HTMLElement[]) => HTMLElement, ids: NodeId[]) => void) | null = null;
+
+  /** Statuses changed: the panel is built again for the same selection. */
+  refreshApprovals(): void {
+    this.rebuild();
+  }
+
   private slideSectionFn: ((section: (title: string, ...actions: HTMLElement[]) => HTMLElement, ids: NodeId[]) => void) | null = null;
 
   /** A presentation's «Слайд» section (notes, transition) for the slide of the selection (FEAT-157). */
@@ -302,11 +343,11 @@ export class PropertiesPanel {
     this.fields = [];
     this.buildTabs();
     if (this.editor.prototype.mode === 'prototype' && !this.editingStyle) {
-      buildPrototypePanel({ editor: this.editor, section: (title, ...actions) => this.section(title, ...actions), present: (start, newTab) => this.present(start, newTab) });
+      buildPrototypePanel({ editor: this.editor, section: (title, ...actions) => this.section(title, ...actions), present: (start, newTab) => this.present(start, newTab), userTests: () => this.userTests() });
       return;
     }
     if (this.editor.prototype.mode === 'code' && !this.editingStyle) {
-      buildCodePanel({ editor: this.editor, section: (title, ...actions) => this.section(title, ...actions), exportAs: (setting) => void this.runExport([setting]) });
+      buildCodePanel({ editor: this.editor, section: (title, ...actions) => this.section(title, ...actions), exportAs: (setting) => void this.runExport([setting]), compareChanges: this.compareChanges, openPlayground: this.openPlayground });
       return;
     }
     if (this.editingStyle) {
@@ -328,12 +369,20 @@ export class PropertiesPanel {
       return;
     }
     this.buildHeader(ids);
+    this.approvalSection?.((title, ...actions) => this.section(title, ...actions), ids);
     this.slideSection?.((title, ...actions) => this.section(title, ...actions), ids);
     buildTableSection(this.editor, (title, ...actions) => this.section(title, ...actions), ids);
     // Cells of a table (FEAT-170): the table places and sizes them — only their look is theirs.
     if (ids.every((id) => this.editor.isTableCell(id))) {
       buildCellTextSection(this.editor, (title, ...actions) => this.section(title, ...actions), ids, (f) => this.add(f));
       this.buildPaints(ids, 'fills', ids.length === 1 ? tr('Заливка ячейки') : tr('Заливка ячеек'));
+      this.buildExport(ids);
+      return;
+    }
+    // Slices (step 9): an area to export — its place, its size, its export, nothing to look at.
+    if (ids.every((id) => this.editor.doc.type(id) === 'SLICE')) {
+      this.buildPosition(ids);
+      this.buildSizing(ids);
       this.buildExport(ids);
       return;
     }
@@ -349,13 +398,15 @@ export class PropertiesPanel {
     if (!pinned) this.buildSizing(ids);
     this.buildAppearance(ids);
     this.buildShape(ids);
-    if (!pinned) this.buildRepeat(ids);
     if (this.editor.scaleMode) this.buildScale();
     if (ids.every((id) => this.editor.doc.type(id) === 'TEXT')) this.buildText(ids);
     // A table's own fill is what shows between its cells (FEAT-167).
     this.buildPaints(ids, 'fills', wholeTable ? tr('Цвет линий') : tr('Заливка'));
     this.buildPaints(ids, 'strokes', tr('Обводка'));
     this.buildEffects(ids);
+    // Rare tools, a line each until used (UI-005): below what every layer has.
+    if (!pinned) this.buildRepeat(ids);
+    if (!pinned) this.buildBreakpoints(ids);
     if (!pinned) this.buildWarp(ids);
     this.buildSelectionColors(ids);
     this.buildSelectionFonts(ids);
@@ -454,7 +505,8 @@ export class PropertiesPanel {
     const main = d.get(id, 'mainComponent');
     if (!main || !d.store.has(main)) return 'missing';
     const set = d.parent(main);
-    return [d.store.isAlive(main), set && d.type(set) === 'COMPONENT_SET' ? d.children(set).map((c) => d.get(c, 'name')).join(';') : '', JSON.stringify(d.get(id, 'propValues'))].join('|');
+    // Overrides of its layers too: «Сбросить изменения» and «В компонент» come and go with them.
+    return [d.store.isAlive(main), countOverrides(d, id), exposedIn(d, id).join(','), set && d.type(set) === 'COMPONENT_SET' ? d.children(set).map((c) => d.get(c, 'name')).join(';') : '', JSON.stringify(d.get(id, 'propValues'))].join('|');
   }
 
   /** Exports the selected layers: with `override` settings, else each layer's own (or PNG 1x). */
@@ -481,7 +533,7 @@ export class PropertiesPanel {
     };
     const play = h('button', { class: 'icon-button panel-play', type: 'button', title: tr('Просмотр прототипа (Mod+Alt+Enter)').replace('Mod', /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'), 'aria-label': tr('Просмотр прототипа') }, icon('play', 14));
     play.addEventListener('click', () => this.present(null));
-    const fold = h('button', { class: 'icon-button panel-fold', type: 'button', title: tr('Свернуть панель — останется панель над выделением'), 'aria-label': tr('Свернуть правую панель'), onclick: () => this.onFold() }, icon('panelRight', 14));
+    const fold = h('button', { class: 'icon-button panel-fold', type: 'button', title: tr('Свернуть панель: останется панель над выделением'), 'aria-label': tr('Свернуть правую панель'), onclick: () => this.onFold() }, icon('panelRight', 14));
     this.el.append(h('div', { class: 'panel-tabs', role: 'tablist' }, tab('design', tr('Дизайн')), tab('prototype', tr('Прототип')), tab('code', tr('Код')), play, fold));
   }
 
@@ -570,12 +622,13 @@ export class PropertiesPanel {
         min: options.min,
         max: options.max,
         suffix: options.suffix,
+        // A layer of an open timeline shows its value at the playhead (Motion); a change records a keyframe there.
         read: () => {
           const list = ids();
           if (list.length === 0) return null;
-          return common(list, (id) => (d.get(id, key) as number) * scale);
+          return common(list, (id) => (this.editor.timeline.shownProp(id, key) ?? (d.get(id, key) as number)) * scale);
         },
-        write: this.numberWriter(ids, (id) => (d.get(id, key) as number) * scale, (tx, id, v) => tx.set(id, key, (v / scale) as never), title),
+        write: this.numberWriter(ids, (id) => (this.editor.timeline.shownProp(id, key) ?? (d.get(id, key) as number)) * scale, (tx, id, v) => tx.set(id, key, (v / scale) as never), title),
       }),
     );
   }
@@ -916,7 +969,7 @@ export class PropertiesPanel {
       const absolute = this.add(
         new CheckboxField(tr('Вне адаптивной раскладки'), () => common(this.ids, (id) => d.get(id, 'positioning') === 'ABSOLUTE'), (v) => this.set('positioning', v ? 'ABSOLUTE' : 'AUTO', v ? tr('Вывести из адаптивной раскладки') : tr('Вернуть в адаптивную раскладку'))),
       );
-      absolute.el.title = tr('Слой остаётся на своём месте и не выстраивается в ряд с остальными — например, значок поверх карточки. Остальные слои раскладки не меняются.');
+      absolute.el.title = tr('Слой остаётся на своём месте и не встаёт в ряд с остальными, как значок поверх карточки. Остальные слои раскладки не меняются.');
       body.append(absolute.el);
       const inGrid = ids.every((id) => d.get(d.parent(id)!, 'layoutMode') === 'GRID' && d.get(id, 'positioning') === 'AUTO');
       if (inGrid && new Set(ids.map((id) => d.parent(id))).size === 1) this.buildGridPlace(body);
@@ -991,29 +1044,29 @@ export class PropertiesPanel {
       );
       return;
     }
+    // Icons only, as in Figma (UI-005): the words were cut to «Стро…», «Стол…»; the names are in the tooltips.
+    // «Перенос» is a row that wraps — a direction of its own, not a checkbox under it.
     const direction = this.add(
       new SegmentedField(
         tr('Направление'),
         [
-          { value: 'HORIZONTAL', label: tr('Строка'), icon: 'arrowRight' },
           { value: 'VERTICAL', label: tr('Столбец'), icon: 'arrowDown' },
+          { value: 'HORIZONTAL', label: tr('Строка'), icon: 'arrowRight' },
+          { value: 'WRAP', label: tr('Строка с переносом'), icon: 'wrap' },
           { value: 'GRID', label: tr('Сетка'), icon: 'table' },
         ] as const,
-        () => common(this.ids, (id) => d.get(id, 'layoutMode') as 'HORIZONTAL' | 'VERTICAL' | 'GRID'),
-        (v) => this.setLayoutMode(v),
-        true,
+        () => common(this.ids, (id) => (d.get(id, 'layoutMode') === 'HORIZONTAL' && d.get(id, 'layoutWrap') ? 'WRAP' : (d.get(id, 'layoutMode') as 'HORIZONTAL' | 'VERTICAL' | 'GRID'))),
+        (v) => this.setLayoutMode(v === 'WRAP' ? 'HORIZONTAL' : v, v === 'WRAP'),
       ),
     );
+    direction.el.classList.add('layout-direction');
     body.append(direction.el);
     if (ids.every((id) => d.get(id, 'layoutMode') === 'GRID')) {
       this.buildGrid(body);
       this.buildOverflowNote(body);
       this.buildPadding(body);
+      this.buildLayoutMore(body, ids);
       return;
-    }
-    if (ids.every((id) => d.get(id, 'layoutMode') === 'HORIZONTAL')) {
-      const wrap = this.add(new CheckboxField(tr('Переносить на новую строку, если не помещается'), () => common(this.ids, (id) => d.get(id, 'layoutWrap')), (v) => this.set('layoutWrap', v, tr('Перенос'))));
-      body.append(wrap.el);
     }
 
     // Alignment: a 3×3 picture of the frame; the dot is where the children go.
@@ -1065,14 +1118,7 @@ export class PropertiesPanel {
       body.append(h('p', { class: 'field-explain' }, [inert.counter, inert.main].filter(Boolean).join(' ')));
     }
     this.buildOverflowNote(body);
-    if (ids.every((id) => d.get(id, 'layoutMode') === 'HORIZONTAL')) {
-      const baseline = this.add(
-        new CheckboxField(tr('По базовой линии текста'), () => common(this.ids, (id) => d.get(id, 'counterAlign') === 'BASELINE'), (v) => this.set('counterAlign', v ? 'BASELINE' : 'MIN', tr('Выравнивание'))),
-      );
-      baseline.el.title = tr('Слои в строке встают так, чтобы первые строки их текста стояли на одной линии');
-      body.append(baseline.el);
-    }
-    if (ids.every((id) => d.get(id, 'layoutWrap'))) {
+    if (ids.every((id) => d.get(id, 'layoutMode') === 'HORIZONTAL' && d.get(id, 'layoutWrap'))) {
       const rows = this.add(
         new SelectField(
           tr('Как распределять строки'),
@@ -1087,6 +1133,26 @@ export class PropertiesPanel {
       const rowGap = this.numberProp('counterAxisSpacing', '', tr('Промежуток между строками при переносе'), { icon: 'gap', min: 0, variable: 'counterAxisSpacing' });
       body.append(h('div', { class: 'subsection-title' }, tr('Между строками')), h('div', { class: 'grid-2' }, rows.el, rowGap.el));
     }
+    this.buildPadding(body);
+    this.buildLayoutMore(body, ids);
+  }
+
+  /**
+   * What is set once and rarely (UI-005): baseline, which layer is on top, strokes taking room — folded
+   * under «Ещё», as Figma keeps them behind its «advanced» button. Open when one of them is not the default.
+   */
+  private buildLayoutMore(body: HTMLElement, ids: NodeId[]): void {
+    const d = this.editor.doc;
+    const more = this.foldout('autolayout-more', tr('Ещё'));
+    body.append(more.parentElement!);
+    const row = ids.every((id) => d.get(id, 'layoutMode') === 'HORIZONTAL');
+    if (row) {
+      const baseline = this.add(
+        new CheckboxField(tr('По базовой линии текста'), () => common(this.ids, (id) => d.get(id, 'counterAlign') === 'BASELINE'), (v) => this.set('counterAlign', v ? 'BASELINE' : 'MIN', tr('Выравнивание'))),
+      );
+      baseline.el.title = tr('Слои в строке встают так, чтобы первые строки их текста стояли на одной линии');
+      more.append(baseline.el);
+    }
     const stacking = this.add(
       new SelectField(
         tr('Какой слой рисуется поверх, если слои наезжают друг на друга'),
@@ -1098,8 +1164,14 @@ export class PropertiesPanel {
         (v) => this.set('itemReverseZIndex', v === 'FIRST', tr('Наложение слоёв')),
       ),
     );
-    body.append(stacking.el);
-    this.buildPadding(body);
+    const strokes = this.add(
+      new CheckboxField(tr('Учитывать обводки в раскладке'), () => common(this.ids, (id) => d.get(id, 'strokesIncludedInLayout')), (v) => this.set('strokesIncludedInLayout', v, tr('Обводки в раскладке'))),
+    );
+    strokes.el.title = tr('Обводка фрейма работает как отступ, обводки слоёв внутри занимают место, и ничего не залезает друг на друга');
+    more.append(stacking.el, strokes.el);
+    // Something set there is not hidden from the person.
+    const changed = ids.some((id) => (row && d.get(id, 'counterAlign') === 'BASELINE') || d.get(id, 'itemReverseZIndex') || d.get(id, 'strokesIncludedInLayout'));
+    if (changed) (more.parentElement as HTMLDetailsElement).open = true;
   }
 
   /**
@@ -1127,25 +1199,77 @@ export class PropertiesPanel {
     }
   }
 
-  /** Padding and "strokes take room": the same for rows, columns and grids. */
+  /** Whether padding shows its four sides (remembered; forced when the sides differ or one is bound to a variable). */
+  private static paddingSplit = (() => {
+    try {
+      return localStorage.getItem('cs.padding-split') === '1';
+    } catch {
+      return false;
+    }
+  })();
+
+  /**
+   * Padding: as in Figma (UI-005), two fields — left and right together, top and bottom together — and a
+   * button for each side apart. Four fields whenever the sides differ or one is bound to a variable.
+   */
   private buildPadding(body: HTMLElement): void {
     const d = this.editor.doc;
-    body.append(
-      h('div', { class: 'subsection-title' }, tr('Внутренние отступы')),
-      h(
-        'div',
-        { class: 'grid-2' },
-        this.numberProp('paddingTop', tr('Сверху'), tr('Отступ от верхнего края фрейма до содержимого'), { min: 0, variable: 'paddingTop' }).el,
-        this.numberProp('paddingBottom', tr('Снизу'), tr('Отступ от нижнего края фрейма до содержимого'), { min: 0, variable: 'paddingBottom' }).el,
-        this.numberProp('paddingLeft', tr('Слева'), tr('Отступ от левого края фрейма до содержимого'), { min: 0, variable: 'paddingLeft' }).el,
-        this.numberProp('paddingRight', tr('Справа'), tr('Отступ от правого края фрейма до содержимого'), { min: 0, variable: 'paddingRight' }).el,
-      ),
+    const ids = this.ids;
+    const vars = this.editor.variables;
+    const sides = ['paddingTop', 'paddingBottom', 'paddingLeft', 'paddingRight'] as const;
+    const uneven = ids.some((id) => d.get(id, 'paddingLeft') !== d.get(id, 'paddingRight') || d.get(id, 'paddingTop') !== d.get(id, 'paddingBottom'));
+    const bound = sides.some((k) => vars.boundOf(k, ids) !== null);
+    const split = PropertiesPanel.paddingSplit || uneven || bound;
+    const toggle = h(
+      'button',
+      {
+        class: 'icon-button padding-split',
+        type: 'button',
+        title: split ? tr('Отступы парами') : tr('Отступ с каждой стороны'),
+        'aria-pressed': String(split),
+        disabled: split && (uneven || bound),
+        onclick: () => {
+          PropertiesPanel.paddingSplit = !split;
+          try {
+            localStorage.setItem('cs.padding-split', PropertiesPanel.paddingSplit ? '1' : '0');
+          } catch {
+            // not remembered
+          }
+          this.rebuild();
+        },
+      },
+      icon('padding', 14),
     );
-    const strokes = this.add(
-      new CheckboxField(tr('Учитывать обводки в раскладке'), () => common(this.ids, (id) => d.get(id, 'strokesIncludedInLayout')), (v) => this.set('strokesIncludedInLayout', v, tr('Обводки в раскладке'))),
-    );
-    strokes.el.title = tr('Обводка фрейма работает как отступ, обводки слоёв внутри занимают место — ничего не залезает друг на друга');
-    body.append(strokes.el);
+    const head = h('div', { class: 'subsection-title with-action' }, h('span', {}, tr('Внутренние отступы')), toggle);
+    if (split) {
+      body.append(
+        head,
+        h(
+          'div',
+          { class: 'grid-2' },
+          this.numberProp('paddingLeft', tr('Слева'), tr('Отступ от левого края фрейма до содержимого'), { min: 0, variable: 'paddingLeft' }).el,
+          this.numberProp('paddingTop', tr('Сверху'), tr('Отступ от верхнего края фрейма до содержимого'), { min: 0, variable: 'paddingTop' }).el,
+          this.numberProp('paddingRight', tr('Справа'), tr('Отступ от правого края фрейма до содержимого'), { min: 0, variable: 'paddingRight' }).el,
+          this.numberProp('paddingBottom', tr('Снизу'), tr('Отступ от нижнего края фрейма до содержимого'), { min: 0, variable: 'paddingBottom' }).el,
+        ),
+      );
+      return;
+    }
+    const pair = (a: 'paddingLeft' | 'paddingTop', b: 'paddingRight' | 'paddingBottom', iconName: string, title: string) =>
+      this.add(
+        new NumberField({
+          label: '',
+          title,
+          icon: iconName,
+          min: 0,
+          read: () => (this.ids.length ? common(this.ids, (id) => d.get(id, a)) : null),
+          write: this.numberWriter(() => this.ids, (id) => d.get(id, a), (tx, id, v) => (tx.set(id, a, v), tx.set(id, b, v)), title),
+        }),
+      );
+    const across = pair('paddingLeft', 'paddingRight', 'padX', tr('Отступ слева и справа'));
+    const down = pair('paddingTop', 'paddingBottom', 'padY', tr('Отступ сверху и снизу'));
+    across.el.classList.add('padding-across');
+    body.append(head, h('div', { class: 'grid-2' }, across.el, down.el));
   }
 
   /**
@@ -1154,10 +1278,12 @@ export class PropertiesPanel {
    * layer, a column one column (a landing's sections were dealt into four or two
    * columns, the text broken letter by letter); the gap stays as it was.
    */
-  private setLayoutMode(mode: 'HORIZONTAL' | 'VERTICAL' | 'GRID'): void {
+  private setLayoutMode(mode: 'HORIZONTAL' | 'VERTICAL' | 'GRID', wrap = false): void {
     const d = this.editor.doc;
-    this.commit(mode === 'GRID' ? tr('Раскладка сеткой') : tr('Направление'), (tx, id) => {
+    this.commit(mode === 'GRID' ? tr('Раскладка сеткой') : wrap ? tr('Перенос') : tr('Направление'), (tx, id) => {
       const was = d.get(id, 'layoutMode');
+      // Wrapping is a row's (Figma's «Wrap»): a column or a grid never keeps it.
+      if (d.get(id, 'layoutWrap') !== (mode === 'HORIZONTAL' && wrap)) tx.set(id, 'layoutWrap', mode === 'HORIZONTAL' && wrap);
       tx.set(id, 'layoutMode', mode);
       if (mode !== 'GRID' || was === 'GRID') return;
       const count = d.children(id).filter((c) => d.get(c, 'positioning') === 'AUTO').length;
@@ -1674,19 +1800,75 @@ export class PropertiesPanel {
   }
 
   /** Repeat transforms (Figma Draw): make a repeat group, or set one up. */
+  /**
+   * Breakpoints: the widths of a screen. Not yet one — a line with «+»; then a row per width (a click selects it),
+   * «+» adds one more, «Отвязать» makes the selected width an ordinary frame.
+   */
+  private buildBreakpoints(ids: NodeId[]): void {
+    const editor = this.editor;
+    const d = editor.doc;
+    if (ids.length !== 1) return;
+    const id = ids[0]!;
+    const parent = d.parent(id);
+    if (d.type(id) !== 'FRAME' || !parent || (d.type(parent) !== 'PAGE' && d.type(parent) !== 'SECTION') || d.get(id, 'board') || d.get(id, 'slide')) return;
+    const set = d.get(id, 'breakpoint') ? breakpointFrames(d, id) : [id];
+    const widths = new Set(set.map((f) => Math.round(d.get(f, 'width'))));
+    const add = h('button', { class: 'icon-button', type: 'button', title: tr('Ещё одна ширина этого экрана: тексты и цвета общие, раскладка своя'), 'aria-label': tr('Добавить ширину') }, icon('plus'));
+    add.addEventListener('click', () => {
+      const r = add.getBoundingClientRect();
+      const preset = (label: string, w: number) => ({ kind: 'action' as const, label: `${label} · ${w}`, disabled: widths.has(w), run: () => editor.addBreakpoint(id, w) });
+      (this.menu ??= new ContextMenu(document.body)).open(r.left, r.bottom + 4, [
+        preset(tr('Десктоп'), 1440),
+        preset(tr('Ноутбук'), 1280),
+        preset(tr('Планшет'), 768),
+        preset(tr('Телефон'), 390),
+        { kind: 'separator' },
+        {
+          kind: 'action',
+          label: tr('Своя ширина…'),
+          run: () =>
+            void import('./dialog.ts')
+              .then(({ askText }) => askText({ title: tr('Ширина экрана'), label: tr('Ширина, px'), value: '1024', confirm: tr('Добавить'), maxLength: 5 }))
+              .then((v) => {
+              const w = Math.round(Number(v));
+              if (v !== null && w >= 120 && w <= 10000) editor.addBreakpoint(id, w);
+              else if (v !== null) editor.toast(tr('Ширина — от 120 до 10000 px'));
+            }),
+        },
+      ]);
+    });
+    const body = this.section(tr('Брейкпоинты'), add);
+    if (set.length < 2) return;
+    const list = h('div', { class: 'bp-list' });
+    for (const f of set) {
+      const row = h(
+        'button',
+        { class: `bp-row${f === id ? ' active' : ''}`, type: 'button', title: tr('Выделить эту ширину') },
+        h('span', { class: 'bp-width' }, String(Math.round(d.get(f, 'width')))),
+        h('span', { class: 'bp-name' }, d.get(f, 'name')),
+      );
+      row.addEventListener('click', () => {
+        editor.setSelection([f]);
+        editor.zoomToSelection();
+      });
+      list.append(row);
+    }
+    const unlink = h('button', { class: 'text-button bp-unlink', type: 'button', title: tr('Эта ширина станет обычным фреймом') }, tr('Отвязать'));
+    unlink.addEventListener('click', () => editor.unlinkBreakpoint(id));
+    body.append(list, h('p', { class: 'hint bp-hint' }, tr('Тексты, цвета и картинки общие, раскладка у каждой ширины своя.')), unlink);
+  }
+
   private buildRepeat(ids: NodeId[]): void {
     const d = this.editor.doc;
     if (this.editor.vectorEdit || ids.some((id) => d.type(id) === 'SECTION' || d.get(id, 'board'))) return;
     const groups = ids.filter((id) => d.type(id) === 'GROUP' && d.get(id, 'repeat'));
-    const kindButtons = () =>
-      h(
-        'div',
-        { class: 'grid-2' },
-        h('button', { class: 'text-button', type: 'button', title: tr('Повторить выделенное в ряд: копии меняются вместе с оригиналом'), onclick: () => this.editor.addRepeat('LINEAR') }, h('span', {}, tr('В ряд'))),
-        h('button', { class: 'text-button', type: 'button', title: tr('Повторить выделенное по кругу: копии меняются вместе с оригиналом'), onclick: () => this.editor.addRepeat('RADIAL') }, h('span', {}, tr('По кругу'))),
-      );
     if (groups.length !== ids.length) {
-      if (groups.length === 0) this.section(tr('Повтор')).append(kindButtons());
+      // Not repeated yet: one line with «+», as «Искажение» (UI-005); «+» makes a row, its settings then switch it to a circle.
+      if (groups.length === 0)
+        this.section(
+          tr('Повтор'),
+          h('button', { class: 'icon-button', type: 'button', title: tr('Повторить выделенное: копии меняются вместе с оригиналом'), 'aria-label': tr('Добавить повтор'), onclick: () => this.editor.addRepeat('LINEAR') }, icon('plus')),
+        );
       return;
     }
     const body = this.section(tr('Повтор'));
@@ -1851,10 +2033,16 @@ export class PropertiesPanel {
       const clip = this.add(new CheckboxField(tr('Обрезать всё, что выходит за рамку'), () => common(this.ids, (id) => d.get(id, 'clipsContent')), (v) => this.set('clipsContent', v, tr('Обрезка'))));
       body.append(clip.el);
     }
+    // «От руки» (FEAT-223): shapes, frames and groups drawn as a hand sketch; texts take a handwritten font apart.
+    if (ids.every((id) => d.type(id) !== 'TEXT' && d.type(id) !== 'SLICE')) {
+      const sketch = this.add(new CheckboxField(tr('От руки'), () => common(this.ids, (id) => d.get(id, 'sketch')), (v) => this.set('sketch', v, tr('От руки'))));
+      sketch.el.title = tr('Линии как нарисованные от руки — для черновых макетов. Размеры и экспорт те же');
+      body.append(sketch.el);
+    }
     // Visibility from a boolean variable (e.g. "показывать иконку").
     if (d.collections().some((c) => d.children(c).some((v) => d.get(v, 'varType') === 'BOOLEAN'))) {
       const shown = this.add(new CheckboxField(tr('Показан'), () => common(this.ids, (id) => d.get(id, 'visible')), (v) => this.set('visible', v, tr('Видимость'))));
-      more.append(this.line(tr('Видимость'), this.bindable('visible', shown).el, tr('Можно привязать к логической переменной')), h('p', { class: 'field-explain' }, tr('Скрыть слой можно и глазом в списке слоёв. Здесь видимость можно привязать к логической переменной — например, для прототипа.')));
+      more.append(this.line(tr('Видимость'), this.bindable('visible', shown).el, tr('Можно привязать к логической переменной')), h('p', { class: 'field-explain' }, tr('Скрыть слой можно и глазом в списке слоёв. Здесь видимость можно привязать к логической переменной, например для прототипа.')));
     }
     // Modes of variable collections for frames, groups and instances (FR-VAR-012).
     const containers = ['FRAME', 'GROUP', 'COMPONENT', 'COMPONENT_SET', 'INSTANCE'];
@@ -2058,7 +2246,7 @@ export class PropertiesPanel {
     // Figma's «Hanging list»: the markers stand outside, the items' text lines up with the text around.
     if (ids.every((id) => d.get(id, 'listType') !== 'NONE')) {
       const hanging = this.add(new CheckboxField(tr('Маркеры за краем текста'), () => common(this.ids, (id) => d.get(id, 'hangingList')), (v) => this.set('hangingList', v, tr('Висячий список'))));
-      hanging.el.title = tr('Маркеры и номера выходят за левый край, а текст пунктов стоит ровно по краю — вровень с текстом вокруг.');
+      hanging.el.title = tr('Маркеры и номера выходят за левый край, а текст пунктов стоит ровно по краю, вровень с текстом вокруг.');
       // Nesting (Tab / Shift+Tab while typing) and the space between items.
       const level = (delta: 1 | -1, label: string, glyph: string) =>
         h('button', { class: 'text-button', type: 'button', title: `${label} (${delta > 0 ? 'Tab' : 'Shift+Tab'})`, onclick: () => this.editor.shiftListLevel(delta) }, h('span', {}, glyph));
@@ -2172,7 +2360,7 @@ export class PropertiesPanel {
         decoNumber('decorationThickness', tr('Толщ.'), tr('Толщина линии подчёркивания и зачёркивания, px'), (id) => Math.max(1, d.get(id, 'fontSize') / 16)).el,
         decoNumber('underlineOffset', tr('Отступ'), tr('Расстояние от базовой линии до подчёркивания, px'), (id) => d.get(id, 'fontSize') * 0.12).el,
       ),
-      explain(tr('Включаются кнопками U и S выше. Здесь — как они выглядят: линия, штрих, точки или волна, толщина и отступ подчёркивания от текста.')),
+      explain(tr('Включаются кнопками U и S выше. Здесь настраивается их вид: линия, штрих, точки или волна, толщина и отступ подчёркивания от текста.')),
     );
     const hangingMarks = this.add(new CheckboxField(tr('Висячие кавычки и скобки'), () => common(this.ids, (id) => d.get(id, 'hangingPunctuation')), (v) => this.set('hangingPunctuation', v, tr('Висячая пунктуация'))));
     more.append(hangingMarks.el, explain(tr('Кавычка или скобка в начале строки выходит за край, и буквы стоят ровно по краю. У текста по правому краю так же выходят точка, запятая и закрывающая кавычка.')));
@@ -2220,7 +2408,7 @@ export class PropertiesPanel {
     void fontAbilities(d, d.get(first, 'fontFamily'), d.get(first, 'fontWeight'), d.get(first, 'italic')).then((info) => {
       if (!box.isConnected && !box.parentElement) return;
       if (!info) {
-        box.append(h('div', { class: 'subsection-title' }, tr('Функции шрифта')), explain(tr('Функции и оси шрифта (цифры одной ширины, наборы знаков, дроби) видны, когда файл шрифта есть в файле: выбор шрифта → «Встроить в файл». Шрифты WOFF2 прочитать нельзя — встройте TTF или OTF.')));
+        box.append(h('div', { class: 'subsection-title' }, tr('Функции шрифта')), explain(tr('Функции и оси шрифта (цифры одной ширины, наборы знаков, дроби) видны, когда файл шрифта есть в файле: выбор шрифта → «Встроить в файл». Шрифты WOFF2 прочитать нельзя, встройте TTF или OTF.')));
         return;
       }
       const has = new Set(info.features);
@@ -2795,7 +2983,7 @@ export class PropertiesPanel {
             { class: `text-button wide${editing ? ' on' : ''}`, type: 'button', 'aria-pressed': String(editing), onclick: () => editor.setWarpEdit(editing ? null : single) },
             h('span', {}, editing ? tr('Готово (Esc)') : tr('Двигать углы на холсте')),
           ),
-          h('p', { class: 'hint' }, tr('Потяните круглые ручки в углах — картинка слоя ляжет на книгу, экран или визитку под углом. Двойной щелчок по слою тоже включает ручки.')),
+          h('p', { class: 'hint' }, tr('Тяните ручки в углах, чтобы положить слой на экран, книгу или визитку под углом. Ручки включает и двойной щелчок.')),
         );
       }
       const iso = (face: 'FLAT' | 'LEFT' | 'RIGHT', label: string, title: string) =>
@@ -3473,7 +3661,7 @@ export class PropertiesPanel {
         'div',
         { class: `paint-item${grid.visible ? '' : ' muted'}` },
         h('div', { class: 'paint-row' }, pattern.el, visible, remove),
-        h('p', { class: 'grid-caption' }, gridCaption(grid), faint ? h('span', { class: 'grid-faint' }, ' · ', tr('почти не видна ({0} %) — сделайте цвет плотнее, 20–30 %', Math.round(grid.color.a * 100))) : null),
+        h('p', { class: 'grid-caption' }, gridCaption(grid), faint ? h('span', { class: 'grid-faint' }, ' · ', tr('почти не видна ({0} %), сделайте цвет плотнее, 20–30 %', Math.round(grid.color.a * 100))) : null),
       );
       const num = (key: 'count' | 'sectionSize' | 'offset' | 'gutterSize', label: string, title: string, min: number) =>
         this.bindable(
@@ -3628,6 +3816,13 @@ export class PropertiesPanel {
       suffix.addEventListener('change', () => update({ suffix: suffix.value.trim() }));
       const remove = h('button', { class: 'icon-button', type: 'button', title: tr('Удалить настройку'), onclick: () => write(settings().filter((_, i) => i !== index)) }, icon('minus'));
       body.append(h('div', { class: 'export-row' }, h('div', { class: 'field' }, scale, options), h('div', { class: 'field select-wrap' }, format), h('div', { class: 'field' }, suffix), remove));
+      // Only when something lies over the layer (step 9): the choice is not there to read otherwise.
+      const raster = setting.format === 'PNG' || setting.format === 'JPG' || setting.format === 'WEBP';
+      if (raster && ids.length === 1 && d.type(ids[0]!) !== 'SLICE' && (setting.withOverlaps || layersOver(this.editor.scene, ids[0]!).length > 0)) {
+        const box = h('input', { type: 'checkbox', checked: !!setting.withOverlaps });
+        box.addEventListener('change', () => update({ withOverlaps: box.checked || undefined }));
+        body.append(h('div', { class: 'export-svg' }, h('label', { class: 'checkbox', title: tr('Слои, лежащие поверх, тоже попадут в картинку') }, box, h('span', {}, tr('Со слоями поверх')))));
+      }
       if (setting.format === 'SVG') {
         const check = (label: string, title: string, key: 'svgCurrentColor' | 'svgResponsive' | 'svgOutlineText') => {
           const box = h('input', { type: 'checkbox', checked: !!setting[key] });
@@ -3638,7 +3833,7 @@ export class PropertiesPanel {
           h(
             'div',
             { class: 'export-svg' },
-            check(tr('Цвет из CSS'), tr('Иконка одного цвета получает цвет окружающего текста (currentColor) — её можно перекрашивать в CSS'), 'svgCurrentColor'),
+            check(tr('Цвет из CSS'), tr('Иконка одного цвета получает цвет окружающего текста (currentColor), и её можно перекрашивать в CSS'), 'svgCurrentColor'),
             check(tr('Без размеров'), tr('Без width и height, только viewBox: картинка растягивается по контейнеру'), 'svgResponsive'),
             check(tr('Текст в кривых'), tr('Буквы становятся контурами: SVG выглядит одинаково везде, даже без шрифта. Нужен файл шрифта — встроенный в файл или Inter'), 'svgOutlineText'),
           ),
@@ -3682,12 +3877,12 @@ export function alignInert(d: Document, id: NodeId): { counter: string | null; m
   const across = row ? 'sizingV' : 'sizingH';
   const along = row ? 'sizingH' : 'sizingV';
   const counter = children.every((c) => fills(d.get(c, across)))
-    ? row ? tr('Слои растянуты на всю высоту — по вертикали выравнивать нечего.') : tr('Слои растянуты на всю ширину — по горизонтали выравнивать нечего.')
+    ? row ? tr('Слои растянуты на всю высоту, по вертикали выравнивать нечего.') : tr('Слои растянуты на всю ширину, по горизонтали выравнивать нечего.')
     : null;
   const main = d.get(id, along).mode === 'HUG'
     ? row ? tr('Ширина рамки — по содержимому: свободного места нет, по горизонтали выравнивать и распределять нечего.') : tr('Высота рамки — по содержимому: свободного места нет, по вертикали выравнивать и распределять нечего.')
     : children.some((c) => fills(d.get(c, along)))
-      ? row ? tr('Слой заполняет всё свободное место по ширине — распределять нечего.') : tr('Слой заполняет всё свободное место по высоте — распределять нечего.')
+      ? row ? tr('Слой заполняет всё свободное место по ширине, распределять нечего.') : tr('Слой заполняет всё свободное место по высоте, распределять нечего.')
       : null;
   return { counter, main };
 }

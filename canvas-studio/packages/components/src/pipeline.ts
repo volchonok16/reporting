@@ -16,15 +16,20 @@
 import type { NodeId, PropKey, Transaction } from '#core';
 import { applyLayout, fitGroups, settleSizing, type TextMeasurer } from '#layout';
 import { syncBoard } from './board.ts';
+import { syncBreakpoints } from './breakpoints.ts';
 import { syncRepeats } from './repeat.ts';
 import { syncStyles } from './styles.ts';
 import { resolveVariables, unbindEditedFields } from './variables.ts';
-import { markOverrides, syncComponents } from './sync.ts';
+import { claimSlots, markOverrides, syncComponents } from './sync.ts';
 
 export function processTransaction(tx: Transaction, measurer: TextMeasurer): void {
   const doc = tx.doc;
   if (tx.changes.isEmpty) return;
   settleSizing(doc, tx);
+  // A slot's content changed by the user becomes the instance's own before anything syncs it back.
+  claimSlots(doc, tx);
+  // Breakpoints: what is one for all widths reaches the other widths as if edited there (overrides, styles follow).
+  syncBreakpoints(doc, tx);
   const userChanges = new Map<NodeId, Set<PropKey>>();
   for (const [id, keys] of tx.changes.updated) userChanges.set(id, new Set(keys));
   // Unbinding first: a style whose bound value was typed over must lose that

@@ -29,7 +29,7 @@ const bounds = (paths: readonly VectorPath[]) => {
 export function putTextOnPath(editor: Editor): boolean {
   const pair = textAndPath(editor);
   if (!pair) {
-    editor.toast(tr('Выделите текст и линию (контур, фигуру) — текст пойдёт вдоль неё'));
+    editor.toast(tr('Выделите текст и линию (контур, фигуру), и текст пойдёт вдоль неё'));
     return false;
   }
   const d = editor.doc;

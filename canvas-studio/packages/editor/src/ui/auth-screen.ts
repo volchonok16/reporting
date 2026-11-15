@@ -75,10 +75,10 @@ export function showAuthScreen(root: HTMLElement, options: { allowLocal: boolean
       backLink.hidden = !recovering || !!options.back;
       submit.textContent = submitLabel();
       hint.textContent =
-        m === 'register' ? tr('Имя видят те, с кем вы работаете над файлами; без него — ваш email. Пароль — не короче 8 символов, на почту придёт код для подтверждения.')
-        : m === 'verify' ? tr('Мы отправили код на {0}. Если письма нет — проверьте «Спам».', email.value.trim())
+        m === 'register' ? tr('Имя видят те, с кем вы работаете над файлами, а без него — ваш email. Пароль не короче 8 символов, на почту придёт код для подтверждения.')
+        : m === 'verify' ? tr('Мы отправили код на {0}. Если письма нет, проверьте «Спам».', email.value.trim())
         : m === 'forgot' ? tr('Пришлём на почту код для смены пароля.')
-        : m === 'reset' ? tr('Код отправлен на {0}. Если письма нет — проверьте «Спам».', email.value.trim())
+        : m === 'reset' ? tr('Код отправлен на {0}. Если письма нет, проверьте «Спам».', email.value.trim())
         : '';
       error.textContent = note;
       note = '';
@@ -165,7 +165,7 @@ export function showAuthScreen(root: HTMLElement, options: { allowLocal: boolean
           note = err.message;
           code.value = '';
           setMode('verify');
-          hint.textContent = tr('Если письма нет — проверьте «Спам» или отправьте код ещё раз.');
+          hint.textContent = tr('Если письма нет, проверьте «Спам» или отправьте код ещё раз.');
         }
         submit.textContent = submitLabel();
       }
@@ -174,7 +174,7 @@ export function showAuthScreen(root: HTMLElement, options: { allowLocal: boolean
       ? h('button', { class: 'text-button auth-local', type: 'button', onclick: () => {
           overlay.remove();
           resolve({ mode: 'local' });
-        } }, tr('Продолжить без входа — файлы только в этом браузере'))
+        } }, tr('Продолжить без входа: файлы только в этом браузере'))
       : null;
     // «Назад» at the top: on the code and password-reset steps — back to signing in; otherwise — off this screen.
     const back = options.back

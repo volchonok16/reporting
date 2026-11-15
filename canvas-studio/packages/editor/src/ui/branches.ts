@@ -49,7 +49,7 @@ function message(error: unknown): string {
 /** What a merge result's error means and how to get past it (FR-BR-006). */
 function integrityText(error: string): string {
   if (error.startsWith('cycle:')) {
-    return tr('Слияние сейчас невозможно: слой «{0}» оказался бы внутри самого себя — в основном файле и в ветке слои вложены друг в друга по-разному. Как исправить: в ветке перенесите этот слой туда, где он лежит в основном файле, и повторите слияние.', error.slice(6) || '…');
+    return tr('Слияние сейчас невозможно: слой «{0}» оказался бы внутри самого себя, потому что в основном файле и в ветке слои вложены по-разному. Чтобы исправить, перенесите в ветке этот слой туда, где он лежит в основном файле, и повторите слияние.', error.slice(6) || '…');
   }
   return tr('Слияние сейчас невозможно: файл повреждён ({0}). Сохраните копию файла и напишите нам.', error);
 }
@@ -75,7 +75,7 @@ function swatches(paints: Paint[]): HTMLElement {
   const solid = paints.filter((p) => p.type === 'SOLID' && p.visible !== false) as Extract<Paint, { type: 'SOLID' }>[];
   if (!paints.length) return h('span', {}, tr('нет'));
   if (!solid.length) return h('span', {}, tr('градиент или картинка'));
-  return h('span', { class: 'merge-swatches' }, ...solid.slice(0, 3).map((p) => h('i', { style: { background: `#${colorToHex(p.color)}` }, title: `#${colorToHex(p.color)}` })), h('span', {}, `#${colorToHex(solid[0]!.color)}`));
+  return h('span', { class: 'merge-swatches' }, ...solid.slice(0, 3).map((p) => h('i', { style: { background: colorToHex(p.color) }, title: colorToHex(p.color) })), h('span', {}, colorToHex(solid[0]!.color)));
 }
 
 function valueView(c: MergeConflict, value: unknown): HTMLElement {
@@ -175,7 +175,7 @@ export class MergeView {
       'div',
       { class: 'merge-summary' },
       h('p', {}, tr('Придёт изменений: {0}.', r.incoming.length)),
-      r.conflicts.length ? h('p', {}, tr('Конфликтов: {0} — одно и то же свойство изменено и в «{1}», и в «{2}». Выберите, что оставить.', r.conflicts.length, ours, theirs)) : h('p', {}, tr('Конфликтов нет: всё соединится само.')),
+      r.conflicts.length ? h('p', {}, tr('Конфликтов: {0}. Одно и то же свойство изменено и в «{1}», и в «{2}». Выберите, что оставить.', r.conflicts.length, ours, theirs)) : h('p', {}, tr('Конфликтов нет: всё соединится само.')),
       r.error ? h('p', { class: 'merge-error', role: 'alert' }, integrityText(r.error)) : null,
     );
     const list = r.conflicts.map((c) => this.conflictRow(c));
@@ -265,7 +265,7 @@ export class MergeView {
       if (r.conflicts.some((c) => !this.choices.has(c.key))) {
         // A new conflict appeared while deciding (someone edited the same thing): show it.
         this.render();
-        this.host.toast(tr('Пока вы решали, файл изменился — появился новый конфликт. Решите его и нажмите ещё раз.'), 'error');
+        this.host.toast(tr('Пока вы решали, файл изменился и появился новый конфликт. Решите его и нажмите ещё раз.'), 'error');
         return;
       }
       const merged = fromSnapshot(r.snapshot);
@@ -419,7 +419,7 @@ export class BranchesDialog {
           'form',
           { class: 'branches-new' },
           h('h3', {}, tr('Новая ветка')),
-          h('p', { class: 'dialog-hint' }, tr('Копия «{0}», в которой можно пробовать, не трогая основной файл. Потом её можно слить обратно — по свойствам, с выбором при конфликтах.', mainName)),
+          h('p', { class: 'dialog-hint' }, tr('Копия «{0}» для проб, основной файл не меняется. Потом ветку можно слить обратно.', mainName)),
           name,
           description,
           error,
@@ -543,7 +543,7 @@ export async function askReview(host: BranchHost, onDone: (review: BranchReview)
     h(
       'div',
       { class: 'dialog-body' },
-      h('p', { class: 'dialog-hint' }, tr('Им придёт письмо со ссылкой на ветку. В ветке они увидят «Изменения», смогут комментировать и ответить «Одобрить» или «Нужны правки».')),
+      h('p', { class: 'dialog-hint' }, tr('Рецензенты получат письмо со ссылкой. В ветке они увидят изменения и ответят «Одобрить» или «Нужны правки».')),
       h('div', { class: 'review-people' }, ...checks.map(({ p, box }) => h('label', { class: 'review-person' }, box, h('span', {}, p.name)))),
       description,
       error,
@@ -572,7 +572,7 @@ export async function askReview(host: BranchHost, onDone: (review: BranchReview)
       .requestReview(host.fileId, ids, description.value.trim())
       .then((r) => {
         close();
-        host.toast(r.mailFailed ? tr('Ревью запрошено, но часть писем не ушла — напишите рецензентам сами.') : tr('Ревью запрошено: письма отправлены ({0}).', ids.length), r.mailFailed ? 'error' : 'info');
+        host.toast(r.mailFailed ? tr('Ревью запрошено, но часть писем не ушла. Напишите рецензентам сами.') : tr('Ревью запрошено: письма отправлены ({0}).', ids.length), r.mailFailed ? 'error' : 'info');
         onDone(r.review);
       })
       .catch((err: unknown) => {
@@ -626,7 +626,7 @@ export async function showChanges(host: BranchHost): Promise<void> {
   });
   const review = b.review;
   side.replaceChildren(
-    h('div', { class: 'merge-summary' }, h('p', {}, tr('В ветке изменено слоёв: {0}.', mine)), h('p', {}, theirs ? tr('В основном файле с тех пор изменено: {0} — они придут в ветку через «Получить изменения».', theirs) : tr('Основной файл с тех пор не менялся.'))),
+    h('div', { class: 'merge-summary' }, h('p', {}, tr('В ветке изменено слоёв: {0}.', mine)), h('p', {}, theirs ? tr('В основном файле с тех пор изменено: {0}. Они придут в ветку через «Получить изменения».', theirs) : tr('Основной файл с тех пор не менялся.'))),
     ...(b.description ? [h('div', { class: 'merge-conflict' }, h('div', { class: 'merge-where' }, h('strong', {}, tr('Описание ветки'))), h('div', {}, b.description))] : []),
     ...(review ? [reviewBlock(review)] : []),
   );

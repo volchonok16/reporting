@@ -6,6 +6,8 @@
 // model need not read megabytes of base64), the changed page comes back.
 
 import { tr } from '#core';
+import { answerKind, streamLayout } from '../../../core/src/ai-layout.ts';
+import { AiMissingError, ownAi, ownAiMessage, ownTransport } from '../own-ai.ts';
 
 /** The HTML in an answer: models sometimes add a word before it or wrap it in ``` fences. */
 export function extractHtml(text: string): string {
@@ -228,6 +230,8 @@ export function promptName(prompt: string): string {
  * Resolves with the final text.
  */
 export async function generateLayout(prompt: string, width: number, signal: AbortSignal, onText: (text: string) => void, base?: string, files: { name: string; text: string }[] = [], slide?: { w: number; h: number }): Promise<string> {
+  const own = await ownAi();
+  if (own) return ownLayout(own, prompt, width, signal, onText, base, files, slide);
   let res: Response;
   try {
     res = await fetch('/api/ai/layout', {
@@ -242,9 +246,11 @@ export async function generateLayout(prompt: string, width: number, signal: Abor
     throw new Error(tr('Нет связи с сервером Симметрики'));
   }
   if (!res.ok) {
-    if (res.status === 401) throw new Error(tr('Войдите в аккаунт — макеты по описанию создаются на сервере'));
-    if (res.status === 404) throw new Error(tr('Этот сервер не умеет создавать макеты по описанию'));
-    const body = (await res.json().catch(() => null)) as { message?: string } | null;
+    if (res.status === 401) throw new AiMissingError(tr('Макеты по описанию делает нейросеть. Войдите в аккаунт или укажите свою нейросеть в Настройках.'));
+    // No server (the macOS app, a file host) or one without a neural network.
+    if (res.status === 404) throw new AiMissingError();
+    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+    if (res.status === 503 && body?.error === 'ai_off') throw new AiMissingError();
     throw new Error(body?.message ?? tr('Сервер ответил ошибкой {0}', res.status));
   }
   const reader = res.body!.getReader();
@@ -257,4 +263,34 @@ export async function generateLayout(prompt: string, width: number, signal: Abor
     onText(text);
   }
   return text + decoder.decode();
+}
+
+/** The same, asked of the person's own neural network directly (own-ai.ts): the server's checks done here. */
+async function ownLayout(own: NonNullable<Awaited<ReturnType<typeof ownAi>>>, prompt: string, width: number, signal: AbortSignal, onText: (text: string) => void, base: string | undefined, files: { name: string; text: string }[], slide: { w: number; h: number } | undefined): Promise<string> {
+  if (prompt.trim().length < 3) throw new Error(tr('Опишите экран хотя бы парой слов'));
+  const { config, fetcher } = ownTransport(own);
+  let text = '';
+  let kind: ReturnType<typeof answerKind> = null;
+  try {
+    let done = true;
+    for await (const piece of streamLayout(config, { prompt: prompt.trim(), width: slide?.w ?? width, base, files, slide }, signal, fetcher)) {
+      text += piece;
+      kind ??= answerKind(text, false);
+      if (kind === 'off_topic' || kind === 'other') {
+        done = false;
+        break;
+      }
+      if (kind === 'layout') onText(text);
+    }
+    if (done) kind ??= answerKind(text, true);
+  } catch (error) {
+    if (signal.aborted) throw error;
+    // Too late for an error once the page has begun: the import takes a cut page too.
+    if (kind !== 'layout') throw new Error(ownAiMessage(error));
+  }
+  if (kind === 'off_topic' || (kind === 'other' && text.trim()))
+    throw new Error(base ? tr('Я помогаю только с этим макетом. Скажите, что в нём поправить, например «сделай кнопки синими».') : tr('Я помогаю только с макетами и презентациями: экраны, страницы, слайды. Опишите, что должно быть на экране, например «лендинг кофейни с меню и ценами».'));
+  if (!text.trim()) throw new Error(tr('Нейросеть не ответила. Попробуйте ещё раз.'));
+  onText(text);
+  return text;
 }

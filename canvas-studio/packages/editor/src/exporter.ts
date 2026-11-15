@@ -4,7 +4,7 @@
 import { htmlDocument } from './html-export.ts';
 import { exportScale, exportScaleLabel, tr } from '#core';
 import type { ExportSetting, NodeId } from '#core';
-import { exportNode, exportSvg, exportVectorPdf, layerPicture, zip, type Canvas2DRenderer } from '#render';
+import { exportArea, exportNode, exportSvg, exportVectorPdf, layerPicture, layersIn, zip, type Canvas2DRenderer } from '#render';
 import { outlineFonts } from './text-outline.ts';
 import type { Editor } from './editor.ts';
 
@@ -78,8 +78,15 @@ export async function renderExports(editor: Editor, renderer: Canvas2DRenderer, 
   for (const f of files) taken.set(f.name.toLowerCase(), 1);
   for (const [index, id] of ids.entries()) {
     const base = exportPath(editor, id, template, index);
+    // A slice (step 9): the area of the page under it, whatever lies there.
+    const slice = editor.doc.type(id) === 'SLICE';
+    const area = slice ? editor.scene.bounds(id) : null;
     for (const s of settingsOf(id)) {
       if (together && s.format === 'PDF') continue;
+      if (slice && s.format === 'HTML') {
+        notes.add(tr('Нарезка не сохраняется в HTML'));
+        continue;
+      }
       const raster = s.format !== 'SVG' && s.format !== 'PDF' && s.format !== 'HTML';
       const suffix = s.suffix || (raster && s.size ? `@${exportScaleLabel(s)}` : raster && s.scale !== 1 ? `@${s.scale}x` : '');
       // «512w»: the scale that makes this layer 512 px wide.
@@ -87,19 +94,23 @@ export async function renderExports(editor: Editor, renderer: Canvas2DRenderer, 
       const name = uniqueName(taken, `${base}${suffix}.${EXT[s.format]}`);
       let data: Uint8Array;
       if (s.format === 'SVG') {
-        const outlines = s.svgOutlineText ? await outlineFonts(editor.doc, id, notes) : undefined;
+        // A slice's texts are on the page around it: their fonts are read from the page.
+        const outlines = s.svgOutlineText ? await outlineFonts(editor.doc, area ? (editor.doc.pageOf(id) ?? id) : id, notes) : undefined;
         // Warped layers go in as pictures: their image fills have to be decoded first.
         await renderer.images.settled();
         const picture = (n: NodeId) => layerPicture(renderer, editor.scene, n);
-        const { svg, skipped } = exportSvg(editor.scene, editor.measurer, [id], renderer.images, { currentColor: s.svgCurrentColor, responsive: s.svgResponsive, outlines, picture });
-        for (const k of skipped) notes.add(tr('SVG не поддерживает «{0}» — эффект пропущен', k));
+        const layers = area ? layersIn(editor.scene, area) : [id];
+        const { svg, skipped } = exportSvg(editor.scene, editor.measurer, layers, renderer.images, { currentColor: s.svgCurrentColor, responsive: s.svgResponsive, outlines, picture, area: area ?? undefined });
+        for (const k of skipped) notes.add(tr('SVG не поддерживает «{0}», эффект пропущен', k));
         data = new TextEncoder().encode(svg);
       } else if (s.format === 'HTML') {
         data = new TextEncoder().encode(htmlDocument(editor, renderer, id));
       } else if (s.format === 'PDF') {
         data = new Uint8Array(await (await exportVectorPdf(renderer, editor.scene, editor.measurer, [id], Math.max(2, s.scale))).arrayBuffer());
+      } else if (area) {
+        data = new Uint8Array(await (await exportArea(renderer, editor.scene, area, { scale, format: MIME[s.format], quality: 0.92 })).arrayBuffer());
       } else {
-        data = new Uint8Array(await (await exportNode(renderer, editor.scene, id, { scale, format: MIME[s.format], quality: 0.92 })).arrayBuffer());
+        data = new Uint8Array(await (await exportNode(renderer, editor.scene, id, { scale, format: MIME[s.format], quality: 0.92, withOverlaps: s.withOverlaps })).arrayBuffer());
       }
       files.push({ name, data });
     }

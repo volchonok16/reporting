@@ -211,7 +211,7 @@ export class LayoutEngine {
   flowChildren(id: NodeId): NodeId[] {
     return this.doc
       .children(id)
-      .filter((c) => this.doc.get(c, 'visible') && this.doc.get(c, 'positioning') === 'AUTO');
+      .filter((c) => this.doc.get(c, 'visible') && this.doc.get(c, 'positioning') === 'AUTO' && this.doc.type(c) !== 'SLICE');
   }
 
   /**

@@ -44,7 +44,10 @@ function cellText(html: string): string {
     .trim();
 }
 
-function rowsOfTable(table: string): TableRows {
+/** The first table of an HTML fragment (Excel, Google Sheets, Word, a web page); merged cells take empty places after them. */
+function htmlRows(html: string): TableRows | null {
+  const table = /<table[\s>][\s\S]*?<\/table>/i.exec(html)?.[0];
+  if (!table) return null;
   const rows: TableRows = [];
   for (const tr of table.match(/<tr[\s>][\s\S]*?<\/tr>/gi) ?? []) {
     const row: string[] = [];
@@ -55,23 +58,7 @@ function rowsOfTable(table: string): TableRows {
     }
     if (row.length) rows.push(row);
   }
-  return rows;
-}
-
-/** The richest table of an HTML fragment (Excel, PowerPoint, Google Sheets, Word); a one-cell wrapper around a picture is skipped. */
-function htmlRows(html: string): TableRows | null {
-  const tables = html.match(/<table[\s>][\s\S]*?<\/table>/gi) ?? [];
-  let best: TableRows | null = null;
-  let bestCells = 0;
-  for (const table of tables) {
-    const rows = rowsOfTable(table);
-    const cells = rows.reduce((count, row) => count + row.length, 0);
-    if (cells > bestCells) {
-      best = rows;
-      bestCells = cells;
-    }
-  }
-  return best && bestCells > 0 ? best : null;
+  return rows.length ? rows : null;
 }
 
 /** Tab-separated text (what spreadsheets put as plain text): quoted cells may hold tabs, line breaks and "". */
@@ -329,7 +316,7 @@ export function tableFrame(tx: Transaction, parent: NodeId, o: { name: string; x
 }
 
 /** A cell of `tableFrame`: its fill, spans and least height; hidden when a merged cell covers its place. Its text goes in after. */
-export function bareCell(tx: Transaction, table: NodeId, o: { fill: Paint; colSpan: number; rowSpan: number; minHeight: number; hidden: boolean; padX: number; padY: number; stroke?: Paint | null; strokeWeight?: number }): NodeId {
+export function bareCell(tx: Transaction, table: NodeId, o: { fill: Paint; colSpan: number; rowSpan: number; minHeight: number; hidden: boolean; padX: number; padY: number }): NodeId {
   return tx.create('FRAME', table, {
     name: tr('Ячейка'),
     layoutMode: 'VERTICAL',
@@ -345,7 +332,6 @@ export function bareCell(tx: Transaction, table: NodeId, o: { fill: Paint; colSp
     visible: !o.hidden,
     clipsContent: false,
     fills: [o.fill],
-    ...(o.stroke ? { strokes: [o.stroke], strokeWeight: o.strokeWeight ?? 1, strokeAlign: 'CENTER' as const } : {}),
   });
 }
 

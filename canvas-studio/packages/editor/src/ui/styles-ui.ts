@@ -10,6 +10,7 @@ import { switchLayout } from '../keyboard.ts';
 import { clear, h, icon } from './dom.ts';
 import type { Field } from './fields.ts';
 import { gradientCss } from './paint-editor.ts';
+import { fadeAway } from './motion-ui.ts';
 
 export const STYLE_TYPE_NAMES: Record<StyleType, string> = { FILL: tr('Цвета'), TEXT: tr('Текст'), EFFECT: tr('Эффекты'), GRID: tr('Сетки') };
 
@@ -131,6 +132,7 @@ export function popover(anchor: HTMLElement, content: HTMLElement, width = 260):
     }
   };
   const close = () => {
+    fadeAway(el);
     el.remove();
     document.removeEventListener('pointerdown', outside, true);
     document.removeEventListener('keydown', key, true);
@@ -319,6 +321,9 @@ export function buildLocalStyles(host: LocalStylesHost): void {
     body.append(h('p', { class: 'styles-empty' }, tr('Пока нет. Чтобы сохранить оформление слоя как стиль, выделите слой и нажмите'), ' ', icon('styles', 12), ' ', tr('у заливки, текста или эффектов.')));
     return;
   }
+  // Every style in one folder (a deck's «Тема»): its name over each group told nothing (UI-008).
+  const folders = new Set(kinds.flatMap((k) => [...grouped(doc, k.styles)].map(([folder]) => folder)));
+  const oneFolder = folders.size <= 1;
   for (const { type, styles } of kinds) {
     if (styles.length === 0) continue;
     body.append(h('div', { class: 'styles-kind' }, type === 'FILL' ? tr('Цвета') : type === 'TEXT' ? tr('Текст') : type === 'GRID' ? tr('Сетки') : tr('Эффекты')));
@@ -326,7 +331,7 @@ export function buildLocalStyles(host: LocalStylesHost): void {
     for (const [use, list] of type === 'FILL' ? colourUses(editor, styles) : [['', styles] as const]) {
       if (use) body.append(h('div', { class: 'styles-use' }, use));
       for (const [folder, ids] of grouped(doc, list)) {
-        if (folder) body.append(h('div', { class: 'style-folder' }, icon('folder', 12), h('span', {}, folder)));
+        if (folder && !oneFolder) body.append(h('div', { class: 'style-folder' }, icon('folder', 12), h('span', {}, folder)));
         for (const id of ids) {
           const item = styleItem(doc, id, false);
           item.classList.add('local');

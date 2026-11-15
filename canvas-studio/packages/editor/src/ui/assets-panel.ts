@@ -10,7 +10,7 @@ import type { NodeId } from '#core';
 import { renderThumbnail, type Canvas2DRenderer } from '#render';
 import { COMPONENT_DRAG_TYPE } from '../canvas-view.ts';
 import { libraries as libraryApi, type LibraryInfo } from '../cloud.ts';
-import { importFromLibrary, placeFromLibrary, takenUnits, updateFromLibrary, type LibraryComponent, type LibraryPayload } from '../library.ts';
+import { followMoves, importFromLibrary, placeFromLibrary, planMoves, takenUnits, updateFromLibrary, type LibraryComponent, type LibraryPayload } from '../library.ts';
 import type { Editor } from '../editor.ts';
 import { freeSpotOnBoard } from '../board.ts';
 import { switchLayout } from '../keyboard.ts';
@@ -111,6 +111,39 @@ export class AssetsPanel {
     if (names.length && !doc.readOnly) this.editor.toast(tr('Есть обновление библиотеки {0}: вкладка «Компоненты» → «Обновить».', names.join(', ')));
   }
 
+  /**
+   * After an update: parts the library no longer has but another library says were moved to it (cut and pasted
+   * there) — their copies are pointed at the new home, own changes kept; that library is switched on.
+   */
+  private async followMoved(from: LibraryPayload): Promise<void> {
+    const doc = this.editor.doc;
+    const fromId = from.fileId ?? '';
+    const still = new Set([...from.nodes.map((n) => n.id), ...from.styles.map((st) => st.id)]);
+    const taken = takenUnits(doc).get(fromId) ?? [];
+    const styleGone = doc.styles().some((st) => doc.get(st, 'libraryRef')?.fileId === fromId && !still.has(st));
+    if (!taken.some((t) => !still.has(t.id)) && !styleGone) return;
+    try {
+      const infos = this.infos ?? (await libraryApi.list());
+      const others = await Promise.all(
+        infos
+          .filter((i) => i.fileId !== fromId)
+          .map(async (i): Promise<LibraryPayload | null> => {
+            const p = this.payloads.get(i.fileId) ?? (await libraryApi.get(i.fileId).catch(() => null));
+            return p ? { ...p, fileId: i.fileId, name: i.name } : null;
+          }),
+      );
+      const moves = planMoves(doc, from, others.filter((p): p is LibraryPayload => p !== null));
+      if (moves.length === 0) return;
+      followMoves(this.editor, moves);
+      this.editor.toast(tr('Компоненты переехали в «{0}»: копии перепривязаны, свои правки сохранены.', moves.map((m) => m.to.name ?? '').join('», «')));
+      for (const m of moves) this.payloads.set(m.to.fileId!, m.to);
+      await this.loadLibraries(true);
+      this.render();
+    } catch {
+      // Without the other libraries the copies keep what they have.
+    }
+  }
+
   /** The list of libraries and the publications of those switched on (again when `fresh`). */
   private loadLibraries(fresh = false): Promise<void> {
     if (!this.host?.fileId()) return Promise.resolve();
@@ -168,13 +201,13 @@ export class AssetsPanel {
     clear(this.list);
     const libraryEntries = this.renderLibraries(query, alt);
     if (entries.length === 0 && !query && libraryEntries.length) {
-      this.list.append(h('p', { class: 'hint' }, tr('В этом файле своих компонентов нет — ниже компоненты подключённых библиотек.')));
+      this.list.append(h('p', { class: 'hint' }, tr('В файле нет своих компонентов. Ниже компоненты подключённых библиотек.')));
     } else if (entries.length === 0) {
       this.list.append(
         h(
           'p',
           { class: 'hint' },
-          query ? tr('Ничего не найдено в этом файле.') : tr('В файле пока нет компонентов. Чтобы сделать компонент, выделите фрейм и нажмите ⌥⌘K (Ctrl+Alt+K) или «Объект → Создать компонент» в главном меню. Готовые компоненты других файлов — кнопка «Библиотеки».'),
+          query ? tr('Ничего не найдено в этом файле.') : tr('В файле пока нет компонентов. Чтобы сделать компонент, выделите фрейм и нажмите ⌥⌘K (Ctrl+Alt+K) или «Объект → Создать компонент» в главном меню. Компоненты других файлов подключаются кнопкой «Библиотеки».'),
         ),
       );
     }
@@ -263,6 +296,7 @@ export class AssetsPanel {
           const n = updateFromLibrary(this.editor, payload);
           this.editor.toast(tr('Обновлено компонентов: {0}. Отменить — Mod+Z.', n).replace('Mod', /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'));
           this.render();
+          void this.followMoved({ ...payload, fileId: link.fileId });
         });
         head.append(update);
       }

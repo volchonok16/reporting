@@ -5,11 +5,11 @@ import type { Socket } from 'node:net';
 import { Api, checkCsrf } from './api.ts';
 import { LiveHub } from './live.ts';
 import { logMailer, type Mailer } from './mail.ts';
-import { HttpError, securityHeaders, sendJson, type Ctx } from './http.ts';
-import { serveHeavy, serveSandbox, serveStatic, type Transform } from './static.ts';
+import { HttpError, parseCookies, securityHeaders, sendJson, type Ctx } from './http.ts';
+import { AI_ORIGIN_COOKIE, aiOrigin, serveDownloads, serveHeavy, serveSandbox, serveStatic, type Transform } from './static.ts';
 
 export interface ServerOptions {
-  /** Where accounts, sessions and files are kept (disk fallback / fonts cache). */
+  /** Where accounts, sessions and files are kept. */
   dataDir: string;
   /** Project root (for the web app). */
   root: string;
@@ -19,6 +19,8 @@ export interface ServerOptions {
   secure: boolean;
   /** The heavy files' folder (the neural network, /heavy/…); none — not served. */
   heavy?: string;
+  /** The downloads' folder (the macOS app and its updates, /downloads/…); none — not served. */
+  downloads?: string;
   /** Trust X-Forwarded-For / X-Forwarded-Proto from a reverse proxy on this machine. */
   trustProxy: boolean;
   openRegistration: boolean;
@@ -85,25 +87,22 @@ export async function createCanvasServer(options: ServerOptions): Promise<Canvas
     log(`хранилище Симметрики: файлы в ${options.dataDir}`);
   }
 
-  const api = new Api(
-    {
-      dataDir: options.dataDir,
-      secure: options.secure,
-      openRegistration: options.openRegistration,
-      mailer: options.mailer ?? logMailer(log),
-      appUrl: options.appUrl,
-      publicUrl: options.publicUrl,
-      log,
-      fontsFetch: options.fontsFetch,
-      linkGet: options.linkGet,
-      ai: options.ai,
-      aiFetch: options.aiFetch,
-      reportingSsoSecret: options.reportingSsoSecret,
-      reportingAuthOnly: options.reportingAuthOnly,
-      databaseUrl: options.databaseUrl,
-    },
-    storage,
-  );
+  const api = new Api({
+    dataDir: options.dataDir,
+    secure: options.secure,
+    openRegistration: options.openRegistration,
+    mailer: options.mailer ?? logMailer(log),
+    appUrl: options.appUrl,
+    publicUrl: options.publicUrl,
+    log,
+    fontsFetch: options.fontsFetch,
+    linkGet: options.linkGet,
+    ai: options.ai,
+    aiFetch: options.aiFetch,
+    reportingSsoSecret: options.reportingSsoSecret,
+    reportingAuthOnly: options.reportingAuthOnly,
+    databaseUrl: options.databaseUrl,
+  }, storage);
   // Merged branches past the time to undo the merge: once a day (and at start).
   const sweep = () => void api.sweepBranches().then((n) => n && log(`удалено слитых веток: ${n}`), (error: unknown) => log(`ветки: ${String(error)}`));
   (setTimeout(sweep, 60_000) as unknown as { unref?(): void }).unref?.();
@@ -153,7 +152,8 @@ export async function createCanvasServer(options: ServerOptions): Promise<Canvas
     }
     if (path === '/html-sandbox') return serveSandbox(res);
     if (options.heavy && path.startsWith('/heavy/') && (await serveHeavy(path, res, options.heavy, req.method === 'HEAD'))) return;
-    if (await serveStatic(path, res, { root: options.root, dev: options.dev }, req)) return;
+    if (options.downloads && path.startsWith('/downloads/') && (await serveDownloads(path, res, options.downloads, req.method === 'HEAD'))) return;
+    if (await serveStatic(path, res, { root: options.root, dev: options.dev, ai: aiOrigin(parseCookies(req.headers.cookie)[AI_ORIGIN_COOKIE]) })) return;
     securityHeaders(res);
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Не найдено');
   };

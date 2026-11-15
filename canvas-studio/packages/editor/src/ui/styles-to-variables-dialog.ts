@@ -52,7 +52,7 @@ export function openStylesToVariables(editor: Editor, toast: (message: string) =
     const chosen = plan.filter((p) => ticked.has(p.style));
     const r = convertStylesToVariables(editor, chosen, collection.value);
     close();
-    toast(tr('Создано переменных: {0}; стили теперь берут значения из них — слои остались со своими стилями', r.created));
+    toast(tr('Создано переменных: {0}. Стили теперь берут значения из них, слои остались со своими стилями', r.created));
     done?.(r.collection);
   });
   collection.addEventListener('keydown', (e) => {
@@ -68,8 +68,8 @@ export function openStylesToVariables(editor: Editor, toast: (message: string) =
       'div',
       { class: 'dialog-body' },
       plan.length
-        ? h('p', { class: 'hint small' }, tr('Значения стилей станут переменными. Стили останутся, и слои — с ними: просто значения стиля начнут браться из переменных и смогут меняться по режимам.'))
-        : h('p', {}, tr('В файле нет стилей. Создайте стиль цвета, текста или эффекта — и его можно будет превратить в переменные.')),
+        ? h('p', { class: 'hint small' }, tr('Стили останутся на слоях, но их значения будут браться из переменных и смогут меняться по режимам.'))
+        : h('p', {}, tr('В файле нет стилей. Создайте стиль цвета, текста или эффекта, и его можно будет превратить в переменные.')),
       plan.length ? h('label', { class: 'field text-field sv-collection' }, h('span', { class: 'field-label' }, tr('Коллекция')), collection) : null,
       h('div', { class: 'sv-list' }, ...rows),
     ),

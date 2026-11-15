@@ -17,7 +17,8 @@ async function* walk(dir) {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
       // Tests and server code never ship to the browser; nor the sources of the diagram engine (built into one file).
-      if (entry.name === 'test' || entry.name === 'server' || relative(ROOT, full).split('\\').join('/') === 'packages/diagrams/vendor') continue;
+      // apps/macos: the Swift shell of the macOS app (tools/build-macos.mjs), not for the browser.
+      if (entry.name === 'test' || entry.name === 'server' || ['packages/diagrams/vendor', 'apps/macos'].includes(relative(ROOT, full).split('\\').join('/'))) continue;
       yield* walk(full);
     } else {
       yield full;

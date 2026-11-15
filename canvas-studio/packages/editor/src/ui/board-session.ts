@@ -69,7 +69,8 @@ export class BoardSession {
     this.voteButton = h('button', { class: 'bs-button bs-vote', type: 'button' });
     this.timerButton.addEventListener('click', () => this.toggle('timer'));
     this.voteButton.addEventListener('click', () => this.toggle('vote'));
-    this.sectionsButton = h('button', { class: 'bs-button bs-sections', type: 'button', title: tr('Разделы доски: перейти к разделу') }, icon('section', 14), h('span', {}, tr('Разделы')));
+    // Idle buttons are icons (UI-008), as FigJam's: the words were three more things to read at the top.
+    this.sectionsButton = h('button', { class: 'bs-button bs-sections icon-only', type: 'button', title: tr('Разделы доски: перейти к разделу'), 'aria-label': tr('Разделы') }, icon('section', 16));
     this.sectionsButton.addEventListener('click', () => this.toggle('sections'));
     this.el = h('div', { class: 'board-session' }, this.sectionsButton, this.timerButton, this.voteButton);
     editor.events.on('change', ({ changes }) => {
@@ -130,6 +131,8 @@ export class BoardSession {
       const left = this.left(t);
       const running = t.endsAt !== null && left > 0;
       this.timerButton.replaceChildren(icon('clock', 14), h('span', { class: 'bs-time' }, left === 0 ? tr('Время вышло') : mmss(left)), t.endsAt === null && left > 0 ? h('span', { class: 'bs-paused' }, tr('пауза')) : '');
+      this.timerButton.classList.remove('icon-only');
+      this.timerButton.removeAttribute('aria-label');
       this.timerButton.classList.toggle('alert', left === 0 || (running && left <= 10_000));
       this.timerButton.title = tr('Таймер для всех в файле');
       if (running) this.tick = window.setInterval(() => this.renderTimer(), 250);
@@ -142,7 +145,9 @@ export class BoardSession {
         }
       }
     } else {
-      this.timerButton.replaceChildren(icon('clock', 14), h('span', {}, tr('Таймер')));
+      this.timerButton.replaceChildren(icon('clock', 16));
+      this.timerButton.setAttribute('aria-label', tr('Таймер'));
+      this.timerButton.classList.add('icon-only');
       this.timerButton.classList.remove('alert');
       this.timerButton.title = tr('Таймер для всех в файле: 1–15 минут');
     }
@@ -156,12 +161,19 @@ export class BoardSession {
     if (v?.open) {
       const left = v.perPerson - usedVotes(d, v.id, this.editor.boardPrefs.voter);
       this.voteButton.replaceChildren(icon('stamp', 14), h('span', {}, readOnly ? tr('Идёт голосование') : tr('Голосов: {0} из {1}', left, v.perPerson)));
+      this.voteButton.classList.remove('icon-only');
+      this.voteButton.removeAttribute('aria-label');
       this.voteButton.classList.add('on');
     } else if (v) {
       this.voteButton.replaceChildren(icon('stamp', 14), h('span', {}, tr('Итоги голосования')));
+      this.voteButton.classList.remove('icon-only');
+      this.voteButton.removeAttribute('aria-label');
       this.voteButton.classList.add('on');
     } else {
-      this.voteButton.replaceChildren(icon('stamp', 14), h('span', {}, tr('Голосование')));
+      this.voteButton.replaceChildren(icon('stamp', 16));
+      this.voteButton.setAttribute('aria-label', tr('Голосование'));
+      this.voteButton.title = tr('Голосование: у каждого несколько голосов');
+      this.voteButton.classList.add('icon-only');
       this.voteButton.classList.remove('on');
     }
     this.voteButton.hidden = readOnly && !v;
@@ -237,7 +249,7 @@ export class BoardSession {
       }
     };
     walk(e.pageId, 0);
-    if (rows.length === 0) return [h('div', { class: 'bs-title' }, tr('Разделы')), h('p', { class: 'bs-hint' }, tr('Разделов пока нет. Shift+S — нарисуйте раздел рамкой на доске.'))];
+    if (rows.length === 0) return [h('div', { class: 'bs-title' }, tr('Разделы')), h('p', { class: 'bs-hint' }, tr('Разделов пока нет. Нажмите Shift+S и обведите область на доске.'))];
     return [h('div', { class: 'bs-title' }, tr('Разделы')), h('ol', { class: 'bs-results' }, ...rows)];
   }
 
@@ -249,7 +261,7 @@ export class BoardSession {
       if (d.readOnly) return [h('p', { class: 'bs-hint' }, tr('Голосование начинают участники, которые могут редактировать.'))];
       return [
         h('div', { class: 'bs-title' }, tr('Голосование')),
-        h('p', { class: 'bs-hint' }, tr('У каждого — несколько голосов: щелчок по стикеру или фигуре ставит голос, Alt+щелчок — убирает. Чужих голосов не видно до конца.')),
+        h('p', { class: 'bs-hint' }, tr('Щелчок по стикеру или фигуре ставит голос, Alt+щелчок снимает. Чужие голоса видны после окончания.')),
         h('div', { class: 'bs-sub' }, tr('Голосов у каждого')),
         h('div', { class: 'bs-row' }, ...VOTE_PRESETS.map((n) => h('button', { class: 'bs-chip', type: 'button', onclick: () => {
           setBoardState(e, 'boardVoting', { id: newId(), perPerson: n, by: e.boardPrefs.voter, open: true });

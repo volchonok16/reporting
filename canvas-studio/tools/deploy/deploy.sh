@@ -130,6 +130,26 @@ if [ -d apps/web/heavy ]; then
   done
 fi
 
+echo "==> Приложение для macOS"
+# dist-macos/downloads/macos (npm run build:macos -- --server https://…): the disk image for the first
+# installation, the update archive of the build, latest.json — last, so a server that names a build has it.
+# The installed apps ask latest.json and update themselves (apps/macos/Sources/Updater.swift).
+MAC=dist-macos/downloads/macos
+if [ -f "$MAC/latest.json" ]; then
+  if ! /usr/libexec/PlistBuddy -c 'Print :SimmetrikaServer' "dist-macos/Симметрика.app/Contents/Info.plist" >/dev/null 2>&1; then
+    echo "    ⚠️  Приложение собрано без --server: поставленные копии не узнают о своих обновлениях. Пересоберите: npm run build:macos -- --server https://…" >&2
+  fi
+  run "mkdir -p /opt/canvas-studio/downloads/macos"
+  for f in "$MAC"/Simmetrika-*.zip "$MAC/Simmetrika.dmg" "$MAC/latest.json"; do
+    [ -f "$f" ] || continue
+    n="$(basename "$f")"
+    echo "    $n ($(du -h "$f" | cut -f1))"
+    run "cat > '/opt/canvas-studio/downloads/macos/$n.part' && mv '/opt/canvas-studio/downloads/macos/$n.part' '/opt/canvas-studio/downloads/macos/$n' && chmod a+r '/opt/canvas-studio/downloads/macos/$n'" < "$f"
+  done
+else
+  echo "    нет сборки (npm run build:macos) — пропущено"
+fi
+
 echo "==> Настройка сервера"
 run "bash '$RELEASE/tools/deploy/remote-setup.sh' '$RELEASE' ${SETUP_ARGS[*]:-}"
 

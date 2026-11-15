@@ -666,7 +666,7 @@ export class DiagramView {
       delete offsets[s.layout];
       return { ...withDiagramText(s, next), offsets };
     });
-    this.host.toast(tr('Ветка перенесена — текст переписан. Отменить: ⌘Z'));
+    this.host.toast(tr('Ветка перенесена, текст переписан. Отменить: ⌘Z'));
     return true;
   }
 
@@ -931,7 +931,7 @@ export class DiagramView {
     });
     const ok = await openDialog({
       title: tr('Сменить тип схемы?'),
-      body: [h('p', { class: 'dialog-message' }, tr('Текст написан для типа «{0}», а у типа «{1}» другая запись. Текст заменится примером — вернуть прежний можно через ⌘Z или историю версий.', diagramKind(from).label, diagramKind(to).label)), elsewhere],
+      body: [h('p', { class: 'dialog-message' }, tr('Текст написан для типа «{0}», а у типа «{1}» другая запись. Текст заменится примером. Вернуть прежний можно через ⌘Z или историю версий.', diagramKind(from).label, diagramKind(to).label)), elsewhere],
       confirm: tr('Заменить текст'),
       cancel: tr('Отмена'),
     });
@@ -982,7 +982,7 @@ export class DiagramView {
       'div',
       { class: 'dialog dg-kinds-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': tr('Тип схемы') },
       h('header', { class: 'dialog-header' }, h('h2', {}, first ? tr('Какую схему рисуем?') : tr('Тип схемы')), closeButton),
-      h('p', { class: 'dg-kinds-lead' }, first ? tr('Схема строится по тексту. Выберите тип — появится пример, его можно сразу править.') : tr('В файле одна схема. Пока текст не тронут, тип меняется свободно; карты между собой и планы между собой рисуют один и тот же текст.')),
+      h('p', { class: 'dg-kinds-lead' }, first ? tr('Схема строится по тексту. Выберите тип, и появится пример, который можно сразу править.') : tr('В файле одна схема. Пока текст не тронут, тип меняется свободно; карты между собой и планы между собой рисуют один и тот же текст.')),
       grid,
     );
     const overlay = h('div', { class: 'dialog-overlay' }, dialog);
@@ -1058,6 +1058,20 @@ export class DiagramView {
         return b;
       }),
     );
+    // UI-008: one line with the current palette; the nine cards only when asked for (they took half the panel).
+    const current = custom ? null : look.theme;
+    const palettePick = h(
+      'details',
+      { class: 'dg-palette-pick' },
+      h(
+        'summary',
+        { class: 'dg-palette-current' },
+        h('span', { class: 'dg-palette-dots', 'aria-hidden': 'true' }, ...(current ? (engine.palettes[current] ?? []) : (spec.colors ?? [])).slice(0, 5).map((c) => h('span', { style: { background: c } }))),
+        h('span', { class: 'dg-palette-name' }, current ? tr(PALETTE_NAMES[current] ?? current) : tr('Свои цвета')),
+        icon('chevronDown', 14),
+      ),
+      palettes,
+    );
     // The same picker as on the canvas: any font, found by typing its name.
     this.fontPicker?.dispose();
     this.fontPicker = new FontPicker(
@@ -1095,7 +1109,7 @@ export class DiagramView {
         h('div', { class: 'subsection-title' }, tr('Тема')),
         lookSeg,
         h('div', { class: 'subsection-title' }, tr('Палитра')),
-        palettes,
+        palettePick,
         look.locked === 'all' ? h('p', { class: 'hint small' }, tr('У этого типа свои цвета: они показывают смысл.')) : look.locked === 'mono' ? h('p', { class: 'hint small' }, tr('«Без цвета» этому типу не подходит: цвета различают потоки.')) : null,
         look.locked === 'all' ? null : this.ownColors(spec, engine.palettes[look.theme] ?? [], disabled),
         h('div', { class: 'dg-own' }, h('div', { class: 'subsection-title' }, tr('Шрифт')), font),
@@ -1145,7 +1159,7 @@ export class DiagramView {
       });
       const reset = this.hasOffsets(spec) ? h('button', { class: 'text-button', type: 'button' }, tr('Вернуть на места')) : null;
       reset?.addEventListener('click', () => this.resetOffsets());
-      sections.push(section(tr('Расположение блоков'), h('div', { class: 'dg-row' }, move, reset), h('p', { class: 'hint small' }, tr('Блоки встают сами по тексту; сдвинутые вручную остаются на своих местах при правке.'))));
+      sections.push(section(tr('Расположение блоков'), h('div', { class: 'dg-row' }, move, reset), h('p', { class: 'hint small' }, tr('Блоки расставляются по тексту. Сдвинутые вручную остаются на месте.'))));
     }
 
     // Lighting the caret's block.
@@ -1180,7 +1194,7 @@ export class DiagramView {
           exp(tr('Текст (.txt)'), () => this.exportAs('txt')),
         ),
         exp(tr('Копировать для макета'), () => this.copyForDesign()),
-        h('p', { class: 'hint small' }, tr('Вставьте в макет (⌘V) — схема станет слоями, которые можно править.')),
+        h('p', { class: 'hint small' }, tr('Вставьте в макет (⌘V), и схема станет редактируемыми слоями.')),
       ),
     );
     this.panelBody.replaceChildren(...sections);
@@ -1225,7 +1239,7 @@ export class DiagramView {
         return b;
       }),
     );
-    const fromOne = h('button', { class: 'text-button', type: 'button', disabled, title: tr('Выберите один цвет (например, фирменный) — из него получатся все восемь, в тон') }, tr('Из одного цвета…'));
+    const fromOne = h('button', { class: 'text-button', type: 'button', disabled, title: tr('Выберите один цвет (например, фирменный), и из него получатся все восемь, в тон') }, tr('Из одного цвета…'));
     fromOne.addEventListener('click', () => pickColor(fromOne, now[0] ?? '#4F5BD5', (hex) => this.change(tr('Палитра из цвета'), (s) => ({ ...s, colors: paletteFrom(hex) }))));
     const reset = spec.colors?.length ? h('button', { class: 'link-button', type: 'button', disabled }, tr('Сбросить')) : null;
     reset?.addEventListener('click', () =>
@@ -1276,7 +1290,7 @@ export class DiagramView {
     const p = this.prepared(true);
     if (!p) return;
     await navigator.clipboard.writeText(svgFile(p));
-    this.host.toast(tr('Схема скопирована. Откройте макет и вставьте её (⌘V) — она станет слоями.'));
+    this.host.toast(tr('Схема скопирована. Вставьте её в макет (⌘V), и она станет слоями.'));
   }
 
   /** A picture of the diagram for the file's card on the home screen. */
