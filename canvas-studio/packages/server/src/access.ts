@@ -72,12 +72,26 @@ export interface ShareLink {
   guests?: boolean;
 }
 
+/**
+ * A signed-in person who opened the file by the current share link.
+ * Not a member: resetting the link or closing it drops them from «Доступные мне».
+ */
+export interface LinkVisitor {
+  userId: string;
+  token: string;
+  /** Start of the link password hash, or '' when the link has no password. */
+  pass: string;
+  at: number;
+}
+
 /** The sharing part of a file record. */
 export interface Sharing {
   ownerId: string;
   members?: Member[];
   invites?: Invite[];
   link?: ShareLink;
+  /** People who opened this file by the share link (so it shows in their list). */
+  linkVisitors?: LinkVisitor[];
   /** In a team project: the team gives nothing except to its admins. */
   restricted?: boolean;
 }
@@ -142,6 +156,34 @@ function sameText(a: string, b: string): boolean {
   const x = Buffer.from(a);
   const y = Buffer.from(b);
   return x.length === y.length && timingSafeEqual(x, y);
+}
+
+function linkPassStamp(link: ShareLink): string {
+  return link.passwordHash ? link.passwordHash.slice(0, 16) : '';
+}
+
+/** The role a remembered link visit still gives. Null when the link was reset, closed or expired. */
+export function linkVisitorRole(file: Sharing, userId: string | null, opts?: { inTeam?: boolean }, now = Date.now()): GrantRole | null {
+  const link = file.link;
+  if (!userId || !isOpenLink(link)) return null;
+  if (link.expiresAt !== null && link.expiresAt < now) return null;
+  if (link.mode === 'team' && !opts?.inTeam) return null;
+  const pass = linkPassStamp(link);
+  const hit = file.linkVisitors?.some((v) => v.userId === userId && v.token === link.token && v.pass === pass);
+  return hit ? link.role : null;
+}
+
+/** Remember that this signed-in person opened the file by the link that works now. */
+export function rememberLinkVisit<T extends Sharing>(file: T, userId: string, now = Date.now()): T | null {
+  const link = file.link;
+  if (!isOpenLink(link) || !userId || file.ownerId === userId) return null;
+  if (link.expiresAt !== null && link.expiresAt < now) return null;
+  if (file.members?.some((m) => m.userId === userId)) return null;
+  const pass = linkPassStamp(link);
+  const visitors = file.linkVisitors ?? [];
+  if (visitors.some((v) => v.userId === userId && v.token === link.token && v.pass === pass)) return null;
+  const next = [...visitors.filter((v) => v.userId !== userId), { userId, token: link.token, pass, at: now }].slice(-300);
+  return { ...file, linkVisitors: next };
 }
 
 /** Members and invites without expired invitations. */

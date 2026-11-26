@@ -156,6 +156,8 @@ function EmployeesTable({
 
 const EMPTY_EMPLOYEE = {
   fullName: '',
+  lastName: '',
+  firstName: '',
   email: '',
   positionId: '',
   managerId: '',
@@ -656,6 +658,8 @@ export default function Departments({
     resetPhotoState(resolvePhotoUrl(emp.photoUrl))
     setEmployeeForm({
       fullName: emp.fullName,
+      lastName: '',
+      firstName: '',
       email: emp.email ?? '',
       positionId: emp.positionId ? String(emp.positionId) : '',
       managerId: emp.managerId ? String(emp.managerId) : '',
@@ -720,8 +724,9 @@ export default function Departments({
   const saveEmployee = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!canManage || savingEmployee) return
+    const createdName = `${employeeForm.lastName.trim()} ${employeeForm.firstName.trim()}`.trim()
     const body = {
-      fullName: employeeForm.fullName.trim(),
+      fullName: editingEmployeeId ? employeeForm.fullName.trim() : createdName,
       email: employeeForm.email.trim() || null,
       positionId: employeeForm.positionId ? Number(employeeForm.positionId) : null,
       managerId: employeeForm.managerId ? Number(employeeForm.managerId) : null,
@@ -739,8 +744,7 @@ export default function Departments({
             ? ['planning']
             : [],
       createUserAccount: true,
-      userPassword: '12345678',
-      userMustChangePassword: employeeForm.userMustChangePassword,
+      userMustChangePassword: true,
       userIsAdmin: employeeForm.userIsAdmin,
       userVoiceOnly: employeeForm.userVoiceOnly,
       userVoiceAdmin: employeeForm.userVoiceAdmin,
@@ -782,6 +786,7 @@ export default function Departments({
       } else {
         const created = await postJson<Employee>('/api/org/employees', body)
         employeeId = created.id
+        notifySuccess(`Пароль отправлен на ${body.email}`)
       }
       if (photoFile && employeeId) {
         await uploadEmployeePhoto(employeeId, photoFile)
@@ -1373,7 +1378,11 @@ export default function Departments({
                 <section className="org-employee-hero">
                   <OrgPhoto
                     url={photoPreviewUrl}
-                    name={employeeForm.fullName}
+                    name={
+                      editingEmployeeId
+                        ? employeeForm.fullName
+                        : `${employeeForm.lastName} ${employeeForm.firstName}`.trim()
+                    }
                     className="org-employee-photo-preview-img"
                     placeholderClassName="org-employee-photo-preview org-employee-photo-placeholder"
                   />
@@ -1392,15 +1401,37 @@ export default function Departments({
                 </section>
 
                 <section className="org-employee-fields">
-                  <label>
-                    ФИО
-                    <input
-                      value={employeeForm.fullName}
-                      onChange={(e) => setEmployeeForm({ ...employeeForm, fullName: e.target.value })}
-                      required
-                      autoFocus
-                    />
-                  </label>
+                  {editingEmployeeId ? (
+                    <label>
+                      ФИО
+                      <input
+                        value={employeeForm.fullName}
+                        onChange={(e) => setEmployeeForm({ ...employeeForm, fullName: e.target.value })}
+                        required
+                        autoFocus
+                      />
+                    </label>
+                  ) : (
+                    <div className="org-form-row-2">
+                      <label>
+                        Фамилия
+                        <input
+                          value={employeeForm.lastName}
+                          onChange={(e) => setEmployeeForm({ ...employeeForm, lastName: e.target.value })}
+                          required
+                          autoFocus
+                        />
+                      </label>
+                      <label>
+                        Имя
+                        <input
+                          value={employeeForm.firstName}
+                          onChange={(e) => setEmployeeForm({ ...employeeForm, firstName: e.target.value })}
+                          required
+                        />
+                      </label>
+                    </div>
+                  )}
                   <div className="org-form-row-2">
                     <label>
                       Email
@@ -1408,6 +1439,7 @@ export default function Departments({
                         type="email"
                         value={employeeForm.email}
                         onChange={(e) => setEmployeeForm({ ...employeeForm, email: e.target.value })}
+                        required={!editingEmployeeId}
                       />
                     </label>
                     <label>
@@ -1424,6 +1456,11 @@ export default function Departments({
                       />
                     </label>
                   </div>
+                  {!editingEmployeeId ? (
+                    <p className="org-hint">
+                      Пароль сгенерируется сам и придёт на эту почту. При первом входе его нужно сменить.
+                    </p>
+                  ) : null}
                   <label>
                     Дней отпуска в год
                     <input

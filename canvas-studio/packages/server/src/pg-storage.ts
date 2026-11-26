@@ -313,11 +313,41 @@ export interface Colleague {
   email: string;
 }
 
+/** Верхний регистр кириллицы. Ё схлопывается в е, чтобы «ё» и «е» находили одно и то же. */
+const CYR_UPPER = 'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ';
+const CYR_LOWER = 'абвгдеежзийклмнопрстуфхцчшщъыьэюя';
+
+/**
+ * Фамилия без регистра и без зависимости от локали Postgres (в C `ILIKE` не складывает кириллицу).
+ * «Иванов» и «иванов» дают один и тот же образец.
+ */
+export function foldPersonQuery(value: string): string {
+  let out = '';
+  for (const ch of value) {
+    const at = CYR_UPPER.indexOf(ch);
+    out += at >= 0 ? CYR_LOWER[at]! : ch.toLowerCase();
+  }
+  return out.replace(/ё/g, 'е');
+}
+
+function likeNeedle(value: string): string {
+  return `%${value.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+}
+
+/** Образцы для почты (целиком) и для фамилии (каждое слово должно встретиться в имени). */
+export function colleagueNeedles(raw: string): { emailLike: string; nameLikes: string[] } | null {
+  const q = raw.trim().slice(0, 80);
+  if (q.length < 2) return null;
+  const folded = foldPersonQuery(q);
+  const tokens = folded.split(/\s+/).filter((part) => part.length >= 2);
+  const nameLikes = (tokens.length ? tokens : [folded]).slice(0, 4).map(likeNeedle);
+  return { emailLike: likeNeedle(folded), nameLikes };
+}
+
 /** Сотрудники reporting: фамилия или почта. Пустой список, если таблиц ещё нет. */
 export async function searchColleagues(pool: PgPool, raw: string): Promise<Colleague[]> {
-  const q = raw.trim().slice(0, 80);
-  if (q.length < 2) return [];
-  const like = `%${q.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+  const needles = colleagueNeedles(raw);
+  if (!needles) return [];
   try {
     const { rows } = await pool.query(
       `SELECT name, email FROM (
@@ -332,17 +362,23 @@ export async function searchColleagues(pool: PgPool, raw: string): Promise<Colle
            LEFT JOIN employee e ON e.user_id = u.id
            WHERE u.status = 10 AND u.email IS NOT NULL AND btrim(u.email) <> ''
          ) people
-         WHERE email LIKE $1 ESCAPE '\\' OR name ILIKE $1 ESCAPE '\\'
+         WHERE lower(email) LIKE $1 ESCAPE '\\'
+            OR replace(
+                 lower(translate(name, '${CYR_UPPER}', '${CYR_LOWER}')),
+                 'ё',
+                 'е'
+               ) LIKE ALL ($2::text[]) ESCAPE '\\'
          ORDER BY lower(email), length(name) DESC
        ) picked
        ORDER BY name
        LIMIT 15`,
-      [like],
+      [needles.emailLike, needles.nameLikes],
     );
     return rows
       .map((row) => ({ name: String(row.name ?? ''), email: String(row.email ?? '') }))
       .filter((row) => row.email.includes('@'));
-  } catch {
+  } catch (error) {
+    console.error(`поиск коллег: ${error instanceof Error ? error.message : String(error)}`);
     return [];
   }
 }

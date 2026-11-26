@@ -42,8 +42,10 @@ import {
   linkGrant,
   LINK_MODES,
   linkRole,
+  linkVisitorRole,
   liveInvites,
   memberRole,
+  rememberLinkVisit,
   parseLinkHeader,
   type GrantRole,
   type LinkMode,
@@ -206,6 +208,12 @@ export class FileIndex {
   private mark(f: FileMeta, on: boolean): void {
     FileIndex.put(this.byUser, f.ownerId, f.id, on);
     for (const m of f.members ?? []) FileIndex.put(this.byUser, m.userId, f.id, on);
+    if (isOpenLink(f.link)) {
+      const pass = f.link.passwordHash ? f.link.passwordHash.slice(0, 16) : '';
+      for (const v of f.linkVisitors ?? []) {
+        if (v.token === f.link.token && v.pass === pass) FileIndex.put(this.byUser, v.userId, f.id, on);
+      }
+    }
     for (const i of f.invites ?? []) FileIndex.put(this.byEmail, i.email, f.id, on);
     FileIndex.put(this.byProject, f.projectId ?? null, f.id, on);
     FileIndex.put(this.byMain, f.branch?.of, f.id, on);
@@ -952,8 +960,12 @@ export class Api {
     const linkTeam = user && meta.link?.mode === 'team' && meta.link.teamId ? await this.teams.get(meta.link.teamId) : null;
     const inTeam = () => !!linkTeam && teamRole(linkTeam, user!.id) !== null;
     const byLink = linkRole(meta, parseLinkHeader(linkValue), { signedIn: user !== null, inTeam, board: meta.kind === 'board' }, await this.secretKey(), meta.id);
+    if (user && byLink && byLink !== 'password' && rememberLinkVisit(meta, user.id)) {
+      meta = (await this.files.update(meta.id, (cur) => (cur ? (rememberLinkVisit(cur, user.id) ?? undefined) : undefined))) ?? meta;
+    }
+    const remembered = user ? linkVisitorRole(meta, user.id, { inTeam: inTeam() }) : null;
     const team = await this.teamOfFile(meta);
-    let role = withTeam(higher(memberRole(meta, user?.id ?? null), byLink === 'password' ? null : byLink), team && teamRole(team, user?.id ?? null), meta.restricted);
+    let role = withTeam(higher(higher(memberRole(meta, user?.id ?? null), remembered), byLink === 'password' ? null : byLink), team && teamRole(team, user?.id ?? null), meta.restricted);
     // A branch is open to whoever has the main file, with the same role (its author owns it).
     if (meta.branch) {
       const main = await this.accessTo(req, meta.branch.of, 'viewer', undefined).catch(() => null);
@@ -1039,7 +1051,12 @@ export class Api {
     for (let f of await this.metas(candidates)) {
       if (liveInvites(f).some((i) => i.email === user.email)) f = (await this.files.update(f.id, (cur) => (cur ? (claimInvites(cur, user) ?? undefined) : undefined))) ?? f;
       const teamId = f.projectId ? teamOfProject.get(f.projectId) : undefined;
-      const role = withTeam(memberRole(f, user.id), teamId ? roles.get(teamId)! : null, f.restricted);
+      const linkTeamId = f.link?.mode === 'team' ? f.link.teamId : undefined;
+      const role = withTeam(
+        higher(memberRole(f, user.id), linkVisitorRole(f, user.id, { inTeam: !!linkTeamId && roles.has(linkTeamId) })),
+        teamId ? roles.get(teamId)! : null,
+        f.restricted,
+      );
       if (role) out.push({ meta: f, role, inTeam: teamId !== undefined });
     }
     return out;

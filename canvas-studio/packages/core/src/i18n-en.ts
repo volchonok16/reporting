@@ -1785,6 +1785,8 @@ export const EN: Record<string, string> = {
   'Поделиться «{0}»': 'Share “{0}”',
   'Доступ выдан, но письмо не отправилось. Пришлите ссылку сами.': 'Access was granted, but the email was not sent. Send the link yourself.',
   'Email коллеги': 'Colleague\'s email',
+  'Фамилия или email': 'Surname or email',
+  'Выберите коллегу из списка или введите email': 'Pick a colleague from the list or enter an email',
   'Роль для приглашения': 'Role for the invitation',
   'Пригласить': 'Invite',
   'Проверьте email': 'Check the email',

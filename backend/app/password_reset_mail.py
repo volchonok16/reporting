@@ -465,6 +465,53 @@ def send_html_mail(*, to_email: str, subject: str, html: str, text: str) -> None
         raise MailSendError("Не удалось отправить письмо") from exc
 
 
+def welcome_password_email_text(*, full_name: str, password: str, login_url: str) -> str:
+    who = full_name.strip() or "коллега"
+    return (
+        f"Здравствуйте, {who}.\n\n"
+        "Для вас создана учётная запись t2 B2B.\n"
+        f"Вход: {login_url}\n"
+        f"Пароль: {password}\n\n"
+        "При первом входе пароль нужно сменить.\n"
+    )
+
+
+def welcome_password_email_html(*, full_name: str, password: str, login_url: str, logo_src: str = "") -> str:
+    who = escape(full_name.strip() or "коллега")
+    safe_password = escape(password)
+    safe_url = escape(login_url, quote=True)
+    body = f"""
+          <tr>
+            <td style="padding:8px 28px 16px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#000000;">
+              Здравствуйте, {who}. Для вас создана учётная запись. При первом входе пароль нужно сменить.
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 28px 8px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#000000;">
+              Пароль: <strong style="font-size:18px;letter-spacing:0.04em;">{safe_password}</strong>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:12px 28px 28px;text-align:center;">
+              <a href="{safe_url}"
+                 style="display:inline-block;padding:12px 28px;background-color:#16D5DF;color:#000000;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;text-decoration:none;border-radius:999px;">
+                Войти
+              </a>
+            </td>
+          </tr>"""
+    return _email_shell(title="Учётная запись t2 B2B", body=body, logo_src=logo_src)
+
+
+def send_welcome_password(*, to_email: str, full_name: str, password: str) -> None:
+    login_url = settings.app_public_url.rstrip("/") or "http://localhost:5173"
+    send_html_mail(
+        to_email=to_email,
+        subject="Учётная запись t2 B2B",
+        html=welcome_password_email_html(full_name=full_name, password=password, login_url=login_url),
+        text=welcome_password_email_text(full_name=full_name, password=password, login_url=login_url),
+    )
+
+
 def send_reset_code(*, to_email: str, code: str) -> None:
     send_html_mail(
         to_email=to_email,

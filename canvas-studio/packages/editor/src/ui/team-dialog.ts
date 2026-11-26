@@ -5,6 +5,7 @@
 import { locale, tr } from '#core';
 import { CloudError, teams, type TeamInfo, type TeamRole } from '../cloud.ts';
 import { askConfirm } from './dialog.ts';
+import { colleagueEmailField } from './colleague-picker.ts';
 import { clear, h, icon } from './dom.ts';
 
 const ROLE_LABELS: Record<TeamRole, string> = {
@@ -107,20 +108,20 @@ export class TeamDialog {
     clear(this.body);
 
     let form: HTMLElement | string = '';
-    let email: HTMLInputElement | null = null;
+    let email: { input: HTMLInputElement } | null = null;
     if (admin) {
-      const field = h('input', { class: 'dialog-input share-email', type: 'email', placeholder: tr('Email коллеги'), 'aria-label': 'Email', autocomplete: 'off', spellcheck: false });
+      const field = colleagueEmailField(tr('Фамилия или email'), tr('Фамилия или email'));
       email = field;
       let role: TeamRole = 'editor';
       const inviteRole = roleSelect(role, (r) => (role = r), tr('Роль для приглашения'));
       const invite = h('button', { class: 'text-button primary', type: 'submit' }, tr('Пригласить'));
-      form = h('form', { class: 'share-invite', novalidate: true }, field, inviteRole, invite);
+      form = h('form', { class: 'share-invite', novalidate: true }, field.wrap, inviteRole, invite);
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const value = field.value.trim();
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)) {
-          this.error.textContent = tr('Проверьте email');
-          field.focus();
+        const value = field.email();
+        if (!value) {
+          this.error.textContent = tr('Выберите коллегу из списка или введите email');
+          field.input.focus();
           return;
         }
         invite.disabled = true;
@@ -190,7 +191,7 @@ export class TeamDialog {
       footer,
     );
     if (email) {
-      const field = email;
+      const field = email.input;
       requestAnimationFrame(() => {
         if (!this.overlay.contains(document.activeElement)) field.focus();
       });

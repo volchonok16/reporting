@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 from decimal import Decimal
 from uuid import UUID
 
@@ -73,6 +74,12 @@ from app.org_schemas import (
 )
 
 DEFAULT_NEW_EMPLOYEE_PASSWORD = "12345678"
+_GENERATED_PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+
+
+def generate_employee_password() -> str:
+    """Пароль для новой учётной записи: 12 символов, без похожих букв."""
+    return "".join(secrets.choice(_GENERATED_PASSWORD_ALPHABET) for _ in range(12))
 
 
 def _must_change_for_password(password: str, *, force: bool | None = None) -> bool:
@@ -554,9 +561,7 @@ def create_employee(
         _ensure_single_org_head(db, emp.id)
     if not data.email:
         raise HTTPException(status_code=400, detail="Для учётной записи нужен email сотрудника.")
-    password = (data.userPassword or "").strip() or DEFAULT_NEW_EMPLOYEE_PASSWORD
-    if len(password) < 8:
-        raise HTTPException(status_code=400, detail="Пароль для входа должен быть не короче 8 символов.")
+    password = generate_employee_password()
     user = _create_org_user(
         db,
         email=data.email,
@@ -564,7 +569,7 @@ def create_employee(
         is_admin=data.userIsAdmin,
         voice_only=data.userVoiceOnly,
         voice_admin=data.userVoiceAdmin,
-        must_change_password=bool(data.userMustChangePassword),
+        must_change_password=True,
     )
     emp.user_id = user.id
     page_keys = list(data.allowedPageKeys) if (is_other_user_employee(emp) or allow_full_page_acl) else []
@@ -581,6 +586,16 @@ def create_employee(
             data.vacationOverlapEmployeeIds,
             actor_org_user_id=actor_org_user_id,
         )
+    try:
+        from app.password_reset_mail import MailNotConfigured, MailSendError, send_welcome_password
+
+        send_welcome_password(to_email=user.email, full_name=emp.full_name, password=password)
+    except (MailNotConfigured, MailSendError) as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="Не удалось отправить пароль на почту. Учётная запись не создана.",
+        ) from exc
     db.commit()
     return get_employee(db, str(emp.public_id))
 

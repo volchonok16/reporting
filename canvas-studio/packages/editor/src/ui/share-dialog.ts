@@ -7,6 +7,7 @@
 import { locale, tr } from '#core';
 import { CloudError, sharing, type GrantRole, type LinkMode, type ShareInfo } from '../cloud.ts';
 import { askConfirm } from './dialog.ts';
+import { colleagueEmailField } from './colleague-picker.ts';
 import { clear, h, icon, skeletonRows } from './dom.ts';
 
 const ROLE_LABELS: Record<GrantRole, string> = {
@@ -98,18 +99,18 @@ export class ShareDialog {
     const id = this.target.fileId;
     clear(this.body);
 
-    // Invite by email.
-    const email = h('input', { class: 'dialog-input share-email', type: 'email', placeholder: tr('Email коллеги'), 'aria-label': 'Email', autocomplete: 'off', spellcheck: false });
+    // Invite by surname or email. The list is employees from reporting.
+    const email = colleagueEmailField(tr('Фамилия или email'), tr('Фамилия или email'));
     let role: GrantRole = 'editor';
     const inviteRole = roleSelect(role, (r) => (role = r), tr('Роль для приглашения'));
     const invite = h('button', { class: 'text-button primary', type: 'submit' }, tr('Пригласить'));
-    const form = h('form', { class: 'share-invite', novalidate: true }, email, inviteRole, invite);
+    const form = h('form', { class: 'share-invite', novalidate: true }, email.wrap, inviteRole, invite);
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const value = email.value.trim();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)) {
-        this.error.textContent = tr('Проверьте email');
-        email.focus();
+      const value = email.email();
+      if (!value) {
+        this.error.textContent = tr('Выберите коллегу из списка или введите email');
+        email.input.focus();
         return;
       }
       invite.disabled = true;
@@ -258,7 +259,7 @@ export class ShareDialog {
       h('footer', { class: 'share-footer' }, reset, h('span', { class: 'share-spacer' }), copy),
     );
     requestAnimationFrame(() => {
-      if (!this.overlay.contains(document.activeElement)) email.focus();
+      if (!this.overlay.contains(document.activeElement)) email.input.focus();
     });
   }
 
