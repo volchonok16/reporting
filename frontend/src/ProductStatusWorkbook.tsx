@@ -1951,6 +1951,8 @@ export default function ProductStatusWorkbook({
     }
     const onScroll = () => {
       const top = scrollEl.scrollTop
+      const previous = chromeScrollTopRef.current
+      const delta = top - previous
       if (Date.now() < chromeRevealLockRef.current) {
         chromeScrollTopRef.current = top
         return
@@ -1958,11 +1960,15 @@ export default function ProductStatusWorkbook({
       if (top <= 8) {
         chromeHoldOpenRef.current = false
         setChromeCollapsed(false)
-      } else if (chromeHoldOpenRef.current && top > chromeScrollTopRef.current + 48) {
-        chromeHoldOpenRef.current = false
+      } else if (chromeHoldOpenRef.current) {
+        if (delta > 64) {
+          chromeHoldOpenRef.current = false
+          setChromeCollapsed(true)
+        }
+      } else if (delta > 12 && top > 96) {
         setChromeCollapsed(true)
-      } else if (!chromeHoldOpenRef.current) {
-        setChromeCollapsed(top > 24)
+      } else if (delta < -28) {
+        setChromeCollapsed(false)
       }
       chromeScrollTopRef.current = top
     }
@@ -2433,35 +2439,35 @@ export default function ProductStatusWorkbook({
               </p>
             ) : null}
 
-            {!useTitleSheetNav && sheets.length > 1 ? (
-              <nav className="product-status-sheet-tabs" aria-label="Таблицы">
-                <div className="product-status-sheet-tabs-list">
-                  {sheets.map((sheet) => (
-                    <button
-                      key={sheet.gid}
-                      type="button"
-                      className={`product-status-sheet-tab${
-                        activeSheet?.gid === sheet.gid ? ' product-status-sheet-tab-active' : ''
-                      }${sheet.editingLocked && !sheet.readOnly ? ' product-status-sheet-tab-locked' : ''}`}
-                      onClick={() => selectSheet(sheet.gid)}
-                      aria-selected={activeSheet?.gid === sheet.gid}
-                      tabIndex={chromeCollapsed ? -1 : undefined}
-                      title={
-                        sheet.readOnly
-                          ? 'Сводка по офисам'
-                          : sheet.editingLocked
-                            ? 'Редактирование заблокировано'
-                            : undefined
-                      }
-                    >
-                      {sheet.name}
-                    </button>
-                  ))}
-                </div>
-              </nav>
-            ) : null}
           </div>
         </div>
+      ) : null}
+
+      {!useTitleSheetNav && viewMode === 'table' && sheets.length > 1 ? (
+        <nav className="product-status-sheet-tabs" aria-label="Таблицы">
+          <div className="product-status-sheet-tabs-list">
+            {sheets.map((sheet) => (
+              <button
+                key={sheet.gid}
+                type="button"
+                className={`product-status-sheet-tab${
+                  activeSheet?.gid === sheet.gid ? ' product-status-sheet-tab-active' : ''
+                }${sheet.editingLocked && !sheet.readOnly ? ' product-status-sheet-tab-locked' : ''}`}
+                onClick={() => selectSheet(sheet.gid)}
+                aria-selected={activeSheet?.gid === sheet.gid}
+                title={
+                  sheet.readOnly
+                    ? 'Сводка по офисам'
+                    : sheet.editingLocked
+                      ? 'Редактирование заблокировано'
+                      : undefined
+                }
+              >
+                {sheet.name}
+              </button>
+            ))}
+          </div>
+        </nav>
       ) : null}
 
       {viewMode === 'table' && !isSummarySheet ? (
@@ -2473,14 +2479,16 @@ export default function ProductStatusWorkbook({
             .filter(Boolean)
             .join(' ')}
         >
-          <ProductStatusFormatToolbar
-            disabled={toolbarBusy || isSheetReadOnly}
-            hasActiveCell={activeCell !== null}
-            onTextStyle={applyTextStyle}
-            onClearFormatting={clearFormatting}
-            onInsertTable={insertConfluenceTable}
-            onPasteTable={pasteConfluenceTable}
-          />
+          <div className="product-status-format-dock-inner">
+            <ProductStatusFormatToolbar
+              disabled={toolbarBusy || isSheetReadOnly}
+              hasActiveCell={activeCell !== null}
+              onTextStyle={applyTextStyle}
+              onClearFormatting={clearFormatting}
+              onInsertTable={insertConfluenceTable}
+              onPasteTable={pasteConfluenceTable}
+            />
+          </div>
         </div>
       ) : null}
 

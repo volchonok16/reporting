@@ -350,7 +350,7 @@ def _matches_incident_error_row(
     status: str | None,
     date_from: date | None,
     date_to: date | None,
-    customer: str | None = None,
+    customer: list[str] | str | None = None,
 ) -> bool:
     if not _is_incident_standalone_error(error):
         return False
@@ -586,18 +586,9 @@ def _row_board_code(row: Task, dashboard_board_code: str | None) -> str | None:
     return dashboard_board_code
 
 
-def _board_metrics_ignore_date_period(board_code: str | None) -> bool:
-    """Digital и Bercut: карточки метрик не режутся по периоду (как до изменений)."""
-    normalized = (board_code or "").strip().lower()
-    return normalized in {DIGITAL_BOARD_CODE, BERCUT_BOARD_CODE}
-
-
 def _uses_start_date_period(metric: str | None, board_code: str | None) -> bool:
-    """Период по start_date / created_at для списка «Всего задач» и досок с датой в метриках."""
-    if not metric:
-        return True
-    if _board_metrics_ignore_date_period(board_code):
-        return metric not in {"in_progress", "launching_soon", "launched", "completed", "errors"}
+    """Период по start_date / created_at для таблицы и всех карточек метрик."""
+    del metric, board_code
     return True
 
 
@@ -763,6 +754,35 @@ def _matches_dashboard_row(
     )
 
 
+def _rows_for_metrics(
+    rows: list[Task],
+    *,
+    search: str | None,
+    status: str | None,
+    quarter: str | None,
+    ect_reservation: str | None,
+    linked_environment: str | None,
+    tag_groups: list[str],
+    customer: list[str] | str | None,
+) -> list[Task]:
+    """Та же выборка, что у таблицы, без фильтра карточки метрики.
+
+    Без явного заказчика карточки по-прежнему считают только ЗНИ с заказчиком.
+    """
+    scoped = rows if customer else [row for row in rows if has_customer_name(row)]
+    return [
+        row
+        for row in scoped
+        if _matches_search(row, search or "")
+        and _matches_status(row, status)
+        and _matches_quarter(row, quarter)
+        and _matches_ect_reservation(row, ect_reservation)
+        and _matches_linked_environment(row, linked_environment)
+        and _matches_tag_groups(row, tag_groups)
+        and _matches_customer(row, customer)
+    ]
+
+
 def _compute_metrics(
     rows: list[Task],
     *,
@@ -771,6 +791,9 @@ def _compute_metrics(
     errors_by_parent: dict[int, list[Task]],
     date_from: date | None,
     date_to: date | None,
+    search: str | None = None,
+    status: str | None = None,
+    customer: list[str] | str | None = None,
 ) -> DashboardMetricsOut:
     def _metric_row(row: Task, metric: str) -> bool:
         return _matches_dashboard_row(
@@ -790,10 +813,11 @@ def _compute_metrics(
             error,
             board_code=board_code,
             metric="errors",
-            search=None,
-            status=None,
+            search=search,
+            status=status,
             date_from=date_from,
             date_to=date_to,
+            customer=customer,
         )
     )
 
@@ -891,9 +915,17 @@ def load_change_requests(
     rows = list(db.scalars(zni_query))
     error_rows = active_errors(list(db.scalars(error_query)))
 
-    rows_with_customer = [row for row in rows if has_customer_name(row)]
-
     errors_by_parent = _build_errors_by_parent(rows, error_rows)
+    metric_rows = _rows_for_metrics(
+        rows,
+        search=search,
+        status=status,
+        quarter=quarter,
+        ect_reservation=ect_reservation,
+        linked_environment=linked_environment,
+        tag_groups=selected_tag_groups,
+        customer=customer,
+    )
 
     # В таблице показываем и ЗНИ без заказчика (подсветка на UI); метрики — только с заказчиком.
     pre_customer = [
@@ -974,12 +1006,15 @@ def load_change_requests(
         board=_board_out(board, boards) if board and not all_boards else None,
         allBoards=all_boards,
         metrics=_compute_metrics(
-            rows_with_customer,
+            metric_rows,
             board_code=board_code,
             error_rows=error_rows,
             errors_by_parent=errors_by_parent,
             date_from=date_from,
             date_to=date_to,
+            search=search,
+            status=status,
+            customer=customer,
         ),
         items=items,
         totalShown=len(items),

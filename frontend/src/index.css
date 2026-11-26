@@ -2610,9 +2610,7 @@ input.zni-field-overdue.zni-field-derived {
   color: var(--text-muted);
 }
 
-.product-status-chrome-collapsed > .product-status-office-access,
-.product-status-chrome-collapsed > .product-status-scroll-chrome,
-.product-status-chrome-collapsed > .product-status-format-dock {
+.product-status-chrome-collapsed > .product-status-office-access {
   display: none;
 }
 
@@ -2962,7 +2960,7 @@ input.zni-field-overdue.zni-field-derived {
 }
 
 .product-status-th-resizable {
-  position: relative;
+  position: sticky;
 }
 
 .product-status-col-resize-handle {
@@ -3247,7 +3245,8 @@ body.product-status-col-resizing .product-status-col-resize-handle {
   border-color: var(--input-focus-border);
 }
 
-.product-status-table thead th {
+.product-status-table thead th,
+.product-status-table thead th.product-status-th-resizable {
   position: sticky;
   top: 0;
   z-index: 6;
@@ -3706,16 +3705,33 @@ body.product-status-col-resizing .product-status-col-resize-handle {
 
 .product-status-format-dock {
   flex-shrink: 0;
+  display: grid;
+  grid-template-rows: 1fr;
   margin: 0 0 12px;
   background: var(--bg-app);
   z-index: 20;
+  transition: grid-template-rows 0.22s ease, opacity 0.18s ease, margin 0.22s ease;
+}
+
+.product-status-format-dock-inner {
+  min-height: 0;
+}
+
+.product-status-chrome-collapsed > .product-status-format-dock .product-status-format-dock-inner {
+  overflow: hidden;
+}
+
+.product-status-chrome-collapsed > .product-status-format-dock {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  margin-bottom: 0;
+  pointer-events: none;
 }
 
 .product-status-format-dock--pinned {
-  position: sticky;
-  top: 0;
-  padding-bottom: 2px;
-  box-shadow: 0 1px 0 var(--border);
+  position: static;
+  padding-bottom: 0;
+  box-shadow: none;
 }
 
 .product-status-format-dock .product-status-format-panel {

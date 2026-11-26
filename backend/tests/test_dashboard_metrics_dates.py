@@ -2,7 +2,7 @@ from datetime import date, datetime, timezone
 
 from app.board_metrics import active_errors
 from app.models import Task
-from app.report_service import _compute_metrics, _matches_dashboard_row
+from app.report_service import _compute_metrics, _matches_dashboard_row, _rows_for_metrics
 
 
 def _zni(**kwargs) -> Task:
@@ -22,7 +22,7 @@ def _zni(**kwargs) -> Task:
     return Task(**defaults)
 
 
-def test_digital_launching_soon_ignores_start_date_range() -> None:
+def test_digital_launching_soon_respects_start_date_range() -> None:
     old_uat = _zni(source_status="UAT", start_date=date(2024, 6, 1), external_id="970092")
     new_uat = _zni(source_status="UAT", start_date=date(2026, 4, 15), external_id="1172515")
     rows = [old_uat, new_uat]
@@ -38,11 +38,11 @@ def test_digital_launching_soon_ignores_start_date_range() -> None:
         date_to=date_to,
     )
 
-    assert metrics.launchingSoon == 2
-    assert metrics.totalTasks == 2
+    assert metrics.launchingSoon == 1
+    assert metrics.totalTasks == 1
 
 
-def test_be_launching_soon_ignores_start_date_range_like_before() -> None:
+def test_be_launching_soon_respects_start_date_range() -> None:
     old_uat = _zni(
         source_status="UAT Prod",
         source_team="BE Analytics",
@@ -69,7 +69,7 @@ def test_be_launching_soon_ignores_start_date_range_like_before() -> None:
         date_to=date_to,
     )
 
-    assert metrics.launchingSoon == 2
+    assert metrics.launchingSoon == 1
 
 
 def test_be_metric_uses_created_at_for_incident_errors_only() -> None:
@@ -162,10 +162,10 @@ def test_total_tasks_and_default_table_use_start_date_range() -> None:
         date_from=date_from,
         date_to=date_to,
     )
-    assert metrics.totalTasks == 2
+    assert metrics.totalTasks == 1
 
 
-def test_digital_errors_count_ignores_start_date_filter() -> None:
+def test_digital_errors_count_respects_start_date_filter() -> None:
     zni = _zni(start_date=date(2020, 1, 1), external_id="1")
     zni.id = 10
     error = Task(
@@ -190,8 +190,8 @@ def test_digital_errors_count_ignores_start_date_filter() -> None:
         date_from=date_from,
         date_to=date_to,
     )
-    assert metrics.errorsCount == 1
-    assert _matches_dashboard_row(
+    assert metrics.errorsCount == 0
+    assert not _matches_dashboard_row(
         zni,
         "errors",
         board_code="digital_streams_b2b",
@@ -201,7 +201,7 @@ def test_digital_errors_count_ignores_start_date_filter() -> None:
     )
 
 
-def test_be_errors_count_ignores_start_date_for_linked_zni_like_before() -> None:
+def test_be_errors_count_respects_start_date_for_linked_zni() -> None:
     zni = _zni(
         start_date=date(2020, 1, 1),
         source_team="BE Analytics",
@@ -230,7 +230,7 @@ def test_be_errors_count_ignores_start_date_for_linked_zni_like_before() -> None
         date_from=date_from,
         date_to=date_to,
     )
-    assert metrics.errorsCount == 1
+    assert metrics.errorsCount == 0
 
 
 def test_errors_count_ignores_unlinked_errors() -> None:
@@ -291,8 +291,8 @@ def test_in_progress_metric_counts_development() -> None:
     assert metrics.inProgress == 1
 
 
-def test_all_boards_metrics_use_per_row_board_date_rules() -> None:
-    """На «Все доски» Digital/BE не режутся по периоду в карточках метрик."""
+def test_all_boards_metrics_respect_start_date_range() -> None:
+    """На «Все доски» карточки метрик режутся тем же периодом, что и таблица."""
     old_uat = _zni(
         source_status="UAT",
         start_date=date(2024, 6, 1),
@@ -317,8 +317,8 @@ def test_all_boards_metrics_use_per_row_board_date_rules() -> None:
         date_to=date_to,
     )
 
-    assert metrics.launchingSoon == 1
-    assert metrics.inProgress == 1
+    assert metrics.launchingSoon == 0
+    assert metrics.inProgress == 0
 
 
 def test_all_boards_shows_bercut_incident_errors() -> None:
@@ -383,3 +383,35 @@ def test_errors_count_ignores_closed_errors() -> None:
         date_to=None,
     )
     assert metrics.errorsCount == 1
+
+
+def test_metric_rows_follow_customer_and_search() -> None:
+    ivanov = _zni(external_id="1", title="Биллинг")
+    petrov = _zni(
+        external_id="2",
+        title="Витрина",
+        extra_json={"board_code": "digital_streams_b2b", "customer_name": "Петров"},
+    )
+    missing = _zni(external_id="3", title="Без заказчика", extra_json={"board_code": "digital_streams_b2b"})
+
+    assert [row.external_id for row in _rows_for_metrics(
+        [ivanov, petrov, missing],
+        search=None,
+        status=None,
+        quarter=None,
+        ect_reservation=None,
+        linked_environment=None,
+        tag_groups=[],
+        customer=None,
+    )] == ["1", "2"]
+
+    assert [row.external_id for row in _rows_for_metrics(
+        [ivanov, petrov, missing],
+        search="витрина",
+        status=None,
+        quarter=None,
+        ect_reservation=None,
+        linked_environment=None,
+        tag_groups=[],
+        customer=["Петров"],
+    )] == ["2"]
