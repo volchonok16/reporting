@@ -1,6 +1,7 @@
 // Поле приглашения: фамилия или почта, список сотрудников reporting.
 
 import { directory } from '../cloud.ts';
+import { portrait } from './avatar.ts';
 import { clear, h } from './dom.ts';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -17,7 +18,7 @@ export function colleagueEmailField(placeholder: string, label: string): { wrap:
   });
   const list = h('div', { class: 'share-suggest', role: 'listbox', hidden: true });
   const wrap = h('div', { class: 'share-email-wrap' }, input, list);
-  let people: { name: string; email: string }[] = [];
+  let people: { name: string; email: string; avatar?: string }[] = [];
   let active = -1;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let chosen = '';
@@ -34,8 +35,8 @@ export function colleagueEmailField(placeholder: string, label: string): { wrap:
       const button = h(
         'button',
         { type: 'button', role: 'option', class: index === active ? 'active' : '', 'aria-selected': String(index === active) },
-        h('strong', {}, person.name || person.email),
-        h('small', {}, person.email),
+        portrait('share-avatar', person.name || person.email, person.avatar),
+        h('span', {}, h('strong', {}, person.name || person.email), h('small', {}, person.email)),
       );
       button.addEventListener('mousedown', (event) => {
         event.preventDefault();

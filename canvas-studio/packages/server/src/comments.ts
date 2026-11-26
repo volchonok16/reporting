@@ -170,8 +170,21 @@ export function deleteComment(threads: Thread[], threadId: string, commentId: st
   return { threads: threads.map((x) => (x.id === threadId ? { ...x, comments: x.comments.filter((y) => y.id !== commentId) } : x)), threadGone: false };
 }
 
-/** A thread as it is sent to people: authors with names, no ids beyond what the editor needs. */
-export function publicThread(t: Thread, names: Map<string, string>): Record<string, unknown> {
+/** A thread as it is sent to people: authors with names and photos, no ids beyond what the editor needs. */
+export function publicThread(t: Thread, names: Map<string, string>, avatars: Map<string, string> = new Map()): Record<string, unknown> {
+  const comment = (c: CommentEntry) => {
+    const avatar = avatars.get(c.authorId);
+    return {
+      id: c.id,
+      authorId: c.authorId,
+      author: names.get(c.authorId) ?? '',
+      ...(avatar ? { avatar } : {}),
+      text: c.text,
+      createdAt: c.createdAt,
+      ...(c.editedAt ? { editedAt: c.editedAt } : {}),
+      ...(c.mentions?.length ? { mentions: c.mentions.map((id) => ({ id, name: names.get(id) ?? '' })) } : {}),
+    };
+  };
   return {
     id: t.id,
     pageId: t.pageId,
@@ -181,6 +194,6 @@ export function publicThread(t: Thread, names: Map<string, string>): Record<stri
     createdAt: t.createdAt,
     resolved: t.resolved,
     ...(t.resolved ? { resolvedBy: names.get(t.resolvedBy ?? '') ?? '', resolvedAt: t.resolvedAt } : {}),
-    comments: t.comments.map((c) => ({ id: c.id, authorId: c.authorId, author: names.get(c.authorId) ?? '', text: c.text, createdAt: c.createdAt, ...(c.editedAt ? { editedAt: c.editedAt } : {}), ...(c.mentions?.length ? { mentions: c.mentions.map((id) => ({ id, name: names.get(id) ?? '' })) } : {}) })),
+    comments: t.comments.map(comment),
   };
 }

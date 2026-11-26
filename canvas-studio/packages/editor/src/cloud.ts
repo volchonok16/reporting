@@ -208,6 +208,7 @@ export interface CommentItem {
 export interface Person {
   id: string;
   name: string;
+  avatar?: string;
 }
 
 /** A discussion pinned to the canvas: a point of a page, or a point of a layer (offset from its corner). */
@@ -396,6 +397,7 @@ export interface SharePerson {
   id: string;
   name: string;
   email: string;
+  avatar?: string;
 }
 
 /** Who the link opens the file for: the people listed, a team's people, anyone. */
@@ -419,7 +421,7 @@ export interface ShareInfo {
 
 /** Сотрудники reporting: фамилия или почта. */
 export const directory = {
-  search: (q: string) => request<{ people: { name: string; email: string }[] }>('GET', `/api/directory?q=${encodeURIComponent(q)}`),
+  search: (q: string) => request<{ people: { name: string; email: string; avatar?: string }[] }>('GET', `/api/directory?q=${encodeURIComponent(q)}`),
 };
 
 /** Sharing a server file (the "Share" dialog). */

@@ -62,13 +62,14 @@ export function aiOrigin(value: string | undefined): string | null {
 /** Employee photos live on the reporting site, not on the Симметрика port. */
 function reportingImageOrigins(): string {
   const origins = new Set<string>();
-  for (const raw of [process.env.CS_PUBLIC_APP_URL, process.env.APP_PUBLIC_URL]) {
-    const value = (raw ?? '').trim();
-    if (!value) continue;
-    try {
-      origins.add(new URL(value).origin);
-    } catch {
-      // A bad address is ignored: photos then stay letters until the env is fixed.
+  for (const raw of [process.env.CS_PUBLIC_APP_URL, process.env.APP_PUBLIC_URL, process.env.CS_FRAME_ANCESTORS]) {
+    for (const part of (raw ?? '').split(/\s+/)) {
+      if (!part.startsWith('http')) continue;
+      try {
+        origins.add(new URL(part).origin);
+      } catch {
+        // A bad address is ignored: photos then stay letters until the env is fixed.
+      }
     }
   }
   return [...origins].join(' ');

@@ -7,6 +7,7 @@
 import { locale, tr } from '#core';
 import { CloudError, sharing, type GrantRole, type LinkMode, type ShareInfo } from '../cloud.ts';
 import { askConfirm } from './dialog.ts';
+import { portrait } from './avatar.ts';
 import { colleagueEmailField } from './colleague-picker.ts';
 import { clear, h, icon, skeletonRows } from './dom.ts';
 
@@ -33,10 +34,6 @@ function roleSelect(value: GrantRole, onChange: (role: GrantRole) => void, label
   for (const role of ['editor', 'commenter', 'viewer'] as const) select.append(h('option', { value: role, selected: role === value }, ROLE_LABELS[role]));
   select.addEventListener('change', () => onChange(select.value as GrantRole));
   return select;
-}
-
-function initial(text: string): string {
-  return (text.trim().charAt(0) || '·').toUpperCase();
 }
 
 export class ShareDialog {
@@ -120,10 +117,10 @@ export class ShareDialog {
 
     // People.
     const people = h('div', { class: 'share-people', role: 'list' });
-    const row = (avatar: string | SVGSVGElement, title: string, sub: string, ...end: (HTMLElement | string)[]) =>
+    const row = (avatar: HTMLElement | SVGSVGElement, title: string, sub: string, ...end: (HTMLElement | string)[]) =>
       // A person without a name is shown by the email once, not twice.
-      h('div', { class: 'share-person', role: 'listitem' }, h('span', { class: 'share-avatar' }, avatar), h('span', { class: 'share-person-text' }, h('strong', {}, title), title === sub ? null : h('small', {}, sub)), ...end);
-    people.append(row(initial(info.owner.name || info.owner.email), info.owner.name || info.owner.email, info.owner.email, h('span', { class: 'share-muted' }, tr('владелец'))));
+      h('div', { class: 'share-person', role: 'listitem' }, avatar, h('span', { class: 'share-person-text' }, h('strong', {}, title), title === sub ? null : h('small', {}, sub)), ...end);
+    people.append(row(portrait('share-avatar', info.owner.name || info.owner.email, info.owner.avatar), info.owner.name || info.owner.email, info.owner.email, h('span', { class: 'share-muted' }, tr('владелец'))));
     // A file in a team project: the whole team has it, each with their team role — unless it is restricted.
     if (info.team) {
       const sub = info.restricted ? tr('Ограничен: из команды файл видят только админы') : tr('Участников: {0} — каждый с ролью в команде', info.team.people);
@@ -145,7 +142,7 @@ export class ShareDialog {
         });
         end = access;
       } else end = h('span', { class: 'share-muted' }, info.restricted ? tr('только админы') : tr('команда'));
-      people.append(row(icon(info.restricted ? 'lock' : 'people', 14), tr('Команда «{0}»', info.team.name), sub, end));
+      people.append(row(h('span', { class: 'share-avatar' }, icon(info.restricted ? 'lock' : 'people', 14)), tr('Команда «{0}»', info.team.name), sub, end));
     }
     for (const m of info.members) {
       const remove = h('button', { class: 'icon-button', type: 'button', title: tr('Закрыть доступ'), 'aria-label': tr('Закрыть доступ: {0}', m.email) }, icon('close', 14));
@@ -153,14 +150,14 @@ export class ShareDialog {
         const ok = await askConfirm({ title: tr('Закрыть доступ?'), message: tr('{0} больше не сможет открыть «{1}».', m.name || m.email, this.target.fileName), confirm: tr('Закрыть доступ'), danger: true });
         if (ok) await this.run(() => sharing.remove(id, m.id));
       });
-      people.append(row(initial(m.name || m.email), m.name || m.email, m.email, roleSelect(m.role, (r) => void this.run(() => sharing.setRole(id, m.id, r)), tr('Роль: {0}', m.email)), remove));
+      people.append(row(portrait('share-avatar', m.name || m.email, m.avatar), m.name || m.email, m.email, roleSelect(m.role, (r) => void this.run(() => sharing.setRole(id, m.id, r)), tr('Роль: {0}', m.email)), remove));
     }
     for (const inv of info.invites) {
       const until = new Date(inv.expiresAt).toLocaleDateString(locale(), { day: 'numeric', month: 'long' });
       const remove = h('button', { class: 'icon-button', type: 'button', title: tr('Отменить приглашение'), 'aria-label': tr('Отменить приглашение: {0}', inv.email) }, icon('close', 14));
       remove.addEventListener('click', () => void this.run(() => sharing.removeInvite(id, inv.email)));
       const again = roleSelect(inv.role, (r) => void this.run(() => sharing.invite(id, inv.email, r)), tr('Роль: {0}', inv.email));
-      people.append(row('✉', inv.email, tr('ждёт регистрации · до {0}', until), again, remove));
+      people.append(row(h('span', { class: 'share-avatar' }, '✉'), inv.email, tr('ждёт регистрации · до {0}', until), again, remove));
     }
 
     // Link.

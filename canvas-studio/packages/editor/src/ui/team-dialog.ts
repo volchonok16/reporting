@@ -5,6 +5,7 @@
 import { locale, tr } from '#core';
 import { CloudError, teams, type TeamInfo, type TeamRole } from '../cloud.ts';
 import { askConfirm } from './dialog.ts';
+import { portrait } from './avatar.ts';
 import { colleagueEmailField } from './colleague-picker.ts';
 import { clear, h, icon } from './dom.ts';
 
@@ -40,9 +41,6 @@ function roleSelect(value: TeamRole, onChange: (role: TeamRole) => void, label: 
   return select;
 }
 
-function initial(text: string): string {
-  return (text.trim().charAt(0) || '·').toUpperCase();
-}
 
 export class TeamDialog {
   private readonly target: TeamTarget;
@@ -137,17 +135,17 @@ export class TeamDialog {
     }
 
     const people = h('div', { class: 'share-people', role: 'list' });
-    const row = (avatar: string, title: string, sub: string, ...end: (HTMLElement | string)[]) =>
-      h('div', { class: 'share-person', role: 'listitem' }, h('span', { class: 'share-avatar' }, avatar), h('span', { class: 'share-person-text' }, h('strong', {}, title), h('small', {}, sub)), ...end);
+    const row = (avatar: HTMLElement, title: string, sub: string, ...end: (HTMLElement | string)[]) =>
+      h('div', { class: 'share-person', role: 'listitem' }, avatar, h('span', { class: 'share-person-text' }, h('strong', {}, title), h('small', {}, sub)), ...end);
     for (const m of team.members) {
       const name = m.name || m.email;
       const you = m.id === this.target.me ? tr(' (вы)') : '';
       if (m.role === 'owner') {
-        people.append(row(initial(name), name + you, m.email, h('span', { class: 'share-muted' }, tr('владелец'))));
+        people.append(row(portrait('share-avatar', name, m.avatar), name + you, m.email, h('span', { class: 'share-muted' }, tr('владелец'))));
         continue;
       }
       if (!admin || m.id === this.target.me) {
-        people.append(row(initial(name), name + you, m.email, h('span', { class: 'share-muted', title: ROLE_HINTS[m.role] }, ROLE_LABELS[m.role])));
+        people.append(row(portrait('share-avatar', name, m.avatar), name + you, m.email, h('span', { class: 'share-muted', title: ROLE_HINTS[m.role] }, ROLE_LABELS[m.role])));
         continue;
       }
       const remove = h('button', { class: 'icon-button', type: 'button', title: tr('Убрать из команды'), 'aria-label': tr('Убрать из команды: {0}', m.email) }, icon('close', 14));
@@ -155,14 +153,14 @@ export class TeamDialog {
         const ok = await askConfirm({ title: tr('Убрать из команды?'), message: tr('{0} потеряет доступ к файлам команды «{1}». Файлы, созданные этим участником, останутся у их автора.', name, team.name), confirm: tr('Убрать'), danger: true });
         if (ok) await this.run(async () => (await teams.removeMember(id, m.id)).team ?? this.team);
       });
-      people.append(row(initial(name), name, m.email, roleSelect(m.role, (r) => void this.run(() => teams.setRole(id, m.id, r)), tr('Роль: {0}', m.email)), remove));
+      people.append(row(portrait('share-avatar', name, m.avatar), name, m.email, roleSelect(m.role, (r) => void this.run(() => teams.setRole(id, m.id, r)), tr('Роль: {0}', m.email)), remove));
     }
     for (const inv of team.invites ?? []) {
       const until = new Date(inv.expiresAt).toLocaleDateString(locale(), { day: 'numeric', month: 'long' });
       const remove = h('button', { class: 'icon-button', type: 'button', title: tr('Отменить приглашение'), 'aria-label': tr('Отменить приглашение: {0}', inv.email) }, icon('close', 14));
       remove.addEventListener('click', () => void this.run(() => teams.removeInvite(id, inv.email)));
       const again = roleSelect(inv.role, (r) => void this.run(async () => (await teams.invite(id, inv.email, r)).team), tr('Роль: {0}', inv.email));
-      people.append(row('✉', inv.email, tr('ждёт регистрации · до {0}', until), again, remove));
+      people.append(row(h('span', { class: 'share-avatar' }, '✉'), inv.email, tr('ждёт регистрации · до {0}', until), again, remove));
     }
 
     let footer: HTMLElement | string = '';

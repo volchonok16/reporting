@@ -1275,7 +1275,7 @@ export class Api {
     await this.blobs.update(meta.id, 'comments.json', (text) => JSON.stringify([...parseThreads(text), ...copies].slice(-THREADS_PER_FILE)));
     const inside = await this.authorNames(copies);
     const outside = await this.authorNames(copies, false);
-    for (const t of copies) await this.live?.broadcast(meta.id, (insider) => ({ type: 'thread', thread: publicThread(t, insider ? inside : outside) }));
+    for (const t of copies) await this.live?.broadcast(meta.id, (insider) => ({ type: 'thread', thread: publicThread(t, (insider ? inside : outside).names, (insider ? inside : outside).avatars) }));
     return { carried: copies.length };
   }
 
@@ -1433,7 +1433,7 @@ export class Api {
     const { meta, user, role } = await this.access(c, 'editor');
     const person = async (id: string) => {
       const u = await this.users.get(id);
-      return { id, name: u?.name ?? '', email: u?.email ?? '' };
+      return { id, name: u?.name ?? '', email: u?.email ?? '', ...(u?.avatar ? { avatar: u.avatar } : {}) };
     };
     const link = meta.link;
     const team = await this.teamOfFile(meta);
@@ -1918,15 +1918,18 @@ export class Api {
   // ---------- comments ----------
 
   /** Names of the people in the threads, for display (`reveal` — addresses of those without a name, for people of the file). */
-  private async authorNames(threads: Thread[], reveal = true): Promise<Map<string, string>> {
+  private async authorNames(threads: Thread[], reveal = true): Promise<{ names: Map<string, string>; avatars: Map<string, string> }> {
     const names = new Map<string, string>();
+    const avatars = new Map<string, string>();
     for (const t of threads) {
       for (const id of [...t.comments.flatMap((x) => [x.authorId, ...(x.mentions ?? [])]), t.resolvedBy ?? '']) {
         if (!id || names.has(id)) continue;
-        names.set(id, this.shownName(await this.users.get(id), reveal));
+        const user = await this.users.get(id);
+        names.set(id, this.shownName(user, reveal));
+        if (user?.avatar) avatars.set(id, user.avatar);
       }
     }
-    return names;
+    return { names, avatars };
   }
 
   /** A person as someone sees them: the name; without one — the address for people of the file, else HIDDEN_NAME (BUG-159). */
@@ -1961,7 +1964,10 @@ export class Api {
     const changed = out.changed as Thread | null;
     const inside = changed ? await this.authorNames([changed]) : null;
     const outside = changed ? await this.authorNames([changed], false) : null;
-    const message = (insider: boolean) => (changed ? { type: 'thread', thread: publicThread(changed, insider ? inside! : outside!) } : { type: 'thread', id: out.id, deleted: true });
+    const message = (insider: boolean) => {
+      const cards = insider ? inside : outside;
+      return changed && cards ? { type: 'thread', thread: publicThread(changed, cards.names, cards.avatars) } : { type: 'thread', id: out.id, deleted: true };
+    };
     await this.live?.broadcast(fileId, message);
     if (changed && after) after(changed);
     return message(reveal);
@@ -2003,7 +2009,13 @@ export class Api {
   /** For the @ list of a comment box: the people of the file, without their addresses. */
   private async listPeople(c: Ctx): Promise<unknown> {
     const { meta, user } = await this.access(c, 'commenter');
-    return { people: [...(await this.people(meta, await this.isInsider(meta, user?.id)))].map(([id, name]) => ({ id, name })) };
+    const named = await this.people(meta, await this.isInsider(meta, user?.id));
+    const people = [];
+    for (const [id, name] of named) {
+      const avatar = (await this.users.get(id))?.avatar;
+      people.push({ id, name, ...(avatar ? { avatar } : {}) });
+    }
+    return { people };
   }
 
   /**
@@ -2056,8 +2068,8 @@ export class Api {
   private async listComments(c: Ctx): Promise<unknown> {
     const { meta, user } = await this.access(c);
     const threads = parseThreads(await this.blobs.read(meta.id, 'comments.json'));
-    const names = await this.authorNames(threads, await this.isInsider(meta, user?.id));
-    return { threads: threads.map((t) => publicThread(t, names)) };
+    const cards = await this.authorNames(threads, await this.isInsider(meta, user?.id));
+    return { threads: threads.map((t) => publicThread(t, cards.names, cards.avatars)) };
   }
 
   private async createThread(c: Ctx): Promise<unknown> {
@@ -2435,7 +2447,7 @@ export class Api {
   private async teamView(team: Team, role: TeamRole | 'owner'): Promise<Record<string, unknown>> {
     const person = async (id: string, r: TeamRole | 'owner') => {
       const u = await this.users.get(id);
-      return { id, name: u?.name ?? '', email: u?.email ?? '', role: r };
+      return { id, name: u?.name ?? '', email: u?.email ?? '', role: r, ...(u?.avatar ? { avatar: u.avatar } : {}) };
     };
     const admin = teamAtLeast(role, 'admin');
     return {

@@ -2,6 +2,7 @@
 // Driver: npm package `pg` (ставится в Docker-образе reporting). Без CS_DATABASE_URL — не используется.
 
 import { randomBytes } from 'node:crypto';
+import { reportingPhotoUrl } from './photo-url.ts';
 import { isSafeId, type BlobStore } from './storage.ts';
 
 export type PgPool = {
@@ -311,6 +312,7 @@ export async function loadOrCreatePgSecret(pool: PgPool, makeKey: (n: number) =>
 export interface Colleague {
   name: string;
   email: string;
+  avatar?: string;
 }
 
 /** Верхний регистр кириллицы. Ё схлопывается в е, чтобы «ё» и «е» находили одно и то же. */
@@ -349,33 +351,43 @@ export async function searchColleagues(pool: PgPool, raw: string): Promise<Colle
   const needles = colleagueNeedles(raw);
   if (!needles) return [];
   try {
+    const params: string[] = [needles.emailLike, ...needles.nameLikes];
+    const nameMatch = needles.nameLikes.map((_, index) => `folded LIKE $${index + 2} ESCAPE '\\'`).join(' AND ');
     const { rows } = await pool.query(
-      `SELECT name, email FROM (
-         SELECT DISTINCT ON (lower(email)) name, email
+      `SELECT name, email, photo FROM (
+         SELECT DISTINCT ON (email) name, email, photo,
+           replace(lower(translate(name, '${CYR_UPPER}', '${CYR_LOWER}')), 'ё', 'е') AS folded
          FROM (
-           SELECT btrim(e.full_name) AS name, lower(btrim(e.email)) AS email
+           SELECT btrim(e.full_name) AS name,
+                  lower(btrim(e.email)) AS email,
+                  NULLIF(btrim(e.photo_path), '') AS photo
            FROM employee e
            WHERE e.is_active IS TRUE AND e.email IS NOT NULL AND btrim(e.email) <> ''
            UNION ALL
-           SELECT COALESCE(NULLIF(btrim(e.full_name), ''), u.email) AS name, lower(btrim(u.email)) AS email
+           SELECT COALESCE(NULLIF(btrim(e.full_name), ''), u.email) AS name,
+                  lower(btrim(u.email)) AS email,
+                  NULLIF(btrim(e.photo_path), '') AS photo
            FROM org_user u
            LEFT JOIN employee e ON e.user_id = u.id
            WHERE u.status = 10 AND u.email IS NOT NULL AND btrim(u.email) <> ''
          ) people
-         WHERE lower(email) LIKE $1 ESCAPE '\\'
-            OR replace(
-                 lower(translate(name, '${CYR_UPPER}', '${CYR_LOWER}')),
-                 'ё',
-                 'е'
-               ) LIKE ALL ($2::text[]) ESCAPE '\\'
-         ORDER BY lower(email), length(name) DESC
+         ORDER BY email, (photo IS NULL), length(name) DESC
        ) picked
+       WHERE lower(email) LIKE $1 ESCAPE '\\'
+          OR (${nameMatch})
        ORDER BY name
        LIMIT 15`,
-      [needles.emailLike, needles.nameLikes],
+      params,
     );
     return rows
-      .map((row) => ({ name: String(row.name ?? ''), email: String(row.email ?? '') }))
+      .map((row) => {
+        const avatar = reportingPhotoUrl(row.photo == null ? undefined : String(row.photo));
+        return {
+          name: String(row.name ?? ''),
+          email: String(row.email ?? ''),
+          ...(avatar ? { avatar } : {}),
+        };
+      })
       .filter((row) => row.email.includes('@'));
   } catch (error) {
     console.error(`поиск коллег: ${error instanceof Error ? error.message : String(error)}`);

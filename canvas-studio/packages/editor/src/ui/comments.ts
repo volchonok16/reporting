@@ -16,6 +16,7 @@ import { comments as api, CloudError, type CommentItem, type CommentPlace, type 
 import type { Editor } from '../editor.ts';
 import type { Role } from '../storage.ts';
 import { askConfirm } from './dialog.ts';
+import { initial, portrait } from './avatar.ts';
 import { clear, h, icon } from './dom.ts';
 
 /** Comments need a file on the server; the macOS app has none yet (stage 2 of docs/ROADMAP.md). */
@@ -54,10 +55,6 @@ export interface CommentSurface {
 
 /** Pins are drawn with their tail at the point: the bubble sits above and to the right. */
 const PIN = 28;
-
-function initial(name: string): string {
-  return (name.trim()[0] ?? '?').toUpperCase();
-}
 
 /** The "@word" being typed right before the caret, or null. */
 export function mentionQuery(text: string, caret: number): { start: number; query: string } | null {
@@ -521,7 +518,7 @@ export class Comments {
         title: first ? `${first.author}: ${first.text.slice(0, 120)}` : '',
         'aria-label': tr('Обсуждение: {0}', first?.author ?? ''),
       },
-      initial(first?.author ?? '?'),
+      first?.avatar ? portrait('comment-avatar', first.author, first.avatar) : initial(first?.author ?? '?'),
       replies > 0 ? h('span', { class: 'comment-pin-count' }, String(replies)) : null,
     );
     // Click opens; dragging moves the pin (its author or an editor).
@@ -614,7 +611,7 @@ export class Comments {
     const draw = () => {
       clear(list);
       found.forEach((p, i) => {
-        const row = h('div', { class: `mention-item${i === index ? ' active' : ''}`, role: 'option', 'aria-selected': String(i === index) }, h('span', { class: 'comment-avatar' }, initial(p.name)), h('span', {}, p.name));
+        const row = h('div', { class: `mention-item${i === index ? ' active' : ''}`, role: 'option', 'aria-selected': String(i === index) }, portrait('comment-avatar', p.name, p.avatar), h('span', {}, p.name));
         // pointerdown, not click: the box must not lose focus first.
         row.addEventListener('pointerdown', (e) => {
           e.preventDefault();
@@ -746,7 +743,7 @@ export class Comments {
         h(
           'div',
           { class: 'comment-meta' },
-          h('span', { class: 'comment-avatar' }, initial(c.author)),
+          portrait('comment-avatar', c.author, c.avatar),
           h('span', { class: 'comment-author' }, c.author || tr('Без имени')),
           h('time', { class: 'comment-time', datetime: new Date(c.createdAt).toISOString(), title: new Date(c.createdAt).toLocaleString(locale()) }, when(c.createdAt) + (c.editedAt ? ` · ${tr('изменено')}` : '')),
         ),
@@ -824,7 +821,7 @@ export class Comments {
       const row = h(
         'button',
         { class: `comment-row${t.id === this.openId ? ' active' : ''}${t.resolved ? ' resolved' : ''}`, type: 'button', role: 'listitem', onclick: () => this.show(t.id) },
-        h('span', { class: 'comment-avatar' }, initial(first.author)),
+        portrait('comment-avatar', first.author, first.avatar),
         h(
           'span',
           { class: 'comment-row-body' },
