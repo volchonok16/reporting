@@ -1,0 +1,73 @@
+@font-face {
+  font-family: 'T2 Rooftop';
+  src: url('/dogtags-manager/fonts/T2Rooftop-Regular.woff2') format('woff2');
+  font-display: swap;
+}
+:root {
+  font-family: 'T2 Rooftop', system-ui, sans-serif;
+  --page: #fafafa;
+  --surface: #ffffff;
+  --text: #141414;
+  --muted: #555555;
+  --control-border: #a5a5a5;
+  --divider: #e0e0e0;
+  --primary: #171717;
+  --primary-hover: #363636;
+  --info-text: #066970;
+  --info-bg: #e9fbfc;
+  --info-border: #0e9ba3;
+  --selected-text: #055d64;
+  --selected-bg: #d7f7fa;
+  --neutral-text: #4b4b4b;
+  --neutral-bg: #f2f2f2;
+  --neutral-border: #777777;
+  --workspace-max: 100%;
+  --font-body: 0.875rem;
+  --line-body: 1.375rem;
+  --font-title: 1.5rem;
+  --line-title: 1.875rem;
+  --font-section: 1.125rem;
+  --line-section: 1.5rem;
+  --radius-control: 0.375rem;
+  --radius-card: 0.625rem;
+}
+[data-theme='dark'] {
+  color-scheme: dark;
+  --page: #111111;
+  --surface: #1a1a1a;
+  --text: #f4f4f4;
+  --muted: #bbbbbb;
+  --control-border: #777777;
+  --divider: #3e3e3e;
+  --primary: #16d5df;
+  --primary-hover: #68e7ee;
+  --info-text: #88edf2;
+  --info-bg: #102c2e;
+  --info-border: #16a9b1;
+  --success-text: #9de4b9;
+  --success-bg: #122b1c;
+  --success-border: #459762;
+  --warning-text: #ffd29a;
+  --warning-bg: #342517;
+  --warning-border: #b9843c;
+  --danger-text: #ffb1b1;
+  --danger-bg: #391c1c;
+  --danger-border: #c36161;
+  --neutral-text: #cccccc;
+  --neutral-bg: #262626;
+  --neutral-border: #888888;
+  --ai-text: #d6baff;
+  --ai-bg: #2c203c;
+  --ai-border: #a684d3;
+  --selected-text: #a5f4f6;
+  --selected-bg: #123a3c;
+}
+body { background: var(--page); }
+.page { padding: 1.5rem; }
+.page-header .product-name { display: none; }
+.sidebar-brand { background: #16d5df; color: #111111; }
+.sidebar { padding-block-start: 1.5rem; }
+input, select, textarea { color: var(--text); background-color: var(--surface); }
+@media (max-width: 47.999rem) {
+  .page { padding: 1rem 0.75rem; }
+}

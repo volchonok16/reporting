@@ -21,6 +21,7 @@ def test_app_pages_registry_matches_workbook() -> None:
         "departments",
         "planning",
         "voice",
+        "dogtags-manager",
     }
 
 

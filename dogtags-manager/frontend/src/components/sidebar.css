@@ -1,0 +1,38 @@
+.workspace-shell { display: flex; min-block-size: 100dvh; align-items: flex-start; }
+.workspace-shell > .page { flex: 1; inline-size: 0; min-inline-size: 0; }
+.sidebar {
+  position: sticky; inset-block-start: 0; block-size: 100dvh; flex: 0 0 auto;
+  inline-size: calc(var(--space-4) * 2 + var(--control-min));
+  padding: var(--space-6) var(--space-4); display: flex; flex-direction: column; gap: var(--space-6);
+  border-inline-end: var(--border-width) solid var(--divider); background: var(--surface);
+}
+.sidebar--expanded { inline-size: var(--sidebar); }
+.sidebar-heading { display: flex; gap: var(--space-3); align-items: center; min-block-size: var(--control-min); }
+.sidebar-brand {
+  display: grid; place-items: center; flex: 0 0 var(--control-min); block-size: var(--control-min);
+  background: var(--primary); color: var(--surface); border-radius: var(--radius-control);
+  font-size: var(--font-secondary); font-weight: 700; letter-spacing: 0.04em;
+}
+.sidebar-label { display: none; }
+.sidebar--expanded .sidebar-label { display: block; }
+.sidebar--expanded .sidebar-action { justify-content: flex-start; text-align: start; }
+.sidebar-product { font-size: var(--font-secondary); line-height: var(--line-secondary); font-weight: 700; }
+.sidebar-action {
+  inline-size: 100%; min-block-size: var(--control-min); padding: var(--space-3);
+  display: flex; align-items: center; gap: var(--space-3); border: 0; border-radius: var(--radius-control);
+  background: transparent; color: var(--muted); text-align: center; justify-content: center; cursor: pointer;
+  font-size: var(--font-secondary); line-height: var(--line-secondary); font-weight: 600;
+}
+.sidebar-action svg { inline-size: var(--icon-size); block-size: var(--icon-size); flex: 0 0 var(--icon-size); fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.sidebar-action:hover { background: var(--neutral-bg); color: var(--text); }
+.sidebar-action--active, .sidebar-action--active:hover { background: var(--info-bg); color: var(--primary); }
+.sidebar-toggle { font-weight: 400; }
+.sidebar-footer { margin-block-start: auto; display: grid; gap: var(--space-3); }
+.sidebar-user { padding-inline: var(--space-3); color: var(--muted); font-size: var(--font-secondary); overflow-wrap: anywhere; }
+.sidebar-backdrop { display: none; }
+@media (max-width: 47.999rem) {
+  .workspace-shell { padding-inline-start: calc(var(--space-4) * 2 + var(--control-min)); }
+  .sidebar { position: fixed; inset-inline-start: 0; z-index: 20; }
+  .sidebar--expanded { inline-size: min(var(--sidebar), calc(100vw - var(--space-12))); }
+  .sidebar-backdrop { display: block; position: fixed; inset: 0; z-index: 19; border: 0; background: var(--text); opacity: 0.25; cursor: pointer; }
+}

@@ -1,0 +1,19 @@
+/* Screen composition uses the existing Callmark component/token geometry. */
+.hub-section, .hub-group { display: grid; gap: var(--space-4); min-inline-size: 0; }
+.hub-section { border-block-start: var(--border-width) solid var(--divider); padding-block-start: var(--space-6); }
+.hub-section > .form-section, .hub-section > .form-block { inline-size: 100%; }
+.hub-page > *, .hub-group > * { min-inline-size: 0; }
+.hub-value { white-space: pre-wrap; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.hub-json { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; padding: var(--space-4); font-size: var(--font-secondary); line-height: var(--line-secondary); background: var(--neutral-bg); border-radius: var(--radius-control); min-inline-size: 0; }
+.hub-live:empty { display: none; }
+.hub-error-summary { min-inline-size: 0; }
+.hub-page details { min-inline-size: 0; }
+.hub-page summary { cursor: pointer; min-block-size: var(--control-min); padding-block: var(--space-2); overflow-wrap: anywhere; }
+.hub-page textarea { resize: vertical; }
+.hub-page input[type="file"] { overflow: hidden; }
+.hub-page input[type="file"]::file-selector-button { font: inherit; min-block-size: var(--control-min); max-inline-size: 100%; white-space: normal; }
+.hub-page progress { inline-size: 100%; accent-color: var(--primary); }
+.hub-page .actions > p { align-self: center; }
+
+.hub-section > h2, .hub-section > h3 { margin: 0; overflow-wrap: anywhere; }
+.hub-section .table-region, .hub-page .table-region { max-block-size: min(60dvh, 38rem); overflow: auto; }

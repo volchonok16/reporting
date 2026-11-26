@@ -35,6 +35,7 @@ export default defineConfig({
     port: 5173,
     allowedHosts: true,
     proxy: {
+      '/dogtags-manager': { target: apiProxyTarget, changeOrigin: true },
       '/api': {
         target: apiProxyTarget,
         changeOrigin: true,

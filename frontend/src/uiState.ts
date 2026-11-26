@@ -12,6 +12,7 @@ export type SheetId =
   | 'departments'
   | 'planning'
   | 'voice'
+  | 'dogtags-manager'
 
 export type OrgPanelId =
   | 'roster'
@@ -104,6 +105,7 @@ const WORKBOOK_SHEETS: SheetId[] = [
   'departments',
   'planning',
   'voice',
+  'dogtags-manager',
 ]
 
 const ORG_PANELS: OrgPanelId[] = [

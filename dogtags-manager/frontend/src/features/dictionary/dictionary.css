@@ -1,0 +1,10 @@
+.reference-directory { display: grid; gap: var(--space-4); }
+.reference-directory > p { margin: 0; }
+.dictionary-sections { flex-wrap: wrap; }
+.dictionary-sections .button { flex: 0 1 auto; }
+.partner-settings-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); margin-block: var(--space-4); }
+.partner-settings-grid > .form-block { align-content: start; }
+.dictionary-publication, .dictionary-addition { min-inline-size: 0; }
+.mnemonic-editor { padding: var(--space-4); }
+.dictionary-new-entry { background: var(--surface); border: var(--border-width) solid var(--divider); border-radius: var(--radius-card); }
+@media (max-width: 63.999rem) { .partner-settings-grid { grid-template-columns: 1fr; } }

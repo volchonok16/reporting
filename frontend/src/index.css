@@ -4718,3 +4718,27 @@ button:is(
   box-shadow: none;
 }
 
+
+@media (max-width: 760px) {
+  .workbook-header {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 0;
+    padding-right: 0;
+  }
+  .workbook-header-tools {
+    align-self: auto;
+    justify-content: flex-end;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .workbook-header .workbook-tabs {
+    flex: none;
+    flex-wrap: nowrap;
+    align-items: center;
+    overflow-x: auto;
+    padding: 4px 8px 0;
+  }
+  .workbook-tabs > .workbook-tab { flex: none; white-space: nowrap; }
+  .workbook-tabs > .workbook-brand { display: none; }
+}

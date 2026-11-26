@@ -10,6 +10,7 @@ import Roadmap from './Roadmap'
 import Departments from './org/Departments'
 import Planning from './planning/Planning'
 import Voice from './Voice'
+import DogtagsManager from './DogtagsManager'
 import EmployeeProfile from './org/EmployeeProfile'
 import OrgPhoto from './org/OrgPhoto'
 import ThemeToggle from './ThemeToggle'
@@ -35,6 +36,7 @@ const SHEETS: SheetTab[] = [
   { id: 'departments', label: 'Staffing' },
   { id: 'planning', label: 'Планирование' },
   { id: 'voice', label: 'Voice' },
+  { id: 'dogtags-manager', label: 'Dogtags Manager' },
 ]
 
 type WorkbookAppProps = {
@@ -118,6 +120,7 @@ export default function WorkbookApp({
     if (fromUrl === 'docplan' && !voiceOnly) {
       return 'docplan'
     }
+    if (fromUrl === 'dogtags-manager' && !voiceOnly) return 'dogtags-manager'
     const saved = loadActiveSheet()
     let candidate: SheetId
     if (voiceOnly) {
@@ -288,6 +291,8 @@ export default function WorkbookApp({
           </div>
         ) : activeSheet === 'voice' ? (
           <Voice />
+        ) : activeSheet === 'dogtags-manager' ? (
+          <DogtagsManager />
         ) : (
           <div className="app">
             <ProductStatusB2B

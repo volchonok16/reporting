@@ -17,6 +17,7 @@ const APP_PAGE_LABELS: Record<string, string> = {
   departments: 'Staffing',
   planning: 'Планирование',
   voice: 'Voice',
+  'dogtags-manager': 'Dogtags Manager',
 }
 
 type EmployeeProfileProps = {

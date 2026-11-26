@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 from datetime import date
 import asyncio
 import hmac
@@ -6,6 +7,7 @@ import hmac
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -28,6 +30,7 @@ from app.boards import (
     grouped_boards_for_ui,
     is_all_boards,
 )
+from app.dogtags_routes import router as dogtags_router
 from app.config import settings
 from app.db import close_db_session, ensure_startup_schema, get_db, purge_stale_b2b_audit_records
 from app.org_models import OrgUser
@@ -1958,3 +1961,9 @@ def sync_status(
         startedAt=sync_run.started_at,
         finishedAt=sync_run.finished_at,
     )
+
+
+app.include_router(dogtags_router)
+dogtags_web = Path(__file__).resolve().parents[1] / "dogtags-web"
+if dogtags_web.is_dir():
+    app.mount("/dogtags-manager", StaticFiles(directory=dogtags_web, html=True), name="dogtags-manager-web")

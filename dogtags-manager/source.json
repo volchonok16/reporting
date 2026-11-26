@@ -1,0 +1,11 @@
+{
+  "project": "DOGTAGS MANAGER",
+  "commit": "534b82f",
+  "integration": "B2PROD shared local workspace",
+  "changes": [
+    "Reporting session gateway",
+    "Subpath hosting",
+    "T2 themes and typography",
+    "Authenticated source downloads"
+  ]
+}

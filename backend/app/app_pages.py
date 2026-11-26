@@ -20,6 +20,7 @@ APP_PAGES: list[AppPageDef] = [
     {"page_key": "departments", "label": "Staffing", "sort_order": 60},
     {"page_key": "planning", "label": "Планирование", "sort_order": 80},
     {"page_key": "voice", "label": "Voice", "sort_order": 90},
+    {"page_key": "dogtags-manager", "label": "Dogtags Manager", "sort_order": 100},
 ]
 
 APP_PAGE_KEYS: frozenset[str] = frozenset(page["page_key"] for page in APP_PAGES)
