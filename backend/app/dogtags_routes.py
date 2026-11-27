@@ -1,4 +1,4 @@
-"""Authenticated streaming gateway to the existing Dogtags Manager workspace."""
+"""Authenticated streaming gateway to the configured Dogtags installation."""
 from http.cookies import SimpleCookie
 
 import anyio
@@ -23,7 +23,9 @@ async def dogtags_proxy(path: str, request: Request):
 
     # Keep Reporting credentials out of Dogtags, and retain its own CSRF policy.
     origin = settings.dogtags_manager_origin.rstrip("/")
-    headers = {"Host": httpx.URL(origin).netloc.decode(), "Origin": origin, "Accept-Encoding": "identity"}
+    upstream_origin = httpx.URL(origin)
+    headers = {"Host": upstream_origin.netloc.decode(), "Origin": origin,
+               "X-Forwarded-Proto": upstream_origin.scheme, "Accept-Encoding": "identity"}
     for name in ("content-type", "content-length", "x-csrf-token", "x-operation-id", "accept", "range", "if-range"):
         if value := request.headers.get(name):
             headers[name] = value
@@ -46,7 +48,7 @@ async def dogtags_proxy(path: str, request: Request):
         upstream = await client.send(client.build_request(request.method, url, headers=headers, content=request.stream()), stream=True)
     except httpx.RequestError:
         await close()
-        return JSONResponse({"error": {"code": "dogtags_unavailable", "message": "Dogtags Manager недоступен. Проверьте, что его локальные Docker-сервисы запущены.", "retryable": True}}, status_code=502)
+        return JSONResponse({"error": {"code": "dogtags_unavailable", "message": "Dogtags Manager недоступен. Проверьте подключение к его API и состояние сервисов обработки.", "retryable": True}}, status_code=502)
 
     except BaseException:
         await close()

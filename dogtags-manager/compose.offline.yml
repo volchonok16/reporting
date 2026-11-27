@@ -1,0 +1,5 @@
+services:
+  postgres:
+    image: reporting/dogtags-postgres:17
+  rabbitmq:
+    image: reporting/dogtags-rabbitmq:4.2

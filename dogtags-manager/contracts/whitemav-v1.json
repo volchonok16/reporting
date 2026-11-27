@@ -1,0 +1,43 @@
+{
+  "version": "whitemav-v1",
+  "order": [
+    "NUMBERS"
+  ],
+  "files": {
+    "NUMBERS": {
+      "columns": [
+        "INN",
+        "MAV_LABEL_NAME",
+        "MSISDN",
+        "IS_MAV",
+        "IS_KSS",
+        "SPREADING",
+        "INTERNAL_OPERATOR_NAME"
+      ],
+      "required": [
+        "INN",
+        "MSISDN",
+        "IS_MAV",
+        "IS_KSS",
+        "SPREADING",
+        "INTERNAL_OPERATOR_NAME"
+      ],
+      "defaults": {"INN": "7743895280"},
+      "constants": {
+        "MAV_LABEL_NAME": "",
+        "IS_MAV": "1",
+        "IS_KSS": "0",
+        "SPREADING": "0",
+        "INTERNAL_OPERATOR_NAME": "whiteMAV"
+      }
+    }
+  },
+  "serialization": {
+    "version": "cp1251-crlf-v1",
+    "encoding": "cp1251",
+    "bom": false,
+    "delimiter": ";",
+    "line_ending": "\r\n",
+    "errors": "strict"
+  }
+}

@@ -1,0 +1,12 @@
+# Append after Reporting environment overrides. Start dogtags-manager/compose.yml first.
+services:
+  backend:
+    environment:
+      DOGTAGS_MANAGER_URL: http://reporting-dogtags-api:8000
+      DOGTAGS_MANAGER_ORIGIN: ${DOGTAGS_MANAGER_ORIGIN:-https://t2product.ru}
+    networks: [default, dogtags-gateway]
+
+networks:
+  dogtags-gateway:
+    external: true
+    name: ${REPORTING_DOGTAGS_NETWORK:-reporting-dogtags-gateway}

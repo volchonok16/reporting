@@ -1,0 +1,329 @@
+{
+  "$defs": {
+    "Attribution": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "field": {
+          "enum": [
+            "sender",
+            "recipient",
+            "cc"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "address": {
+          "pattern": "^[^\\s@]+@[^\\s@]+$",
+          "title": "Address",
+          "type": "string"
+        },
+        "partner": {
+          "enum": [
+            "RTK HUB",
+            "RTK ABC",
+            "RTK MVNO",
+            "ГПБМ"
+          ],
+          "title": "Partner",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "field",
+        "address",
+        "partner"
+      ],
+      "title": "Attribution",
+      "type": "object"
+    },
+    "Example": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "normalization",
+            "status",
+            "attribution"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "rule_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rule Id"
+        },
+        "before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Before"
+        },
+        "after": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "After"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "classification": {
+          "anyOf": [
+            {
+              "enum": [
+                "success",
+                "failure",
+                "unknown"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Classification"
+        },
+        "context": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Context"
+        },
+        "partner": {
+          "anyOf": [
+            {
+              "enum": [
+                "RTK HUB",
+                "RTK ABC",
+                "RTK MVNO",
+                "ГПБМ"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Partner"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "Example",
+      "type": "object"
+    },
+    "Normalization": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "field": {
+          "enum": [
+            "MAV_LABEL_NAME",
+            "MAV_LABEL_LATIN"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "before": {
+          "minLength": 1,
+          "title": "Before",
+          "type": "string"
+        },
+        "after": {
+          "minLength": 1,
+          "title": "After",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "field",
+        "before",
+        "after"
+      ],
+      "title": "Normalization",
+      "type": "object"
+    },
+    "Profile": {
+      "additionalProperties": false,
+      "properties": {
+        "SPREADING": {
+          "enum": [
+            "0",
+            "1"
+          ],
+          "title": "Spreading",
+          "type": "string"
+        },
+        "INTERNAL_OPERATOR_NAME": {
+          "maxLength": 120,
+          "title": "Internal Operator Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "SPREADING",
+        "INTERNAL_OPERATOR_NAME"
+      ],
+      "title": "Profile",
+      "type": "object"
+    },
+    "StatusRule": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "title": "Value",
+          "type": "string"
+        },
+        "classification": {
+          "enum": [
+            "success",
+            "failure"
+          ],
+          "title": "Classification",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value",
+        "classification"
+      ],
+      "title": "StatusRule",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "version": {
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,119}$",
+      "title": "Version",
+      "type": "string"
+    },
+    "profiles": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Profile"
+      },
+      "propertyNames": {
+        "enum": [
+          "RTK HUB",
+          "RTK ABC",
+          "RTK MVNO",
+          "ГПБМ"
+        ]
+      },
+      "title": "Profiles",
+      "type": "object"
+    },
+    "aliases": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "title": "Aliases",
+      "type": "object"
+    },
+    "attribution": {
+      "items": {
+        "$ref": "#/$defs/Attribution"
+      },
+      "title": "Attribution",
+      "type": "array"
+    },
+    "normalizations": {
+      "items": {
+        "$ref": "#/$defs/Normalization"
+      },
+      "title": "Normalizations",
+      "type": "array"
+    },
+    "statuses": {
+      "items": {
+        "$ref": "#/$defs/StatusRule"
+      },
+      "title": "Statuses",
+      "type": "array"
+    },
+    "examples": {
+      "items": {
+        "$ref": "#/$defs/Example"
+      },
+      "title": "Examples",
+      "type": "array"
+    }
+  },
+  "required": [
+    "version",
+    "profiles",
+    "aliases",
+    "attribution",
+    "normalizations",
+    "statuses",
+    "examples"
+  ],
+  "title": "RuleConfig",
+  "type": "object"
+}

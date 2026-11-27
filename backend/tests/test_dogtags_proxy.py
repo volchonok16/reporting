@@ -72,6 +72,17 @@ class DogtagsGatewayTests(unittest.TestCase):
         self.assertIn('Path=/api/dogtags-manager', r.headers['set-cookie'])
         self.assertIn('HttpOnly', r.headers['set-cookie'])
 
+    def test_https_origin_controls_forwarded_scheme(self):
+        def handler(request):
+            self.assertEqual(request.headers['origin'], 'https://t2product.ru')
+            self.assertEqual(request.headers['host'], 't2product.ru')
+            self.assertEqual(request.headers['x-forwarded-proto'], 'https')
+            return httpx.Response(200, stream=httpx.ByteStream(b'{"status":"ok"}'))
+        self.transport(handler)
+        with patch('app.dogtags_routes.settings.dogtags_manager_origin', 'https://t2product.ru'):
+            r = self.client.get('/api/dogtags-manager/health', headers={**self.headers, 'X-Forwarded-Proto': 'http'})
+        self.assertEqual(r.status_code, 200)
+
     def test_upstream_unavailable_returns_actionable_error(self):
         self.transport(lambda request: (_ for _ in ()).throw(httpx.ConnectError('unavailable')))
         r = self.client.get('/api/dogtags-manager/session', headers=self.headers)

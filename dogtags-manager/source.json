@@ -1,11 +1,12 @@
 {
   "project": "DOGTAGS MANAGER",
   "commit": "534b82f",
-  "integration": "B2PROD shared local workspace",
+  "integration": "Reporting subpath UI and independently deployed Dogtags services",
   "changes": [
     "Reporting session gateway",
     "Subpath hosting",
     "T2 themes and typography",
     "Authenticated source downloads"
-  ]
+  ],
+  "backend_commit": "534b82f990bc36cf5356ded56e6511d52d1c6dc5"
 }
