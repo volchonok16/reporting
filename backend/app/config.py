@@ -5,8 +5,8 @@ from app.app_users import parse_app_users
 
 
 class Settings(BaseSettings):
-    dogtags_manager_url: str = Field(default="", alias="DOGTAGS_MANAGER_URL")
-    dogtags_manager_origin: str = Field(default="http://127.0.0.1:8000", alias="DOGTAGS_MANAGER_ORIGIN")
+    dogtags_manager_url: str = Field(default="http://reporting-dogtags-api:8000", alias="DOGTAGS_MANAGER_URL")
+    dogtags_manager_origin: str = Field(default="https://t2product.ru", alias="DOGTAGS_MANAGER_ORIGIN")
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

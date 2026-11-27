@@ -5,8 +5,8 @@
 ## Запуск
 
 1. Запустите отдельный стек Dogtags Manager: API, PostgreSQL, RabbitMQ, worker и dispatcher. Эта интеграция использует существующее рабочее пространство Dogtags; отдельные пользовательские пространства она не создаёт.
-2. В окружении backend B2PROD задайте `DOGTAGS_MANAGER_URL` — адрес API, доступный из контейнера backend. В Docker Desktop локально это может быть `http://host.docker.internal:8000`. На dev-сервере используйте адрес сервиса Dogtags в сети или доступный backend URL; не адрес браузера пользователя.
-3. Задайте `DOGTAGS_MANAGER_ORIGIN` равным `APP_ORIGIN` Dogtags. Это значение передаётся исходному API для его проверки Origin/CSRF. Origin и URL подключения могут различаться.
+2. В окружении backend B2PROD задайте `DOGTAGS_MANAGER_URL` — адрес API, доступный из контейнера backend. На сервере это `http://reporting-dogtags-api:8000`. Локально, если API слушает порт 8000 на самой машине, можно `http://host.docker.internal:8000`.
+3. Задайте `DOGTAGS_MANAGER_ORIGIN` равным `APP_ORIGIN` Dogtags. На `t2product.ru` это `https://t2product.ru`. Значение уходит в заголовок Origin для проверки CSRF. Origin и URL подключения могут различаться.
 4. Пересоберите backend и frontend B2PROD штатным Compose для вашего окружения. Backend Dockerfile сам собирает интерфейс Dogtags и отдаёт его на `/dogtags-manager/`.
 5. Войдите в B2PROD и откройте вкладку Dogtags Manager. Доступ к данным проверяется по сессии и правам B2PROD на каждом запросе.
 
