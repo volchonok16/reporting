@@ -85,6 +85,22 @@ esac
 
 # shellcheck source=lib-read-env.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib-read-env.sh"
+read_legacy_compose_setting() {
+  local key="$1" default="${2:-}" value
+  if value="$(printenv "$key")"; then
+    printf '%s\n' "${value:-$default}"
+    return
+  fi
+  value="$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "${COMPOSE_ENV_FILE:-.env}" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
+  value="${value#"${value%%[![:space:]]*}"}"
+  case "$value" in
+    \"*) value="${value:1}"; value="${value%%\"*}" ;;
+    \'*) value="${value:1}"; value="${value%%\'*}" ;;
+    *) value="${value%%[[:space:]]#*}"; value="${value%"${value##*[![:space:]]}"}" ;;
+  esac
+  printf '%s\n' "${value:-$default}"
+}
+
 # Compose owns dotenv parsing, including quotes, comments and variable expansion.
 if compose_module_settings="$(
   set -o pipefail
@@ -96,8 +112,8 @@ if compose_module_settings="$(
   reporting_dogtags_enabled="${reporting_dogtags_enabled:-0}"
 else
   # Legacy Compose versions without --environment keep the module disabled by default.
-  reporting_dogtags_enabled="${REPORTING_DOGTAGS_ENABLED:-$(read_env REPORTING_DOGTAGS_ENABLED 0)}"
-  compose_local_override="${COMPOSE_LOCAL_OVERRIDE:-$(read_env COMPOSE_LOCAL_OVERRIDE)}"
+  reporting_dogtags_enabled="$(read_legacy_compose_setting REPORTING_DOGTAGS_ENABLED 0)"
+  compose_local_override="$(read_legacy_compose_setting COMPOSE_LOCAL_OVERRIDE)"
 fi
 case "$reporting_dogtags_enabled" in
   0|1) ;;

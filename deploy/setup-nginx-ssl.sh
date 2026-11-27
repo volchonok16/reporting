@@ -112,6 +112,7 @@ fi
 mkdir -p /var/www/certbot
 mkdir -p /etc/nginx/snippets
 cp -f "$ROOT/deploy/nginx/snippets/proxy-common.conf" /etc/nginx/snippets/
+cp -f "$ROOT/deploy/nginx/snippets/dogtags-proxy.conf" /etc/nginx/snippets/
 cp -f "$ROOT/deploy/nginx/snippets/voice-proxy.conf" /etc/nginx/snippets/
 
 install_nginx_config() {

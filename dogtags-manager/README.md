@@ -1,26 +1,16 @@
-# Dogtags Manager — модуль Reporting
+# Dogtags Manager: запуск на сервере Reporting
 
-Dogtags открывается во вкладке после Voice на том же домене Reporting: `/dogtags-manager/`. Пользователь входит один раз в Reporting; каждый запрос `/api/dogtags-manager/` проверяет его текущую сессию и право на вкладку. Отдельного логина Dogtags нет. Архив остаётся общим для пользователей с доступом, как согласовано для этой интеграции.
+Модуль доступен во вкладке Dogtags Manager на `https://t2product.ru`. Интерфейс использует `/dogtags-manager/`, запросы — `/api/dogtags-manager/`. Вход и права проверяет Reporting; отдельного логина Dogtags нет. Архив общий для пользователей с доступом к вкладке.
 
-## Принцип интеграции и сравнение с Voice/Carousel
+## Состав и изоляция
 
-Оба приложения входят в исходники Reporting, открываются через iframe на одном домене, используют его вход и тему, запускаются штатным Compose и поставляются в общем offline-bundle. Внешнее приложение на компьютере разработчика для их работы не требуется.
+Dogtags запускается штатным Compose Reporting. Его компоненты: `dogtags-api`, `dogtags-worker`, `dogtags-dispatcher`, одноразовый `dogtags-init`, PostgreSQL 17 и RabbitMQ. Python-зависимости находятся в собственном образе и не изменяют окружение backend Reporting или Voice.
 
-| Часть | Voice / Carousel | Dogtags Manager |
-| --- | --- | --- |
-| Интерфейс | `/voice/`, отдельный `voice-web` | `/dogtags-manager/`, статика в образе Reporting backend |
-| API | FastAPI sub-application `/voice-api` внутри Reporting backend | служебный `dogtags-api` внутри того же Compose, доступ через авторизованный `/api/dogtags-manager/` |
-| Вход | короткий подписанный SSO-токен Reporting → bearer-сессия Voice | проверка текущей сессии Reporting шлюзом на каждом запросе |
-| Обработка | executor Carousel внутри Reporting backend | отдельные worker и dispatcher Dogtags |
-| Данные | таблицы PostgreSQL Reporting по умолчанию; возможен VOICE_DATABASE_URL | собственные PostgreSQL 17, RabbitMQ и volumes |
+База данных, очередь и volumes Dogtags отделены от Reporting, Voice, Симметрики и Доски. API подключён к backend Reporting через выделенную gateway-сеть. PostgreSQL и RabbitMQ доступны только в private-сети Dogtags. Порты Dogtags не публикуются на хосте; пользователи работают через существующий HTTPS-вход Reporting.
 
-Это общий принцип встраивания, а не объединение несовместимых Python-окружений: Reporting использует FastAPI 0.124 / SQLAlchemy 2.0, Dogtags — FastAPI 0.143 / SQLAlchemy 2.1 и собственный lockfile. Контейнер Dogtags сохраняет эти зависимости отдельно и не изменяет зависимости Voice или остальных модулей.
+## Настройки сервера
 
-Исходники backend и контракты перенесены из Dogtags `534b82f990bc36cf5356ded56e6511d52d1c6dc5`. Его прежняя папка и отдельно запущенная установка не используются.
-
-## Настройки для t2product.ru
-
-В используемом сервером корневом `.env`:
+Требуются Docker Compose v2, актуальная версия репозитория Reporting и настроенный HTTPS для `t2product.ru`. Сохраните текущее имя Compose-проекта и существующие настройки Reporting. В используемый сервером корневой `.env` добавьте:
 
 ```dotenv
 REPORTING_DOGTAGS_ENABLED=1
@@ -29,64 +19,59 @@ REPORTING_DOGTAGS_POSTGRES_PASSWORD=<отдельный случайный па�
 REPORTING_DOGTAGS_RABBITMQ_PASSWORD=<отдельный случайный пароль очереди>
 ```
 
-Для существующих установок модуль выключен по умолчанию: остальные приложения запускаются без новых паролей. `scripts/resolve-compose.sh` при включении добавляет `docker-compose.dogtags.yml`, а в offline/corp-direct — ещё `docker-compose.dogtags.offline.yml`. Для модуля требуется Docker Compose v2.
+Замените значения в угловых скобках настоящими паролями. Храните `.env` на сервере с ограниченным доступом.
 
-`DOGTAGS_MANAGER_URL` автоматически задаётся как `http://dogtags-api:8000`, внутренний адрес сервиса. Его не нужно заменять публичным доменом. `DOGTAGS_MANAGER_ORIGIN` — согласованное значение Origin/Host и схемы запроса для проверки Dogtags; его же Compose передаёт сервису как APP_ORIGIN. HTTPS-схему задаёт доверенный шлюз Reporting, а не заголовок браузера.
+`DOGTAGS_MANAGER_URL` автоматически задаётся как `http://dogtags-api:8000`: это адрес контейнера в сети Compose. `DOGTAGS_MANAGER_ORIGIN` задаёт Origin/Host и HTTPS-схему для проверки запросов; то же значение передаётся API Dogtags как APP_ORIGIN. Публичный адрес Reporting и внутренний адрес API выполняют разные задачи.
 
-API, PostgreSQL и RabbitMQ не публикуют порты на хосте. Reporting backend и API Dogtags соединяет отдельная gateway-сеть; только Dogtags подключён к сети БД/очереди. Имена сетей и volumes по умолчанию принадлежат текущему Compose project, без общего глобального имени. Worker по умолчанию ограничен двумя CPU и 4 GiB.
+Штатные скрипты подключают конфигурацию модуля при `REPORTING_DOGTAGS_ENABLED=1`. Без этого флага остальные приложения запускаются по прежней схеме, а подключение Dogtags отключено.
 
-## Единый запуск
+## Сервер в закрытом контуре
 
-Из корня `reporting`, после настройки `.env`:
+На сервере должны находиться эта версия исходников и готовый общий архив образов Reporting для архитектуры сервера. В архив должны входить также:
+
+- `reporting/dogtags-manager:534b82f`;
+- `reporting/dogtags-postgres:17`;
+- `reporting/dogtags-rabbitmq:4.2`.
+
+Отдельного архива и второго Compose-проекта Dogtags не требуется. Из корня репозитория на сервере выполните, подставив путь к полученному архиву:
 
 ```bash
-bash scripts/compose-up.sh dev --build
-# На production вместо dev используйте prod.
+sudo bash scripts/offline-deploy.sh /path/to/reporting-offline.tar --with-ssl --t2product --tunnel
 ```
 
-Команда поднимает Reporting, Voice и включённый Dogtags одним Compose-проектом. Миграции и первая публикация исходных правил Dogtags выполняются одноразовым сервисом `dogtags-init`; существующие правила и данные сохраняются. Reporting backend не зависит от успешного старта API Dogtags: недоступность этого API отображается только во вкладке.
+TLS-сертификаты должны быть заранее подготовлены для серверного nginx. Скрипт загружает готовые образы и запускает общий стек без сборки и скачивания зависимостей.
 
-Для локального env-файла:
+## Сервер с доступом к зависимостям
+
+Из корня репозитория на сервере:
 
 ```bash
-COMPOSE_ENV_FILE=.env.local bash scripts/compose-up.sh dev
+bash scripts/compose-up.sh prod --build
+sudo bash deploy/setup-nginx-ssl.sh --t2product
 ```
 
-В нём можно задать `COMPOSE_PROJECT_NAME`, чтобы сохранить имя уже работающей установки, и `COMPOSE_LOCAL_OVERRIDE=docker-compose.local.yml` для локальных портов/volumes. Такой override применяется последним, игнорируется Git и не передаётся на сервер. Локальный origin может быть `http://127.0.0.1:8000`: это внутренний параметр проверки API, публичных портов Dogtags он не создаёт. Для нелокального origin сам Dogtags требует HTTPS.
+Используйте этот сценарий, если серверу разрешено получать образы и зависимости. Миграции Dogtags и первоначальную публикацию правил выполняет `dogtags-init`. Существующие правила и архив сохраняются.
 
-## Общая offline-поставка
+## Проверка после запуска
 
-На машине с доступом к зависимостям включите модуль в конфигурации сборки. Для архитектуры сервера:
-
-```bash
-bash scripts/offline-bundle.sh dist/reporting-offline.tar linux/amd64
-```
-
-В один архив автоматически войдут также образы Dogtags API/worker, его PostgreSQL и RabbitMQ. Отдельного Dogtags bundle и второго Compose-проекта больше нет. На сервер передаются исходники этой версии и общий архив; в серверном `.env` модуль также должен быть включён:
+Для закрытого контура, из корня репозитория в Bash:
 
 ```bash
-sudo bash scripts/offline-deploy.sh /tmp/reporting-offline.tar --with-ssl --t2product --tunnel
-```
-
-Нужны заранее подготовленные TLS-сертификаты и рабочие настройки Reporting. Не передавайте локальный override, секреты, архивы заявок и Docker volumes через Git.
-
-## Обновление существующей отдельной установки
-
-Перед переходом остановите её новые задания и сделайте согласованный backup БД и файлов. Остановите прежние API/worker/dispatcher до подключения тех же данных в общем Compose, затем БД и RabbitMQ. В отдельном локальном/server override сопоставьте `dogtags-postgres-data`, `dogtags-rabbitmq-data`, `dogtags-artifacts` и `dogtags-scratch` существующим volumes через `external: true` и их точные имена. Сохраните прежние пароли, а при переносе RabbitMQ — его прежний hostname/node identity. Это позволяет использовать те же данные без копирования в пустую базу.
-
-На новой установке override с external volumes не нужен: Compose создаёт отдельные volumes этого проекта. Не выполняйте `down -v` для рабочих данных. При будущих миграциях сначала делайте backup: `dogtags-init` применяет миграции вперёд.
-
-## Проверка
-
-```bash
-source scripts/resolve-compose.sh prod
+source scripts/resolve-compose.sh offline-tunnel
 "${COMPOSE[@]}" ps -a
 "${COMPOSE[@]}" exec dogtags-api python -c \
   "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/api/health').read().decode())"
+curl --fail https://t2product.ru/api/health
 ```
 
-`dogtags-init` должен завершиться с кодом 0; API/PostgreSQL/RabbitMQ — быть healthy; worker и dispatcher — работать. Войдите в Reporting на `https://t2product.ru`, откройте вкладку, обработайте синтетический CSV и скачайте результат. Без сессии Reporting API вкладки должен отвечать 401/403.
+Для установки с доступом к зависимостям выберите режим `prod` вместо `offline-tunnel`. Адрес `127.0.0.1` в приведённой проверке относится к API внутри контейнера на сервере.
 
-Проверки графа запуска: `python3 -m unittest discover -s scripts/tests -p test_dogtags_deployment.py -v` (требуется Docker Compose; контейнеры не запускаются). Проверки шлюза: `PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_dogtags_proxy.py -v`. Остальные результаты и ограничения: [verification.md](verification.md).
+Ожидаемые состояния: `dogtags-init` завершён с кодом 0; API, PostgreSQL и RabbitMQ — healthy; worker и dispatcher работают. Войдите в Reporting, откройте Dogtags, обработайте синтетический CSV и скачайте результат. Проверьте переходы во все остальные разделы. Полный порядок приёмки: [verification.md](verification.md).
 
-Исходные domain-тесты Dogtags и общий TypeScript-check Reporting имеют ранее обнаруженные ошибки; они не исправлялись этой интеграцией.
+## Обновления и сохранение данных
+
+Перед обновлением сделайте согласованный backup базы и файлов Dogtags. Если на сервере уже есть его данные, сохраните прежние пароли, имена volumes и node identity RabbitMQ. При смене Compose-проекта сопоставьте существующие volumes через серверный override с `external: true`: `dogtags-postgres-data`, `dogtags-rabbitmq-data`, `dogtags-artifacts`, `dogtags-scratch`. Прежние API/worker/dispatcher необходимо остановить до подключения тех же данных новыми контейнерами.
+
+На новой установке Compose создаёт отдельные volumes текущего проекта. Не выполняйте `down -v` для рабочих данных. Миграции `dogtags-init` применяются вперёд.
+
+Известные ограничения, которые нужно учитывать перед выпуском: исходные domain-тесты Dogtags содержат ранее обнаруженные ошибки; общий TypeScript-check Reporting также не полностью проходит. Они не исправлялись этой интеграцией. Фактическую готовность `t2product.ru` подтверждает серверная приёмка, а не наличие кода в GitHub.
