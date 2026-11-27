@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "version": "supplied-contracts-v1",
+  "profiles": {
+    "RTK HUB": {
+      "SPREADING": "0",
+      "INTERNAL_OPERATOR_NAME": "hubRTK"
+    },
+    "RTK ABC": {
+      "SPREADING": "0",
+      "INTERNAL_OPERATOR_NAME": "fRTK"
+    },
+    "RTK MVNO": {
+      "SPREADING": "1",
+      "INTERNAL_OPERATOR_NAME": "none"
+    }
+  },
+  "aliases": {
+    "INN": [
+      "ИНН"
+    ],
+    "MSISDN": [
+      "Номер телефона",
+      "Телефон",
+      "Номер"
+    ],
+    "MAV_LABEL_NAME": [
+      "MAV_LABEL",
+      "Маркировка",
+      "Маркировка на кириллице"
+    ],
+    "MAV_LABEL_LATIN": [
+      "Маркировка на латинице",
+      "Латинская маркировка"
+    ],
+    "IS_MAV": [
+      "Признак МАВ"
+    ],
+    "IS_KSS": [
+      "Признак КСС"
+    ]
+  },
+  "attribution": [],
+  "normalizations": [],
+  "statuses": [],
+  "examples": []
+}

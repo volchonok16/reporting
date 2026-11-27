@@ -1,0 +1,11 @@
+.git
+.env*
+frontend
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/tests
+**/*.tsbuildinfo
+runtime
+*.tar

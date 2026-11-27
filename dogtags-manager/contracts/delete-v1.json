@@ -1,0 +1,7 @@
+{
+  "version": "delete-v1",
+  "source": "docs/reference/callmark-v4/Callmark_V4_Codex_Instructions_RU.md §4.5",
+  "order": ["DELETE"],
+  "files": {"DELETE": {"columns": ["MSISDN"], "required": ["MSISDN"]}},
+  "serialization": {"version": "cp1251-crlf-v1", "encoding": "cp1251", "bom": false, "delimiter": ";", "line_ending": "\r\n", "errors": "strict"}
+}

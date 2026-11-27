@@ -36,8 +36,8 @@ services:
       - ./secrets:/app/secrets:ro
       - ./voice/data:/data
     environment:
-      DOGTAGS_MANAGER_URL: ${DOGTAGS_MANAGER_URL:-http://reporting-dogtags-api:8000}
-      DOGTAGS_MANAGER_ORIGIN: ${DOGTAGS_MANAGER_ORIGIN:-https://t2product.ru}
+      DOGTAGS_MANAGER_URL: ${DOGTAGS_MANAGER_URL:-}
+      DOGTAGS_MANAGER_ORIGIN: ${DOGTAGS_MANAGER_ORIGIN:-http://127.0.0.1:8000}
       VOICE_SSO_SECRET: ${VOICE_SSO_SECRET:-reporting-voice-sso-dev-secret}
       CANVAS_STUDIO_SSO_SECRET: ${CANVAS_STUDIO_SSO_SECRET:-reporting-canvas-studio-sso-dev-secret}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://alex:alex@postgres:5432/reporting}

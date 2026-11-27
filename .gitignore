@@ -36,3 +36,7 @@ voice/data/*.sqlite3-wal
 voice/data/*.sqlite3.migrated
 voice/data/uploads/
 voice/data/workspaces/
+
+# Local Compose overrides (ports, local images and existing Docker volumes)
+docker-compose.local.yml
+scripts/tests/__pycache__/

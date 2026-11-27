@@ -1,0 +1,11 @@
+{
+  "version": "hub-v1",
+  "source": "docs/reference/callmark-v4/Callmark_V4_Codex_Instructions_RU.md §4–6",
+  "columns": ["INN", "MSISDN", "MAV_LABEL_NAME", "MAV_LABEL_LATIN", "IS_MAV", "IS_KSS"],
+  "required": ["INN", "MSISDN", "MAV_LABEL_NAME", "MAV_LABEL_LATIN", "IS_MAV", "IS_KSS"],
+  "identifier_type": "string",
+  "encodings": ["utf-8", "cp1251"],
+  "delimiter": ";",
+  "label_max_codepoints": 32,
+  "profile": {"id": "hub-v1", "name": "RTK HUB", "SPREADING": "0", "INTERNAL_OPERATOR_NAME": "hubRTK"}
+}
