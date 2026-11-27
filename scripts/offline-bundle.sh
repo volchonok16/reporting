@@ -27,6 +27,11 @@ BACKEND_IMAGE="reporting/backend:offline"
 FRONTEND_IMAGE="reporting/frontend:offline"
 VOICE_WEB_IMAGE="reporting/voice-web:offline"
 CANVAS_IMAGE="reporting/canvas-studio:offline"
+DOGTAGS_IMAGE="reporting/dogtags-manager:534b82f"
+DOGTAGS_POSTGRES_IMAGE="reporting/dogtags-postgres:17"
+DOGTAGS_RABBITMQ_IMAGE="reporting/dogtags-rabbitmq:4.2"
+DOGTAGS_POSTGRES_UPSTREAM="postgres:17-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826"
+DOGTAGS_RABBITMQ_UPSTREAM="rabbitmq:4.2-management@sha256:9e9fd21d60f060acc9ecbd847cd1dcb87e6550bdb0297c27e79a40bfe1766ce4"
 
 mkdir -p dist
 
@@ -53,6 +58,15 @@ EOF
 
 # shellcheck source=resolve-compose.sh
 source "$(dirname "$0")/resolve-compose.sh" offline
+BUILD_SERVICES=(backend frontend voice-web canvas-studio)
+APP_IMAGES=("$BACKEND_IMAGE" "$FRONTEND_IMAGE" "$VOICE_WEB_IMAGE" "$CANVAS_IMAGE")
+DATA_IMAGES=("$POSTGRES_IMAGE" "$MINIO_IMAGE" "$MC_IMAGE")
+if [[ "$reporting_dogtags_enabled" == "1" ]]; then
+  BUILD_SERVICES+=(dogtags-api)
+  APP_IMAGES+=("$DOGTAGS_IMAGE")
+  DATA_IMAGES+=("$DOGTAGS_POSTGRES_IMAGE" "$DOGTAGS_RABBITMQ_IMAGE")
+fi
+ALL_IMAGES=("${DATA_IMAGES[@]}" "${APP_IMAGES[@]}")
 
 # Compose/buildx на новых Docker иначе клеит attestation-манифесты.
 export BUILDX_NO_DEFAULT_ATTESTATIONS=1
@@ -75,17 +89,25 @@ echo "==> Pull upstream-образов…"
 pull_or_local "$POSTGRES_UPSTREAM"
 pull_or_local "$MINIO_UPSTREAM"
 pull_or_local "$MC_UPSTREAM"
+if [[ "$reporting_dogtags_enabled" == "1" ]]; then
+  pull_or_local "$DOGTAGS_POSTGRES_UPSTREAM"
+  pull_or_local "$DOGTAGS_RABBITMQ_UPSTREAM"
+fi
 
 echo "==> Flatten → reporting/* (обход бага docker save на multi-arch)…"
 flatten_image "$POSTGRES_UPSTREAM" "$POSTGRES_IMAGE"
 flatten_image "$MINIO_UPSTREAM" "$MINIO_IMAGE"
 flatten_image "$MC_UPSTREAM" "$MC_IMAGE"
+if [[ "$reporting_dogtags_enabled" == "1" ]]; then
+  flatten_image "$DOGTAGS_POSTGRES_UPSTREAM" "$DOGTAGS_POSTGRES_IMAGE"
+  flatten_image "$DOGTAGS_RABBITMQ_UPSTREAM" "$DOGTAGS_RABBITMQ_IMAGE"
+fi
 
 echo "==> Сборка backend, frontend, voice-web, canvas-studio (${PLATFORM})…"
-DOCKER_DEFAULT_PLATFORM="$PLATFORM" "${COMPOSE[@]}" build backend frontend voice-web canvas-studio
+DOCKER_DEFAULT_PLATFORM="$PLATFORM" "${COMPOSE[@]}" build "${BUILD_SERVICES[@]}"
 
 echo "==> Flatten app-образов (docker-compose 1.29 / ContainerConfig)…"
-for img in "$BACKEND_IMAGE" "$FRONTEND_IMAGE" "$VOICE_WEB_IMAGE" "$CANVAS_IMAGE"; do
+for img in "${APP_IMAGES[@]}"; do
   flat_tmp="${img}-flat"
   flatten_image "$img" "$flat_tmp"
   docker tag "$flat_tmp" "$img"
@@ -93,7 +115,7 @@ for img in "$BACKEND_IMAGE" "$FRONTEND_IMAGE" "$VOICE_WEB_IMAGE" "$CANVAS_IMAGE"
 done
 
 echo "==> Проверка тегов…"
-for img in "$POSTGRES_IMAGE" "$MINIO_IMAGE" "$MC_IMAGE" "$BACKEND_IMAGE" "$FRONTEND_IMAGE" "$VOICE_WEB_IMAGE" "$CANVAS_IMAGE"; do
+for img in "${ALL_IMAGES[@]}"; do
   if ! docker image inspect "$img" >/dev/null 2>&1; then
     echo "Ошибка: образ не найден: $img" >&2
     exit 1
@@ -101,28 +123,17 @@ for img in "$POSTGRES_IMAGE" "$MINIO_IMAGE" "$MC_IMAGE" "$BACKEND_IMAGE" "$FRONT
 done
 
 echo "==> docker save → ${OUTPUT}"
-docker save \
-  "$POSTGRES_IMAGE" \
-  "$MINIO_IMAGE" \
-  "$MC_IMAGE" \
-  "$BACKEND_IMAGE" \
-  "$FRONTEND_IMAGE" \
-  "$VOICE_WEB_IMAGE" \
-  "$CANVAS_IMAGE" \
-  -o "$OUTPUT"
+docker save "${ALL_IMAGES[@]}" -o "$OUTPUT"
 
 MANIFEST="${OUTPUT%.tar}.manifest.txt"
 {
   echo "platform=${PLATFORM}"
   echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "images:"
-  echo "  ${POSTGRES_IMAGE}"
-  echo "  ${MINIO_IMAGE}"
-  echo "  ${MC_IMAGE}"
-  echo "  ${BACKEND_IMAGE}"
-  echo "  ${FRONTEND_IMAGE}"
-  echo "  ${VOICE_WEB_IMAGE}"
-  echo "  ${CANVAS_IMAGE}"
+  echo "dogtags_enabled=${reporting_dogtags_enabled}"
+  for img in "${ALL_IMAGES[@]}"; do
+    echo "  ${img}"
+  done
   if command -v shasum >/dev/null 2>&1; then
     echo "sha256=$(shasum -a 256 "$OUTPUT" | awk '{print $1}')"
   elif command -v sha256sum >/dev/null 2>&1; then

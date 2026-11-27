@@ -48,6 +48,9 @@ compose_bin="$(pick_compose_bin)" || {
 
 # shellcheck disable=SC2206
 COMPOSE=( $compose_bin )
+if [[ -n "${COMPOSE_ENV_FILE:-}" ]]; then
+  COMPOSE+=( --env-file "$COMPOSE_ENV_FILE" )
+fi
 
 case "$resolve_compose_mode" in
   dev)
@@ -79,5 +82,38 @@ case "$resolve_compose_mode" in
     return 1 2>/dev/null || exit 1
     ;;
 esac
+
+# shellcheck source=lib-read-env.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib-read-env.sh"
+# Compose owns dotenv parsing, including quotes, comments and variable expansion.
+if compose_module_settings="$(
+  set -o pipefail
+  "${COMPOSE[@]}" config --environment 2>/dev/null | sed -n \
+    -e '/^REPORTING_DOGTAGS_ENABLED=/p' -e '/^COMPOSE_LOCAL_OVERRIDE=/p'
+)"; then
+  reporting_dogtags_enabled="$(printf '%s\n' "$compose_module_settings" | sed -n 's/^REPORTING_DOGTAGS_ENABLED=//p')"
+  compose_local_override="$(printf '%s\n' "$compose_module_settings" | sed -n 's/^COMPOSE_LOCAL_OVERRIDE=//p')"
+  reporting_dogtags_enabled="${reporting_dogtags_enabled:-0}"
+else
+  # Legacy Compose versions without --environment keep the module disabled by default.
+  reporting_dogtags_enabled="${REPORTING_DOGTAGS_ENABLED:-$(read_env REPORTING_DOGTAGS_ENABLED 0)}"
+  compose_local_override="${COMPOSE_LOCAL_OVERRIDE:-$(read_env COMPOSE_LOCAL_OVERRIDE)}"
+fi
+case "$reporting_dogtags_enabled" in
+  0|1) ;;
+  *)
+    echo 'REPORTING_DOGTAGS_ENABLED must be 0 or 1.' >&2
+    return 1 2>/dev/null || exit 1
+    ;;
+esac
+if [[ "$reporting_dogtags_enabled" == "1" ]]; then
+  COMPOSE+=( -f docker-compose.dogtags.yml )
+  case "$resolve_compose_mode" in
+    offline*|corp-direct*) COMPOSE+=( -f docker-compose.dogtags.offline.yml ) ;;
+  esac
+fi
+if [[ -n "$compose_local_override" ]]; then
+  COMPOSE+=( -f "$compose_local_override" )
+fi
 
 export COMPOSE_CMD="$compose_bin"

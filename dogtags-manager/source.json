@@ -1,7 +1,7 @@
 {
   "project": "DOGTAGS MANAGER",
   "commit": "534b82f",
-  "integration": "Reporting subpath UI and independently deployed Dogtags services",
+  "integration": "Reporting-managed Dogtags module with shared archive and isolated runtime dependencies",
   "changes": [
     "Reporting session gateway",
     "Subpath hosting",
