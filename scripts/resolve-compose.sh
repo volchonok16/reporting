@@ -105,16 +105,17 @@ read_legacy_compose_setting() {
 if compose_module_settings="$(
   set -o pipefail
   "${COMPOSE[@]}" config --environment 2>/dev/null | sed -n \
-    -e '/^REPORTING_DOGTAGS_ENABLED=/p' -e '/^COMPOSE_LOCAL_OVERRIDE=/p'
+    -e '/^REPORTING_DOGTAGS_ENABLED=/p' -e '/^COMPOSE_LOCAL_OVERRIDE=/p' -e '/^APP_PUBLIC_URL=/p'
 )"; then
   reporting_dogtags_enabled="$(printf '%s\n' "$compose_module_settings" | sed -n 's/^REPORTING_DOGTAGS_ENABLED=//p')"
   compose_local_override="$(printf '%s\n' "$compose_module_settings" | sed -n 's/^COMPOSE_LOCAL_OVERRIDE=//p')"
-  reporting_dogtags_enabled="${reporting_dogtags_enabled:-0}"
+  dogtags_public_url="$(printf '%s\n' "$compose_module_settings" | sed -n 's/^APP_PUBLIC_URL=//p')"
 else
-  # Legacy Compose versions without --environment keep the module disabled by default.
-  reporting_dogtags_enabled="$(read_legacy_compose_setting REPORTING_DOGTAGS_ENABLED 0)"
+  reporting_dogtags_enabled="$(read_legacy_compose_setting REPORTING_DOGTAGS_ENABLED)"
   compose_local_override="$(read_legacy_compose_setting COMPOSE_LOCAL_OVERRIDE)"
+  dogtags_public_url="$(read_legacy_compose_setting APP_PUBLIC_URL)"
 fi
+reporting_dogtags_enabled="${reporting_dogtags_enabled:-1}"
 case "$reporting_dogtags_enabled" in
   0|1) ;;
   *)
@@ -123,6 +124,18 @@ case "$reporting_dogtags_enabled" in
     ;;
 esac
 if [[ "$reporting_dogtags_enabled" == "1" ]]; then
+  if [[ -z "$dogtags_public_url" ]]; then
+    case "$resolve_compose_mode" in
+      dev|base) dogtags_public_url=http://localhost:5173 ;;
+      *) dogtags_public_url=https://taskatestovaya.ru ;;
+    esac
+  fi
+  # HTTP Reporting still talks to the private API through its trusted loopback origin.
+  # Public HTTPS keeps its real origin and secure cookies; no HTTP origin allowlist is widened.
+  case "$dogtags_public_url" in
+    http://*) dogtags_public_url=http://127.0.0.1:8000 ;;
+  esac
+  export REPORTING_DOGTAGS_DEFAULT_ORIGIN="$dogtags_public_url"
   COMPOSE+=( -f docker-compose.dogtags.yml )
   case "$resolve_compose_mode" in
     offline*|corp-direct*) COMPOSE+=( -f docker-compose.dogtags.offline.yml ) ;;

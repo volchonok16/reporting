@@ -60,14 +60,19 @@ def main():
     settings = Settings.from_environment()
     engine = make_engine(settings.database_url)
     sessions, app = make_session_factory(engine), make_celery(settings)
+    next_sweep = 0.0
+    dispatch_interval = min(1.0, settings.recovery_interval_seconds)
     try:
         while True:
             try:
-                sweep(sessions, settings)
+                now = time.monotonic()
+                if now >= next_sweep:
+                    sweep(sessions, settings)
+                    next_sweep = now + settings.recovery_interval_seconds
                 dispatch_batch(sessions, settings, app)
             except SQLAlchemyError:
                 logging.error("Processing dispatcher cannot reach PostgreSQL; retrying on the next sweep.")
-            time.sleep(settings.recovery_interval_seconds)
+            time.sleep(dispatch_interval)
     finally:
         engine.dispose()
 

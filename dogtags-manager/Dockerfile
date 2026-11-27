@@ -6,7 +6,8 @@ COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-dev
 COPY backend/ ./
 COPY contracts/ /app/contracts/
-COPY bootstrap.py ./
+COPY bootstrap.py runtime_secrets.py ./
 RUN useradd --uid 10001 --create-home dogtags && mkdir -p /data /scratch && chown dogtags:dogtags /data /scratch
 USER dogtags
+ENTRYPOINT ["python", "/app/backend/runtime_secrets.py", "run"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
